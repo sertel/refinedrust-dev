@@ -2441,10 +2441,10 @@ Proof.
   - iDestruct "Hs" as "[_ Hs]". iNext. by iApply "Hs".
 Qed.
 
-Lemma wps_if Q Ψ it v s1 s2 n:
+Lemma wps_if Q Ψ it join v s1 s2 n:
   val_to_Z v it = Some n →
   ▷ (£1 -∗ if bool_decide (n ≠ 0) then WPs s1 {{ Q, Ψ }} else WPs s2 {{ Q, Ψ }}) -∗
-  WPs (if{IntOp it}: (Val v) then s1 else s2) {{ Q , Ψ }}.
+  WPs (if{IntOp it, join}: (Val v) then s1 else s2) {{ Q , Ψ }}.
 Proof.
   iIntros (Hn) "Hs". rewrite !stmt_wp_eq. iIntros (?? ->) "?".
   iApply wp_lift_stmt_step. iIntros (?) "Hσ". iModIntro.
@@ -2453,10 +2453,10 @@ Proof.
   iFrame "Hσ". case_bool_decide; by iApply ("Hs" with "Hcred").
 Qed.
 
-Lemma wps_if_bool  Q Ψ v s1 s2 b:
+Lemma wps_if_bool Q Ψ v s1 s2 b join:
   val_to_bool v = Some b →
   ▷ (£1 -∗ if b then WPs s1 {{ Q, Ψ }} else WPs s2 {{ Q, Ψ }}) -∗
-  WPs (if{BoolOp}: (Val v) then s1 else s2) {{ Q , Ψ }}.
+  WPs (if{BoolOp, join}: (Val v) then s1 else s2) {{ Q , Ψ }}.
 Proof.
   iIntros (Hb) "Hs". rewrite !stmt_wp_eq. iIntros (?? ->) "?".
   iApply wp_lift_stmt_step. iIntros (?) "Hσ". iModIntro.
@@ -2465,11 +2465,11 @@ Proof.
   iFrame "Hσ". destruct b; by iApply ("Hs" with "Hcred").
 Qed.
 
-Lemma wps_if_ptr Q Ψ v s1 s2 l:
+Lemma wps_if_ptr Q Ψ v s1 s2 l join:
   val_to_loc v = Some l →
   wp_if_precond l -∗
   ▷ (£1 -∗ if bool_decide (l ≠ NULL_loc) then WPs s1 {{ Q, Ψ }} else WPs s2 {{ Q, Ψ }}) -∗
-  WPs (if{PtrOp}: (Val v) then s1 else s2) {{ Q , Ψ }}.
+  WPs (if{PtrOp, join}: (Val v) then s1 else s2) {{ Q , Ψ }}.
 Proof.
   iIntros (Hl) "Hlib Hs". rewrite !stmt_wp_eq. iIntros (?? ->) "?".
   iApply wp_lift_stmt_step. iIntros (σ1) "Hσ1 !>".
