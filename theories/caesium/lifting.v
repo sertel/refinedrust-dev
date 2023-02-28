@@ -1729,11 +1729,18 @@ Qed.
 Lemma wp_get_member_union `{!LayoutAlg} Φ vl l ul uls n E:
   use_union_layout_alg uls = Some ul →
   val_to_loc vl = Some l →
-  Φ (val_of_loc (l at_union{ul}ₗ n)) -∗ WP Val vl at_union{uls} n @ E {{ Φ }}.
+ (* Technically, we only need vl ≠ NULL_bytes here, but we use
+  the loc_in_bounds precondition for uniformity with wp_get_member *)
+  loc_in_bounds l 0 (ly_size ul) -∗
+  Φ (val_of_loc (l at_union{ul}ₗ n)) -∗
+  WP Val vl at_union{uls} n @ E {{ Φ }}.
 Proof.
-  iIntros (Halg ->%val_of_to_loc) "?".
-  rewrite /GetMemberUnion/GetMemberUnionLoc.
-  by iApply @wp_value.
+  iIntros (Halg [|[??]]%val_of_to_loc) "Hlib HΦ"; subst.
+  2: {
+    iDestruct (loc_in_bounds_is_alloc with "Hlib") as %[[?[=]] | (? & ? & ?)].
+    rewrite /GetMemberUnion/GetMemberUnionLoc. by iApply @wp_value.
+  }
+  rewrite /GetMemberUnion/GetMemberUnionLoc. by iApply @wp_value.
 Qed.
 
 (* TODO: lemmas for accessing discriminant/data of enum *)
@@ -2288,12 +2295,9 @@ Proof.
   iModIntro. iSplit; first by eauto 10 using FreeS, val_to_of_loc.
   iNext. iIntros (???? Hstep ?) "Hcred". inv_stmt_step. iModIntro.
   iSplitR; first done.
-  match goal with
-  | H : val_to_loc _ = Some ?l |- _ => apply val_of_to_loc in H; injection H; intros <-; intros
-  end.
-  rewrite (free_block_inj σ.(st_heap) l (Layout n_size n_align) HeapAlloc hs' σ'); [ | done..].
-  iFrame.
-  by iApply ("HWP" with "Hcred").
+  revert select (val_to_loc _ = Some _) => /val_of_to_loc[/(inj _ _ _)Heq|[??]//]. subst.
+  erewrite (free_block_inj σ.(st_heap) _ (Layout n_size n_align) HeapAlloc hs' σ'); [ | done..].
+  iFrame. by iApply ("HWP" with "Hcred").
 Qed.
 
 Lemma wps_skip_credits Q Ψ s n m:

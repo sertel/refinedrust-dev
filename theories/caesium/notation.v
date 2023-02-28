@@ -66,6 +66,8 @@ Notation "e1 'sub_ptr{' ly , ot1 , ot2 } e2" := (BinOp (PtrDiffOp ly) ot2 ot1 e1
   (at level 70, format "e1  sub_ptr{ ly ,  ot1 ,  ot2 }  e2") : expr_scope.
 Notation "'if{' ot ',' join '}' ':' e1 'then' s1 'else' s2" := (IfS ot join e1%E s1%E s2%E)
   (at level 102, e1, s1, s2 at level 150, format "'[v' 'if{' ot ','  join '}' ':'  e1  'then' '/  ' s1 '/' 'else' '/  ' s2 ']'") : expr_scope.
+Notation "'if{' ot '}' ':' e1 'then' s1 'else' s2" := (IfS ot None e1%E s1%E s2%E)
+  (at level 102, e1, s1, s2 at level 150, format "'[v' 'if{' ot '}' ':'  e1  'then' '/  ' s1 '/' 'else' '/  ' s2 ']'") : expr_scope.
 Notation "'expr:' e ; s" := (ExprS e%E s%E)
   (at level 80, s at level 200, format "'[v' 'expr:'  e ';' '/' s ']'") : expr_scope.
 
