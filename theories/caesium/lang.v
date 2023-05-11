@@ -438,10 +438,9 @@ Inductive eval_un_op : un_op → op_type → state → val → val → Prop :=
     wrap_to_it i itt = i' →
     val_of_Z i' itt (val_to_byte_prov vs) = Some vt →
     eval_un_op (CastOp (IntOp itt)) (IntOp its) σ vs vt
-| CastOpPP σ vs vt l:
+| CastOpPP σ vs l:
     val_to_loc vs = Some l →
-    val_of_loc l = vt →
-    eval_un_op (CastOp PtrOp) PtrOp σ vs vt
+    eval_un_op (CastOp PtrOp) PtrOp σ vs vs
 | CastOpPI it σ vs vt l p:
     val_to_loc vs = Some l →
     l.1 = ProvAlloc p →
