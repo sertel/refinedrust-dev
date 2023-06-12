@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "analysis",
+    "translation",
+    "rr_rustc_interface",
+    "annotations",
+    "case_studies/minivec",
+    "case_studies/paper-examples",
+]

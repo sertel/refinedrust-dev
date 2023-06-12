@@ -1,0 +1,4 @@
+We re-use code from a number of projects with different licenses: MIT, BSD 3-clause, and MPL 2.0. See the respective locations.
+
+The license for the frontend (folder `rr_frontend`) can be found in LICENSE-frontend.
+The license for the Coq code (folder `theories`) can be found in LICENSE-coq.

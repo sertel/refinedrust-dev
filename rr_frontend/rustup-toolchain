@@ -1,0 +1,72 @@
+# Adapted from Miri (https://github.com/rust-lang/miri/blob/34217bdc8e088051e831de7baa33c377724af3e0/rustup-toolchain).
+# Permission is hereby granted, free of charge, to any
+# person obtaining a copy of this software and associated
+# documentation files (the "Software"), to deal in the
+# Software without restriction, including without
+# limitation the rights to use, copy, modify, merge,
+# publish, distribute, sublicense, and/or sell copies of
+# the Software, and to permit persons to whom the Software
+# is furnished to do so, subject to the following
+# conditions:
+# 
+# The above copyright notice and this permission notice
+# shall be included in all copies or substantial portions
+# of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF
+# ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED
+# TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+# PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT
+# SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+# CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+# OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
+# IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+# DEALINGS IN THE SOFTWARE.
+
+
+#!/bin/bash
+set -e
+# Manages a rustup toolchain called "refinedrust".
+#
+# All commands set "refinedrust" as the override toolchain for the current directory,
+# and make the `rust-version` file match that toolchain.
+#
+# USAGE:
+#
+# ./rustup-toolchain: Update "refinedrust" toolchain to match `rust-version` (the known-good version for this commit).
+# 
+# ./rustup-toolchain HEAD: Update "refinedrust" toolchain and `rust-version` file to latest rustc HEAD.
+# 
+# ./rustup-toolchain $COMMIT: Update "refinedrust" toolchain and `rust-version` file to match that commit.
+
+# Make sure rustup-toolchain-install-master is installed.
+if ! which rustup-toolchain-install-master >/dev/null; then
+    echo "Please install rustup-toolchain-install-master by running 'cargo install rustup-toolchain-install-master'"
+    exit 1
+fi
+
+# Determine new commit.
+if [[ "$1" == "" ]]; then
+    NEW_COMMIT=$(cat rust-version)
+elif [[ "$1" == "HEAD" ]]; then
+    NEW_COMMIT=$(git ls-remote https://github.com/rust-lang/rust/ HEAD | cut -f 1)
+else
+    NEW_COMMIT="$1"
+fi
+echo "$NEW_COMMIT" > rust-version
+
+# Check if we already are at that commit.
+CUR_COMMIT=$(rustc +refinedrust --version -v 2>/dev/null | egrep "^commit-hash: " | cut -d " " -f 2)
+if [[ "$CUR_COMMIT" == "$NEW_COMMIT" ]]; then
+    echo "refinedrust toolchain is already at commit $CUR_COMMIT."
+    rustup override set refinedrust
+    exit 0
+fi
+
+# Install and setup new toolchain.
+rustup toolchain uninstall refinedrust
+rustup-toolchain-install-master -n refinedrust -c cargo -c rust-src -c rustc-dev -c llvm-tools -c rust-analyzer -- "$NEW_COMMIT"
+rustup override set refinedrust
+
+# Cleanup.
+cargo clean

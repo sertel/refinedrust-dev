@@ -1,0 +1,122 @@
+#!/bin/bash
+# script based on the `miri` script of Miri
+set -e
+USAGE=$(cat <<"EOF"
+  COMMANDS
+
+./refinedrust install <flags>:
+Installs the refinedrust driver. <flags> are passed to `cargo
+install`.  Sets up the rpath such that the installed binary should work in any
+working directory.
+
+./refinedrust build <flags>:
+Just build the refinedrust frontend.  <flags> are passed to `cargo build`.
+
+./refinedrust check <flags>:
+Just check the refinedrust frontend.  <flags> are passed to `cargo check`.
+
+./refinedrust test <flags>:
+Build the refinedrust frontend, set up a sysroot and then run the test suite. <flags> are passed
+to the final `cargo test` invocation.
+
+./refinedrust run <flags>:
+Build the refinedrust frontend, set up a sysroot and then run the driver with the given <flags>.
+
+All commands also exist in a "-debug" variant (e.g. "./refinedrust run-debug
+<flags>") which uses debug builds instead of release builds, for faster build
+times and slower execution times.
+
+  ENVIRONMENT VARIABLES
+
+RR_SYSROOT:
+If already set, the "sysroot setup" step is skipped.
+
+CARGO_EXTRA_FLAGS:
+Pass extra flags to all cargo invocations.
+EOF
+)
+
+## Preparation
+TARGET=$(rustc --version --verbose | grep "^host:" | cut -d ' ' -f 2)
+SYSROOT=$(rustc --print sysroot)
+LIBDIR=$SYSROOT/lib/rustlib/$TARGET/lib
+RRDIR=$(dirname "$0")
+if readlink -e . &>/dev/null; then
+    # This platform supports `readlink -e`.
+    RRDIR=$(readlink -e "$RRDIR")
+fi
+if ! test -d "$LIBDIR"; then
+    echo "Something went wrong determining the library dir."
+    echo "I got $LIBDIR but that does not exist."
+    exit 2
+fi
+if [ -z "$CARGO_INCREMENTAL" ]; then
+    # Default CARGO_INCREMENTAL to 1.
+    export CARGO_INCREMENTAL=1
+fi
+# We set the rpath so that Miri finds the private rustc libraries it needs.
+# We enable debug-assertions to get tracing.
+# We enable line-only debuginfo for backtraces.
+export RUSTFLAGS="-C link-args=-Wl,-rpath,$LIBDIR -C debug-assertions -C debuginfo=1 $RUSTFLAGS"
+
+find_sysroot() {
+  export RR_SYSROOT=$(rustc --print sysroot)
+}
+
+## Main
+
+# Determine command.
+COMMAND="$1"
+[ $# -gt 0 ] && shift
+
+# Determine flags passed to all cargo invocations.
+# This is a bit more annoying that one would hope due to
+# <https://github.com/rust-lang/cargo/issues/6992>.
+case "$COMMAND" in
+*-debug)
+    CARGO_INSTALL_FLAGS="--target $TARGET --debug $CARGO_EXTRA_FLAGS"
+    CARGO_BUILD_FLAGS="--target $TARGET $CARGO_EXTRA_FLAGS"
+    ;;
+*)
+    CARGO_INSTALL_FLAGS="--target $TARGET $CARGO_EXTRA_FLAGS"
+    CARGO_BUILD_FLAGS="--target $TARGET --release $CARGO_EXTRA_FLAGS"
+    ;;
+esac
+
+# Run command.
+case "$COMMAND" in
+install|install-debug)
+    # "--locked" to respect the Cargo.lock file if it exists,
+    # "--offline" to avoid querying the registry (for yanked packages).
+    cargo install $CARGO_INSTALL_FLAGS --path "$RRDIR" --force --locked --offline "$@"
+    ;;
+check|check-debug)
+    # Check, and let caller control flags.
+    cargo check $CARGO_BUILD_FLAGS --manifest-path "$RRDIR"/Cargo.toml "$@"
+    ;;
+build|build-debug)
+    # Build, and let caller control flags.
+    cargo build $CARGO_BUILD_FLAGS --manifest-path "$RRDIR"/Cargo.toml "$@"
+    ;;
+test|test-debug)
+    # First build and get a sysroot.
+    cargo build $CARGO_BUILD_FLAGS
+    find_sysroot
+    # Then test, and let caller control flags.
+    exec cargo test $CARGO_BUILD_FLAGS "$@"
+    ;;
+run|run-debug)
+    # First build and get a sysroot.
+    cargo build $CARGO_BUILD_FLAGS
+    find_sysroot
+    # Then run the actual command.
+    exec cargo run $CARGO_BUILD_FLAGS --bin frontend -- --sysroot "$RR_SYSROOT" "$@"
+    ;;
+*)
+    if [ -n "$COMMAND" ]; then
+      echo "Unknown command: $COMMAND"
+      echo
+    fi
+    echo "$USAGE"
+    exit 1
+esac
