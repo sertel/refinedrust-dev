@@ -1,6 +1,7 @@
 # RefinedRust verification framework
 
-This repository contains the implementation of RefinedRust.
+This repository contains a public mirror of the RefinedRust development version.
+Currently, this does include the Coq source code of the type system. We will publish the implementation of the type system soon.
 
 ## Structure
 The Coq implementation of RefinedRust can be found in the `theories` subfolder.
@@ -9,14 +10,9 @@ The frontend implementation and examples can be found in the `rr_frontend` subfo
 ### For the `theories` subfolder:
 * the `caesium` subfolder contains the Radium operational semantics, an adaptation of RefinedC's Caesium semantics.
 * the `lithium` subfolder contains RefinedC's Lithium separation logic automation engine with very lightweight modifications.
-* the `rust_typing` subfolder contains the implementation of RefinedRust's semantic model, type system, and proof automation.
 
 
 ### For the `rr_frontend` subfolder:
-* the `examples` folder contains the Rust code and annotations for the examples mentioned in the paper.
-  + `minivec_fix.rs` contains the `Vec` case study and shims necessary for calling into RefinedRust's memory allocation facilities.
-  + `paper.rs` contains the small examples and clients shown in Sections 2 and 5 of the paper.
-* the `output` folder contains the generated Coq code for the aforementioned examples in two subdirectories `minivec` and `paper`
 
 ### Structure of the generated code:
 For each input module `mod`, the RefinedRust generates the following files in the corresponding output directory:
