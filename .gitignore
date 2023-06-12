@@ -1,0 +1,16 @@
+_build/
+.merlin
+\#*\#
+.\#*
+*~
+*.bak
+.coq-native/
+builddep/
+_opam
+*.timing
+.lia.cache
+.nia.cache
+.vscode/
+**/proofs/*/generated*
+**/proofs/*/dune
+**/proofs/*/proof_files
