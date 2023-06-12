@@ -77,7 +77,7 @@ Configuration options can be set in the `RefinedRust.toml` file.
 These include:
 
 | Option | Type | Configures |
--------------------------------------------
+|--------|------|------------|
 | `dump_borrowck_info` | Boolean | Dumps borrowck debug output in the log directory |
 | `output_dir` | Relative path | Determines the directory where the generated output files will be placed |
 | `log_dir` | Relative path | Determines the directory where logs and debug dumps will be placed if enabled |
