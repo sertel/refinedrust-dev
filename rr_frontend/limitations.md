@@ -9,6 +9,7 @@ Over time, the feature support will grow.
 
 ## Features with limited support
 - drop support is currently limited and drop code is not generated automatically. This will be lifted soon.
+- Overflow-checking operations for +, -, and * are translated away since already Caesium's semantics has UB on overflows
 
 ## Unsupported features
 - recursive types

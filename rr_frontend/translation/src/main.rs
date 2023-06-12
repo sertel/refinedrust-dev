@@ -278,7 +278,7 @@ pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
     }
 
     // get file stem for naming
-    //let a = tcx.gcx;
+    let crate_name = (tcx.crate_name(rustc_hir::def_id::LOCAL_CRATE));
     let stem;
     let filepath = &tcx.sess.local_crate_source_file;
     if let Some(path) = filepath {
@@ -299,6 +299,7 @@ pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
     // write output
     let dir_str = rrconfig::output_dir();
     let mut dir_path = std::path::PathBuf::from(&dir_str);
+    dir_path.push(&crate_name.as_str());
     dir_path.push(&stem);
     let dir_path = dir_path.as_path();
     if let Err(_) = fs::read_dir(dir_path) {
