@@ -1,4 +1,3 @@
-
 # Overview of attributes
 
 Rust code can be annotated with attributes to provide specifications and other information to RefinedRust.
@@ -27,7 +26,7 @@ Finally, the returns clause specifies a refinement (and optionally, a type) for 
 
 
 | Keyword   | Purpose                      | Properties | Example                          | 
---------------------------------------------------------------------------------------------------
+|-----------|------------------------------|------------|----------------------------------|
 | `params`  | specify Coq-level specification parameters | multiple   | `#[rr:params("n" : "Z", b : "bool")]` |
 | `param`  | specify Coq-level parameters | multiple   | `#[rr:param("n" : "Z")]` |
 | `args`    | specify argument refinements/types | multiple | `#[rr::args("n" @ "int i32", "b"]` |
@@ -39,7 +38,7 @@ Finally, the returns clause specifies a refinement (and optionally, a type) for 
 
 ## Struct attributes
 | Keyword   | Purpose                      | Properties | Example                          | 
---------------------------------------------------------------------------------------------------
+|-----------|------------------------------|------------|----------------------------------|
 | `refined_by` | Specify the refinement type of a struct | single | `#[rr::refined_by("(a, b, l)" : "(Z * Z * loc)")]` |
 | `exists` | Specify an existentially abstracted mathematical value | multiple | `#[rr::exists("x" : "Z")]` |
 | `invariant` | Specify an invariant on the struct type | multiple | `#[rr::invariant("#type "l" : "x" @ "int i32")]` |
@@ -81,7 +80,7 @@ These escape sequences are literally replaced by the frontend.
 
 In particular, we support the following escape sequences:
 | Example | Purpose | 
--------------------------------------------------
+|---------|---------|
 | `{T}`   | Gets substituted by the RefinedRust type corresponding to the Rust type variable `T` |
 | `{st_of T}` | Gets substituted by the syntactic type (providing layout information) of the type parameter `T` | 
 | `{ly_of T}` | Gets substituted by a term giving the layout of the type parameter `T`'s syntactic type |
