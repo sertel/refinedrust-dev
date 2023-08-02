@@ -55,3 +55,18 @@ builddep: builddep/refinedrust-builddep.opam
 .PHONY: builddep
 
 DUNE_FILES = $(shell find theories/ -type f -name 'dune')
+
+config:
+	@echo "# Setting default configuration"
+	@cp theories/caesium/config/default_config.v theories/caesium/config/selected_config.v
+.PHONY: config
+
+config-no-align:
+	@echo "# Setting no-align configuration"
+	@cp theories/caesium/config/no_align_config.v theories/caesium/config/selected_config.v
+.PHONY: config-no-align
+
+# Currently, we don't need to do anything special before building RefinedC in opam.
+prepare-install-refinedrust:
+	@true
+.PHONY: prepare-install-refinedrust
