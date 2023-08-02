@@ -190,9 +190,6 @@ Global Existing Instance tc_one_is_some3_left.
 Global Existing Instance tc_one_is_some3_middle.
 Global Existing Instance tc_one_is_some3_right.
 
-Class IsVar {A} (x : A) : Prop := is_var: True.
-Global Hint Extern 0 (IsVar ?x) => (is_var x; exact: I) : typeclass_instances.
-
 Class TCDone (P : Prop) : Prop := done_proof : P.
 Global Hint Extern 1 (TCDone ?P) => (change P; done) : typeclass_instances.
 
@@ -202,6 +199,9 @@ Class AssumeInj {A B} (R : relation A) (S : relation B) (f : A → B) : Prop := 
 Global Instance assume_inj_inj A B R S (f : A → B) `{!Inj R S f} : AssumeInj R S f.
 Proof. done. Qed.
 
+Class IsVar {A} (x : A) : Set := {}.
+Global Hint Extern 0 (IsVar ?x) => (is_var x; constructor) : typeclass_instances.
+Global Hint Mode IsVar + + : typeclass_instances.
 
 Definition exists_dec_unique {A} (x : A) (P : _ → Prop) : (∀ y, P y → P x) → Decision (P x) → Decision (∃ y, P y).
 Proof.
