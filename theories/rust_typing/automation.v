@@ -468,7 +468,7 @@ Ltac liRStmt :=
       lazymatch s' with
       | W.AssignSE _ _ _ _ _ => notypeclasses refine (tac_fast_apply (type_assign E L π _ _ _ _ fn R _ ϝ) _)
       | W.Return _ => notypeclasses refine (tac_fast_apply (type_return E L π _ fn R ϝ) _)
-      | W.IfS _ _ _ _ => notypeclasses refine (tac_fast_apply (type_if E L π _ _ _ fn R ϝ) _)
+      | W.IfS _ _ _ _ _ => notypeclasses refine (tac_fast_apply (type_if E L π _ _ _ fn R _ ϝ) _)
       | W.Switch _ _ _ _ _ => notypeclasses refine (tac_fast_apply (type_switch E L π _ _ _ _ _ fn R ϝ) _)
       | W.Assert _ _ _ => notypeclasses refine (tac_fast_apply (type_assert E L _ _ fn π R ϝ) _)
       | W.Goto ?bid => liRGoto bid
