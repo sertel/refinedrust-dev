@@ -66,7 +66,7 @@ Notation "l 'offset{' ly '}ₗ' z" := (offset_loc l%L ly z%Z)
 Global Typeclasses Opaque offset_loc.
 
 (** Proposition stating that location [l] is aligned to [n] *)
-Definition aligned_to (l : loc) (n : nat) : Prop := if config.enforce_alignment then (n | l.2) else True.
+Definition aligned_to (l : loc) (n : nat) : Prop := (n | l.2).
 Notation "l `aligned_to` n" := (aligned_to l n) (at level 50) : stdpp_scope.
 Arguments aligned_to : simpl never.
 Global Typeclasses Opaque aligned_to.
@@ -127,7 +127,7 @@ Lemma ly_with_align_aligned_to l m n:
   is_power_of_two n →
   l `has_layout_loc` ly_with_align m n.
 Proof.
-  rewrite /has_layout_loc/aligned_to. move => ??. case_match => //.
+  move => ??. rewrite /has_layout_loc.
   by rewrite ly_align_ly_with_align keep_factor2_is_power_of_two.
 Qed.
 
@@ -136,7 +136,7 @@ Lemma has_layout_loc_trans l ly1 ly2 :
   (ly1.(ly_align_log) ≤ ly2.(ly_align_log))%nat →
   l `has_layout_loc` ly1.
 Proof.
-  rewrite /has_layout_loc/aligned_to => Hl ?. case_match => //.
+  rewrite /has_layout_loc/aligned_to => Hl ?.
   etrans;[|by apply Hl]. by apply Zdivide_nat_pow.
 Qed.
 
@@ -153,15 +153,15 @@ Lemma has_layout_loc_1 l ly:
   ly_align ly = 1%nat →
   l `has_layout_loc` ly.
 Proof.
-  rewrite /has_layout_loc/aligned_to => ->. case_match => //. by apply Z.divide_1_l.
+  rewrite /has_layout_loc => ->. by apply Z.divide_1_l.
 Qed.
 
 Lemma has_layout_ly_offset l (n : nat) ly:
   l `has_layout_loc` ly →
   (l +ₗ n) `has_layout_loc` ly_offset ly n.
 Proof.
-  rewrite/has_layout_loc/aligned_to. case_match => //. move => Hl. apply Z.divide_add_r.
-  - etrans;[|by apply Hl]. apply Zdivide_nat_pow. rewrite {1}/ly_align_log/=. destruct n; lia.
+  move => Hl. apply Z.divide_add_r.
+  - apply: has_layout_loc_trans => //. rewrite {1}/ly_align_log/=. destruct n; lia.
   - rewrite/ly_offset. destruct n;[by subst;apply Z.divide_0_r|].
     etrans;[apply Zdivide_nat_pow, Nat.le_min_r|]. by apply factor2_divide.
 Qed.
@@ -170,36 +170,35 @@ Lemma has_layout_loc_ly_mult_offset l ly n:
   layout_wf ly →
   l `has_layout_loc` ly_mult ly (S n) →
   (l +ₗ ly_size ly) `has_layout_loc` ly_mult ly n.
-Proof. rewrite /ly_mult/has_layout_loc/aligned_to. case_match => //. move => ??. by apply Z.divide_add_r. Qed.
+Proof. move => ??. rewrite /ly_mult. by apply Z.divide_add_r. Qed.
 
 Lemma has_layout_loc_offset_loc l i ly:
   layout_wf ly →
   l `has_layout_loc` ly →
   (l offset{ly}ₗ i) `has_layout_loc` ly.
 Proof.
-  rewrite/has_layout_loc/aligned_to. case_match => //.
   move => Hwf Hl. apply Z.divide_add_r; [done|]. etrans; [by apply: Hwf|].
   apply: Z.divide_factor_l.
 Qed.
 
 Lemma aligned_to_offset l n off :
   l `aligned_to` n → (n | off) → (l +ₗ off) `aligned_to` n.
-Proof. rewrite /aligned_to. case_match => //. apply Z.divide_add_r. Qed.
+Proof. apply Z.divide_add_r. Qed.
 
 Lemma aligned_to_add l (n : nat) x:
   (l +ₗ x * n) `aligned_to` n ↔ l `aligned_to` n.
 Proof.
-  unfold aligned_to. case_match => //. destruct l => /=. rewrite Z.add_comm. split.
+  unfold aligned_to. destruct l => /=. rewrite Z.add_comm. split.
   - apply: Z.divide_add_cancel_r. by apply Z.divide_mul_r.
   - apply Z.divide_add_r. by apply Z.divide_mul_r.
 Qed.
 
 Lemma aligned_to_mult_eq l n1 n2 off:
-  config.enforce_alignment = true → l `aligned_to` n2 → (l +ₗ off) `aligned_to` (n1 * n2) → (n2 | off).
+  l `aligned_to` n2 → (l +ₗ off) `aligned_to` (n1 * n2) → (n2 | off).
 Proof.
-  unfold aligned_to. move => ->. destruct l => /= ??. apply: Z.divide_add_cancel_r => //.
+  unfold aligned_to. destruct l => /= ??. apply: Z.divide_add_cancel_r => //.
   apply: (Zdivide_mult_l _ n1). by rewrite Z.mul_comm -Nat2Z.inj_mul.
 Qed.
 
 #[export] Instance aligned_to_dec l n : Decision (l `aligned_to` n).
-Proof. rewrite /aligned_to. case_match; [|apply _]. apply Znumtheory.Zdivide_dec. Qed.
+Proof. apply Znumtheory.Zdivide_dec. Qed.
