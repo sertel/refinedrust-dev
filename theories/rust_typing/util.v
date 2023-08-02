@@ -107,7 +107,7 @@ Proof.
   rewrite /aligned_to.
   assert ((2 ^ n1)%nat | (2 ^ (n1 `max` n2))%nat)%Z.
   { apply Zdivide_nat_pow. lia. }
-  destruct config.enforce_alignment; last done.
+  destruct caesium_config.enforce_alignment; last done.
   intros. etrans; last done. done.
 Qed.
 Lemma aligned_to_2_max_r l n1 n2 :

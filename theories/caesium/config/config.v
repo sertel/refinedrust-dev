@@ -13,14 +13,14 @@ Module Type config_sig.
   Axiom enforce_alignment_value : enforce_alignment = selected_config.enforce_alignment.
 End config_sig.
 
-Module config : config_sig.
+Module caesium_config : config_sig.
   Definition enforce_alignment : bool := selected_config.enforce_alignment.
   Lemma enforce_alignment_value : enforce_alignment = selected_config.enforce_alignment.
   Proof. reflexivity. Qed.
-End config.
+End caesium_config.
 
-Class ConfigEnforceAlignment : Prop :=
-  config_enforce_alignment : config.enforce_alignment = true.
+Class CaesiumConfigEnforceAlignment : Prop :=
+  caesium_config_enforce_alignment : caesium_config.enforce_alignment = true.
 
-Global Hint Extern 0 (ConfigEnforceAlignment) =>
-   (exact config.enforce_alignment_value) : typeclass_instances.
+Global Hint Extern 0 (CaesiumConfigEnforceAlignment) =>
+   (exact caesium_config.enforce_alignment_value) : typeclass_instances.

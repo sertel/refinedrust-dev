@@ -66,7 +66,7 @@ Notation "l 'offset{' ly '}ₗ' z" := (offset_loc l%L ly z%Z)
 Global Typeclasses Opaque offset_loc.
 
 (** Proposition stating that location [l] is aligned to [n] *)
-Definition aligned_to (l : loc) (n : nat) : Prop := if config.enforce_alignment then (n | l.2) else True.
+Definition aligned_to (l : loc) (n : nat) : Prop := if caesium_config.enforce_alignment then (n | l.2) else True.
 Notation "l `aligned_to` n" := (aligned_to l n) (at level 50) : stdpp_scope.
 Arguments aligned_to : simpl never.
 Global Typeclasses Opaque aligned_to.
@@ -195,7 +195,7 @@ Proof.
 Qed.
 
 Lemma aligned_to_mult_eq l n1 n2 off:
-  config.enforce_alignment = true → l `aligned_to` n2 → (l +ₗ off) `aligned_to` (n1 * n2) → (n2 | off).
+  caesium_config.enforce_alignment = true → l `aligned_to` n2 → (l +ₗ off) `aligned_to` (n1 * n2) → (n2 | off).
 Proof.
   unfold aligned_to. move => ->. destruct l => /= ??. apply: Z.divide_add_cancel_r => //.
   apply: (Zdivide_mult_l _ n1). by rewrite Z.mul_comm -Nat2Z.inj_mul.
