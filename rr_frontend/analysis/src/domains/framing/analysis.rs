@@ -11,7 +11,7 @@ use crate::{
     PointwiseState,
 };
 use rr_rustc_interface::{
-    borrowck::BodyWithBorrowckFacts,
+    borrowck::consumers::BodyWithBorrowckFacts,
     middle::{
         mir,
         mir::visit::{NonMutatingUseContext, PlaceContext, Visitor},
@@ -47,7 +47,7 @@ impl<'mir, 'tcx: 'mir> FramingAnalysis<'mir, 'tcx> {
         let mut analysis_state = PointwiseState::default(body);
 
         // Set state_after_block
-        for (block, block_data) in body.basic_blocks().iter_enumerated() {
+        for (block, block_data) in body.basic_blocks.iter_enumerated() {
             // Initialize the state before each statement and terminator
             for statement_index in 0..=block_data.statements.len() {
                 let location = mir::Location {
@@ -55,7 +55,7 @@ impl<'mir, 'tcx: 'mir> FramingAnalysis<'mir, 'tcx> {
                     statement_index,
                 };
                 let acc_before = accessibility.lookup_before(location).unwrap_or_else(|| {
-                    panic!("No 'accessibility' state before location {:?}", location)
+                    panic!("No 'accessibility' state before location {location:?}")
                 });
                 let mut compute_framing = ComputeFramingState::initial(body, self.tcx, acc_before);
                 if let Some(stmt) = body.stmt_at(location).left() {
@@ -105,7 +105,6 @@ impl<'mir, 'tcx: 'mir> Visitor<'tcx> for ComputeFramingState<'mir, 'tcx> {
     ) {
         let place = (*place).into();
         match context {
-            PlaceContext::NonMutatingUse(NonMutatingUseContext::UniqueBorrow) => todo!(),
             PlaceContext::MutatingUse(_)
             | PlaceContext::NonMutatingUse(NonMutatingUseContext::Move) => {
                 // No permission can be framed

@@ -168,7 +168,7 @@ impl ParseBuffer {
     pub fn peek_token(&self, token: TokenKind) -> bool {
         let tok = self.peek(0);
         match tok {
-            Ok(TokenTree::Token(tok)) => {
+            Ok(TokenTree::Token(tok, _)) => {
                 tok.kind == token
             },
             _  => {
@@ -181,7 +181,7 @@ impl ParseBuffer {
     pub fn expect_token(&self, token: TokenKind) -> ParseResult<Span> {
         let tok = self.peek(0)?; 
         match tok {
-            TokenTree::Token(tok) => {
+            TokenTree::Token(tok, _) => {
                 if tok.kind == token {
                     self.advance(1);
                     Ok(tok.span)
@@ -200,7 +200,7 @@ impl ParseBuffer {
     pub fn expect_ident(&self) -> ParseResult<(Symbol, Span)> {
         let tok = self.peek(0)?; 
         match tok {
-            TokenTree::Token(tok) => {
+            TokenTree::Token(tok, _) => {
                 match tok.kind {
                     TokenKind::Ident(sym, _) => { 
                         self.advance(1);
@@ -219,7 +219,7 @@ impl ParseBuffer {
     pub fn expect_literal(&self) -> ParseResult<(Lit, Span)> {
         let tok = self.peek(0)?; 
         match tok {
-            TokenTree::Token(tok) => {
+            TokenTree::Token(tok, _) => {
                 match tok.kind {
                     TokenKind::Literal(lit) => {
                         self.advance(1);

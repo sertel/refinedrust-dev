@@ -8,8 +8,9 @@ Definition string_to_varname (s : string) : var_name := s.
 Coercion string_to_varname : string >-> var_name.
 Coercion it_layout : int_type >-> layout.
 Notation "☠" := MPoison : val_scope.
-Notation "!{ ot , o } e" := (Deref o ot e%E) (at level 9, format "!{ ot ,  o } e") : expr_scope.
-Notation "!{ ot } e" := (Deref Na1Ord ot e%E) (at level 9, format "!{ ot } e") : expr_scope.
+Notation "!{ ot , o , mc } e" := (Deref o ot mc e%E) (at level 9, format "!{ ot ,  o ,  mc } e") : expr_scope.
+Notation "!{ ot , o } e" := (Deref o ot true e%E) (at level 9, format "!{ ot ,  o } e") : expr_scope.
+Notation "!{ ot } e" := (Deref Na1Ord ot true e%E) (at level 9, format "!{ ot } e") : expr_scope.
 (* − is a unicode minus, not the normal minus to prevent parsing conflicts *)
 Notation "'−' '{' ot } e" := (UnOp NegOp ot e%E)
   (at level 40, format "'−' '{' ot }  e") : expr_scope.
@@ -93,9 +94,10 @@ Notation "'free{' e_size ',' e_align '}' e_ptr ; s" := (Free e_size%E e_align%E 
 
 
 (** This has a skip in order to facilitate unblocking. *)
-Definition Use (o : order) (ot : op_type) (e : expr) := Deref o ot (SkipE e).
-Notation "'use{' ot , o } e" := (Use o ot e%E) (at level 9, format "'use{' ot ,  o }  e") : expr_scope.
-Notation "'use{' ot } e" := (Use Na1Ord ot e%E) (at level 9, format "'use{' ot }  e") : expr_scope.
+Definition Use (o : order) (ot : op_type) (memcast : bool) (e : expr) := Deref o ot memcast (SkipE e).
+Notation "'use{' ot , o , mc } e" := (Use o ot mc e%E) (at level 9, format "'use{' ot ,  o ,  mc }  e") : expr_scope.
+Notation "'use{' ot , o } e" := (Use o ot true e%E) (at level 9, format "'use{' ot ,  o }  e") : expr_scope.
+Notation "'use{' ot } e" := (Use Na1Ord ot true e%E) (at level 9, format "'use{' ot }  e") : expr_scope.
 Arguments Use : simpl never.
 Global Typeclasses Opaque Use.
 
@@ -168,10 +170,9 @@ Notation "'annot:' a ; s" := (AnnotStmt 1%nat a s%E)
 Arguments AnnotStmt : simpl never.
 Global Typeclasses Opaque AnnotStmt.
 
-
-Definition Move (o : order) (ot : op_type) (e : expr) := Deref o ot e.
-Notation "'move{' ot , o } e" := (Move o (UntypedOp ot) e%E) (at level 9, format "'move{' ot ,  o }  e") : expr_scope.
-Notation "'move{' ot } e" := (Move Na1Ord (UntypedOp ot) e%E) (at level 9, format "'move{' ot }  e") : expr_scope.
+Definition Move (o : order) (ot : op_type) (memcast : bool) (e : expr) := Deref o ot memcast e.
+Notation "'move{' ot , o , mc } e" := (Move o (UntypedOp ot) mc e%E) (at level 9, format "'move{' ot ,  o ,  mc }  e") : expr_scope.
+Notation "'move{' ot } e" := (Move Na1Ord (UntypedOp ot) true e%E) (at level 9, format "'move{' ot }  e") : expr_scope.
 Arguments Move : simpl never.
 Global Typeclasses Opaque Move.
 
@@ -226,13 +227,13 @@ Lemma annot_expr_S {A} n (a : A) e:
 Proof. done. Qed.
 Lemma annot_expr_S_r {A} n (a : A) e:
   AnnotExpr (S n) a e = (AnnotExpr n a (SkipE e)).
-Proof. by rewrite /AnnotExpr Nat_iter_S_r. Qed.
+Proof. by rewrite /AnnotExpr Nat.iter_succ_r. Qed.
 Lemma annot_stmt_S {A} n (a : A) s:
   AnnotStmt (S n) a s = SkipES (AnnotStmt n a s).
 Proof. done. Qed.
 Lemma annot_stmt_S_r {A} n (a : A) s:
   AnnotStmt (S n) a s = (AnnotStmt n a (SkipES s)).
-Proof. by rewrite /AnnotStmt Nat_iter_S_r. Qed.
+Proof. by rewrite /AnnotStmt Nat.iter_succ_r. Qed.
 
 (** Call notation including lifetime instantiation *)
 Definition CallE (ef : expr) (eκs : list string) (es : list expr) := Call ef es.
@@ -326,10 +327,10 @@ Notation zst_val := ([] : val).
 (*** Tests *)
 Example test1 (l : loc) ly ot :
   (l <-{ly} use{ot}(&l +{PtrOp, IntOp usize_t} (l ={PtrOp, PtrOp, i32} l)); ExprS (Call l [ (l : expr); (l : expr)]) (l <-{ly, ScOrd} l; Goto "a"))%E =
-  (AssignSE Na1Ord ly l (Use Na1Ord ot (BinOp AddOp PtrOp (IntOp usize_t) (AddrOf l) (BinOp (EqOp i32) PtrOp PtrOp l l))))
+  (AssignSE Na1Ord ly l (Use Na1Ord ot true (BinOp AddOp PtrOp (IntOp usize_t) (AddrOf l) (BinOp (EqOp i32) PtrOp PtrOp l l))))
       (ExprS (Call l [ Val (val_of_loc l); Val (val_of_loc l)]) ((AssignSE ScOrd ly l l) (Goto "a"))).
 Proof. simpl. reflexivity. Abort.
 
 Example test_get_member `{!LayoutAlg} (l : loc) (sls : struct_layout_spec) ot :
-  (!{ot} (!{ot, ScOrd} l) at{sls} "a")%E = GetMember (Deref Na1Ord ot (Deref ScOrd ot l%E)) sls "a".
+  (!{ot} (!{ot, ScOrd} l) at{sls} "a")%E = GetMember (Deref Na1Ord ot true (Deref ScOrd ot true l%E)) sls "a".
 Proof. simpl. reflexivity. Abort.

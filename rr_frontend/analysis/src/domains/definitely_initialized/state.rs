@@ -69,7 +69,7 @@ impl<'mir, 'tcx: 'mir> Serialize for DefinitelyInitializedState<'mir, 'tcx> {
         let mut seq = serializer.serialize_seq(Some(self.def_init_places.len()))?;
         let ordered_place_set: BTreeSet<_> = self.def_init_places.iter().collect();
         for place in ordered_place_set {
-            seq.serialize_element(&format!("{:?}", place))?;
+            seq.serialize_element(&format!("{place:?}"))?;
         }
         seq.end()
     }
@@ -104,15 +104,11 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                 if place1 != place2 {
                     debug_assert!(
                         !is_prefix(place1, place2),
-                        "The place {:?} is a prefix of the place {:?}",
-                        place2,
-                        place1
+                        "The place {place2:?} is a prefix of the place {place1:?}"
                     );
                     debug_assert!(
                         !is_prefix(place2, place1),
-                        "The place {:?} is a prefix of the place {:?}",
-                        place1,
-                        place2
+                        "The place {place1:?} is a prefix of the place {place2:?}"
                     );
                 }
             }
@@ -177,9 +173,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
         for &place1 in self.def_init_places.iter() {
             debug_assert!(
                 !is_prefix(place1, place) && !is_prefix(place, place1),
-                "Bug: failed to ensure that there are no prefixes: place={:?} place1={:?}",
-                place,
-                place1
+                "Bug: failed to ensure that there are no prefixes: place={place:?} place1={place1:?}"
             );
         }
 
@@ -267,27 +261,12 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                 place,
                 target,
                 unwind,
+                ..
             } => {
                 new_state.set_place_uninitialised(place);
                 res_vec.push((target, new_state));
 
-                if let Some(bb) = unwind {
-                    // imprecision for error states
-                    res_vec.push((bb, Self::new_top(self.def_id, self.mir, self.tcx)));
-                }
-            }
-            mir::TerminatorKind::DropAndReplace {
-                place,
-                ref value,
-                target,
-                unwind,
-            } => {
-                new_state.set_place_uninitialised(place);
-                new_state.apply_operand_effect(value, move_out_copy_types);
-                new_state.set_place_initialised(place);
-                res_vec.push((target, new_state));
-
-                if let Some(bb) = unwind {
+                if let mir::UnwindAction::Cleanup(bb) = unwind {
                     // imprecision for error states
                     res_vec.push((bb, Self::new_top(self.def_id, self.mir, self.tcx)));
                 }
@@ -297,7 +276,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                 ref args,
                 destination,
                 target,
-                cleanup,
+                unwind,
                 ..
             } => {
                 for arg in args.iter() {
@@ -309,7 +288,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                     res_vec.push((bb, new_state));
                 }
 
-                if let Some(bb) = cleanup {
+                if let mir::UnwindAction::Cleanup(bb) = unwind {
                     // imprecision for error states
                     res_vec.push((bb, Self::new_top(self.def_id, self.mir, self.tcx)));
                 }
@@ -317,13 +296,13 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
             mir::TerminatorKind::Assert {
                 ref cond,
                 target,
-                cleanup,
+                unwind,
                 ..
             } => {
                 new_state.apply_operand_effect(cond, move_out_copy_types);
                 res_vec.push((target, new_state));
 
-                if let Some(bb) = cleanup {
+                if let mir::UnwindAction::Cleanup(bb) = unwind {
                     // imprecision for error states
                     res_vec.push((bb, Self::new_top(self.def_id, self.mir, self.tcx)));
                 }

@@ -11,7 +11,7 @@ use rustc_middle::mir;
 use rustc_middle::mir::visit::Visitor;
 use rustc_data_structures::graph::dominators::{Dominators, dominators};
 use std::collections::{HashMap, HashSet};
-use rustc_index::vec::{Idx, IndexVec};
+use rustc_index::{Idx, IndexVec};
 use log::{debug, trace};
 use crate::environment::mir_utils::RealEdges;
 
@@ -133,7 +133,7 @@ fn order_basic_blocks<'tcx>(
     back_edges: &HashSet<(BasicBlockIndex, BasicBlockIndex)>,
     loop_depth: &dyn Fn(BasicBlockIndex) -> usize,
 ) -> Vec<BasicBlockIndex> {
-    let basic_blocks = mir.basic_blocks();
+    let basic_blocks = &mir.basic_blocks;
     let mut sorted_blocks = Vec::new();
     let mut permanent_mark =
         IndexVec::<BasicBlockIndex, bool>::from_elem_n(false, basic_blocks.len());
@@ -141,7 +141,6 @@ fn order_basic_blocks<'tcx>(
 
     #[allow(clippy::too_many_arguments)]
     fn visit<'tcx>(
-        basic_blocks: &IndexVec<BasicBlockIndex, mir::BasicBlockData<'tcx>>,
         real_edges: &RealEdges,
         back_edges: &HashSet<(BasicBlockIndex, BasicBlockIndex)>,
         loop_depth: &dyn Fn(BasicBlockIndex) -> usize,
@@ -171,7 +170,6 @@ fn order_basic_blocks<'tcx>(
                     continue;
                 }
                 visit(
-                    basic_blocks,
                     real_edges,
                     back_edges,
                     loop_depth,
@@ -189,7 +187,6 @@ fn order_basic_blocks<'tcx>(
     while let Some(index) = permanent_mark.iter().position(|x| !*x) {
         let index = BasicBlockIndex::new(index);
         visit(
-            basic_blocks,
             real_edges,
             back_edges,
             loop_depth,
@@ -234,9 +231,9 @@ impl ProcedureLoops {
         let dominators = dominators(&mir.basic_blocks);
 
         let mut back_edges: HashSet<(_, _)> = HashSet::new();
-        for bb in mir.basic_blocks().indices() {
+        for bb in mir.basic_blocks.indices() {
             for successor in real_edges.successors(bb) {
-                if dominators.is_dominated_by(bb, *successor) {
+                if dominators.dominates(*successor, bb) {
                     back_edges.insert((bb, *successor));
                     debug!("Loop head: {:?}", successor);
                 }
@@ -440,7 +437,7 @@ impl ProcedureLoops {
 
     /// Check if ``block`` is inside a given loop.
     pub fn is_block_in_loop(&self, loop_head: BasicBlockIndex, block: BasicBlockIndex) -> bool {
-        self.dominators.is_dominated_by(block, loop_head)
+        self.dominators.dominates(loop_head, block)
     }
 
     /// Compute what paths that are accessed inside the loop.

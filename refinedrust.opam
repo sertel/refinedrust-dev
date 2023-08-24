@@ -1,6 +1,8 @@
 opam-version: "2.0"
 name: "refinedrust"
 synopsis: "RefinedRust verification framework"
+maintainer: "Lennard Gäher"
+author: "Lennard Gäher"
 description: """
 RefinedRust is a prototype framework for verifying safe and unsafe Rust code.
 """

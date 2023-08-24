@@ -173,8 +173,8 @@ Lemma val_to_of_Z_go z (sz : nat) p:
 Proof.
   rewrite /bits_per_byte.
   elim: sz z => /=. 1: rewrite /Z.of_nat; move => ??; f_equal; lia.
-  move => sz IH z [? Hlt]. rewrite IH /byte_modulus /= -?Z_div_mod_eq //.
-  split. apply Z_div_pos => //. apply Zdiv_lt_upper_bound => //.
+  move => sz IH z [? Hlt]. rewrite IH /byte_modulus /= -?Z_div_mod_eq_full //.
+  split; [by apply Z_div_pos|]. apply Zdiv_lt_upper_bound => //.
   rewrite Nat2Z.inj_succ -Zmult_succ_l_reverse Z.pow_add_r // in Hlt.
   lia.
 Qed.
@@ -233,7 +233,7 @@ Proof.
     + move => [??] [] ?. simplify_eq.
       assert (2 ^ (bytes_per_int it * bits_per_byte) =
               2 * 2 ^ (bytes_per_int it * bits_per_byte - 1)) as Heq.
-      { rewrite Z.sub_1_r. rewrite Z_pow_pred_r => //. rewrite /bits_per_byte.
+      { rewrite Z.sub_1_r. rewrite Z.pow_pred_r => //. rewrite /bits_per_byte.
         have ? := bytes_per_int_gt_0 it. lia. }
       rewrite Heq. lia.
     + move => [??] [] ?. lia.

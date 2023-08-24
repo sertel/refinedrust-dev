@@ -9,7 +9,6 @@ use crate::data::ProcedureDefId;
 use rustc_middle::mir::{self, Body as Mir};
 use rustc_middle::mir::{BasicBlock, TerminatorKind};
 use rustc_middle::ty::{self, Ty, TyCtxt};
-use rustc_middle::ty::subst::SubstsRef;
 use std::rc::Rc;
 use std::collections::{HashSet, HashMap};
 use rustc_span::Span;
@@ -24,7 +23,7 @@ pub type BasicBlockIndex = mir::BasicBlock;
 pub struct Procedure<'tcx> {
     tcx: TyCtxt<'tcx>,
     proc_def_id: ProcedureDefId,
-    ty_params: ty::subst::SubstsRef<'tcx>,
+    ty_params: ty::GenericArgsRef<'tcx>,
     mir: Rc<Mir<'tcx>>,
     real_edges: RealEdges,
     loop_info: loops::ProcedureLoops,
@@ -44,7 +43,7 @@ impl<'tcx> Procedure<'tcx> {
         //let nonspec_basic_blocks = build_nonspec_basic_blocks(&mir, &real_edges, &tcx);
         let loop_info = loops::ProcedureLoops::new(&mir, &real_edges);
     
-        let ty = tcx.type_of(proc_def_id);
+        let ty = tcx.type_of(proc_def_id).instantiate_identity();
         let ty_params = match ty.kind() {
             ty::TyKind::FnDef(_, params) => params,
             _ => panic!(""),
@@ -98,7 +97,7 @@ impl<'tcx> Procedure<'tcx> {
     }
 
     /// Get the type parameters of this procedure.
-    pub fn get_type_params(&self) -> SubstsRef<'tcx> {
+    pub fn get_type_params(&self) -> ty::GenericArgsRef<'tcx> {
         self.ty_params
     }
 
@@ -127,7 +126,7 @@ impl<'tcx> Procedure<'tcx> {
 
     /// Get the first CFG block
     pub fn get_first_cfg_block(&self) -> BasicBlock {
-        self.mir.basic_blocks().indices().next().unwrap()
+        self.mir.basic_blocks.indices().next().unwrap()
     }
 
     /// Iterate over all CFG basic blocks
@@ -205,7 +204,7 @@ impl<'tcx> Procedure<'tcx> {
 fn build_reachable_basic_blocks(mir: &Mir, real_edges: &RealEdges) -> HashSet<BasicBlock> {
     let mut reachable_basic_blocks: HashSet<BasicBlock> = HashSet::new();
     let mut visited: HashSet<BasicBlock> = HashSet::new();
-    let mut to_visit: Vec<BasicBlock> = vec![mir.basic_blocks().indices().next().unwrap()];
+    let mut to_visit: Vec<BasicBlock> = vec![mir.basic_blocks.indices().next().unwrap()];
 
     while !to_visit.is_empty() {
         let source = to_visit.pop().unwrap();

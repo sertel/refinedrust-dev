@@ -23,6 +23,7 @@ Inductive bin_op : Set :=
 
 Inductive un_op : Set :=
 | NotBoolOp | NotIntOp | NegOp | CastOp (ot : op_type) | EraseProv.
+
 Inductive order : Set :=
 | ScOrd | Na1Ord | Na2Ord.
 
@@ -36,7 +37,7 @@ Inductive expr :=
 | CheckUnOp (op : un_op) (ot : op_type) (e : expr)
 | CheckBinOp (op : bin_op) (ot1 ot2 : op_type) (e1 e2 : expr)
 | CopyAllocId (ot1 : op_type) (e1 : expr) (e2 : expr)
-| Deref (o : order) (ot : op_type) (e : expr)
+| Deref (o : order) (ot : op_type) (memcast : bool) (e : expr)
 | CAS (ot : op_type) (e1 e2 e3 : expr)
 | Call (f : expr) (args : list expr)
 | Concat (es : list expr)
@@ -56,7 +57,7 @@ Lemma expr_ind (P : expr → Prop) :
   (∀ (op : un_op) (ot : op_type) (e : expr), P e → P (CheckUnOp op ot e)) →
   (∀ (op : bin_op) (ot1 ot2 : op_type) (e1 e2 : expr), P e1 → P e2 → P (CheckBinOp op ot1 ot2 e1 e2)) →
   (∀ (ot1 : op_type) (e1 e2 : expr), P e1 → P e2 → P (CopyAllocId ot1 e1 e2)) →
-  (∀ (o : order) (ot : op_type) (e : expr), P e → P (Deref o ot e)) →
+  (∀ (o : order) (ot : op_type) (memcast : bool) (e : expr), P e → P (Deref o ot memcast e)) →
   (∀ (ot : op_type) (e1 e2 e3 : expr), P e1 → P e2 → P e3 → P (CAS ot e1 e2 e3)) →
   (∀ (f : expr) (args : list expr), P f → Forall P args → P (Call f args)) →
   (∀ (es : list expr), Forall P es → P (Concat es)) →
@@ -134,7 +135,7 @@ with rtexpr :=
 | RTCheckUnOp (op : un_op) (ot : op_type) (e : runtime_expr)
 | RTCheckBinOp (op : bin_op) (ot1 ot2 : op_type) (e1 e2 : runtime_expr)
 | RTCopyAllocId (ot1 : op_type) (e1 : runtime_expr) (e2 : runtime_expr)
-| RTDeref (o : order) (ot : op_type) (e : runtime_expr)
+| RTDeref (o : order) (ot : op_type) (memcast : bool) (e : runtime_expr)
 | RTCall (f : runtime_expr) (args : list runtime_expr)
 | RTCAS (ot : op_type) (e1 e2 e3 : runtime_expr)
 | RTConcat (es : list runtime_expr)
@@ -163,7 +164,7 @@ Fixpoint to_rtexpr (e : expr) : runtime_expr :=
   | CheckUnOp op ot e => RTCheckUnOp op ot (to_rtexpr e)
   | CheckBinOp op ot1 ot2 e1 e2 => RTCheckBinOp op ot1 ot2 (to_rtexpr e1) (to_rtexpr e2)
   | CopyAllocId ot1 e1 e2 => RTCopyAllocId ot1 (to_rtexpr e1) (to_rtexpr e2)
-  | Deref o ot e => RTDeref o ot (to_rtexpr e)
+  | Deref o ot mc e => RTDeref o ot mc (to_rtexpr e)
   | Call f args => RTCall (to_rtexpr f) (to_rtexpr <$> args)
   | CAS ot e1 e2 e3 => RTCAS ot (to_rtexpr e1) (to_rtexpr e2) (to_rtexpr e3)
   | Concat es => RTConcat (to_rtexpr <$> es)
@@ -191,12 +192,12 @@ Definition to_rtstmt (rf : runtime_function) (s : stmt) : runtime_expr :=
 Global Instance to_rtexpr_inj : Inj (=) (=) to_rtexpr.
 Proof.
   elim => [ ^ e1 ] [ ^ e2 ] // ?; simplify_eq => //; try naive_solver.
-  - f_equal. naive_solver.
+  - f_equal; [naive_solver|].
     generalize dependent e2args.
-    revert select (Forall _ _). elim. by case.
+    revert select (Forall _ _). elim; [by case|].
     move => ????? [|??]//. naive_solver.
   - generalize dependent e2es.
-    revert select (Forall _ _). elim. by case.
+    revert select (Forall _ _). elim; [by case|].
     move => ????? [|??]//. naive_solver.
 Qed.
 Global Instance to_rtstmt_inj : Inj2 (=) (=) (=) to_rtstmt.
@@ -214,7 +215,7 @@ Fixpoint subst (x : var_name) (v : val) (e : expr)  : expr :=
   | CheckUnOp op ot e => CheckUnOp op ot (subst x v e)
   | CheckBinOp op ot1 ot2 e1 e2 => CheckBinOp op ot1 ot2 (subst x v e1) (subst x v e2)
   | CopyAllocId ot1 e1 e2 => CopyAllocId ot1 (subst x v e1) (subst x v e2)
-  | Deref o l e => Deref o l (subst x v e)
+  | Deref o l mc e => Deref o l mc (subst x v e)
   | Call e es => Call (subst x v e) (subst x v <$> es)
   | CAS ly e1 e2 e3 => CAS ly (subst x v e1) (subst x v e2) (subst x v e3)
   | Concat el => Concat (subst x v <$> el)
@@ -454,8 +455,9 @@ Inductive eval_un_op : un_op → op_type → state → val → val → Prop :=
     val_of_Z l.2 it None = Some vt →
     is_Some (σ.(st_fntbl) !! l.2) →
     eval_un_op (CastOp (IntOp it)) PtrOp σ vs vt
-| CastOpPINull it σ vs vt:
-    vs = NULL →
+| CastOpPINull it σ vs vt l :
+    val_to_loc vs = Some l →
+    l = NULL_loc →
     val_of_Z 0 it None = Some vt →
     eval_un_op (CastOp (IntOp it)) PtrOp σ vs vt
 | CastOpIP it σ vs vt l l' a:
@@ -535,7 +537,7 @@ Inductive expr_step : expr → state → list Empty_set → runtime_expr → sta
 | CheckBinOpS op v1 v2 σ b ot1 ot2 :
     check_bin_op op ot1 ot2 v1 v2 b →
     expr_step (CheckBinOp op ot1 ot2 (Val v1) (Val v2)) σ [] (Val (val_of_bool b)) σ []
-| DerefS o v l ot v' σ:
+| DerefS o v l ot v' σ (mc : bool):
     let start_st st := ∃ n, st = if o is Na2Ord then RSt (S n) else RSt n in
     let end_st st :=
       match o, st with
@@ -545,10 +547,14 @@ Inductive expr_step : expr → state → list Empty_set → runtime_expr → sta
       |  _    , _                => WSt (* unreachable *)
       end
     in
-    let end_expr := if o is Na1Ord then Deref Na2Ord ot (Val v) else Val (mem_cast v' ot (dom σ.(st_fntbl), σ.(st_heap))) in
+    let end_expr :=
+      if o is Na1Ord then
+        Deref Na2Ord ot mc (Val v)
+      else
+        Val (if mc then mem_cast v' ot (dom σ.(st_fntbl), σ.(st_heap)) else v') in
     val_to_loc v = Some l →
     heap_at l (ot_layout ot) v' start_st σ.(st_heap).(hs_heap) →
-    expr_step (Deref o ot (Val v)) σ [] end_expr (heap_fmap (heap_upd l v' end_st) σ) []
+    expr_step (Deref o ot mc (Val v)) σ [] end_expr (heap_fmap (heap_upd l v' end_st) σ) []
 (* TODO: look at CAS and see whether it makes sense. Also allow
 comparing pointers? (see lambda rust) *)
 (* corresponds to atomic_compare_exchange_strong, see https://en.cppreference.com/w/c/atomic/atomic_compare_exchange *)
@@ -729,7 +735,7 @@ Inductive expr_ectx :=
 | CheckBinOpRCtx (op : bin_op) (ot1 ot2 : op_type) (v1 : val)
 | CopyAllocIdLCtx (ot1 : op_type) (e2 : runtime_expr)
 | CopyAllocIdRCtx (ot1 : op_type) (v1 : val)
-| DerefCtx (o : order) (ot : op_type)
+| DerefCtx (o : order) (ot : op_type) (memcast : bool)
 | CallLCtx (args : list runtime_expr)
 | CallRCtx (f : val) (vl : list val) (el : list runtime_expr)
 | CASLCtx (ot : op_type) (e2 e3 : runtime_expr)
@@ -752,7 +758,7 @@ Definition expr_fill_item (Ki : expr_ectx) (e : runtime_expr) : rtexpr :=
   | CheckBinOpRCtx op ot1 ot2 v1 => RTCheckBinOp op ot1 ot2 (Val v1) e
   | CopyAllocIdLCtx ot1 e2 => RTCopyAllocId ot1 e e2
   | CopyAllocIdRCtx ot1 v1 => RTCopyAllocId ot1 (Val v1) e
-  | DerefCtx o l => RTDeref o l e
+  | DerefCtx o l mc => RTDeref o l mc e
   | CallLCtx args => RTCall e args
   | CallRCtx f vl el => RTCall (Val f) ((Expr <$> (RTVal <$> vl)) ++ e :: el)
   | CASLCtx ot e2 e3 => RTCAS ot e e2 e3
@@ -889,9 +895,3 @@ Canonical Structure layoutO := leibnizO layout.
 Canonical Structure valO := leibnizO val.
 Canonical Structure exprO := leibnizO expr.
 Canonical Structure allocationO := leibnizO allocation.
-
-
-Ltac unfold_size_constants :=
-  rewrite /min_alloc_start/max_alloc_end;
-  rewrite /bits_per_int/bytes_per_int;
-  rewrite /bytes_per_addr/bits_per_byte/bytes_per_addr_log.

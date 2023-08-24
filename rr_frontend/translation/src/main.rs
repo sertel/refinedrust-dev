@@ -12,7 +12,6 @@
 
 
 #![feature(box_patterns)]
-#![feature(box_syntax)]
 #![feature(rustc_private)]
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -20,6 +19,7 @@ extern crate rustc_interface;
 extern crate rustc_middle;
 extern crate rustc_hir;
 extern crate rustc_index;
+extern crate rustc_abi;
 extern crate rustc_ast;
 extern crate rustc_span;
 extern crate rustc_trait_selection;
@@ -36,7 +36,7 @@ extern crate lazy_static;
 
 use log::{debug, info, warn};
 use rustc_hir::{def_id::DefId, def_id::LocalDefId};
-use rustc_middle::ty::query::{query_values::mir_borrowck, Providers, ExternProviders};
+use rustc_middle::query::{queries::mir_borrowck, Providers, ExternProviders};
 use std::env;
 
 use rustc_driver::Compilation;
@@ -108,7 +108,7 @@ fn order_struct_defs<'tcx>(env: &Environment<'tcx>, defs: &[DefId]) -> Vec<DefId
     let mut dependencies: HashMap<DefId, HashSet<DefId>> = HashMap::new();
     for did in defs.iter() {
         let mut deps = HashSet::new();
-        let ty: ty::Ty<'tcx> = env.tcx().type_of(*did);
+        let ty: ty::Ty<'tcx> = env.tcx().type_of(*did).instantiate_identity();
         match ty.kind() {
             ty::TyKind::Adt(adt, _) => {
                 let variants = &adt.variants();
@@ -118,7 +118,7 @@ fn order_struct_defs<'tcx>(env: &Environment<'tcx>, defs: &[DefId]) -> Vec<DefId
                         continue;
                     }
                     for f in v.fields.iter() {
-                        let field_ty = env.tcx().type_of(f.did);
+                        let field_ty = env.tcx().type_of(f.did).instantiate_identity();
                         // check if the field_ty is also an ADT -- if so, add it to the dependencies
                         match field_ty.kind() {
                             ty::TyKind::Adt(adt2, _) => {
@@ -278,9 +278,9 @@ pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
     }
 
     // get file stem for naming
-    let crate_name = (tcx.crate_name(rustc_hir::def_id::LOCAL_CRATE));
+    //let a = tcx.gcx;
     let stem;
-    let filepath = &tcx.sess.local_crate_source_file;
+    let filepath = &tcx.sess.local_crate_source_file();
     if let Some(path) = filepath {
         if let Some (file_stem) = path.file_stem() {
             info!("file stem: {:?}", file_stem);
@@ -299,7 +299,6 @@ pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
     // write output
     let dir_str = rrconfig::output_dir();
     let mut dir_path = std::path::PathBuf::from(&dir_str);
-    dir_path.push(&crate_name.as_str());
     dir_path.push(&stem);
     let dir_path = dir_path.as_path();
     if let Err(_) = fs::read_dir(dir_path) {
@@ -513,10 +512,11 @@ struct RRCompilerCalls {
 }
 
 // From Prusti.
-fn mir_borrowck<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> mir_borrowck<'tcx> {
+fn mir_borrowck<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> mir_borrowck::ProvidedValue<'tcx> {
     let body_with_facts = rustc_borrowck::consumers::get_body_with_borrowck_facts(
         tcx,
-        ty::WithOptConstParam::unknown(def_id),
+        def_id,
+        rustc_borrowck::consumers::ConsumerOptions::PoloniusOutputFacts
     );
     // SAFETY: This is safe because we are feeding in the same `tcx` that is
     // going to be used as a witness when pulling out the data.
@@ -544,11 +544,12 @@ impl rustc_driver::Callbacks for RRCompilerCalls {
 
     fn after_analysis<'tcx>(
         &mut self,
+        _handler: &rustc_session::EarlyErrorHandler,
         _ : &rustc_interface::interface::Compiler,
         queries : &'tcx rustc_interface::Queries<'tcx>
     ) -> Compilation {
             // Analyze the crate and inspect the types under the cursor.
-            queries.global_ctxt().unwrap().take().enter(|tcx| {
+            queries.global_ctxt().unwrap().enter(|tcx| {
                 analyze(tcx);
             }
         );
@@ -579,7 +580,7 @@ fn run_compiler(
 }
 
 fn main() {
-    rustc_driver::install_ice_hook();
+    rustc_driver::install_ice_hook("", |_| ());
 
     env_logger::init();
 

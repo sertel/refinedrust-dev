@@ -16,7 +16,7 @@ use crate::data::ProcedureDefId;
 use rustc_hir as hir;
 use rustc_middle::mir;
 use rustc_middle::ty::TyCtxt;
-use rustc_index::vec::Idx;
+use rustc_index::Idx;
 use rustc_hash::FxHashMap;
 use std::cell;
 use std::collections::{BTreeMap, BTreeSet, HashSet, HashMap};
@@ -303,7 +303,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         //&self.polonius_info.additional_facts.zombie_requires);
 
         write_graph!(self, "digraph G {{\n");
-        for bb in self.mir.basic_blocks().indices() {
+        for bb in self.mir.basic_blocks.indices() {
             self.visit_basic_block(bb)?;
         }
         self.print_temp_variables()?;
@@ -878,46 +878,43 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                     write_edge!(self, bb, target);
                 }
             }
-            TerminatorKind::Resume => {
-                write_edge!(self, bb, str resume);
-            }
-            TerminatorKind::Abort => {
-                write_edge!(self, bb, str abort);
-            }
             TerminatorKind::Return => {
                 write_edge!(self, bb, str return);
             }
             TerminatorKind::Unreachable => {}
-            TerminatorKind::DropAndReplace {
-                ref target, unwind, ..
+            TerminatorKind::UnwindResume => {
+                write_edge!(self, bb, str resume);
+            }
+            TerminatorKind::UnwindTerminate => {
+                write_edge!(self, bb, str terminate);
             }
             | TerminatorKind::Drop {
                 ref target, unwind, ..
             } => {
                 write_edge!(self, bb, target);
-                if let Some(target) = unwind {
-                    write_edge!(self, bb, unwind target);
-                }
+                //if let Some(target) = unwind {
+                    //write_edge!(self, bb, unwind target);
+                //}
             }
             TerminatorKind::Call {
                 ref target,
-                cleanup,
+                unwind,
                 ..
             } => {
                 if let Some(target) = *target {
                     write_edge!(self, bb, target);
                 }
-                if let Some(target) = cleanup {
-                    write_edge!(self, bb, unwind target);
-                }
+                //if let Some(target) = unwind {
+                    //write_edge!(self, bb, unwind target);
+                //}
             }
             TerminatorKind::Assert {
-                target, cleanup, ..
+                target, unwind, ..
             } => {
                 write_edge!(self, bb, target);
-                if let Some(target) = cleanup {
-                    write_edge!(self, bb, unwind target);
-                }
+                //if let Some(target) = unwind {
+                    //write_edge!(self, bb, unwind target);
+                //}
             }
             TerminatorKind::Yield { .. } => unimplemented!(),
             TerminatorKind::GeneratorDrop => unimplemented!(),
@@ -933,9 +930,9 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                 unwind,
             } => {
                 write_edge!(self, bb, real_target);
-                if let Some(target) = unwind {
-                    write_edge!(self, bb, imaginary target);
-                }
+                //if let Some(target) = unwind {
+                    //write_edge!(self, bb, imaginary target);
+                //}
             }
             TerminatorKind::InlineAsm { .. } => unimplemented!(),
         };

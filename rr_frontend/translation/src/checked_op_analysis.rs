@@ -61,13 +61,10 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
                         res.push(*target); 
                     }
                 },
-                TerminatorKind::Drop { place: _, target, unwind: _ } => {
+                TerminatorKind::Drop { place: _, target, unwind: _ , replace: _} => {
                     res.push(*target);
                 },
-                TerminatorKind::DropAndReplace { place: _, value: _, target, unwind: _ } => {
-                    res.push(*target);
-                },
-                TerminatorKind::SwitchInt { discr: _, switch_ty: _, targets } => {
+                TerminatorKind::SwitchInt { discr: _, targets } => {
                     for target in targets.all_targets() {
                         res.push(*target);
                     }
@@ -75,13 +72,13 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
                 TerminatorKind::Goto { target } => {
                     res.push(*target);
                 },
-                TerminatorKind::Assert { cond: _, expected: _, msg: _, target, cleanup: _ } => {
+                TerminatorKind::Assert { cond: _, expected: _, msg: _, target, unwind: _} => {
                     res.push(*target);
                 },
                 TerminatorKind::Yield { value: _, resume, resume_arg: _, drop: _ } => {
                     res.push(*resume);
                 },
-                TerminatorKind::InlineAsm { template: _, operands: _, options: _, line_spans: _, destination, cleanup: _ } => {
+                TerminatorKind::InlineAsm { template: _, operands: _, options: _, line_spans: _, destination, unwind: _} => {
                     if let Some(dest) = destination {
                         res.push(*dest);
                     }

@@ -264,20 +264,7 @@ Record enum_layout_spec : Set := mk_els
     (* This is fixed (and not something chooseable by the layout algorithm), because Rust's MIR already has this type fixed. *)
     els_tag_it : IntType;
     els_variants : list (string * syn_type);
-    (* This is additional information that doesn't affect the layout algorithm, but just the operational behavior of enum operations *)
     els_tag_int : list (var_name * Z);
-    (* The variant list should have no duplicates *)
-    els_variants_nodup :
-      NoDup (fmap fst els_variants);
-    (* The variant lists should agree *)
-    els_tag_int_agree :
-      fmap fst els_tag_int = fmap fst els_variants;
-    (* the tags should have no duplicates *)
-    els_tag_int_nodup:
-      NoDup (fmap snd els_tag_int);
-    (* the tags should be in range of the integer type for the tags *)
-    els_tag_int_wf3 :
-      Forall (λ '(_, tag), tag ∈ (els_tag_it : int_type)) els_tag_int;
   }.
 
 Definition syn_type_of_els (els : enum_layout_spec) : syn_type :=
@@ -351,16 +338,6 @@ Solve Obligations with done.
    More restrictively, in order to make [NonNull::dangling] work, the alignment also needs to be a valid address. *)
 Definition ly_align_in_bounds (ly : layout) :=
   min_alloc_start ≤ ly_align ly ≤ max_alloc_end.
-Lemma ly_align_in_bounds_1 ly :
-  ly_align_log ly = 0%nat → ly_align_in_bounds ly.
-Proof.
-  rewrite /ly_align_in_bounds/ly_align => ->.
-  unfold_size_constants. simpl; nia.
-Qed.
-
-(* check that enum tags are in range of the tag integer type *)
-Definition enum_check_tags_in_range (it : IntType) (tags : list (var_name * Z)) : bool :=
-  bool_decide (Forall (λ '(_, tag), tag ∈ it) tags).
 
 (** Use a layout algorithm recursively on a layout spec. *)
 (* NOTE on size limits from https://doc.rust-lang.org/stable/reference/types/numeric.html#machine-dependent-integer-types:

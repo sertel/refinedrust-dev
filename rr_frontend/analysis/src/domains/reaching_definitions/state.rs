@@ -80,19 +80,19 @@ impl<'mir, 'tcx: 'mir> Serialize for ReachingDefsState<'mir, 'tcx> {
         let ordered_ass_map: BTreeMap<_, _> = self.reaching_defs.iter().collect();
         for (local, location_set) in ordered_ass_map {
             let ordered_loc_set: BTreeSet<_> = location_set.iter().collect();
-            let mut location_vec = Vec::new();
+            let mut location_vec = Vec::with_capacity(ordered_loc_set.len());
             for location in ordered_loc_set {
                 match location {
                     DefLocation::Assignment(l) => {
                         let stmt = location_to_stmt_str(*l, self.mir);
                         // Include the location to differentiate between same statement on
                         // different lines.
-                        location_vec.push(format!("{:?}: {}", l, stmt));
+                        location_vec.push(format!("{l:?}: {stmt}"));
                     }
-                    DefLocation::Parameter(idx) => location_vec.push(format!("arg{}", idx)),
+                    DefLocation::Parameter(idx) => location_vec.push(format!("arg{idx}")),
                 }
             }
-            map.serialize_entry(&format!("{:?}", local), &location_vec)?;
+            map.serialize_entry(&format!("{local:?}"), &location_vec)?;
         }
         map.end()
     }
@@ -106,10 +106,7 @@ impl<'mir, 'tcx: 'mir> ReachingDefsState<'mir, 'tcx> {
         let stmt = &self.mir[location.block].statements[location.statement_index];
         if let mir::StatementKind::Assign(box (ref target, _)) = stmt.kind {
             if let Some(local) = target.as_local() {
-                let location_set = self
-                    .reaching_defs
-                    .entry(local)
-                    .or_insert_with(FxHashSet::default);
+                let location_set = self.reaching_defs.entry(local).or_default();
                 location_set.clear();
                 location_set.insert(DefLocation::Assignment(location));
             }
@@ -128,32 +125,27 @@ impl<'mir, 'tcx: 'mir> ReachingDefsState<'mir, 'tcx> {
             mir::TerminatorKind::Call {
                 ref destination,
                 target,
-                cleanup,
+                unwind,
                 ..
             } => {
                 if let Some(bb) = target {
                     let mut dest_state = self.clone();
                     if let Some(local) = destination.as_local() {
-                        let location_set = dest_state
-                            .reaching_defs
-                            .entry(local)
-                            .or_insert_with(FxHashSet::default);
+                        let location_set = dest_state.reaching_defs.entry(local).or_default();
                         location_set.clear();
                         location_set.insert(DefLocation::Assignment(location));
                     }
                     res_vec.push((bb, dest_state));
                 }
 
-                if let Some(bb) = cleanup {
+                if let mir::UnwindAction::Cleanup(bb) = unwind {
                     let mut cleanup_state = self.clone();
                     // error state -> be conservative & add destination as possible reaching def
                     // while keeping all others
                     if target.is_some() {
                         if let Some(local) = destination.as_local() {
-                            let location_set = cleanup_state
-                                .reaching_defs
-                                .entry(local)
-                                .or_insert_with(FxHashSet::default);
+                            let location_set =
+                                cleanup_state.reaching_defs.entry(local).or_default();
                             location_set.insert(DefLocation::Assignment(location));
                         }
                     }
@@ -182,10 +174,7 @@ impl<'mir, 'tcx: 'mir> AbstractState for ReachingDefsState<'mir, 'tcx> {
 
     fn join(&mut self, other: &Self) {
         for (local, other_locations) in other.reaching_defs.iter() {
-            let location_set = self
-                .reaching_defs
-                .entry(*local)
-                .or_insert_with(FxHashSet::default);
+            let location_set = self.reaching_defs.entry(*local).or_default();
             location_set.extend(other_locations);
         }
     }

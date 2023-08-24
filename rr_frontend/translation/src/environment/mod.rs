@@ -66,7 +66,7 @@ impl<'tcx> Environment<'tcx> {
 
     /// Returns the path of the source that is being compiled
     pub fn source_path(&self) -> PathBuf {
-        self.tcx.sess.local_crate_source_file.clone().unwrap()
+        self.tcx.sess.local_crate_source_file().unwrap()
     }
 
     /// Returns the file name of the source that is being compiled
@@ -88,10 +88,10 @@ impl<'tcx> Environment<'tcx> {
     }
 
     /// Returns the type of a `HirId`
-    pub fn hir_id_to_type(&self, hir_id: HirId) -> ty::Ty<'tcx> {
-        let def_id = self.tcx.hir().local_def_id(hir_id);
-        self.tcx.type_of(def_id)
-    }
+    //pub fn hir_id_to_type(&self, hir_id: HirId) -> ty::EarlyBinder<ty::Ty<'tcx>> {
+        //let def_id = self.tcx.hir().local_def_id(hir_id);
+        //self.tcx.type_of(def_id)
+    //}
 
     /// Returns the `CodeMap`
     pub fn codemap(&self) -> &'tcx SourceMap {
@@ -231,9 +231,9 @@ impl<'tcx> Environment<'tcx> {
             };
             let body = body_with_facts.body;
             let facts = BorrowckFacts {
-                input_facts: RefCell::new(Some(body_with_facts.input_facts)),
-                output_facts: body_with_facts.output_facts,
-                location_table: RefCell::new(Some(body_with_facts.location_table)),
+                input_facts: RefCell::new(body_with_facts.input_facts),
+                output_facts: body_with_facts.output_facts.unwrap(),
+                location_table: RefCell::new(body_with_facts.location_table),
             };
 
             let mut borrowck_facts = self.borrowck_facts.borrow_mut();
@@ -393,6 +393,7 @@ impl<'tcx> Environment<'tcx> {
     }
 */
 
+    /*
     fn primitive_type_implements_trait(
         &self,
         ty: ty::Ty<'tcx>,
@@ -406,4 +407,5 @@ impl<'tcx> Environment<'tcx> {
                 .must_apply_considering_regions()
         )
     }
+*/
 }

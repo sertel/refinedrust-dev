@@ -37,12 +37,14 @@ impl<'env, 'tcx> Visitor<'tcx> for CollectClosureDefsVisitor<'env, 'tcx> {
     }
 
     fn visit_expr(&mut self, expr: &'tcx hir::Expr<'tcx>) {
-        if let hir::ExprKind::Closure(_) = expr.kind {
+        if let hir::ExprKind::Closure(hir::Closure {
+            def_id: local_def_id,
+            ..
+        }) = expr.kind {
             let _tcx = self.env.tcx();
-            let def_id = self.map.local_def_id(expr.hir_id);
-            let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
+            let item_def_path = self.env.get_item_def_path(local_def_id.to_def_id());
             trace!("Add {} to result", item_def_path);
-            self.result.push(def_id);
+            self.result.push(*local_def_id);
         }
 
         walk_expr (self, expr)

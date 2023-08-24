@@ -20,13 +20,13 @@ Definition heapUR : ucmra :=
   gmapUR addr heap_cellR.
 
 Class heapG Σ := HeapG {
-  heap_heap_inG              :> inG Σ (authR heapUR);
+  heap_heap_inG              :: inG Σ (authR heapUR);
   heap_heap_name             : gname;
-  heap_alloc_meta_map_inG   :> ghost_mapG Σ alloc_id (Z * nat * alloc_kind);
+  heap_alloc_meta_map_inG   :: ghost_mapG Σ alloc_id (Z * nat * alloc_kind);
   heap_alloc_meta_map_name  : gname;
-  heap_alloc_alive_map_inG  :> ghost_mapG Σ alloc_id bool;
+  heap_alloc_alive_map_inG  :: ghost_mapG Σ alloc_id bool;
   heap_alloc_alive_map_name : gname;
-  heap_fntbl_inG             :> ghost_mapG Σ addr function;
+  heap_fntbl_inG             :: ghost_mapG Σ addr function;
   heap_fntbl_name            : gname;
 }.
 
@@ -108,12 +108,20 @@ Section definitions.
     AsFractional (alloc_alive id (DfracOwn q) a) (λ q, alloc_alive id (DfracOwn q) a) q.
   Proof. split; [done|]. apply _. Qed.
 
-  Definition alloc_global (l : loc) : iProp Σ :=
+  (** [alloc_global l] is knowledge that the provenance of [l] is
+  alive forever (i.e. corresponds to a global variable). *)
+  Definition alloc_global_def (l : loc) : iProp Σ :=
     ∃ id, ⌜l.1 = ProvAlloc (Some id)⌝ ∗ alloc_alive id DfracDiscarded true.
+  Definition alloc_global_aux : seal (@alloc_global_def). by eexists. Qed.
+  Definition alloc_global := unseal alloc_global_aux.
+  Definition alloc_global_eq : @alloc_global = @alloc_global_def :=
+    seal_eq alloc_global_aux.
+
   Global Instance alloc_global_tl l : Timeless (alloc_global l).
-  Proof. by apply _. Qed.
+  Proof. rewrite alloc_global_eq. by apply _. Qed.
   Global Instance alloc_global_pers l : Persistent (alloc_global l).
-  Proof. rewrite /alloc_global alloc_alive_eq. by apply _. Qed.
+  Proof. rewrite alloc_global_eq /alloc_global_def alloc_alive_eq. by apply _. Qed.
+
   (** * Function table stuff. *)
 
   (** [fntbl_entry l f] persistently records the information that function
@@ -227,7 +235,9 @@ Section definitions.
     fntbl_ctx σ.(st_fntbl).
 End definitions.
 
-Global Typeclasses Opaque heap_mapsto_mbyte heap_mapsto.
+Global Typeclasses Opaque alloc_meta loc_in_bounds alloc_alive alloc_global
+  fntbl_entry heap_mapsto_mbyte heap_mapsto alloc_alive_loc
+  freeable.
 
 Notation "l ↦{ q } v" := (heap_mapsto l q v)
   (at level 20, q at level 50, format "l  ↦{ q }  v") : bi_scope.
@@ -287,7 +297,10 @@ Section alloc_meta.
     alloc_same_range a1 a2 →
     a1.(al_kind) = a2.(al_kind) →
     alloc_meta id a1 -∗ alloc_meta id a2.
-  Proof. destruct a1 as [????], a2 as [????] => -[/= <- <-] <-. by rewrite alloc_meta_eq. Qed.
+  Proof.
+    destruct a1 as [????], a2 as [????] => -[/= <- <-] <-.
+    rewrite alloc_meta_eq. iIntros "$".
+  Qed.
 
   Lemma alloc_meta_agree id a1 a2 :
     alloc_meta id a1 -∗ alloc_meta id a2 -∗ ⌜alloc_same_range a1 a2⌝.
@@ -484,13 +497,13 @@ Section loc_in_bounds.
     (m ≤ n)%nat ->
     loc_in_bounds l k n -∗ loc_in_bounds l k m.
   Proof.
-    move => ?. rewrite (le_plus_minus m n) // -loc_in_bounds_split_suf. iIntros "[$ _]".
+    move => ?. rewrite -(Nat.sub_add m n) // Nat.add_comm -loc_in_bounds_split_suf. iIntros "[$ _]".
   Qed.
   Lemma loc_in_bounds_shorten_pre l k n m:
     (m ≤ n)%nat ->
     loc_in_bounds l n k -∗ loc_in_bounds l m k.
   Proof.
-    move => ?. rewrite (le_plus_minus m n) // -loc_in_bounds_split_pre. iIntros "[_ $]".
+    move => ?. rewrite -(Nat.sub_add m n) // Nat.add_comm -loc_in_bounds_split_pre. iIntros "[_ $]".
   Qed.
 
   Local Lemma loc_in_bounds_offset_suf l1 l2 (suf1 suf2 : nat):
@@ -571,7 +584,8 @@ Section loc_in_bounds.
   Lemma loc_in_bounds_in_range_uintptr_t l pre suf :
     loc_in_bounds l pre suf -∗ ⌜l.2 ∈ uintptr_t⌝.
   Proof.
-    etrans; first by apply loc_in_bounds_ptr_in_range. iPureIntro.
+    iIntros "Hl". iDestruct (loc_in_bounds_ptr_in_range with "Hl") as %Hrange.
+    iPureIntro. move: Hrange.
     rewrite /min_alloc_start /max_alloc_end /bytes_per_addr /bytes_per_addr_log /=.
     move => [??]. split; cbn; first by lia.
     rewrite /max_int /= /int_modulus /bits_per_int /bytes_per_int /=. lia.
@@ -616,7 +630,7 @@ Section heap.
 
   Global Instance heap_mapsto_mbyte_as_fractional l q v:
     AsFractional (heap_mapsto_mbyte l q v) (λ q, heap_mapsto_mbyte l q v)%I q.
-  Proof. split. done. apply _. Qed.
+  Proof. split; [done|]. apply _. Qed.
 
   Global Instance heap_mapsto_timeless l q v : Timeless (l↦{q}v).
   Proof.  rewrite heap_mapsto_eq. apply _. Qed.
@@ -626,7 +640,7 @@ Section heap.
 
   Global Instance heap_mapsto_as_fractional l q v:
     AsFractional (l ↦{q} v) (λ q, l ↦{q} v)%I q.
-  Proof. split. done. apply _. Qed.
+  Proof. split; first done. apply _. Qed.
 
   Lemma heap_mapsto_loc_in_bounds l q v:
     l ↦{q} v -∗ loc_in_bounds l 0 (length v).
@@ -684,7 +698,7 @@ Section heap.
     - move => b v1 IH l /=.
       rewrite heap_mapsto_cons IH assoc -heap_mapsto_cons.
       rewrite shift_loc_assoc.
-      by have ->:(∀ n : nat, 1 + n = S n) by lia.
+      by have -> : (∀ n : nat, 1 + n = S n) by lia.
   Qed.
 
   Lemma heap_mapsto_mbyte_agree l q1 q2 v1 v2 :
@@ -703,7 +717,7 @@ Section heap.
     length v1 = length v2 →
     l ↦{q1} v1 -∗ l ↦{q2} v2 -∗ ⌜v1 = v2⌝.
   Proof.
-    elim: v1 v2 l. by iIntros ([] ??)"??".
+    elim: v1 v2 l. 1: by iIntros ([] ??)"??".
     move => ?? IH []//=???[?].
     rewrite !heap_mapsto_cons_mbyte.
     iIntros "[? [_ ?]] [? [_ ?]]".
@@ -799,7 +813,9 @@ Section heap.
       /to_agree_included ?; simplify_eq.
     destruct ls as [|n], ls'' as [|n''],
       Hincl as [[[|n'|]|] [=]%leibniz_equiv]; subst.
-    by exists O. eauto. exists O. by rewrite Nat.add_0_r.
+    - by exists O.
+    - by eauto.
+    - exists O. by rewrite Nat.add_0_r.
   Qed.
 
   Lemma heap_mapsto_mbyte_lookup_1 ls l aid h b:
@@ -849,7 +865,7 @@ Section heap.
     ==∗ heap_ctx (<[l.2:=HeapCell aid (RSt (n2 + nf)) b]> h)
         ∗ heap_mapsto_mbyte_st (RSt n2) l aid q b.
   Proof.
-    intros Hσv. apply wand_intro_r. rewrite -!own_op to_heapUR_insert.
+    intros Hσv. do 2 apply wand_intro_r. rewrite left_id -!own_op to_heapUR_insert.
     eapply own_update, auth_update, singleton_local_update.
     { by rewrite /to_heapUR lookup_fmap Hσv. }
     apply prod_local_update_1, prod_local_update_2, csum_local_update_r.
@@ -893,7 +909,7 @@ Section heap.
     heap_ctx h -∗ heap_mapsto_mbyte_st st1 l aid 1%Qp b
     ==∗ heap_ctx (<[l.2:=HeapCell aid st2 b']> h) ∗ heap_mapsto_mbyte_st st2 l aid 1%Qp b'.
   Proof.
-    intros Hσv. apply wand_intro_r. rewrite -!own_op to_heapUR_insert.
+    intros Hσv. do 2 apply wand_intro_r. rewrite left_id -!own_op to_heapUR_insert.
     eapply own_update, auth_update, singleton_local_update.
     { by rewrite /to_heapUR lookup_fmap Hσv. }
     apply exclusive_local_update. by destruct st2.
@@ -981,7 +997,7 @@ Section heap.
   Proof.
     iIntros "Hctx Hl".
     iDestruct (heap_mapsto_is_alloc with "Hl") as %[[??]|(? & _ & ->)]; last done.
-    iMod (heap_free_free_st with "[$Hctx Hl]"); last done. done.
+    iMod (heap_free_free_st with "[$Hctx Hl]"); [done| |done].
     rewrite heap_mapsto_eq /heap_mapsto_def. iDestruct "Hl" as "[_ Hl]".
     iApply (big_sepL_impl with "Hl"). iIntros (???) "!> H".
     rewrite heap_mapsto_mbyte_eq /heap_mapsto_mbyte_def /=.
@@ -995,7 +1011,7 @@ Section alloc_alive.
   Lemma alloc_alive_loc_mono (l1 l2 : loc) :
     l1.1 = l2.1 →
     alloc_alive_loc l1 -∗ alloc_alive_loc l2.
-  Proof. by rewrite alloc_alive_loc_eq /alloc_alive_loc_def => ->. Qed.
+  Proof. rewrite alloc_alive_loc_eq /alloc_alive_loc_def => ->. by iIntros "$". Qed.
 
   Lemma heap_mapsto_alive_strong l :
     (|={⊤, ∅}=> (∃ q v, ⌜length v ≠ 0%nat⌝ ∗ l ↦{q} v)) -∗ alloc_alive_loc l.
@@ -1016,7 +1032,8 @@ Section alloc_alive.
   Lemma alloc_global_alive l:
     alloc_global l -∗ alloc_alive_loc l.
   Proof.
-    iIntros "(%id&%&Ha)". rewrite alloc_alive_loc_eq. iApply fupd_mask_intro; [set_solver|].
+    rewrite alloc_global_eq alloc_alive_loc_eq. iIntros "(%id&%&Ha)".
+    iApply fupd_mask_intro; [set_solver|].
     iIntros "_". iLeft. eauto.
   Qed.
 

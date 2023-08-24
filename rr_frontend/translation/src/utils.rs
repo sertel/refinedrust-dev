@@ -82,7 +82,7 @@ pub fn try_resolve_method_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<
                             for impl_did in impls {
                                 //let ty = tcx.type_of(*impl_did);
                                 //info!("type of impl: {:?}", ty);
-                                let items: &ty::AssocItems<'tcx> = tcx.associated_items(impl_did);
+                                let items: &ty::AssocItems = tcx.associated_items(impl_did);
                                 //info!("items here: {:?}", items);
                                 // TODO more robust error handling if there are multiple matches.
                                 for item in items.in_definition_order() {
@@ -148,8 +148,7 @@ pub fn expand_struct_place<'tcx>(
                 let variant = def.non_enum_variant();
                 for (index, field_def) in variant.fields.iter().enumerate() {
                     if Some(index) != without_field {
-                        let field = mir::Field::from_usize(index);
-                        let field_place = tcx.mk_place_field(*place, field, field_def.ty(tcx, substs));
+                        let field_place = tcx.mk_place_field(*place, index.into(), field_def.ty(tcx, substs));
                         places.push(field_place);
                     }
                 }
@@ -157,8 +156,7 @@ pub fn expand_struct_place<'tcx>(
             ty::Tuple(slice) => {
                 for (index, arg) in slice.iter().enumerate() {
                     if Some(index) != without_field {
-                        let field = mir::Field::from_usize(index);
-                        let field_place = tcx.mk_place_field(*place, field, arg);
+                        let field_place = tcx.mk_place_field(*place, index.into(), arg);
                         places.push(field_place);
                     }
                 }
@@ -223,7 +221,7 @@ pub fn try_pop_one_level<'tcx>(tcx: TyCtxt<'tcx>, place: mir::Place<'tcx>) -> Op
         let last_index = place.projection.len()-1;
         let new_place = mir::Place {
             local: place.local,
-            projection: tcx.intern_place_elems(&place.projection[..last_index]),
+            projection: tcx.mk_place_elems(&place.projection[..last_index]),
         };
         Some((place.projection[last_index], new_place))
     } else {
@@ -363,11 +361,9 @@ impl<'tcx> VecPlace<'tcx> {
 /// Any arguments of the attribute are ignored.
 pub fn has_tool_attr(attrs: &[ast::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| match &attr.kind {
-        ast::AttrKind::Normal(ast::AttrItem {
-                                  path: ast::Path { span: _, segments, tokens: _ },
-                                  args: _,
-                                  tokens: _,
-                              }, _) => {
+        ast::AttrKind::Normal(n) => {
+            let na: &rustc_ast::ast::NormalAttr = &(*n);
+            let segments = &na.item.path.segments;
             segments.len() == 2
                 && segments[0].ident.as_str() == config::spec_hotword().as_str()
                 && segments[1].ident.as_str() == name
@@ -381,7 +377,9 @@ pub fn has_tool_attr(attrs: &[ast::Attribute], name: &str) -> bool {
 pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
     let v: Vec<_> = attrs.iter().filter_map(|attr| {
         match attr.kind {
-            ast::AttrKind::Normal(ref it, _) => {
+            ast::AttrKind::Normal(ref n) => {
+                let na: &rustc_ast::ast::NormalAttr = &*(n);
+                let it = &na.item;
                 let ref path_segs = it.path.segments;
 
                 // parse path

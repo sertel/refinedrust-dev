@@ -5,7 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use rustc_middle::mir::{self, TerminatorKind};
-use rustc_index::vec::IndexVec;
+use rustc_index::IndexVec;
 
 /// A data structure to store the non-virtual CFG edges of a MIR body.
 pub struct RealEdges {
@@ -16,11 +16,11 @@ pub struct RealEdges {
 impl RealEdges {
     pub fn new(body: &mir::Body) -> Self {
         let mut successors: IndexVec<_, Vec<_>> =
-            body.basic_blocks().iter().map(|_| Vec::new()).collect();
+            body.basic_blocks.iter().map(|_| Vec::new()).collect();
         let mut predecessors: IndexVec<_, Vec<_>> =
-            body.basic_blocks().iter().map(|_| Vec::new()).collect();
+            body.basic_blocks.iter().map(|_| Vec::new()).collect();
 
-        for (bb, bb_data) in body.basic_blocks().iter_enumerated() {
+        for (bb, bb_data) in body.basic_blocks.iter_enumerated() {
             let targets = real_targets(bb_data.terminator());
             for &target in &targets {
                 successors[bb].push(target);
@@ -54,13 +54,12 @@ fn real_targets(terminator: &mir::Terminator) -> Vec<mir::BasicBlock> {
             targets.all_targets().to_vec()
         }
 
-        TerminatorKind::Resume
-        | TerminatorKind::Abort
+        | TerminatorKind::UnwindResume
+        | TerminatorKind::UnwindTerminate
         | TerminatorKind::Return
         | TerminatorKind::GeneratorDrop
         | TerminatorKind::Unreachable => vec![],
 
-        TerminatorKind::DropAndReplace { ref target, .. }
         | TerminatorKind::Drop { ref target, .. } => vec![*target],
 
         TerminatorKind::Call {

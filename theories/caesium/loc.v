@@ -163,7 +163,7 @@ Proof.
   move => Hl. apply Z.divide_add_r.
   - apply: has_layout_loc_trans => //. rewrite {1}/ly_align_log/=. destruct n; lia.
   - rewrite/ly_offset. destruct n;[by subst;apply Z.divide_0_r|].
-    etrans;[apply Zdivide_nat_pow, Min.le_min_r|]. by apply factor2_divide.
+    etrans;[apply Zdivide_nat_pow, Nat.le_min_r|]. by apply factor2_divide.
 Qed.
 
 Lemma has_layout_loc_ly_mult_offset l ly n:

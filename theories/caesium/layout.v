@@ -141,12 +141,3 @@ Proof. done. Qed.
 Lemma ly_align_ly_set_size ly n:
   ly_align (ly_set_size ly n) = ly_align ly.
 Proof. done. Qed.
-
-
-Lemma layout_wf_align_log_0 ly :
-  ly_align_log ly = 0%nat → layout_wf ly.
-Proof.
-  intros Ha. rewrite /layout_wf/ly_align Ha/=.
-  apply Z.divide_1_l.
-Qed.
-

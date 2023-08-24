@@ -584,22 +584,6 @@ Proof.
   by apply: free_block_inj.
 Qed.
 
-(*
-Inductive realloc_block : heap_state → alloc_kind → loc → val → loc → val → heap_state → Prop :=
-| ReallocBlock σ l_old l_new aid v_old v_new :
-    let old_alloc := Allocation l_old.2 (length v_old) true kind in
-    let new_alloc := Allocation l_new.2 (length v_new) true kind in
-    (* reallocation preserves provenance *)
-    l_old.1 = ProvAlloc (Some aid) →
-    l_new.1 = ProvAlloc (Some aid) →
-    σ.(hs_allocs) !! aid = Some old_alloc →
-    allocation_in_range new_alloc →
-    heap_range_free σ ?? →
-    heap_lookup_loc l v_old (λ st, st = RSt 0%nat) σ.(hs_heap) →
-    (* TODO: ensure that the new heap really contains v_new *)
-    *)
-
-
 (** ** Heap state invariant definition. *)
 
 (** Predicate stating that every address [a] mapped by the heap of [st] has
@@ -867,4 +851,3 @@ Proof.
   - move => *. naive_solver.
   - by eapply heap_update_alloc_alive_in_heap.
 Qed.
-

@@ -33,7 +33,7 @@ impl LocationTableExt for LocationTable {
 
 pub struct BorrowckFacts {
     /// Polonius input facts.
-    pub input_facts: RefCell<Option<AllInputFacts>>,
+    pub input_facts: RefCell<Option<Box<AllInputFacts>>>,
     /// Polonius output facts.
     pub output_facts: Rc<AllOutputFacts>,
     /// The table that maps Polonius points to locations in the table.

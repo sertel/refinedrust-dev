@@ -94,7 +94,7 @@ Qed.
 Lemma bytes_per_int_gt_0 it : bytes_per_int it > 0.
 Proof.
   rewrite /bytes_per_int. move: it => [log ?] /=.
-  rewrite Z2Nat_inj_pow. assert (0 < 2%nat ^ log); last lia.
+  rewrite Z2Nat.inj_pow. assert (0 < 2%nat ^ log); last lia.
   apply Z.pow_pos_nonneg; lia.
 Qed.
 
@@ -112,7 +112,7 @@ Proof.
   rewrite -[X in X * _]Z.pow_1_r -Z.pow_add_r; try f_equal; try lia.
   rewrite /bits_per_int /bytes_per_int.
   apply Z.le_add_le_sub_l. rewrite Z.add_0_r.
-  rewrite Z2Nat_inj_pow.
+  rewrite Z2Nat.inj_pow.
   assert (0 < 2%nat ^ it_byte_size_log it * bits_per_byte); last lia.
   apply Z.mul_pos_pos; last (rewrite /bits_per_byte; lia).
   apply Z.pow_pos_nonneg; lia.
@@ -147,22 +147,6 @@ Lemma int_modulus_ge_1 it :
 Proof.
   rewrite int_modulus_twice_half_modulus. specialize (int_half_modulus_ge_1 it). lia.
 Qed.
-
-(*
-  if n positive,
-Lemma it_signed_in_range_mod n it :
-  n ∈ it → n `mod` int_half_modulus it = n.
-Proof.
-  specialize (int_half_modulus_ge_1 it).
-  move => ? [??].
-
-  Search Z.modulo.
-  rewrite Z.mod_small //.
-  destruct it as [bs signed].
-  destruct signed; unfold min_int, max_int in *; simpl in *.
-  - lia. rewrite /int_half_modulus.
-    speci
- *)
 
 Lemma min_int_le_0 (it : int_type) : min_int it ≤ 0.
 Proof.

@@ -41,7 +41,7 @@ opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
 ```
 2. Install the necessary dependencies:
 ```
-opam pin add coq 8.15.2
+opam pin add coq 8.17.0
 opam pin add coq-lambda-rust.dev git-rts@gitlab.mpi-sws.org:lgaeher/lambda-rust.git#rr
 make builddep
 ```
@@ -58,7 +58,7 @@ dune build
 4. Run `./refinedrust build` in `rr_frontend` to build the frontend.
 
 
-## Usage
+## Frontend usage
 To use RefinedRust's frontend to generate the Coq input for RefinedRust's type system, switch to the `rr-frontend` directory.
 Then, assuming you want to translate `path-to-file.rs`, run:
 ```
@@ -75,7 +75,6 @@ To then compile the generated Coq code, switch to `output/section2` and run `dun
 In order to interactively look at the generated code using a Coq plugin like Coqtail, VSCoq, or Proof General for the editor of your choice, you need to add a line pointing to the directory of the generated code in the `_CoqProject` file.
 See the existing includes for inspiration.
 
-
 ## Frontend Configuration
 Configuration options can be set in the `RefinedRust.toml` file.
 These include:
@@ -87,6 +86,7 @@ These include:
 | `log_dir` | Relative path | Determines the directory where logs and debug dumps will be placed if enabled |
 | `shims` | Relative path | Determines the JSON file storing information about shims that RefinedRust uses |
 | `run_check` | Boolean | Automatically call the Coq type checker on the generated files |
+
 
 
 ## License

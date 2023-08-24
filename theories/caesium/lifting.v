@@ -1,5 +1,4 @@
 From iris.proofmode Require Import tactics.
-From iris.base_logic Require Export later_credits.
 From iris.program_logic Require Export weakestpre.
 From iris.program_logic Require Import ectx_lifting.
 From caesium Require Export lang ghost_state time notation.
@@ -8,9 +7,9 @@ Set Default Proof Using "Type".
 Import uPred.
 
 Class refinedcG Σ := RefinedCG {
-  refinedcG_invG :> invGS Σ;
-  refinedcG_gen_heapG :> heapG Σ;
-  refinedcG_timeGS :> timeGS Σ;
+  refinedcG_invG :: invGS Σ;
+  refinedcG_gen_heapG :: heapG Σ;
+  refinedcG_timeGS :: timeGS Σ;
   refinedcG_time_dis_name : gname;
 }.
 
@@ -176,7 +175,7 @@ Global Instance wp_expr_wp `{!refinedcG Σ} : Wp (iProp Σ) expr val stuckness :
 Lemma to_expr_wp `{!refinedcG Σ} (e : expr) s E Φ :
   WP e @ s; E {{ Φ }} -∗
   WP (coerce_rtexpr e) @ s; E {{ Φ }}.
-Proof. done. Qed.
+Proof. auto. Qed.
 
 Local Hint Extern 0 (reducible _ _) => eexists _, _, _, _; simpl : core.
 Local Hint Extern 0 (head_reducible _ _) => eexists _, _, _, _; simpl : core.
@@ -192,7 +191,7 @@ Global Instance cas_atomic s ot (v1 v2 v3 : val) : Atomic s (coerce_rtexpr (CAS 
 Proof. solve_atomic. Qed.
 Global Instance skipe_atomic s (v : val) : Atomic s (coerce_rtexpr (SkipE v)).
 Proof. solve_atomic. Qed.
-Global Instance deref_atomic s (l : loc) ly : Atomic s (coerce_rtexpr (Deref ScOrd ly l)).
+Global Instance deref_atomic s (l : loc) ly mc : Atomic s (coerce_rtexpr (Deref ScOrd ly mc l)).
 Proof. solve_atomic. Qed.
 (*Global Instance use_atomic s (l : loc) ly : Atomic s (coerce_rtexpr (Use ScOrd ly l)).*)
 (*Proof. solve_atomic. Qed.*)
@@ -229,7 +228,7 @@ Section logical_steps.
     logical_step E (|={E}=> P) -∗
     logical_step E P.
   Proof.
-    rewrite /logical_step. setoid_rewrite fupd_trans. done.
+    rewrite /logical_step. setoid_rewrite fupd_trans. auto.
   Qed.
 
   Lemma logical_step_intro E P :
@@ -371,32 +370,6 @@ End logical_steps.
 
 Section lifting.
   Context `{!refinedcG Σ}.
-
-
-  (* what kinds of lemmas do we get?
-      wp_credit_access
-
-
-      - if I have atime n (banked n), then I get n credits in the post.
-      - if I have ptime n, then I can't compositionally get credits in the post from that
-            (because, it is persistent, I could do it multiple times)
-            I can only do that to compose in parallel
-          I should be able to do however:
-            if I have ptime n, and P is guarded under n laters, then I get P in the post (because I can compose that in parallel)
-
-          intuition: I reserve n later credits for direct spending.
-          Problem: this might be hard to prove. If we apply that rule multiple times, we need to "bundle up" all the Ps, because we can only do this stripping once.
-          (only when I actually do the step should I take ownership of the generated credits and do it.)
-
-          So: this doesn't really work like that. I need to do this parallelization manually.
-
-          maybe: use our notion of delayed_prop. this composes in parallel with ptime, and then have a rule for pure steps that eliminates delayed_prop.
-            I think we mostly need it for skips (when unblocking) anyways.
-
-      - need a rule for putting credits + atime in the post for credit generation.
-   *)
-
-
   (** steps related to time receipts *)
 
   (* We can use a additive time receipt to generate credits. *)
@@ -470,68 +443,6 @@ Section lifting.
     WP e @ s; E {{ v, |={E}=> Φ v }} -∗ WP e @ s; E {{ Φ }}.
   Proof. rewrite /wp /wp_expr_wp. iApply wp_fupd. Qed.
 
-
-  (* TODO: the following lemmas reprove stuff from the lifting lemmas... *)
-  (* Reason: we want to generate a time receipt atime, but that is difficult.
-
-      Ideally, we'd like to get the lemma [wp_additive_time_receipt] below, but that is incompatible with our invariant,
-        as we can't know that we have not just disabled more atimes.
-      (we don't get a lemma similar to [step_additive_time_receipt] for [timec_interp]).
-      That would seem incompatible with [wp_credit_access]...
-   *)
-  (*
-  Lemma wp_additive_time_receipt E e Φ :
-    TCEq (to_val e) None → ↑timeN ⊆ E →
-    time_ctx -∗
-    WP e @ (E∖↑timeN) {{ v, atime 1 -∗ Φ v }} -∗
-    WP e @ E {{ Φ }}.
-  Proof.
-    rewrite !wp_unfold /wp_pre /=. iIntros (-> ?) "#TIME Hwp".
-    iIntros (?????) "[Hσ Ht]".
-    (*iMod (step_additive_time_receipt with "TIME Ht") as "[Ht Hclose]"=>//.*)
-    iMod ("Hwp" $! _ _ _ [] 0%nat with "[$]") as "[$ Hwp]".
-    iIntros "!>" (e2 σ2 efs stp). iMod ("Hwp" $! e2 σ2 efs stp) as "Hwp".
-    iIntros "!> !>". iMod "Hwp". iModIntro.
-    iApply (step_fupdN_wand with "Hwp"). iIntros ">([$ Ht] & Hwp & $)".
-    iMod ("Hclose" with "Ht") as "[$ ?]".
-    iApply (wp_wand with "[Hwp]"); [iApply (wp_mask_mono with "Hwp"); solve_ndisj|].
-    iIntros "!> % H". by iApply "H".
-  Qed.
-  *)
-
-  (*
-  Lemma wp_pure_step_atime s E E' e1 e2 φ n Φ :
-    PureExec φ 1 e1 e2 →
-    φ →
-    ↑timeN ⊆ E' →
-    time_ctx -∗
-    atime n -∗
-    (|={E}[E']▷=> (£ (S n) -∗ atime (S n) -∗ WP e2 @ s; E {{ Φ }})) -∗
-    WP e1 @ s; E {{ Φ }}.
-  Proof.
-    iIntros (Hexec Hφ ?) "#CTX Hc Hwp". specialize (Hexec Hφ).
-    inversion Hexec as [ | ???? [Hred Hsafe] Hb]; inversion Hb; subst.
-    iApply wp_lift_step_fupd.
-    { specialize (Hred inhabitant).
-      eapply reducible_not_val, reducible_no_obs_reducible, Hred. }
-    iIntros (σ1 ns κ κs nt) "(Hσ & Ht)".
-    iMod "Hwp". iMod (fupd_mask_subseteq ∅) as "Hclose"; first set_solver.
-    iModIntro. iSplit.
-    { iPureIntro. destruct s; last done. eapply reducible_no_obs_reducible, Hred. }
-    iIntros (e2' σ2 efs Hstep) "Hcred". iModIntro. iNext.
-    destruct (Hsafe _ _ _ _ _ Hstep) as (-> & -> & -> & ->).
-    iMod "Hclose" as "_".
-    iMod (timec_interp_bound_atime with "CTX Ht Hc") as "(Ht & Hc & %)"; first done.
-    iMod (timec_interp_alloc_atime _ 1 with "CTX Ht") as "($ & Hc2)"; first done.
-    iMod (flc_weaken _ (S n) with "Hcred") as "Hcred". { simpl. lia. }
-    iMod "Hwp". iModIntro.
-    replace (S n) with (1 + n)%nat by lia.
-    iDestruct ("Hwp" with "Hcred [Hc Hc2]") as "$".
-    { iSplitL "Hc2"; done. }
-    iFrame. done.
-  Qed.
-  *)
-
   Lemma lc_elim_step_fupdN E E' n P :
     £ n -∗
     (|={E}[E']▷=>^n P) -∗
@@ -544,39 +455,6 @@ Section lifting.
       iMod (lc_fupd_elim_later with "H1 HP") as "HP".
       iMod "HP". iApply ("IH" with "Hc HP").
   Qed.
-
-  (* When taking a step, we access a delayed prop *)
-  (*
-  Lemma wp_pure_step_ptime s ϕ n E E' e1 e2 Φ :
-    PureExec ϕ 1 e1 e2 →
-    ϕ →
-    ↑timeN ⊆ E →
-    time_ctx -∗
-    ptime n -∗
-    (atime 1 -∗ £ 1 -∗ |={E}[E']▷=>^n WP e2 @ s; E {{ Φ }}) -∗
-    WP e1 @ s; E {{ Φ }}.
-  Proof.
-    iIntros (Hexec Hϕ ?) "#CTX Hp Hwp". specialize (Hexec Hϕ).
-    inversion Hexec as [ | ???? [Hred Hsafe] Hb]; inversion Hb; subst.
-    iApply wp_lift_step_fupd.
-    { specialize (Hred inhabitant).
-      eapply reducible_not_val, reducible_no_obs_reducible, Hred. }
-    iIntros (σ1 ns κ κs nt) "(Hσ & Ht)".
-    iMod (fupd_mask_subseteq ∅) as "Hclose"; first set_solver.
-    iModIntro. iSplit.
-    { iPureIntro. destruct s; last done. eapply reducible_no_obs_reducible, Hred. }
-    iIntros (e2' σ2 efs Hstep) "Hcred". iModIntro. iNext.
-    destruct (Hsafe _ _ _ _ _ Hstep) as (-> & -> & -> & ->).
-    iMod "Hclose" as "_".
-    iMod (timec_interp_bound_ptime with "CTX Ht Hp") as "(Ht & %)"; first done.
-    iMod (timec_interp_alloc_atime _ 1 with "CTX Ht") as "($ & Hc2)"; first done.
-    iMod (flc_weaken _ (S n) with "Hcred") as "Hcred". { simpl. lia. }
-    rewrite (flc_succ n). iDestruct "Hcred" as "[H1 Hcred]".
-    iSpecialize ("Hwp" with "Hc2 H1").
-    iMod (flc_step_fupdN with "Hcred Hwp") as "Hwp".
-    iFrame. iModIntro. done.
-  Qed.
-   *)
 
   (* TODO: add this lemma to iris? *)
   Lemma wp_lift_head_step_fupdN {s E Φ} e1 :
@@ -722,7 +600,6 @@ Section lifting.
       -∗ WP to_rtstmt rf s @ E {{ Φ }}.
   Proof. iIntros "HWP". iApply wp_c_lift_step_fupd => //. naive_solver. Qed.
 
-
   Lemma wp_c_lift_step_credits E n m e step_rel Φ:
     ↑timeN ⊆ E →
     ((∃ e', e = to_rtexpr e' ∧ step_rel = expr_step e') ∨
@@ -768,7 +645,6 @@ Section lifting.
           ={E}=∗ ⌜tsl = []⌝ ∗ state_ctx σ2 ∗ WP e2 @ E {{ Φ }}))
       -∗ WP to_rtstmt rf s @ E {{ Φ }}.
   Proof. iIntros (?) "CTX Hc Hp HWP". iApply (wp_c_lift_step_credits with "CTX Hc Hp") => //. naive_solver. Qed.
-
 
   Lemma wp_c_lift_step E e step_rel Φ:
     ((∃ e', e = to_rtexpr e' ∧ step_rel = expr_step e') ∨
@@ -1001,7 +877,7 @@ Proof.
   iIntros ([[h ub] fn]) "((%&Hhctx&Hactx)&Hfctx)/=".
   iDestruct (heap_mapsto_is_alloc with "Hmt") as %Haid.
   destruct o; try by destruct Ho.
-  - iModIntro. iDestruct (heap_mapsto_lookup_q (λ st, ∃ n, st = RSt n) with "Hhctx Hmt") as %Hat. naive_solver.
+  - iModIntro. iDestruct (heap_mapsto_lookup_q (λ st, ∃ n, st = RSt n) with "Hhctx Hmt") as %Hat. { naive_solver. }
     iSplit; first by eauto 11 using DerefS.
     iIntros (? e2 σ2 efs Hst ?) "!> Hcred Hc !>". inv_expr_step.
     iSplit => //. unfold end_st, end_expr.
@@ -1036,7 +912,7 @@ Proof.
   iIntros ([[h ub] fn]) "((%&Hhctx&Hactx)&Hfctx)/=".
   iDestruct (heap_mapsto_is_alloc with "Hmt") as %Haid.
   destruct o; try by destruct Ho.
-  - iModIntro. iDestruct (heap_mapsto_lookup_q (λ st, ∃ n, st = RSt n) with "Hhctx Hmt") as %Hat. naive_solver.
+  - iModIntro. iDestruct (heap_mapsto_lookup_q (λ st, ∃ n, st = RSt n) with "Hhctx Hmt") as %Hat. { naive_solver. }
     iSplit; first by eauto 11 using DerefS.
     iIntros (? e2 σ2 efs Hst ?) "!> Hcred !>". inv_expr_step.
     iSplit => //. unfold end_st, end_expr.
@@ -1314,7 +1190,7 @@ Proof.
     all: destruct l; simplify_eq/=.
     all: have ? := val_to_of_loc NULL_loc.
     all: unfold NULL in *; by simplify_eq.
-  - move => ->. by econstructor.
+  - move => ->. by econstructor; try apply val_to_of_loc.
 Qed.
 
 Lemma wp_cast_int_ptr_weak Φ v a E it:
@@ -1524,41 +1400,20 @@ Proof.
   - rewrite /int_half_modulus.
     move ? : (bits_per_int it - 1) => k.
     have Hb : ∀ n, -2^k ≤ n ≤ 2^k - 1 ↔ ∀ l, k ≤ l → Z.testbit n l = bool_decide (n < 0).
-    { move => ?. rewrite -Z_bounded_iff_bits; lia. }
+    { move => ?. rewrite -Z.bounded_iff_bits; lia. }
     move => /Hb Hn1 /Hb Hn2.
     apply Hb => l Hl.
     by rewrite Htestbit Hsign Hn1 ?Hn2.
   - rewrite /int_modulus.
     move ? : (bits_per_int it) => k.
     have Hb : ∀ n, 0 ≤ n → n ≤ 2^k - 1 ↔ ∀ l, k ≤ l → Z.testbit n l = bool_decide (n < 0).
-    { move => ??. rewrite bool_decide_false -?Z_bounded_iff_bits_nonneg; lia. }
+    { move => ??. rewrite bool_decide_false -?Z.bounded_iff_bits_nonneg; lia. }
     move => [Hn1 /Hb HN1] [Hn2 /Hb HN2].
     have Hn := Hnonneg Hn1 Hn2.
     split; first done.
     apply (Hb _ Hn) => l Hl.
     by rewrite Htestbit HN1 ?HN2.
 Qed.
-
-
-(* one possible semantics:
-  interpret as unsigned, then add, then wrap.
-Definition wrap_to_it (n : Z) (it : int_type) : Z :=
-
-
-Definition int_wrap_modulus (it : int_type) : Z :=
-  if it_signed it then int_half_modulus it else int_modulus it.
-
-Lemma int_arithop_wrap_in_range (it : int_type) n :
-  n ∈ it → n `mod` (int_wrap_modulus it) = n.
-Proof.
-  intros Hel. destruct it as [bs signed].
-  destruct signed; rewrite /int_wrap_modulus; simpl.
-  - admit.
-  - rewrite it_in_range_mod; done.
-    rewrite int_modulus_mod_in_range.
-  int_half_modulus
-  Search Z.modulo int_half_modulus.
-  *)
 
 Lemma int_arithop_result_in_range (it : int_type) (n1 n2 n : Z) op :
   n1 ∈ it → n2 ∈ it → int_arithop_result it n1 n2 op = Some n →
@@ -2031,7 +1886,6 @@ Lemma wp_concat_bind E Φ es:
   WP Concat es @ E {{ Φ }}.
 Proof. by iApply (wps_concat_bind_ind []). Qed.
 
-
 Lemma wp_struct_init'' `{!LayoutAlg} E Φ sl fs:
   foldr (λ '(n, ly) f, (λ vl,
      WP (default (Val (replicate (ly_size ly) MPoison)) (n' ← n; (list_to_map fs : gmap _ _) !! n'))
@@ -2109,58 +1963,6 @@ Proof.
     { rewrite /field_names omap_app !app_length/=. rewrite Nat.add_0_r. done. }
     { simpl. rewrite -app_assoc. done. }
     simpl. rewrite pad_struct_snoc_None; done.
-Qed.
-
-(* A slightly more usable version defined via a fixpoint *)
-Fixpoint struct_init_components `{!LayoutAlg} E (fields : list (var_name * syn_type)) (fs : list (string * expr)) (Φ : list val → iProp Σ) : iProp Σ :=
-  match fields with
-  | [] => Φ []
-  | (n, st) :: fields' =>
-      ∀ ly, ⌜syn_type_has_layout st ly⌝ -∗
-        WP (default (Val (replicate (ly_size ly) MPoison)) ((list_to_map fs : gmap _ _) !! n)) @ E {{ v, struct_init_components E fields' fs (λ vs, Φ (v :: vs)) }}
-  end.
-Instance struct_init_components_proper `{!LayoutAlg} E fields fs :
-  Proper (((=) ==> (≡)) ==> (≡)) (struct_init_components E fields fs).
-Proof.
-  intros a b Heq.
-  induction fields as [ | [ n st] fields IH] in a, b, Heq|-*; simpl.
-  { by iApply Heq. }
-  do 3 f_equiv.
-  apply wp_proper. intros ?. apply IH.
-  intros ? ? ->. apply Heq. done.
-Qed.
-Lemma wp_struct_init2 `{!LayoutAlg} E (Φ : val → iProp Σ) (sls : struct_layout_spec) (sl : struct_layout) (fs : list (string * expr)) :
-  use_struct_layout_alg sls = Some sl →
-  struct_init_components E sls.(sls_fields) fs (λ vl : list val, Φ (mjoin (M:=list)(pad_struct sl.(sl_members) vl (λ ly, (replicate (ly_size ly) MPoison))))) -∗
-  WP StructInit sls fs @ E {{ Φ }}.
-Proof.
-  iIntros (Halg) "Hinit".
-  iApply wp_struct_init; first done.
-  apply use_struct_layout_alg_inv in Halg as (mems & Halg & Hfields).
-  efeed pose proof struct_layout_alg_has_fields as Hmems; first apply Halg.
-  move: Hfields Hmems. clear Halg.
-  generalize (sls_fields sls) as fields => fields.
-  rewrite /sl_has_members.
-  generalize (sl_members sl) as all_mems => all_mems.
-  move => Hfields ?. clear sls. subst mems.
-
-  (* hack because rewrite doesn't work *)
-  iAssert (∀ vi Φ,
-    struct_init_components E fields fs (λ vl : list val, Φ (vi ++ vl)) -∗
-    foldr (λ '(n, st) (f : list val → iPropI Σ) (vl : list val), ∀ ly : layout, ⌜syn_type_has_layout st ly⌝ -∗ WP default (Val $ replicate (ly_size ly) ☠%V) (list_to_map (M:=gmap _ _) fs !! n) @ E {{ v, f (vl ++ [v]) }}) (λ vl : list val, Φ vl) fields vi)%I as "Ha".
-  {
-    iIntros (vi Ψ) "Ha". clear Hfields.
-    iInduction fields as [ | [n st] fields] "IH" forall (vi); simpl.
-    { rewrite app_nil_r. done. }
-    iIntros (ly) "%Hst". iPoseProof ("Ha" $! ly with "[//]") as "Ha".
-    iApply (wp_wand with "Ha").
-    iIntros (v) "Hinit".
-    iApply "IH".
-    iClear "IH".
-    iStopProof.
-    rewrite struct_init_components_proper; first eauto.
-    intros ?? ->. by rewrite -app_assoc. }
-  by iApply "Ha".
 Qed.
 
 Lemma wp_enum_init `{!LayoutAlg} E Φ (els : enum_layout_spec) el variant rsty e :
@@ -2297,14 +2099,14 @@ Lemma stmt_wp_unfold s E Q Ψ  :
 Proof. by rewrite stmt_wp_eq. Qed.
 
 Lemma fupd_wps s E Q Ψ :
-  (|={E}=> WPs s @ E {{ Q, Ψ }}) -∗ WPs s @ E{{ Q, Ψ }}.
+  (|={E}=> WPs s @ E {{ Q, Ψ }}) ⊢ WPs s @ E{{ Q, Ψ }}.
 Proof.
   rewrite stmt_wp_unfold. iIntros "Hs" (? rf HQ) "HΨ".
   iApply fupd_wp. by iApply "Hs".
 Qed.
 
 Lemma wps_fupd s E Q Ψ :
-  WPs s @ E {{ Q, (λ v, |={E}=> Ψ v)}} -∗ WPs s @ E {{ Q, Ψ }}.
+  WPs s @ E {{ Q, (λ v, |={E}=> Ψ v)}} ⊢ WPs s @ E {{ Q, Ψ }}.
 Proof.
   rewrite !stmt_wp_unfold. iIntros "Hs" (? rf HQ) "HΨ".
   iApply wp_fupd. iApply "Hs"; first done.
@@ -2328,11 +2130,6 @@ Proof.
   iApply "HΦ"; [ done | ..]. iIntros (v) "Hv".
   iApply "HΨ". iApply "H". iApply "Hv".
 Qed.
-
-(* TODO what is a good way to get a rule corresponding to [wp_logical_step]?
-  The problem is that we can't really bind on [WPs], so that we can't easily get it directly after the enext step.
-  Would have to build logical_step into all statement stepping rules?
- *)
 
 Lemma wp_call_credits vf vl f fn Φ n m :
   val_to_loc vf = Some f →
@@ -2370,7 +2167,7 @@ Proof.
   iDestruct ("HWP" $! lsa lsv with "[//] Hla [Hlv] Hcred Hc") as "Ha". {
     rewrite big_sepL2_fmap_r. iApply (big_sepL2_mono with "Hlv") => ??? ?? /=.
     iIntros "?". iExists _. iFrame. iPureIntro. split; first by apply replicate_length.
-    apply: Forall2_lookup_lr. 2: done. done. rewrite list_lookup_fmap. apply fmap_Some. naive_solver.
+    apply: Forall2_lookup_lr. 2: done. 1: done. rewrite list_lookup_fmap. apply fmap_Some. naive_solver.
   }
   iApply fupd_wp. iMod "Ha" as (Ψ') "(HQinit & HΨ')". iModIntro.
   rewrite stmt_wp_eq. iApply "HQinit" => //.
@@ -2432,7 +2229,7 @@ Proof.
   iDestruct ("HWP" $! lsa lsv with "[//] Hla [Hlv] Hcred") as (Ψ') "(HQinit & HΨ')". {
     rewrite big_sepL2_fmap_r. iApply (big_sepL2_mono with "Hlv") => ??? ?? /=.
     iIntros "?". iExists _. iFrame. iPureIntro. split; first by apply replicate_length.
-    apply: Forall2_lookup_lr. 2: done. done. rewrite list_lookup_fmap. apply fmap_Some. naive_solver.
+    apply: Forall2_lookup_lr. 2: done. 1: done. rewrite list_lookup_fmap. apply fmap_Some. naive_solver.
   }
   iFrame. rewrite stmt_wp_eq. iApply "HQinit" => //.
 
@@ -2557,7 +2354,7 @@ Proof.
     iDestruct (heap_mapsto_lookup_1 (λ st : lock_state, st = RSt 0%nat) with "Hhctx Hl") as %? => //.
     iSplit; first by eauto 12 using AssignS.
     iIntros (? e2 σ2 efs Hstep ?) "Hcred Hat !> !>". inv_stmt_step. unfold end_val.
-    iMod (heap_write with "Hhctx Hl") as "[$ Hl]" => //. congruence.
+    iMod (heap_write with "Hhctx Hl") as "[$ Hl]" => //; first congruence.
     iMod ("HWP" with "Hl Hat Hcred") as "HWP".
     iModIntro => /=. iSplit; first done. iFrame. iSplit; first done. by iApply "HWP".
   - iMod (heap_write_na _ _ _ vr with "Hhctx Hl") as (?) "[Hhctx Hc]" => //; first by congruence.
@@ -2595,7 +2392,7 @@ Proof.
     iDestruct (heap_mapsto_lookup_1 (λ st : lock_state, st = RSt 0%nat) with "Hhctx Hl") as %? => //.
     iSplit; first by eauto 12 using AssignS.
     iIntros (? e2 σ2 efs Hstep ?) "Hcred !> !>". inv_stmt_step. unfold end_val.
-    iMod (heap_write with "Hhctx Hl") as "[$ Hl]" => //. congruence.
+    iMod (heap_write with "Hhctx Hl") as "[$ Hl]" => //; first congruence.
     iMod ("HWP" with "Hl Hcred") as "HWP".
     iModIntro => /=. iSplit; first done. iFrame. iSplit; first done. by iApply "HWP".
   - iMod (heap_write_na _ _ _ vr with "Hhctx Hl") as (?) "[Hhctx Hc]" => //; first by congruence.
@@ -2725,7 +2522,7 @@ Proof.
   iIntros "!#" (b P HPs).
   iDestruct 1 as (s HQ) "#Hs".
   iIntros "!# HP".
-  iApply wps_goto. by apply: lookup_weaken.
+  iApply wps_goto; first by apply: lookup_weaken.
   iModIntro. by iApply "Hs".
 Qed.
 

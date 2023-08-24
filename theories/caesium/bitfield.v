@@ -1,4 +1,5 @@
-From lithium Require Import simpl_classes tactics_extend infrastructure Z_bitblast classes.
+From stdpp.unstable Require Import bitblast.
+From lithium Require Import simpl_classes definitions.
 From caesium Require Import base int_type builtins_specs.
 
 (* raw bit vector constructors *)
@@ -259,8 +260,8 @@ Qed.
 Create HintDb bitfield_rewrite discriminated.
 
 #[export] Hint Rewrite bf_land_nil : bitfield_rewrite.
-#[export] Hint Rewrite bf_land_mask_cons using can_solve_tac : bitfield_rewrite.
-#[export] Hint Rewrite bf_land_mask_flip using can_solve_tac : bitfield_rewrite.
+#[export] Hint Rewrite bf_land_mask_cons using can_solve : bitfield_rewrite.
+#[export] Hint Rewrite bf_land_mask_flip using can_solve : bitfield_rewrite.
 
 #[export] Hint Rewrite bf_lor_nil_l : bitfield_rewrite.
 #[export] Hint Rewrite bf_lor_nil_r : bitfield_rewrite.
@@ -273,11 +274,11 @@ Create HintDb bitfield_rewrite discriminated.
 #[export] Hint Rewrite bf_lor_mask_cons using lia : bitfield_rewrite.
 
 #[export] Hint Rewrite bf_slice_nil : bitfield_rewrite.
-#[export] Hint Rewrite bf_slice_cons using can_solve_tac : bitfield_rewrite.
+#[export] Hint Rewrite bf_slice_cons using can_solve : bitfield_rewrite.
 #[export] Hint Rewrite bf_slice_cons_ne using lia : bitfield_rewrite.
 
 #[export] Hint Rewrite bf_update_nil : bitfield_rewrite.
-#[export] Hint Rewrite bf_update_cons using can_solve_tac : bitfield_rewrite.
+#[export] Hint Rewrite bf_update_cons using can_solve : bitfield_rewrite.
 #[export] Hint Rewrite bf_update_cons_ne using lia : bitfield_rewrite.
 
 (* Tactic to normalize a bitfield *)
@@ -288,15 +289,15 @@ Ltac normalize_bitfield :=
 Definition normalize_bitfield {Σ} (bv : Z) (T : Z → iProp Σ) : iProp Σ := T bv.
 Global Typeclasses Opaque normalize_bitfield.
 
-Program Definition normalize_bitfield_hint {Σ} bv norm :
+Program Definition li_normalize_bitfield {Σ} bv norm :
   bv = norm →
-  TacticHint (normalize_bitfield (Σ:=Σ) bv) := λ H, {|
-    tactic_hint_P T := T norm;
+  LiTactic (normalize_bitfield (Σ:=Σ) bv) := λ H, {|
+    li_tactic_P T := T norm;
 |}.
 Next Obligation. move => ??? -> ?. unfold normalize_bitfield. iIntros "$". Qed.
 
-Global Hint Extern 10 (TacticHint (normalize_bitfield _)) =>
-  eapply normalize_bitfield_hint; normalize_bitfield : typeclass_instances.
+Global Hint Extern 10 (LiTactic (normalize_bitfield _)) =>
+  eapply li_normalize_bitfield; normalize_bitfield : typeclass_instances.
 
 (* enable using normalize_bitfield in function call specifications
 where one cannot use tactic_hint *)
@@ -359,7 +360,7 @@ Qed.
 (* Simplify data list eq *)
 
 Global Instance bf_cons_eq a k x1 l1 x2 l2 :
-  SimplAndUnsafe true (bf_cons a k x1 l1 = bf_cons a k x2 l2) (λ T, x1 = x2 ∧ l1 = l2 ∧ T).
+  SimplAndUnsafe (bf_cons a k x1 l1 = bf_cons a k x2 l2) (λ T, x1 = x2 ∧ l1 = l2 ∧ T).
 Proof.
   unfold CanSolve, SimplAndUnsafe in *.
   naive_solver.

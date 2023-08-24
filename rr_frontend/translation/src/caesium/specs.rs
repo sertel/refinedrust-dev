@@ -623,11 +623,11 @@ impl<'def> Type<'def> {
             Self::Int(_) => CoqType::Z,
             Self::Bool => CoqType::Bool,
             Self::MutRef(box ty, _) =>
-                CoqType::Prod(vec![CoqType::PlaceRfn(box (ty.get_rfn_type(env))), CoqType::Gname]),
+                CoqType::Prod(vec![CoqType::PlaceRfn(Box::new (ty.get_rfn_type(env))), CoqType::Gname]),
             Self::ShrRef(box ty, _) =>
-                CoqType::PlaceRfn(box (ty.get_rfn_type(env))),
+                CoqType::PlaceRfn(Box::new (ty.get_rfn_type(env))),
             Self::BoxType(box ty) =>
-                CoqType::PlaceRfn(box (ty.get_rfn_type(env))),
+                CoqType::PlaceRfn(Box::new (ty.get_rfn_type(env))),
             Self::Literal(_, _, t, _) => t.clone(),
             Self::Uninit(_) => CoqType::Unit,
             Self::Struct(su, _) =>
@@ -740,7 +740,6 @@ pub enum InvariantSpecFlags {
     Persistent,
     /// invariant with own sharing predicate,
     Plain,
-    // TODO not implemented
     NonAtomic,
     Atomic,
 }
@@ -1459,7 +1458,7 @@ impl<'def> AbstractStructUse<'def> {
             }
 
             // use_struct_layout_alg' ([my_spec] [params])
-            let specialized_spec = format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name().clone(), param_sts));
+            let specialized_spec = format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts));
             CoqAppTerm::new("use_struct_layout_alg'".to_string(), vec![specialized_spec]).to_string()
         }
         else {
@@ -1477,7 +1476,7 @@ impl<'def> AbstractStructUse<'def> {
             }
 
             // use_struct_layout_alg' ([my_spec] [params])
-            let specialized_spec = format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name().clone(), param_sts));
+            let specialized_spec = format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts));
             specialized_spec.to_string()
         }
         else {
@@ -1496,7 +1495,7 @@ impl<'def> AbstractStructUse<'def> {
             }
 
             // syn_type_of_sls ([my_spec] [params])
-            let specialized_spec = format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name().clone(), param_sts));
+            let specialized_spec = format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts));
             SynType::Literal(CoqAppTerm::new("syn_type_of_sls".to_string(), vec![specialized_spec]))
         }
         else {
@@ -1514,12 +1513,17 @@ impl<'def> AbstractStructUse<'def> {
             }
             let def = def.borrow();
             let def = def.as_ref().unwrap();
-            if raw == TypeIsRaw::No && let Some(ref inv) = def.invariant {
-                let term = CoqAppTerm::new(inv.type_name.clone(), param_tys);
-                term.to_string()
+            if raw == TypeIsRaw::No && def.invariant.is_some() {
+                if let Some(ref inv) = def.invariant {
+                    let term = CoqAppTerm::new(inv.type_name.clone(), param_tys);
+                    term.to_string()
+                }
+                else {
+                    unreachable!();
+                }
             }
             else {
-                let term = CoqAppTerm::new(def.plain_ty_name().clone(), param_tys);
+                let term = CoqAppTerm::new(def.plain_ty_name(), param_tys);
                 term.to_string()
             }
         }
@@ -1534,8 +1538,7 @@ impl<'def> AbstractStructUse<'def> {
 pub struct EnumSpec {
     /// the refinement type of the enum
     pub rfn_type: CoqType,
-    /// the refinement patterns for each of the variants: pattern for destructing an element of
-    /// `rfn_type`, and a term for constructing a term of the variant's refinement
+    /// the refinement patterns for each of the variants
     pub variant_patterns: Vec<(String, String)>,
 }
 
@@ -1643,11 +1646,8 @@ impl<'def> AbstractEnum<'def> {
 
             write!(out, "(\"{}\", {})", name, discr).unwrap();
         }
-        out.push_str("] _ _ _.\n");
-
+        out.push_str("] _.\n");
         write!(out, "{indent}Next Obligation. done. Qed.\n").unwrap();
-        write!(out, "{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n").unwrap();
-        write!(out, "{indent}Next Obligation. repeat first [econstructor | solve_goal]. Qed.\n").unwrap();
         write!(out, "Global Typeclasses Opaque {}.\n", self.els_def_name).unwrap();
 
         // finish

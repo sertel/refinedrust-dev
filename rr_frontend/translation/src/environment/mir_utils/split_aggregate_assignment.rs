@@ -4,7 +4,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use rustc_index::vec::Idx;
 use rustc_middle::mir;
 use rustc_middle::ty;
 
@@ -53,8 +52,7 @@ impl<'tcx> SplitAggregateAssignment<'tcx> for mir::Statement<'tcx> {
                 operands.into_iter().zip(items_ty.into_iter())
                     .enumerate()
                     .map(|(i, (rhs, ty))| {
-                        let field = mir::Field::new(i);
-                        let lhs = tcx.mk_place_field(local.into(), field, ty);
+                        let lhs = tcx.mk_place_field(local.into(), i.into(), ty);
                         let rhs = mir::Rvalue::Use(rhs);
                         (lhs, rhs)
                     })
@@ -63,7 +61,7 @@ impl<'tcx> SplitAggregateAssignment<'tcx> for mir::Statement<'tcx> {
             mir::Rvalue::Use(_) |
             mir::Rvalue::Ref(_, _, _) => vec![(lhs, rhs)],
             // slice creation is ok
-            mir::Rvalue::Cast(mir::CastKind::Pointer(ty::adjustment::PointerCast::Unsize), _, ty)
+            mir::Rvalue::Cast(mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize), _, ty)
                 if ty.is_slice() && !ty.is_unsafe_ptr() => vec![(lhs, rhs)],
             _ => unreachable!("Rvalue {:?} is not supported", rhs)
         };
@@ -71,7 +69,7 @@ impl<'tcx> SplitAggregateAssignment<'tcx> for mir::Statement<'tcx> {
         let source_info = self.source_info;
         atomic_assignments.into_iter()
             .map(|(lhs, rhs)| {
-                let kind = mir::StatementKind::Assign(box (lhs, rhs));
+                let kind = mir::StatementKind::Assign(Box::new ((lhs, rhs)));
                 mir::Statement { source_info, kind }
             })
             .collect()

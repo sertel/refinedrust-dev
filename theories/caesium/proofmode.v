@@ -8,7 +8,7 @@ Import uPred.
 
 Lemma tac_wps_bind `{refinedcG Σ} `{!LayoutAlg} e Ks Q Ψ E s:
   W.find_stmt_fill s = Some (Ks, e) →
-  WP (W.to_expr e) @ E {{ v, WPs W.to_stmt (W.stmt_fill Ks (W.Val v)) @ E {{ Q, Ψ }} }} -∗
+  WP (W.to_expr e) @ E {{ v, WPs W.to_stmt (W.stmt_fill Ks (W.Val v)) @ E {{ Q, Ψ }} }} ⊢
   WPs (W.to_stmt s) @ E {{ Q, Ψ }}.
 Proof.
   move => /W.find_stmt_fill_correct ->. iIntros "He".
@@ -30,7 +30,7 @@ Tactic Notation "wps_bind" :=
   end.
 
 Lemma tac_wp_bind' `{refinedcG Σ} `{!LayoutAlg} e Ks Φ E:
-  WP (W.to_expr e) @ E {{ v, WP (W.to_expr (W.fill Ks (W.Val v))) @ E{{ Φ }} }} -∗
+  WP (W.to_expr e) @ E {{ v, WP (W.to_expr (W.fill Ks (W.Val v))) @ E{{ Φ }} }} ⊢
   WP (W.to_expr (W.fill Ks e)) @ E {{ Φ }}.
 Proof.
   iIntros "HWP".
@@ -42,7 +42,7 @@ Qed.
 
 Lemma tac_wp_bind `{refinedcG Σ} `{!LayoutAlg} e Ks e' Φ E:
   W.find_expr_fill e false = Some (Ks, e') →
-  WP (W.to_expr e') @ E {{ v, if Ks is [] then Φ v else WP (W.to_expr (W.fill Ks (W.Val v))) @ E{{ Φ }} }} -∗
+  WP (W.to_expr e') @ E {{ v, if Ks is [] then Φ v else WP (W.to_expr (W.fill Ks (W.Val v))) @ E{{ Φ }} }} ⊢
   WP (W.to_expr e) @ E {{ Φ }}.
 Proof.
   move => /W.find_expr_fill_correct ->. move: Ks => [|K Ks] //.
@@ -58,4 +58,3 @@ Tactic Notation "wp_bind" :=
     unfold W.to_expr; simpl
   | _ => fail "wp_bind: not a 'wp'"
   end.
-

@@ -9,8 +9,8 @@ Set Default Proof Using "Type".
 Import uPred.
 
 Class timeGS Σ := TimeGS {
-  time_mono_nat_inG :> inG Σ mono_natR;
-  time_nat_inG :> inG Σ (authR natUR);
+  time_mono_nat_inG :: inG Σ mono_natR;
+  time_nat_inG :: inG Σ (authR natUR);
   time_global_name : gname;
   time_persistent_name : gname;
   time_additive_name : gname;
@@ -18,8 +18,8 @@ Class timeGS Σ := TimeGS {
 #[export] Hint Mode timeGS - : typeclass_instances.
 
 Class timeGpreS Σ := TimePreGS {
-  time_preG_mono_nat_inG :> inG Σ mono_natR;
-  time_preG_nat_inG :> inG Σ (authR natUR);
+  time_preG_mono_nat_inG :: inG Σ mono_natR;
+  time_preG_nat_inG :: inG Σ (authR natUR);
 }.
 #[export] Hint Mode timeGpreS - : typeclass_instances.
 
@@ -72,18 +72,19 @@ Section time.
 
   Lemma time_interp_step n :
     time_interp n ==∗ time_interp (S n).
-  Proof. eapply own_update, mono_nat_update. lia. Qed.
+  Proof. rewrite -own_update; first auto. eapply mono_nat_update. lia. Qed.
 
   Lemma persistent_time_receipt_mono n m :
     (n ≤ m)%nat → ptime m -∗ ptime n.
   Proof.
-    intros ?. unfold persistent_time_receipt. by apply own_mono, mono_nat_lb_mono.
+    intros ?. unfold persistent_time_receipt.
+    rewrite own_mono; first auto. by apply mono_nat_lb_mono.
   Qed.
   Lemma additive_time_receipt_mono n m :
     (n ≤ m)%nat → atime m -∗ atime n.
   Proof.
     intros ?. unfold additive_time_receipt.
-    by apply own_mono, auth_frag_mono, nat_included.
+    rewrite own_mono; first auto. by apply auth_frag_mono, nat_included.
   Qed.
 
   Lemma persistent_time_receipt_sep n m : ptime (n `max` m) ⊣⊢ ptime n ∗ ptime m.
@@ -91,12 +92,16 @@ Section time.
   Lemma additive_time_receipt_sep n m : atime (n + m) ⊣⊢ atime n ∗ atime m.
   Proof. by rewrite /additive_time_receipt -nat_op auth_frag_op own_op. Qed.
 
+  Global Instance persistent_time_receipt_combine_sep n m : CombineSepAs ptime n ptime m ptime (n `max` m).
+  Proof. rewrite /CombineSepAs. by rewrite persistent_time_receipt_sep. Qed.
   Global Instance persistent_time_receipt_from_sep n m : FromSep ptime (n `max` m) ptime n ptime m.
   Proof. rewrite /FromSep. by rewrite persistent_time_receipt_sep. Qed.
   Global Instance persistent_time_receipt_into_sep n m : IntoSep ptime (n `max` m) ptime n ptime m.
   Proof. rewrite /IntoSep. by rewrite persistent_time_receipt_sep. Qed.
   Global Instance additive_time_receipt_from_sep n m : FromSep atime (n + m) atime n atime m.
   Proof. rewrite /FromSep. by rewrite additive_time_receipt_sep. Qed.
+  Global Instance additive_time_receipt_combine_sep n m : CombineSepAs atime n atime m atime (n + m).
+  Proof. rewrite /CombineSepAs. by rewrite additive_time_receipt_sep. Qed.
   Global Instance additive_time_receipt_into_sep n m : IntoSep atime (n + m) atime n atime m.
   Proof. rewrite /IntoSep. by rewrite additive_time_receipt_sep. Qed.
 

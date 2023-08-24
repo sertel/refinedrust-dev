@@ -22,6 +22,8 @@ builddep-opamfiles: builddep/refinedrust-builddep.opam
 define BUILDDEP_OPAM_BODY
 opam-version: "2.0"
 name: "refinedrust-builddep"
+maintainer: "Lennard Gäher"
+author: "Lennard Gäher"
 synopsis: "---"
 description: """
 ---

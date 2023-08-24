@@ -14,8 +14,8 @@ use crate::{
     PointwiseState,
 };
 use rr_rustc_interface::{
-    borrowck::BodyWithBorrowckFacts,
-    data_structures::{fx::FxHashMap, fx::FxHashSet},
+    borrowck::consumers::BodyWithBorrowckFacts,
+    data_structures::fx::{FxHashMap, FxHashSet},
     middle::{mir, ty::TyCtxt},
     span::def_id::DefId,
 };
@@ -48,8 +48,8 @@ impl<'mir, 'tcx: 'mir> DefinitelyAccessibleAnalysis<'mir, 'tcx> {
         let borrowed_analysis = MaybeBorrowedAnalysis::new(self.tcx, self.body_with_facts);
         let def_init = def_init_analysis.run_fwd_analysis()?;
         let borrowed = borrowed_analysis.run_analysis()?;
-        let location_table = &self.body_with_facts.location_table;
-        let borrowck_out_facts = self.body_with_facts.output_facts.as_ref();
+        let location_table = self.body_with_facts.location_table.as_ref().unwrap();
+        let borrowck_out_facts = self.body_with_facts.output_facts.as_ref().unwrap().as_ref();
         let var_live_on_entry: FxHashMap<_, _> = borrowck_out_facts
             .var_live_on_entry
             .iter()
@@ -58,19 +58,19 @@ impl<'mir, 'tcx: 'mir> DefinitelyAccessibleAnalysis<'mir, 'tcx> {
         let empty_locals_set: FxHashSet<mir::Local> = FxHashSet::default();
         let mut analysis_state = PointwiseState::default(body);
 
-        for (block, block_data) in body.basic_blocks().iter_enumerated() {
+        for (block, block_data) in body.basic_blocks.iter_enumerated() {
             // Initialize the state before each statement
             for statement_index in 0..=block_data.statements.len() {
                 let location = mir::Location {
                     block,
                     statement_index,
                 };
-                let def_init_before = def_init.lookup_before(location).unwrap_or_else(|| {
-                    panic!("No 'def_init' state before location {:?}", location)
-                });
-                let borrowed_before = borrowed.lookup_before(location).unwrap_or_else(|| {
-                    panic!("No 'borrowed' state before location {:?}", location)
-                });
+                let def_init_before = def_init
+                    .lookup_before(location)
+                    .unwrap_or_else(|| panic!("No 'def_init' state before location {location:?}"));
+                let borrowed_before = borrowed
+                    .lookup_before(location)
+                    .unwrap_or_else(|| panic!("No 'borrowed' state before location {location:?}"));
                 let liveness_before = var_live_on_entry
                     .get(&location_table.start_index(location))
                     .unwrap_or(&empty_locals_set);
@@ -86,17 +86,17 @@ impl<'mir, 'tcx: 'mir> DefinitelyAccessibleAnalysis<'mir, 'tcx> {
             // Initialize the state of successors of terminators
             let def_init_after_block = def_init
                 .lookup_after_block(block)
-                .unwrap_or_else(|| panic!("No 'def_init' state after block {:?}", block));
+                .unwrap_or_else(|| panic!("No 'def_init' state after block {block:?}"));
             let borrowed_after_block = borrowed
                 .lookup_after_block(block)
-                .unwrap_or_else(|| panic!("No 'borrowed' state after block {:?}", block));
+                .unwrap_or_else(|| panic!("No 'borrowed' state after block {block:?}"));
             let available_after_block = analysis_state.lookup_mut_after_block(block);
             for successor in block_data.terminator().successors() {
                 let def_init_after = def_init_after_block.get(&successor).unwrap_or_else(|| {
-                    panic!("No 'def_init' state from {:?} to {:?}", block, successor)
+                    panic!("No 'def_init' state from {block:?} to {successor:?}")
                 });
                 let borrowed_after = borrowed_after_block.get(&successor).unwrap_or_else(|| {
-                    panic!("No 'borrowed' state from {:?} to {:?}", block, successor)
+                    panic!("No 'borrowed' state from {block:?} to {successor:?}")
                 });
                 let liveness_after = var_live_on_entry
                     .get(&location_table.start_index(successor.start_location()))

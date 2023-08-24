@@ -9,7 +9,7 @@ use log::info;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty as ty;
 use rustc_middle::ty::{Ty, IntTy, UintTy, TyKind};
-use rustc_middle::mir::Field;
+//use rustc_middle::mir::Field;
 use crate::rustc_middle::ty::TypeFoldable;
 
 use std::cell::RefCell;
@@ -142,7 +142,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
     /// Enter a procedure and add corresponding type parameters to the scope, as well as universal
     /// lifetimes with given names.
-    pub fn enter_procedure(&self, ty_params: &ty::subst::SubstsRef<'tcx>, univ_lfts: Vec<String>) -> Result<(), TranslationError> {
+    pub fn enter_procedure(&self, ty_params: &ty::GenericArgsRef<'tcx>, univ_lfts: Vec<String>) -> Result<(), TranslationError> {
         info!("Entering procedure with ty_params {:?} and univ_lfts {:?}", ty_params, univ_lfts);
 
         let mut v: Vec<Option<caesium::Type<'def>>> = Vec::new();
@@ -150,7 +150,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         let mut rfntypes = Vec::new();
         for gen_arg in ty_params.iter() {
             match gen_arg.unpack() {
-                ty::subst::GenericArgKind::Type(ty) => {
+                ty::GenericArgKind::Type(ty) => {
                     match ty.kind() {
                         TyKind::Param(p) => {
                             info!("ty param {} @ {}", p.name, p.index);
@@ -173,7 +173,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                         },
                     }
                 },
-                ty::subst::GenericArgKind::Lifetime(r) => {
+                ty::GenericArgKind::Lifetime(r) => {
                     match *r {
                         ty::RegionKind::ReLateBound(..)
                         | ty::RegionKind::ReEarlyBound(..) => {
@@ -188,7 +188,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                         },
                     }
                 },
-                ty::subst::GenericArgKind::Const(_c) => {
+                ty::GenericArgKind::Const(_c) => {
                     return Err(TranslationError::UnsupportedFeature{description:
                         "RefinedRust does not currently support const generics".to_string()});
                 },
@@ -532,7 +532,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         // first thing: figure out the generics we are using here.
         let mut folder = TyVarFolder::new(self.env.tcx());
         for f in ty.fields.iter() {
-            let f_ty = self.env.tcx().type_of(f.did);
+            let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
             f_ty.fold_with(&mut folder);
         }
         let mut used_generics: Vec<ty::ParamTy> = folder.get_result().into_iter().collect();
@@ -647,7 +647,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             let attrs = self.env.get_attributes(f.did);
             let attrs = crate::utils::filter_tool_attrs(attrs);
 
-            let f_ty = self.env.tcx().type_of(f.did);
+            let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
             let mut ty = self.translate_type(&f_ty)?;
             ty.subst(&ty_env);
 
@@ -702,7 +702,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             info!("Discriminant for {:?}: {:?}", v, v.discr);
             match v.discr {
                 ty::VariantDiscr::Explicit(did) => {
-                    let ty: ty::Ty<'tcx> = self.env.tcx().type_of(did);
+                    let ty: ty::EarlyBinder<ty::Ty<'tcx>> = self.env.tcx().type_of(did);
                     let did = did.expect_local();
                     let hir = self.env.tcx().hir();
                     let node = hir.get_by_def_id(did);
@@ -770,7 +770,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         let mut folder = TyVarFolder::new(self.env.tcx());
         for v in def.variants().iter() {
             for f in v.fields.iter() {
-                let f_ty = self.env.tcx().type_of(f.did);
+                let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
                 f_ty.fold_with(&mut folder);
             }
         }
@@ -795,7 +795,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         for v in def.variants().iter() {
             let mut folder = TyVarFolder::new(self.env.tcx());
             for f in v.fields.iter() {
-                let f_ty = self.env.tcx().type_of(f.did);
+                let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
                 f_ty.fold_with(&mut folder);
             }
             let variant_generics: HashSet<ty::ParamTy> = folder.get_result();
@@ -844,7 +844,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
         // get the type of the discriminant
         let it = def.repr().discr_type();
-        let translated_it = self.translate_int_type(it)?;
+        let translated_it = self.translate_integer_type(it)?;
 
         // build the discriminant map
         let discrs = self.build_discriminant_map(def)?;
@@ -935,9 +935,9 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
                 match mutability {
                     rustc_ast::ast::Mutability::Mut =>
-                        Ok(caesium::Type::MutRef(box translated_ty, lft)),
+                        Ok(caesium::Type::MutRef(Box::new(translated_ty), lft)),
                     _ =>
-                        Ok(caesium::Type::ShrRef(box translated_ty, lft)),
+                        Ok(caesium::Type::ShrRef(Box::new(translated_ty), lft)),
                 }
             },
             TyKind::Never => Ok(caesium::Type::Never),
@@ -948,7 +948,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                     assert!(substs.len() == 2);
                     let ty = substs[0].expect_ty();
                     let translated_ty = self.translate_type(&ty)?;
-                    Ok(caesium::Type::BoxType(box translated_ty))
+                    Ok(caesium::Type::BoxType(Box::new(translated_ty)))
                 }
                 else if let Some(true) = self.is_struct_definitely_zero_sized(adt.did()) {
                     // make this unit
@@ -997,10 +997,10 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                 "RefinedRust does currently not support generators".to_string()}),
             TyKind::GeneratorWitness(..) => Err(TranslationError::UnsupportedType {description:
                 "RefinedRust does currently not support generators".to_string()}),
-            TyKind::Projection(..) => Err(TranslationError::UnsupportedType {description:
-                "RefinedRust does currently not support associated types".to_string()}),
-            TyKind::Opaque(..) => Err(TranslationError::UnsupportedType {description:
-                "RefinedRust does currently not support returning impls".to_string()}),
+            //TyKind::Projection(..) => Err(TranslationError::UnsupportedType {description:
+                //"RefinedRust does currently not support associated types".to_string()}),
+            //TyKind::Opaque(..) => Err(TranslationError::UnsupportedType {description:
+                //"RefinedRust does currently not support returning impls".to_string()}),
             _ => Err(TranslationError::UnsupportedType {description: format!("Unknown unsupported type {}", ty)}),
         }
     }
@@ -1031,6 +1031,40 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         }
     }
 
+    /// Translate a rustc_attr::IntType (this is different from the rustc_ty IntType).
+    fn translate_integer_type(&self, it: rustc_abi::IntegerType) -> Result<caesium::IntType, TranslationError> {
+        match it {
+            rustc_abi::IntegerType::Fixed(size, sign) => {
+                if sign {
+                    Ok(match size {
+                       rustc_abi::Integer::I8 => caesium::IntType::I8,
+                       rustc_abi::Integer::I16 => caesium::IntType::I16,
+                       rustc_abi::Integer::I32 => caesium::IntType::I32,
+                       rustc_abi::Integer::I64 => caesium::IntType::I64,
+                       rustc_abi::Integer::I128 => caesium::IntType::I128,
+                    })
+                }
+                else {
+                    Ok(match size {
+                       rustc_abi::Integer::I8 => caesium::IntType::U8,
+                       rustc_abi::Integer::I16 => caesium::IntType::U16,
+                       rustc_abi::Integer::I32 => caesium::IntType::U32,
+                       rustc_abi::Integer::I64 => caesium::IntType::U64,
+                       rustc_abi::Integer::I128 => caesium::IntType::U128,
+                    })
+                }
+            },
+            rustc_abi::IntegerType::Pointer(sign) => {
+                if sign {
+                    Ok(caesium::IntType::ISize)
+                }
+                else {
+                    Ok(caesium::IntType::USize)
+                }
+            },
+        }
+    }
+
     /// Translate a MIR type to the Caesium syntactic type we need when storing an element of the type,
     /// substituting all generics.
     pub fn translate_type_to_syn_type(&self, ty: &Ty<'tcx>) -> Result<caesium::SynType, TranslationError> {
@@ -1055,20 +1089,20 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Get the name for a field of an ADT or tuple type
-    pub fn get_field_name_of(&self, f: &Field, ty: Ty<'tcx>, variant: Option<usize>) -> Result<String, TranslationError> {
+    pub fn get_field_name_of(&self, f: &rustc_target::abi::FieldIdx, ty: Ty<'tcx>, variant: Option<usize>) -> Result<String, TranslationError> {
         let tcx = self.env.tcx();
         match ty.kind() {
             TyKind::Adt(def, _) => {
                 info!("getting field name of {:?} at {} (variant {:?})", f, ty, variant);
                 if def.is_struct() {
                     let i = def.variants().get(rustc_target::abi::VariantIdx::from_usize(0)).unwrap();
-                    i.fields.get(f.as_usize()).map(|f| f.ident(tcx).to_string())
+                    i.fields.get(*f).map(|f| f.ident(tcx).to_string())
                         .ok_or(TranslationError::UnknownError(format!("could not get field {:?} of {}", f, ty)))
                 }
                 else if def.is_enum() {
                     let variant = variant.unwrap();
                     let i = def.variants().get(rustc_target::abi::VariantIdx::from_usize(variant)).unwrap();
-                    i.fields.get(f.as_usize()).map(|f| f.ident(tcx).to_string())
+                    i.fields.get(*f).map(|f| f.ident(tcx).to_string())
                         .ok_or(TranslationError::UnknownError(format!("could not get field {:?} of {}", f, ty)))
                 }
                 else {

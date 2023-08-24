@@ -214,7 +214,7 @@ Proof.
   destruct j; simpl in *.
   - destruct n', l; simplify_eq; destruct Ha; done.
   - destruct n'; simplify_eq; simpl.
-    + eapply IH; first done. done.
+    + eapply IH; [done.. | ].
       destruct Ha; first by left.
       right. rewrite field_idx_of_idx_cons_Some in H.
       destruct l; simpl in *; lia.
@@ -238,7 +238,7 @@ Lemma pad_struct_snoc_Some {A} s n ly ls (l : A) f :
   length (field_names s) = length ls →
   pad_struct (s ++ [(Some n, ly)]) (ls ++ [l]) f = pad_struct s ls f ++ [l].
 Proof.
-  elim: s ls => /=. by destruct ls.
+  elim: s ls => /=. 1: by destruct ls.
   move => -[n' ly'] s IH ls /=. case_match.
   - destruct ls => //= -[?]. f_equal. by apply IH.
   - move => ?. f_equal. by apply IH.
@@ -285,10 +285,10 @@ Qed.
 Lemma offset_of_from_in m s:
   Some m ∈ s.*1 → ∃ n, offset_of s m = Some n.
 Proof.
-  elim: s. set_solver.
+  elim: s. 1: set_solver.
   move => [??]? IH. rewrite offset_of_cons'. csimpl => ?.
   case_decide => //; [ naive_solver |].
-  have [|? ->]:= IH. by set_solver.
+  have [|? ->] := IH. 1: by set_solver.
   naive_solver.
 Qed.
 
@@ -322,20 +322,6 @@ Proof.
     + apply: has_layout_loc_trans => //. rewrite /ly_align_log. lia.
     + apply Hdiv. have ->: 0 = O by []. move => /Nat2Z.inj/Nat.pow_nonzero. lia.
   - rewrite shift_loc_assoc_nat. apply IH => //. apply: has_layout_loc_trans => //. rewrite /ly_align_log. lia.
-Qed.
-
-Lemma struct_layout_member_size_bound sl n :
-  ∀ on ly, (on, ly) ∈ sl_members sl → ly_size sl ≤ n → ly_size ly ≤ n.
-Proof.
-  intros on ly.
-  rewrite /layout_of{1}/ly_size/=.
-  generalize (sl_members sl) as mems.
-  induction mems as [ | [n2 ly2] mem IH].
-  { intros []%elem_of_nil. }
-  intros Ha%elem_of_cons. destruct Ha as [[= <- <-] | Hel].
-  - simpl. lia.
-  - simpl. intros Ha. apply IH; first done.
-    unfold fmap. lia.
 Qed.
 
 Definition GetMemberLoc (l : loc) (s : struct_layout) (m : var_name) : loc :=

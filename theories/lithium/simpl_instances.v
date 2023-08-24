@@ -1,4 +1,8 @@
-From lithium Require Import base simpl_classes infrastructure.
+From lithium Require Export base.
+From lithium Require Import simpl_classes pure_definitions.
+
+(** This file provides the instances for the simplification
+infrastructure for pure sideconditions. *)
 
 Local Open Scope Z_scope.
 
@@ -6,7 +10,7 @@ Local Open Scope Z_scope.
 (* Global Instance simpl_exist_impl A P : SimplImpl true (@ex A P) (λ T, ∀ x, P x → T). *)
 (* Proof. split; try naive_solver. intros ?[??]. eauto. Qed. *)
 Global Instance simpl_exist_and A P : SimplAnd (@ex A P) (λ T, ∃ x, P x ∧ T).
-Proof. split. naive_solver. intros [[??]?]. eauto. Qed.
+Proof. split; [naive_solver|]. intros [[??]?]. eauto. Qed.
 Global Instance simpl_and_and (P1 P2 : Prop):
   SimplAnd (P1 ∧ P2) (λ T, P1 ∧ P2 ∧ T).
 Proof. split; naive_solver. Qed.
@@ -325,23 +329,22 @@ it if f goes into type. Thus we use the AssumeInj typeclass such that
 the user can mark functions which are morally injective, but one
 cannot prove it. *)
 Global Instance simpl_fmap_fmap_subequiv_Unsafe {A B} (l1 l2 : list A) ig (f : A → B) `{!AssumeInj (=) (=) f}:
-  SimplAndUnsafe true (list_subequiv ig (f <$> l1) (f <$> l2)) (λ T, list_subequiv ig l1 l2 ∧ T).
+  SimplAndUnsafe (list_subequiv ig (f <$> l1) (f <$> l2)) (λ T, list_subequiv ig l1 l2 ∧ T).
 Proof. move => ? [Hs ?]. split => //. by apply: list_subequiv_fmap. Qed.
 
 (* The other direction might not hold if ig contains indices which are
 out of bounds, but we don't care about that. *)
 Global Instance simpl_subequiv_protected {A} (l1 l2 : list A) ig `{!IsProtected l2}:
-  SimplAndUnsafe true (list_subequiv ig l1 l2) (λ T,
+  SimplAndUnsafe (list_subequiv ig l1 l2) (λ T,
     foldr (λ i f, (λ l', ∃ x, f (<[i:=x]> l'))) (λ l', l2 = l' ∧ T) ig l1).
 Proof.
   (* TODO: add a lemma for list_subequiv such that this unfolding is not necessary anymore. *)
-  Local Transparent list_subequiv.
-  unfold list_subequiv, IsProtected in * => T. elim: ig l1 l2.
+  unfold_opaque @list_subequiv.
+  unfold IsProtected in * => T. elim: ig l1 l2.
   - move => ??/=. move => [??]. naive_solver.
   - move => i ig IH l1 l2/= [x /IH [Hi ?]]. split => // i'.
     move: (Hi i') => [<- Hlookup]. rewrite insert_length. split => //.
     move => Hi'. rewrite -Hlookup ?list_lookup_insert_ne; set_solver.
-  Local Opaque list_subequiv.
 Qed.
 
 Global Instance simpl_fmap_nil {A B} (l : list A) (f : A → B) : SimplBothRel (=) (f <$> l) [] (l = []).
@@ -363,7 +366,7 @@ Proof.
     by rewrite fmap_length take_app drop_app.
 Qed.
 Global Instance simpl_fmap_assume_inj_Unsafe {A B} (l1 l2 : list A) (f : A → B) `{!AssumeInj (=) (=) f}:
-  SimplAndUnsafe true (f <$> l1 = f <$> l2) (λ T, l1 = l2 ∧ T).
+  SimplAndUnsafe (f <$> l1 = f <$> l2) (λ T, l1 = l2 ∧ T).
 Proof. move => T [-> ?]. naive_solver. Qed.
 
 Global Instance simpl_replicate_app_and {A} (l1 l2 : list A) x n:
@@ -371,10 +374,10 @@ Global Instance simpl_replicate_app_and {A} (l1 l2 : list A) x n:
 Proof.
   unfold shelve_hint. split.
   - move => [n'[?[?[??]]]]; subst. split => //.
-    have ->: (n = n' + (n - n'))%nat by lia. rewrite replicate_plus. do 2 f_equal. lia.
+    have ->: (n = n' + (n - n'))%nat by lia. rewrite replicate_add. do 2 f_equal. lia.
   - move => [Hr ?].
     have Hn: (n = length l1 + length l2)%nat by rewrite -(replicate_length n x) -app_length Hr.
-    move: Hr. rewrite Hn replicate_plus => /app_inj_1[|<- <-]. by rewrite replicate_length.
+    move: Hr. rewrite Hn replicate_add => /app_inj_1[|<- <-]. 1: by rewrite replicate_length.
     exists (length l1). repeat split => //.
     + rewrite !replicate_length. lia.
     + rewrite !replicate_length. f_equal. lia.
@@ -491,21 +494,6 @@ Global Instance simpl_and_lookup_lookup_total {A} (l : list A) (i : nat) `{Inhab
   SimplBothRel (=) (l !! i) (Some (l !!! i)) (i < length l).
 Proof. rewrite /SimplBothRel list_lookup_alt. naive_solver lia. Qed.
 
-(* TODO: these instances seem broken, typeclass search diverges when it should find them... *)
-Global Instance simpl_lookup_insert_map_eq `{Countable K} `{EqDecision K} {V} (m : gmap K V) i j x x' `{!CanSolve (i = j)} :
-  SimplBothRel (=) (<[i := x']> m !! j) (Some x) (x = x').
-Proof.
-  unfold SimplBothRel, CanSolve in *; subst.
-  rewrite lookup_insert. naive_solver.
-Qed.
-
-Global Instance simpl_lookup_insert_map_neq `{Countable K} `{EqDecision K} {V} (m : gmap K V) i j x x' `{!CanSolve (i ≠ j)} :
-  SimplBothRel (=) (<[i := x']> m !! j) (Some x) (m !! j = Some x).
-Proof.
-  unfold SimplBothRel, CanSolve in *; subst.
-  rewrite lookup_insert_ne; naive_solver.
-Qed.
-
 Global Instance simpl_learn_insert_some_len_impl {A} l i (x : A) :
   (* The false is important here as we learn additional information,
   but don't want to get stuck in an endless loop. *)
@@ -541,12 +529,12 @@ Proof. unfold SimplBothRel. by rewrite lookup_rotate_r_Some. Qed.
   But one should not use rotate nat in this case.
    TODO: use CanSolve when it is able to prove base < len for slot_for_key_ref key len *)
 Global Instance simpl_rotate_nat_add_0_Unsafe base offset len:
-  SimplAndUnsafe true (base = rotate_nat_add base offset len) (λ T, (base < len)%nat ∧ offset = 0%nat ∧ T).
+  SimplAndUnsafe (base = rotate_nat_add base offset len) (λ T, (base < len)%nat ∧ offset = 0%nat ∧ T).
 Proof. move => T [? [-> ?]]. rewrite rotate_nat_add_0 //. Qed.
 
 Global Instance simpl_rotate_nat_add_next_Unsafe (base offset1 offset2 len : nat) `{!CanSolve (0 < len)%nat}:
-  SimplAndUnsafe true ((rotate_nat_add base offset1 len + 1) `rem` len = rotate_nat_add base offset2 len) (λ T, offset2 = S offset1 ∧ T).
+  SimplAndUnsafe ((rotate_nat_add base offset1 len + 1) `rem` len = rotate_nat_add base offset2 len) (λ T, offset2 = S offset1 ∧ T).
 Proof.
-  unfold CanSolve in * => ? -[-> ?]. split => //. rewrite rotate_nat_add_S // Nat2Z_inj_mod.
+  unfold CanSolve in * => ? -[-> ?]. split => //. rewrite rotate_nat_add_S // Nat2Z.inj_mod.
   rewrite Z.rem_mod_nonneg //=; lia.
 Qed.

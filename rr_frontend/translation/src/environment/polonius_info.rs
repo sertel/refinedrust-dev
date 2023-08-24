@@ -16,7 +16,7 @@ use log::trace;
 use polonius_engine::Algorithm;
 use polonius_engine::Output;
 use rustc_data_structures::fx::FxHashMap;
-use rustc_index::vec::Idx;
+use rustc_index::Idx;
 use rustc_middle::mir;
 use rustc_middle::ty;
 use rustc_span::def_id::DefId;
@@ -381,7 +381,7 @@ fn get_borrowed_places<'a, 'tcx: 'a>(
                         .collect())
                 }
                 // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
-                &mir::Rvalue::Cast(mir::CastKind::Pointer(ty::adjustment::PointerCast::Unsize), ref operand, ref ty) if ty.is_slice() && !ty.is_unsafe_ptr() => {
+                &mir::Rvalue::Cast(mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize), ref operand, ref ty) if ty.is_slice() && !ty.is_unsafe_ptr() => {
                     trace!("slice: operand={:?}, ty={:?}", operand, ty);
                     Ok(match operand {
                         mir::Operand::Copy(ref place) |
@@ -493,7 +493,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
 
         let output = Output::compute(&all_facts, Algorithm::Naive, true);
         let all_facts_without_back_edges = remove_back_edges(
-            all_facts.clone(),
+            *all_facts.clone(),
             &interner,
             &loop_info.back_edges,
         );
@@ -531,7 +531,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         let info = Self {
             tcx,
             mir,
-            borrowck_in_facts: all_facts,
+            borrowck_in_facts: *all_facts,
             borrowck_out_facts: output,
             interner,
             loan_position,

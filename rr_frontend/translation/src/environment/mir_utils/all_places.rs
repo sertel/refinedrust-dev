@@ -4,7 +4,6 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use rustc_index::vec::Idx;
 use rustc_middle::mir;
 use rustc_middle::ty;
 
@@ -21,8 +20,7 @@ impl<'tcx> AllPlaces<'tcx> for mir::Local {
         let ty = mir.local_decls[self].ty;
         if let ty::TyKind::Tuple(types) = ty.kind() {
             for (i, ty) in types.iter().enumerate() {
-                let field = mir::Field::new(i);
-                let place = tcx.mk_place_field(self.into(), field, ty);
+                let place = tcx.mk_place_field(self.into(), i.into(), ty);
                 places.push(place);
             }
         }

@@ -9,7 +9,7 @@ use log::{info};
 use rustc_ast::ast::Attribute;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty as ty;
-use rustc_middle::ty::{Ty, TyKind, ConstKind, subst::Subst};
+use rustc_middle::ty::{Ty, TyKind, ConstKind};
 use rustc_middle::mir;
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::tcx::PlaceTy;
@@ -149,7 +149,7 @@ pub struct BodyTranslator<'a, 'def, 'tcx> {
     /// and rewrite accesses to the first component to directly use the place,
     /// while rewriting accesses to the second component to true.
     /// TODO: once we handle panics properly, we should use a different translation.
-    /// NOTE: we only rewrite uses of these temporaries, as these are the only places the temporaries are relevant.
+    /// NOTE: we only rewrite for uses, as these are the only places these are used.
     checked_op_temporaries: HashMap<Local, Ty<'tcx>>,
 }
 
@@ -197,6 +197,9 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 VarDebugInfoContents::Const(_) => {
                     // is this case used when constant propagation happens during MIR construction?
                 },
+                VarDebugInfoContents::Composite { ty: _, fragments: _ } => {
+                    // Not sure
+                },
             }
         }
 
@@ -204,22 +207,22 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Generate a key for generics to index into our map of other required procedures.
-    fn generate_procedure_inst_key(&self, ty_params: ty::subst::SubstsRef<'tcx>) -> Result<FnGenericKey<'tcx>, TranslationError> {
+    fn generate_procedure_inst_key(&self, ty_params: ty::GenericArgsRef<'tcx>) -> Result<FnGenericKey<'tcx>, TranslationError> {
         // erase parameters to their syntactic types
         let mut key = Vec::new();
         let mut region_eraser = TyRegionEraseFolder::new(self.env.tcx());
         for p in ty_params.iter() {
             match p.unpack() {
-                ty::subst::GenericArgKind::Lifetime(_) => {
+                ty::GenericArgKind::Lifetime(_) => {
                     // lifetimes are not relevant here
                 },
-                ty::subst::GenericArgKind::Type(t) => {
+                ty::GenericArgKind::Type(t) => {
                     // TODO: this should erase to the syntactic type.
                     // Is erasing regions enough for that?
                     let t_erased = t.fold_with(&mut region_eraser);
                     key.push(t_erased);
                 },
-                ty::subst::GenericArgKind::Const(_c) => {
+                ty::GenericArgKind::Const(_c) => {
                     return Err(TranslationError::UnsupportedFeature{description:
                         "RefinedRust does not support const generics".to_string()})
                 },
@@ -229,7 +232,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Internally register that we have used a procedure with a particular instantiation of generics, and return the code parameter name.
-    fn register_use_procedure(&mut self, did: &DefId, ty_params: ty::subst::SubstsRef<'tcx>) -> Result<String, TranslationError> {
+    fn register_use_procedure(&mut self, did: &DefId, ty_params: ty::GenericArgsRef<'tcx>) -> Result<String, TranslationError> {
         let key = self.generate_procedure_inst_key(ty_params)?;
 
         let tup = (*did, key);
@@ -259,7 +262,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             let mangled_name = strip_coq_ident(&mangled_name);
 
             // also gather all the layouts of the arguments.
-            let full_ty: Ty<'tcx> = self.env.tcx().type_of(*did);
+            let full_ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(*did);
+            let full_ty: Ty<'tcx> = full_ty.instantiate_identity();
             let sig = full_ty.fn_sig(self.env.tcx());
 
             let inputs = sig.inputs().skip_binder();
@@ -267,8 +271,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             //info!("substs: {:?}, inputs {:?} ", ty_params, inputs);
             for i in inputs.iter() {
                 // need to wrap it, because there's no Subst instance for Ty
-                let i = ty::EarlyBinder(*i);
-                let ty = i.subst(self.env.tcx(), ty_params);
+                let i = ty::EarlyBinder::bind(*i);
+                let ty = i.instantiate(self.env.tcx(), ty_params);
                 let t = self.ty_translator.translate_type_to_syn_type(&ty)?;
                 syntypes.push(t);
             }
@@ -282,7 +286,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
     pub fn dump_body(body: &Body) {
         // TODO: print to file
-        let basic_blocks = body.basic_blocks();
+        let basic_blocks = &body.basic_blocks;
         for (bb_idx, bb) in basic_blocks.iter_enumerated() {
             Self::dump_basic_block(&bb_idx, bb);
         };
@@ -301,7 +305,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         // dump debug info
         Self::dump_body(body);
 
-        let ty: Ty<'tcx> = env.tcx().type_of(proc.get_id());
+        let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
+        let ty = ty.instantiate_identity();
         let (sig, substs) = match ty.kind() {
             TyKind::FnDef(_def, args) => {
                 assert!(ty.is_fn());
@@ -328,15 +333,15 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 // we create a substitution that replaces early bound regions with their Polonius
                 // region variables
-                let mut subst_early_bounds: Vec<ty::subst::GenericArg<'tcx>> = Vec::new();
+                let mut subst_early_bounds: Vec<ty::GenericArg<'tcx>> = Vec::new();
                 let mut num_early_bounds = 0;
                 for a in substs.iter() {
                     match a.unpack() {
-                        ty::subst::GenericArgKind::Lifetime(r) => {
+                        ty::GenericArgKind::Lifetime(r) => {
                             // skip over 0 = static
-                            let revar = env.tcx().mk_region(ty::RegionKind::ReVar(ty::RegionVid::from_u32(num_early_bounds + 1)));
+                            let revar = ty::Region::new_var(env.tcx(), ty::RegionVid::from_u32(num_early_bounds + 1));
                             num_early_bounds += 1;
-                            subst_early_bounds.push(ty::subst::GenericArg::from(revar));
+                            subst_early_bounds.push(ty::GenericArg::from(revar));
 
                             match *r {
                                 ty::RegionKind::ReEarlyBound(r) => {
@@ -355,7 +360,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                         },
                     }
                 }
-                let subst_early_bounds = env.tcx().mk_substs(subst_early_bounds.iter());
+                let subst_early_bounds = env.tcx().mk_args(&subst_early_bounds);
 
                 // add names for late bound region variables
                 let mut num_late_bounds = 0;
@@ -387,15 +392,15 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     |_| {
                         let cur_index = next_index;
                         next_index += 1;
-                        env.tcx().mk_region(ty::RegionKind::ReVar(ty::RegionVid::from_u32(cur_index)))
+                        ty::Region::new_var(env.tcx(),ty::RegionVid::from_u32(cur_index))
                     };
                 let (late_sig, _late_region_map) = env.tcx().replace_late_bound_regions(sig, &mut folder);
 
                 let inputs: Vec<_> = late_sig.inputs().iter().map(|ty| {
-                    let wrapped_ty = ty::EarlyBinder(*ty);
-                    wrapped_ty.subst(env.tcx(), subst_early_bounds) }).collect();
-                let output = ty::EarlyBinder(late_sig.output());
-                let output = output.subst(env.tcx(), subst_early_bounds);
+                    let wrapped_ty = ty::EarlyBinder::bind(*ty);
+                    wrapped_ty.instantiate(env.tcx(), subst_early_bounds) }).collect();
+                let output = ty::EarlyBinder::bind(late_sig.output());
+                let output = output.instantiate(env.tcx(), subst_early_bounds);
 
                 info!("Have lifetime parameters: {:?} {:?}", universal_lifetimes, user_lifetime_names);
 
@@ -473,7 +478,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                     match kind {
                         LocalKind::Arg => translated_fn.code.add_argument(&name, st),
-                        LocalKind::Var => translated_fn.code.add_local(&name, st),
+                        //LocalKind::Var => translated_fn.code.add_local(&name, st),
                         LocalKind::Temp => translated_fn.code.add_local(&name, st),
                         LocalKind::ReturnPointer => {
                             return_synty = st.clone();
@@ -697,7 +702,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
 
         // translate the function's basic blocks
-        let basic_blocks = self.proc.get_mir().basic_blocks();
+        let basic_blocks = &self.proc.get_mir().basic_blocks;
 
         // first translate the initial basic block; we add some additional annotations to the front
         let initial_bb_idx = BasicBlock::from_u32(0);
@@ -950,14 +955,14 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
     /// Split the type of a function operand of a call expression to a base type and an instantiation for
     /// generics.
-    fn call_expr_op_split_inst(&self, op: &Operand<'tcx>) -> Result<(DefId, ty::PolyFnSig<'tcx>, ty::subst::SubstsRef<'tcx>), TranslationError> {
+    fn call_expr_op_split_inst(&self, op: &Operand<'tcx>) -> Result<(DefId, ty::PolyFnSig<'tcx>, ty::GenericArgsRef<'tcx>), TranslationError> {
         match op {
             Operand::Constant(box Constant {literal, ..}) => {
                 match literal {
                     ConstantKind::Ty(c) => {
                         match c.ty().kind() {
                             TyKind::FnDef(def, args) => {
-                                let ty: Ty<'tcx> = self.env.tcx().type_of(def);
+                                let ty: Ty<'tcx> = self.env.tcx().type_of(def).instantiate_identity();
                                 assert!(ty.is_fn());
                                 let sig = ty.fn_sig(self.env.tcx());
                                 //let inputs = sig.inputs().skip_binder();
@@ -971,7 +976,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     ConstantKind::Val(_, ty) => {
                         match ty.kind() {
                             TyKind::FnDef(def, args) => {
-                                let ty: Ty<'tcx> = self.env.tcx().type_of(def);
+                                let ty: Ty<'tcx> = self.env.tcx().type_of(def).instantiate_identity();
                                 assert!(ty.is_fn());
                                 let sig = ty.fn_sig(self.env.tcx());
                                 //let inputs = sig.inputs().skip_binder();
@@ -981,7 +986,9 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                             // TODO handle FnPtr
                             _ => Err(TranslationError::Unimplemented{description: "implement function pointers".to_string()}),
                         }
-                        //panic!("should not be reachable: calling literal {:?}", ty)
+                    },
+                    ConstantKind::Unevaluated(_, _) => {
+                        Err(TranslationError::Unimplemented{description: "implement ConstantKind::Unevaluated".to_string()})
                     }
                 }
             },
@@ -992,7 +999,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Find the optional DefId of the closure giving the invariant for the loop with head `head_bb`.
     fn find_loop_spec_closure(&self, head_bb: BasicBlock) -> Result<Option<DefId>, TranslationError> {
         let bodies = self.proc.loop_info().ordered_loop_bodies.get(&head_bb).unwrap();
-        let basic_blocks = self.proc.get_mir().basic_blocks();
+        let basic_blocks = &self.proc.get_mir().basic_blocks;
 
         // we go in order through the bodies in order to not stumble upon an annotation for a
         // nested loop!
@@ -1084,6 +1091,12 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         let mut res_stmt;
         match term.kind {
+            TerminatorKind::UnwindResume => {
+                return Err(TranslationError::Unimplemented { description: "implement UnwindResume".to_string() })
+            },
+            TerminatorKind::UnwindTerminate => {
+                return Err(TranslationError::Unimplemented { description: "implement UnwindTerminate".to_string() })
+            },
             TerminatorKind::Goto {ref target} => {
                 res_stmt = self.translate_goto_like(&loc, target)?;
             },
@@ -1122,7 +1135,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 info!("call substs: {:?} = {:?}, {:?}", func, sig, substs);
                 for a in substs.iter() {
                     match a.unpack() {
-                        ty::subst::GenericArgKind::Lifetime(r) => {
+                        ty::GenericArgKind::Lifetime(r) => {
                             match r.kind() {
                                 ty::RegionKind::ReVar(r) => early_regions.push(r),
                                 _ => (),
@@ -1176,17 +1189,17 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                         // we just hand out the late bound regions in sequence
                         let v = late_regions.get(next_index).unwrap();
                         next_index += 1;
-                        self.env.tcx().mk_region(ty::RegionKind::ReVar(*v))
+                        ty::Region::new_var(self.env.tcx(), *v)
                     };
                 let (late_sig, late_region_map) = self.env.tcx().replace_late_bound_regions(sig, &mut folder);
                 info!("recovered late map: {:?}, sig: {}", late_region_map, late_sig);
 
                 // fully substitute the types (late parameters are already substituted, now subst early parameters)
                 let subst_inputs: Vec<Ty<'tcx>> = late_sig.inputs().iter().map(|ty| {
-                    let wrapped_ty = ty::EarlyBinder(*ty);
-                    wrapped_ty.subst(self.env.tcx(), substs) }).collect();
-                let output = ty::EarlyBinder(late_sig.output());
-                let _subst_output = output.subst(self.env.tcx(), substs);
+                    let wrapped_ty = ty::EarlyBinder::bind(*ty);
+                    wrapped_ty.instantiate(self.env.tcx(), substs) }).collect();
+                let output = ty::EarlyBinder::bind(late_sig.output());
+                let _subst_output = output.instantiate(self.env.tcx(), substs);
 
 
                 // solve the constraints for the new_regions
@@ -1375,14 +1388,15 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // TODO is this right?
                 res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
             },
-            TerminatorKind::Abort => {
-                res_stmt = caesium::Stmt::Stuck;
-                res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
-            },
-            TerminatorKind::SwitchInt{ref discr, switch_ty, ref targets} => {
+            //TerminatorKind::Abort => {
+                //res_stmt = caesium::Stmt::Stuck;
+                //res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
+            //},
+            TerminatorKind::SwitchInt{ref discr, ref targets} => {
                 let operand = self.translate_operand(discr, true)?;
                 let all_targets: &[BasicBlock] = targets.all_targets();
 
+                let switch_ty = self.get_type_of_operand(discr)?;
                 if switch_ty.is_bool() {
                     // we currently special-case this as Caesium has a built-in if and this is more
                     // convenient to handle for the type-checker
@@ -1454,10 +1468,6 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 //res_stmt = caesium::Stmt::ExprS { e: drope, s: Box::new(res_stmt)};
             },
-            TerminatorKind::DropAndReplace{ .. } => {
-                // TODO: we really should support this.
-                return Err(TranslationError::UnsupportedFeature{description: "DropAndReplace terminators are currently not supported".to_string()})
-            },
             TerminatorKind::FalseEdge { real_target, .. } => {
                 // just a goto for our purposes
                 res_stmt = self.translate_goto_like(&loc, &real_target)?;
@@ -1470,9 +1480,6 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 return Err(TranslationError::UnsupportedFeature{description: format!("Unsupported terminator {:?}", term)})
             },
             TerminatorKind::Yield { .. } => {
-                return Err(TranslationError::UnsupportedFeature{description: format!("Unsupported terminator {:?}", term)})
-            },
-            TerminatorKind::Resume => {
                 return Err(TranslationError::UnsupportedFeature{description: format!("Unsupported terminator {:?}", term)})
             },
             TerminatorKind::Unreachable => {
@@ -1513,7 +1520,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         else {
             // check for gotos that go to this basic block
             let pred_bbs = self.proc.predecessors(loc.block);
-            let basic_blocks = self.proc.get_mir().basic_blocks();
+            let basic_blocks = &self.proc.get_mir().basic_blocks;
             pred_bbs.iter().map(|bb| {
                 let data = &basic_blocks[*bb];
                 Location {block: *bb, statement_index: data.statements.len()}
@@ -1814,9 +1821,14 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 StatementKind::SetDiscriminant { place: _place, variant_index: _variant_index } =>
                     // TODO
                     return Err(TranslationError::UnsupportedFeature{description: "TODO: implement SetDiscriminant".to_string()}),
-                StatementKind::CopyNonOverlapping(_) =>
-                    // TODO: should handle that with a shim
-                    return Err(TranslationError::UnsupportedFeature{description: "TODO: implement CopyNonOverlapping".to_string()}),
+                StatementKind::PlaceMention(_place) =>
+                    // TODO: this is missed UB
+                    return Err(TranslationError::UnsupportedFeature{description: "TODO: implement PlaceMention".to_string()}),
+                StatementKind::Intrinsic(_intrinsic) =>
+                    return Err(TranslationError::UnsupportedFeature{description: "TODO: implement Intrinsic".to_string()}),
+                StatementKind::ConstEvalCounter =>
+                    // no-op
+                    (),
                 StatementKind::StorageLive(_) =>
                     // just ignore
                     (),
@@ -1852,9 +1864,6 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // TODO: figure out what to do with this
                 // arises in match lowering
                 Err(TranslationError::UnsupportedFeature { description: "Do not support Shallow borrows currently".to_string() }),
-            BorrowKind::Unique =>
-                // only used in implicit closure bindings
-                Err(TranslationError::UnsupportedFeature { description: "Do not support Unique borrows currently".to_string() }),
             BorrowKind::Mut{..} => {
                 // TODO: handle two-phase borrows?
                 Ok(caesium::BorKind::Mutable)
@@ -1885,6 +1894,11 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Caesium layout annotation.
     fn translate_binop(&self, op: BinOp, e1: &Operand<'tcx>, _e2: &Operand<'tcx>) -> Result<caesium::Binop, TranslationError> {
         match op {
+            BinOp::AddUnchecked => Ok(caesium::Binop::AddOp),
+            BinOp::SubUnchecked => Ok(caesium::Binop::SubOp),
+            BinOp::MulUnchecked => Ok(caesium::Binop::MulOp),
+            BinOp::ShlUnchecked => Ok(caesium::Binop::ShlOp),
+            BinOp::ShrUnchecked => Ok(caesium::Binop::ShrOp),
             BinOp::Add => Ok(caesium::Binop::AddOp),
             BinOp::Sub => Ok(caesium::Binop::SubOp),
             BinOp::Mul => Ok(caesium::Binop::MulOp),
@@ -2158,30 +2172,46 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     mir::CastKind::PointerFromExposedAddress => {
                         Err(TranslationError::UnsupportedFeature{description: format!("unsupported rvalue: {:?}", rval).to_string()})
                     },
-                    mir::CastKind::Pointer(x) => {
+                    mir::CastKind::PointerCoercion(x) => {
                         match x {
-                            ty::adjustment::PointerCast::MutToConstPointer => {
+                            ty::adjustment::PointerCoercion::MutToConstPointer => {
                                 // this is a NOP in our model
                                 Ok(translated_op)
                             },
-                            ty::adjustment::PointerCast::ArrayToPointer => {
+                            ty::adjustment::PointerCoercion::ArrayToPointer => {
                                 Err(TranslationError::UnsupportedFeature{description: format!("unsupported rvalue: {:?}", rval).to_string()})
                             },
-                            ty::adjustment::PointerCast::ClosureFnPointer(_) => {
+                            ty::adjustment::PointerCoercion::ClosureFnPointer(_) => {
                                 Err(TranslationError::UnsupportedFeature{description: format!("unsupported rvalue: {:?}", rval).to_string()})
                             },
-                            ty::adjustment::PointerCast::ReifyFnPointer => {
+                            ty::adjustment::PointerCoercion::ReifyFnPointer => {
                                 Err(TranslationError::UnsupportedFeature{description: format!("unsupported rvalue: {:?}", rval).to_string()})
                             },
-                            ty::adjustment::PointerCast::UnsafeFnPointer => {
+                            ty::adjustment::PointerCoercion::UnsafeFnPointer => {
                                 Err(TranslationError::UnsupportedFeature{description: format!("unsupported rvalue: {:?}", rval).to_string()})
                             },
-                            ty::adjustment::PointerCast::Unsize => {
+                            ty::adjustment::PointerCoercion::Unsize => {
                                 Err(TranslationError::UnsupportedFeature{description: format!("unsupported rvalue: {:?}", rval).to_string()})
                             },
                         }
                     },
-                    mir::CastKind::Misc => {
+                    mir::CastKind::DynStar => {
+                        Err(TranslationError::UnsupportedFeature{description: format!("unsupported dyn* cast").to_string()})
+                    }
+                    mir::CastKind::IntToInt => {
+                        // TODO
+                        Err(TranslationError::Unimplemented {description: format!("unsupported int-to-int cast").to_string()})
+                    },
+                    mir::CastKind::IntToFloat => {
+                        Err(TranslationError::UnsupportedFeature{description: format!("unsupported int-to-float cast").to_string()})
+                    },
+                    mir::CastKind::FloatToInt => {
+                        Err(TranslationError::UnsupportedFeature{description: format!("unsupported float-to-int cast").to_string()})
+                    },
+                    mir::CastKind::FloatToFloat => {
+                        Err(TranslationError::UnsupportedFeature{description: format!("unsupported float-to-float cast").to_string()})
+                    }
+                    mir::CastKind::PtrToPtr => {
                         match (op_ty.kind(), ty.kind()) {
                             (TyKind::RawPtr(_), TyKind::RawPtr(_)) => {
                                 // Casts between raw pointers are NOPs for us
@@ -2189,9 +2219,15 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                             },
                             _ => {
                                 // TODO: any other cases we should handle?
-                                Err(TranslationError::UnsupportedFeature{description: format!("unsupported rvalue: {:?}", rval).to_string()})
+                                Err(TranslationError::UnsupportedFeature{description: format!("unsupported ptr-to-ptr cast: {:?}", rval).to_string()})
                             },
                         }
+                    },
+                    mir::CastKind::FnPtrToPtr => {
+                        Err(TranslationError::UnsupportedFeature{description: format!("unsupported fnptr-to-ptr cast: {:?}", rval).to_string()})
+                    },
+                    mir::CastKind::Transmute => {
+                        Err(TranslationError::UnsupportedFeature{description: format!("unsupported transmute cast: {:?}", rval).to_string()})
                     },
                 }
             },
@@ -2215,7 +2251,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
     /// Make a trivial place accessing `local`.
     fn make_local_place(&self, local: &Local) -> Place<'tcx> {
-        Place { local: *local, projection: self.env.tcx().intern_place_elems(&[]) }
+        Place { local: *local, projection: self.env.tcx().mk_place_elems(&[]) }
     }
 
     /// Translate an operand.
@@ -2364,7 +2400,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     _ => Err(TranslationError::UnsupportedFeature{description: "Unsupported ConstKind".to_string()})
                 }
             },
-            ConstantKind::Val(val, ty) =>
+            ConstantKind::Val(val, ty) => {
                 match val {
                     ConstValue::Scalar(sc) => {
                         self.translate_scalar(&sc, ty)
@@ -2385,6 +2421,10 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                         Err(TranslationError::UnsupportedFeature{description: format!("Unsupported Constant: ConstValue; {:?}", constant.literal)})
                     }
                 }
+            },
+            ConstantKind::Unevaluated(_, _) => {
+                Err(TranslationError::UnsupportedFeature{description: format!("Unsupported Constant: Unevaluated; {:?}", constant.literal)})
+            },
         }
     }
 
@@ -2441,6 +2481,9 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                         return Err(TranslationError::UnknownError("places: ADT downcasting on non-enum type".to_string()));
                     }
                 },
+                ProjectionElem::OpaqueCast(_) => {
+                    return Err(TranslationError::UnsupportedFeature{description: "places: implement opaque casts".to_string()});
+                },
             };
             // update cur_ty
             cur_ty = cur_ty.projection_ty(self.env.tcx(), *it);
@@ -2462,7 +2505,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     fn get_type_of_const(&self, cst: &Constant<'tcx>) -> Result<Ty<'tcx>, TranslationError> {
         match cst.literal {
             ConstantKind::Ty(cst) => Ok(cst.ty()),
-            ConstantKind::Val(_, ty) => Ok(ty)
+            ConstantKind::Val(_, ty) => Ok(ty),
+            ConstantKind::Unevaluated(_, ty) => Ok(ty),
         }
     }
 

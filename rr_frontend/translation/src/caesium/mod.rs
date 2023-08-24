@@ -1108,7 +1108,7 @@ impl<'def> Function<'def> {
 
         out.push_str(format!("{}repeat liRStep; liShow.\n", indent).as_str());
         out.push_str(format!("{}all: print_typesystem_goal \"{}\".\n", indent, self.name()).as_str());
-        out.push_str(format!("{}Unshelve. all: li_unshelve_sidecond; sidecond_hook.\n", indent).as_str());
+        out.push_str(format!("{}Unshelve. all: unshelve_sidecond; sidecond_hook.\n", indent).as_str());
         out.push_str(format!("{}Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook.\n", indent).as_str());
 
         // add custom tactics specified in annotations
@@ -1270,7 +1270,7 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
             self.spec.add_coq_param(CoqName::Named(names.rt_name.to_string()), CoqType::Type, false).unwrap();
             self.spec.add_coq_param(CoqName::Unnamed, CoqType::Literal(format!("Inhabited {}", names.rt_name)), true).unwrap();
             self.spec.add_coq_param(CoqName::Named(st_name.to_string()), CoqType::SynType, false).unwrap();
-            self.spec.add_param(CoqName::Named(names.ty_name.clone()), CoqType::Ttype(box (CoqType::Literal(names.rt_name.clone())))).unwrap();
+            self.spec.add_param(CoqName::Named(names.ty_name.clone()), CoqType::Ttype(Box::new (CoqType::Literal(names.rt_name.clone())))).unwrap();
 
             // Add assumptions that the syntactic type of the semantic argument matches with the
             // assumed syntactic type.

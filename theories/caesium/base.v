@@ -31,23 +31,6 @@ Proof.
     inversion 1; econstructor; naive_solver.
 Qed.
 
-
-
-
-(* TODO Move *)
-Lemma drop_app' {A} (l k : list A) n :
-  length l = n → drop n (l ++ k) = k.
-Proof. intros <-. apply drop_app. Qed.
-Lemma take_app' {A} (l k : list A) n :
-  length l = n → take n (l ++ k) = l.
-Proof. intros <-. apply take_app. Qed.
-
-
-
-
-
-
-
 (* TODO move *)
 Definition list_map_option {X Y} (f : X → option Y) (l : list X) : option (list Y) :=
   foldr (λ (x : X) (y : option (list Y)),
@@ -116,5 +99,3 @@ Proof.
   simpl. destruct (f x) eqn:Heq2; last done.
   simpl. intros [= <-]. eauto.
 Qed.
-
-

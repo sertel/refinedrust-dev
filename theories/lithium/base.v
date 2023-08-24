@@ -7,7 +7,7 @@ From iris.program_logic Require Import weakestpre.
 From iris.bi Require Import bi.
 From iris.proofmode Require Import proofmode.
 From stdpp Require Import natmap.
-From lithium Require Import Z_bitblast.
+From stdpp.unstable Require Import bitblast.
 From RecordUpdate Require Export RecordSet.
 Export RecordSetNotations.
 
@@ -21,6 +21,8 @@ that at least global hints are annotated. *)
 Export Set Warnings "+deprecated-hint-without-locality".
 Export Set Warnings "+deprecated-hint-rewrite-without-locality".
 Export Set Warnings "+deprecated-typeclasses-transparency-without-locality".
+
+Export Set Default Goal Selector "!".
 
 (* ensure that set from RecordUpdate simplifies when it is applied to a concrete value *)
 Global Arguments set _ _ _ _ _ !_ /.
@@ -41,6 +43,7 @@ Global Arguments Pos.shiftl : simpl never.
 Global Arguments Pos.shiftr : simpl never.
 Global Opaque Z.shiftl Z.shiftr.
 
+(* TODO: upstream to stdpp? *)
 Notation "'[@{' A '}' x ; y ; .. ; z ]" :=  (@cons A x (@cons A y .. (@cons A z (@nil A)) ..)) (only parsing) : list_scope.
 Notation "'[@{' A '}' x ]" := (@cons A x nil) (only parsing) : list_scope.
 Notation "'[@{' A '}' ]" := (@nil A) (only parsing) : list_scope.
@@ -110,6 +113,11 @@ Ltac evar_safe_vm_compute :=
   intros ? H;
   vm_compute;
   apply H.
+
+(* see https://github.com/coq/coq/issues/15768#issuecomment-1380773542 *)
+(* TODO: This must be called as [unfold_opaque @x]. Is there a way to
+get rid of the @? *)
+Tactic Notation "unfold_opaque" constr(c) := with_strategy 0 [c] (unfold c).
 
 (*
 The following tactics are currently not used.
@@ -182,6 +190,19 @@ Global Existing Instance tc_one_is_some3_left.
 Global Existing Instance tc_one_is_some3_middle.
 Global Existing Instance tc_one_is_some3_right.
 
+Class IsVar {A} (x : A) : Prop := is_var: True.
+Global Hint Extern 0 (IsVar ?x) => (is_var x; exact: I) : typeclass_instances.
+
+Class TCDone (P : Prop) : Prop := done_proof : P.
+Global Hint Extern 1 (TCDone ?P) => (change P; done) : typeclass_instances.
+
+(** [AssumeInj] is a hint that automation should treat f as if it were
+injective, even though the injectivity might not be provable. *)
+Class AssumeInj {A B} (R : relation A) (S : relation B) (f : A → B) : Prop := assume_inj : True.
+Global Instance assume_inj_inj A B R S (f : A → B) `{!Inj R S f} : AssumeInj R S f.
+Proof. done. Qed.
+
+
 Definition exists_dec_unique {A} (x : A) (P : _ → Prop) : (∀ y, P y → P x) → Decision (P x) → Decision (∃ y, P y).
 Proof.
   intros Hx Hdec.
@@ -232,7 +253,7 @@ Proof. by intros ?? ->%leibniz_equiv. Qed.
 (** * list *)
 Lemma zip_fmap_r {A B C} (l1 : list A) (l2 : list B) (f : B → C) :
   zip l1 (f <$> l2) = (λ x, (x.1, f x.2)) <$>  zip l1 l2.
-Proof. rewrite zip_with_fmap_r zip_with_zip. by apply: list_fmap_ext => // [[]]. Qed.
+Proof. rewrite zip_with_fmap_r zip_with_zip. by apply: list_fmap_ext => // ? []. Qed.
 
 Lemma zip_with_nil_inv' {A B C : Type} (f : A → B → C) (l1 : list A) (l2 : list B) :
   length l1 = length l2 → zip_with f l1 l2 = [] → l1 = [] ∧ l2 = [].
@@ -280,11 +301,9 @@ Lemma list_elem_of_insert2' {A} (l : list A) i (x1 x2 x3 : A) :
   l !! i = Some x3 → x1 ∈ l → x1 ≠ x3 → x1 ∈ <[i:=x2]> l.
 Proof. move => ???. efeed pose proof (list_elem_of_insert2 (A:=A)) as Hi; naive_solver. Qed.
 
-
 Lemma list_fmap_ext' {A B} f (g : A → B) (l1 l2 : list A) :
     (∀ x, x ∈ l1 → f x = g x) → l1 = l2 → f <$> l1 = g <$> l2.
 Proof. intros ? <-. induction l1; f_equal/=; set_solver. Qed.
-
 
 Lemma imap_fst_NoDup {A B C} l (f : nat → A → B) (g : nat → C):
   Inj eq eq g →
@@ -297,8 +316,8 @@ Global Instance set_unfold_imap A B f (l : list A) (x : B):
   SetUnfoldElemOf x (imap f l) (∃ i y, x = f i y ∧ l !! i = Some y).
 Proof.
   constructor.
-  elim: l f => /=. set_solver. set_unfold. move => ? ? IH f.
-  rewrite IH {IH}. split. case.
+  elim: l f => /=; [set_solver|]. set_unfold. move => ? ? IH f.
+  rewrite IH {IH}. split; [case|].
   - move => ->. set_solver.
   - move => [n [v [-> ?]]]. exists (S n), v => /=. set_solver.
   - move => [[|n] /= [v [-> ?]]]; simplify_eq; [by left | right].
@@ -334,9 +353,10 @@ Lemma length_filter_insert {A} P `{!∀ x, Decision (P x)} (l : list A) i x x':
   length (filter P (<[i:=x]>l)) =
   (length (filter P l) + (if bool_decide (P x) then 1 else 0) - (if bool_decide (P x') then 1 else 0))%nat.
 Proof.
-  elim: i l. move => [] //=??[->]. rewrite !filter_cons. by repeat (case_decide; case_bool_decide) => //=; lia.
-  move => i IH [|? l]//=?. rewrite !filter_cons. case_decide => //=; rewrite IH // -minus_Sn_m //.
-  repeat case_bool_decide => //; try lia. feed pose proof (length_filter_gt P l x') => //; try lia.
+  elim: i l.
+  - move => [] //=??[->]. rewrite !filter_cons. by repeat (case_decide; case_bool_decide) => //=; lia.
+  - move => i IH [|? l]//=?. rewrite !filter_cons. case_decide => //=; rewrite IH // Nat.sub_succ_l //.
+    repeat case_bool_decide => //; try lia. feed pose proof (length_filter_gt P l x') => //; try lia.
     by apply: elem_of_list_lookup_2.
 Qed.
 
@@ -352,7 +372,7 @@ Lemma omap_app {A B} (f : A → option B) (s1 s2 : list A):
 Proof. elim: s1 => //. csimpl => ?? ->. case_match; naive_solver. Qed.
 Lemma sum_list_with_take {A} f (l : list A) i:
    (sum_list_with f (take i l) ≤ sum_list_with f l)%nat.
-Proof. elim: i l => /=. lia. move => ? IH [|? l2] => //=. move: (IH l2). lia.  Qed.
+Proof. elim: i l => /=; [lia|]. move => ? IH [|? l2] => //=. move: (IH l2). lia.  Qed.
 
 Lemma omap_length_eq {A B C} (f : A → option B) (g : A → option C) (l : list A):
   (∀ i x, l !! i = Some x → const () <$> (f x) = const () <$> (g x)) →
@@ -410,8 +430,24 @@ Proof.
   move => Hs Hi Hj HR Hneq. elim: Hs j i Hj Hi => // z {}l _ IH /Forall_forall Hall.
   case => /=.
   - case; first naive_solver. move => n [?]/= /(elem_of_list_lookup_2 _ _ _)?; subst. naive_solver.
-  - move => n. case; first lia. move => n2 /= ??. apply lt_n_S. naive_solver.
+  - move => n. case; first lia. move => n2 /= ??. apply->Nat.succ_lt_mono. naive_solver.
 Qed.
+
+(* TODO: Is it possible to make this lemma more general and add it as an instance? *)
+Lemma list_fmap_Forall2_proper {A B} (R : relation B) :
+  Proper (pointwise_relation A R ==> (=) ==> Forall2 R) fmap.
+Proof.
+  move => ?? Hf ?? ->. apply Forall2_fmap.
+  apply Forall_Forall2_diag, Forall_true => *.
+  eapply Hf.
+Qed.
+(* TODO: Can one make this an instance? *)
+Lemma default_proper {A} (R : relation A) :
+  Proper (R ==> option_Forall2 R ==> R) default.
+Proof. move => ?? ? [?|] [?|] //= Hopt; by inversion Hopt. Qed.
+
+Global Instance head_proper {A} (R : relation A): Proper (Forall2 R ==> option_Forall2 R) head.
+Proof. move => ?? [] * /=; by constructor. Qed.
 
 (** * vec *)
 Lemma vec_cast {A} n (v : vec A n) m:
@@ -588,11 +624,11 @@ Lemma big_sepL_impl' {B} Φ (Ψ : _ → B → _) (l1 : list A) (l2 : list B) :
   Proof.
     iIntros (Hlen) "Hl #Himpl".
     iInduction l1 as [|x1 l1] "IH" forall (Φ Ψ l2 Hlen); destruct l2 => //=; simpl in *.
-    iDestruct "Hl" as "[Hx1 Hl]". iSplitL "Hx1". by iApply "Himpl".
+    iDestruct "Hl" as "[Hx1 Hl]". iSplitL "Hx1"; [by iApply "Himpl"|].
     iApply ("IH" $! (Φ ∘ S) (Ψ ∘ S) l2 _ with "[] Hl").
     iIntros "!>" (k y1 y2 ?) "Hl2 /= ?".
-      by iApply ("Himpl" with "[] [Hl2]").
-      Unshelve. lia.
+    by iApply ("Himpl" with "[] [Hl2]").
+    Unshelve. lia.
   Qed.
 End sep_list.
 
@@ -634,7 +670,7 @@ Definition factor2 (n : nat) (def : nat) : nat :=
   default def (factor2' n).
 
 Definition keep_factor2 (n : nat) (def : nat) : nat :=
-  default def (pow 2 <$> factor2' n).
+  default def (Nat.pow 2 <$> factor2' n).
 
 Lemma Pos_pow_add_r a b c:
   (a ^ (b + c) = a ^ b * a ^ c)%positive.
@@ -670,13 +706,13 @@ Lemma Zdivide_nat_pow a b c:
   ((b ≤ c)%nat → ((a ^ b)%nat | (a ^ c)%nat))%Z.
 Proof.
   move => ?. apply: (Zdivide_mult_l _ (a^(c - b))%nat).
-  by rewrite -Nat2Z.inj_mul -Nat.pow_add_r le_plus_minus_r.
+  by rewrite -Nat2Z.inj_mul -Nat.pow_add_r Nat.add_comm Nat.sub_add.
 Qed.
 
 Lemma Pos_factor2_divide p :
   ((2 ^ Pos_factor2 p)%nat | Z.pos p)%Z.
 Proof.
-  elim: p => //=. by move => *; apply Z.divide_1_l.
+  elim: p => //=. 1: by move => *; apply Z.divide_1_l.
   move => p IH. rewrite -plus_n_O Pos2Z.inj_xO Nat2Z.inj_add Z.add_diag. by apply Z.mul_divide_mono_l.
 Qed.
 
@@ -784,8 +820,8 @@ Proof. by destruct n. Qed.
 (* Qed. *)
 
 Lemma divide_mult_2 n1 n2 : divide 2 (n1 * n2) → divide 2 n1 ∨ divide 2 n2.
-  move => /Nat2Z_divide. rewrite Nat2Z.inj_mul. move => /(prime_mult _ prime_2).
-  move => [H|H]; [left | right]; apply Z2Nat_divide in H; try lia.
+  move => /Nat2Z.divide. rewrite Nat2Z.inj_mul. move => /(prime_mult _ prime_2).
+  move => [H|H]; [left | right]; apply Z2Nat.divide in H; try lia.
   - rewrite Nat2Z.id in H. assert (Z.to_nat 2 = 2) as Heq by lia. by rewrite Heq in H.
   - rewrite Nat2Z.id in H. assert (Z.to_nat 2 = 2) as Heq by lia. by rewrite Heq in H.
 Qed.
@@ -795,16 +831,16 @@ Lemma is_power_of_two_mult n1 n2:
 Proof.
   rewrite /is_power_of_two. split.
   - move => [m Hm]. move: n1 n2 Hm. elim: m.
-    + move => /= ?? /mult_is_one [->->]. split; by exists 0.
+    + move => /= ?? /Nat.eq_mul_1 [->->]. split; by exists 0.
     + move => n IH n1 n2 H. rewrite Nat.pow_succ_r' in H.
       assert (divide 2 (n1 * n2)) as Hdiv. { exists (2 ^ n). lia. }
       apply divide_mult_2 in Hdiv as [[k ->]|[k ->]].
       * assert (k * n2 = 2 ^ n) as Hkn2 by lia.
         apply IH in Hkn2 as [[m ->] Hn2]. split => //.
-        exists (S m). by rewrite mult_comm -Nat.pow_succ_r'.
+        exists (S m). by rewrite Nat.mul_comm -Nat.pow_succ_r'.
       * assert (n1 * k = 2 ^ n) as Hn1k by lia.
         apply IH in Hn1k as [Hn1 [m ->]]. split => //.
-        exists (S m). by rewrite mult_comm -Nat.pow_succ_r'.
+        exists (S m). by rewrite Nat.mul_comm -Nat.pow_succ_r'.
   - move => [[m1 ->] [m2 ->]]. exists (m1 + m2). by rewrite Nat.pow_add_r.
 Qed.
 
@@ -812,7 +848,7 @@ Lemma Z_distr_mul_sub_1 a b:
   (a * b - b = (a - 1) * b)%Z.
 Proof. nia. Qed.
 
-Lemma mult_le_compat_r_1 m p:
+Lemma mul_le_mono_r_1 m p:
   (1 ≤ m)%nat → (p ≤ m * p)%nat.
 Proof. nia. Qed.
 
@@ -900,7 +936,7 @@ Qed.
 Lemma bitblast_lunot bits z n b:
   Bitblast z n b →
   Bitblast (Z_lunot bits z) n
-((bool_decide ((bits < 0 ≤ n)%Z) || (bool_decide ((0 ≤ bits)%Z) && bool_decide ((0 ≤ n < bits)%Z))) && negb b).
+    ((bool_decide ((bits < 0 ≤ n)%Z) || (bool_decide ((0 ≤ bits)%Z) && bool_decide ((0 ≤ n < bits)%Z))) && negb b).
 Proof.
   move => [<-]. constructor.
   case_bool_decide.
@@ -950,3 +986,227 @@ Proof.
   - move => Hb i ?. by bitblast Hb with i.
   - move => Hf. bitblast. by apply Hf.
 Qed.
+
+(** bitblast for pos *)
+Lemma bitblast_pos_xO p n b :
+  Bitblast (Z.pos p) (n - 1) b →
+  Bitblast (Z.pos p~0) n b.
+Proof.
+  move => [<-]. constructor.
+  destruct (decide (0 ≤ n)%Z). 2: { rewrite !Z.testbit_neg_r //; lia. }
+  destruct (decide (n = 0)%Z). { subst. done. }
+  destruct n; try lia.
+  rewrite !Z_testbit_pos_testbit /=; [|lia..].
+  f_equal. lia.
+Qed.
+(* lower priority than rule for constants *)
+Global Hint Resolve bitblast_pos_xO | 15 : bitblast.
+
+Lemma bitblast_pos_xI p n b :
+  Bitblast (Z.pos p) (n - 1) b →
+  Bitblast (Z.pos p~1) n (bool_decide (n = 0) || b).
+Proof.
+  move => [<-]. constructor.
+  destruct (decide (0 ≤ n)%Z).
+  2: { rewrite bool_decide_false; [|lia]. rewrite !Z.testbit_neg_r //; lia. }
+  case_bool_decide. { subst. done. }
+  destruct n; try lia.
+  rewrite !Z_testbit_pos_testbit /=; [|lia..].
+  f_equal. lia.
+Qed.
+(* lower priority than rule for constants *)
+Global Hint Resolve bitblast_pos_xI | 15 : bitblast.
+
+(** rep
+
+ The [rep] tactic is an alternative to the [repeat] and [do] tactics
+ that supports left-biased depth-first branching with optional
+ backtracking on failure. *)
+Module Rep.
+  Import Ltac2.
+  Import Ltac2.Printf.
+
+  (* Exception to signal how many more steps should be backtracked*)
+  Ltac2 Type exn ::= [ RepBacktrack (int) ].
+
+  (* calls [tac] [n] times (n = None means infinite) on the first goal
+  under focus, stops on failure of [tac] and then backtracks [nback]
+  steps. *)
+  Ltac2 rec rep (n : int option) (nback : int) (tac : (unit -> unit)) : int :=
+    (* if there are no goals left, we are done *)
+    match Control.case (fun _ => Control.focus 1 1 (fun _ => ())) with
+    | Err _ => 0
+    | Val _ =>
+      (* check if we should do another repetition *)
+      let do_rep := match n with | None => true | Some n => Int.gt n 0 end in
+      match do_rep with
+      | false => 0
+      | true =>
+        (* backtracking point *)
+        let res := Control.case (fun _ =>
+          (* run tac on the first goal *)
+          let tac_res := Control.focus 1 1 (fun _ => Control.case tac) in
+          match tac_res  with
+          | Err _ =>
+              (* if tac failed, either start the backtracking or return 0 *)
+              match Int.gt nback 0 with
+              | true => Control.zero (RepBacktrack nback)
+              | false => 0
+              end
+          | Val _ =>
+              (* compute new n and recurse *)
+              let new_n :=
+                match n with | None => None | Some n => Some (Int.sub n 1) end in
+              let n_steps := rep new_n nback tac in
+              Int.add n_steps 1
+          end) in
+        match res with
+        | Err e =>
+            match e with
+            | RepBacktrack n =>
+                (* if we catch a RepBacktrack, either rethrow it with
+                one less or return 0 *)
+                match Int.gt n 0 with
+                | true => Control.zero (RepBacktrack (Int.sub n 1))
+                | false => 0
+                end
+            | _ => Control.zero e
+            end
+        | Val (r, _) => r
+        end
+      end
+    end.
+
+  Ltac2 print_steps (n : int) :=
+    printf "Did %i steps." n.
+
+  Ltac2 rec pos_to_ltac2_int (n : constr) : int :=
+    lazy_match! n with
+    | xH => 1
+    | xO ?n => Int.mul (pos_to_ltac2_int n) 2
+    | xI ?n => Int.add (Int.mul (pos_to_ltac2_int n) 2) 1
+    end.
+
+  Ltac2 rec z_to_ltac2_int (n : constr) : int :=
+    lazy_match! n with
+    | Z0 => 0
+    | Z.pos ?n => pos_to_ltac2_int n
+    | Z.neg ?n => Int.neg (pos_to_ltac2_int n)
+    end.
+
+  (* TODO: use a mutable record field, see Janno's message *)
+
+  (* Calls tac on a new subgoal of type Z and converts the resulting Z
+  to an int. *)
+  Ltac2 int_from_z_subgoal (tac : unit -> unit) : int :=
+    let x := Control.focus 1 1 (fun _ =>
+      let x := open_constr:(_ : Z) in
+      match Constr.Unsafe.kind x with
+      | Constr.Unsafe.Cast x _ _ =>
+          match Constr.Unsafe.kind x with
+          | Constr.Unsafe.Evar e _ =>
+              Control.new_goal e;
+              x
+          | _ => Control.throw Assertion_failure
+          end
+      | _ => Control.throw Assertion_failure
+      end) in
+    (* new goal has index 2 because it was added after goal number 1 *)
+    Control.focus 2 2 (fun _ =>
+      tac ();
+      (* check that the goal is closed *)
+      Control.enter (fun _ => Control.throw Assertion_failure));
+    Control.focus 1 1 (fun _ =>
+      let x := Std.eval_vm None x in
+      z_to_ltac2_int x).
+
+  (* Necessary because Some and None cannot be used in ltac2: quotations. *)
+  Ltac2 some (n : int) : int option := Some n.
+  Ltac2 none : int option := None.
+End Rep.
+
+(** rep repeatedly applies tac to the goal in a depth-first manner. In
+particular, if tac generates multiple subgoals, the process continues
+with the first subgoal and only looks at the second subgoal if the
+first subgoal (and all goals spawed from it) are solved. If [tac]
+fails, the complete process stops (unlike [repeat] which continues
+with other subgoals).
+
+[rep n tac] iterates this process at most n times.
+[rep <- n tac] backtracks n steps on failure. *)
+Tactic Notation "rep" tactic3(tac) :=
+  let r := ltac2:(tac |-
+    Rep.print_steps (Rep.rep Rep.none 0 (fun _ => Ltac1.run tac))) in
+  r tac.
+
+(* rep is carefully written such that all goals are passed to Ltac2
+and rep can apply tac in a depth-first manner to only the first goal.
+In particular, the behavior of [all: rep 10 tac.] is equivalent to
+[all: rep 5 tac. all: rep 5 tac.], even if the first call spawns new
+subgoals. (See also the tests.) *)
+Tactic Notation "rep" int(n) tactic3(tac) :=
+  let ntac := do n (refine (1 + _)%Z); refine 0%Z in
+  let r := ltac2:(ntac tac |-
+    let n := Rep.int_from_z_subgoal (fun _ => Ltac1.run ntac) in
+    Rep.print_steps (Rep.rep (Rep.some n) 0 (fun _ => Ltac1.run tac))) in
+  r ntac tac.
+
+Tactic Notation "rep" "<-" int(n) tactic3(tac) :=
+  let ntac := do n (refine (1 + _)%Z); refine 0%Z in
+  let r := ltac2:(ntac tac |-
+     let n := Rep.int_from_z_subgoal (fun _ => Ltac1.run ntac) in
+     Rep.print_steps (Rep.rep (Rep.none) n (fun _ => Ltac1.run tac))) in
+  r ntac tac.
+
+Module RepTest.
+  Definition DELAY (P : Prop) : Prop := P.
+
+  Ltac DELAY_test_tac :=
+    first [
+        lazymatch goal with | |- DELAY ?P => change P end |
+        exact eq_refl |
+        split
+      ].
+
+  Goal ∃ x, Nat.iter 10 DELAY (x = 1) ∧ Nat.iter 6 DELAY (x = 2). simpl. eexists.
+    all: rep DELAY_test_tac.
+    1: lazymatch goal with | |- 1 = 2 => idtac | |- _ => fail "unexpected goal" end.
+  Abort.
+
+  Goal ∃ x, Nat.iter 10 DELAY (x = 1) ∧ Nat.iter 6 DELAY (x = 2). simpl. eexists.
+    all: rep 5 DELAY_test_tac.
+    1: lazymatch goal with | |- DELAY (DELAY (DELAY (DELAY (DELAY (DELAY (_ = 1)))))) => idtac | |- _ => fail "unexpected goal" end.
+    2: lazymatch goal with | |- DELAY (DELAY (DELAY (DELAY (DELAY (DELAY (_ = 2)))))) => idtac | |- _ => fail "unexpected goal" end.
+    (* This should only apply tac to the first subgoal. *)
+    all: rep 5 DELAY_test_tac.
+    1: lazymatch goal with | |- DELAY (_ = 1) => idtac | |- _ => fail "unexpected goal" end.
+    2: lazymatch goal with | |- DELAY (DELAY (DELAY (DELAY (DELAY (DELAY (_ = 2)))))) => idtac | |- _ => fail "unexpected goal" end.
+    (* This finishes the first subgoal and use the remaining steps on
+    the second subgoal. *)
+    all: rep 5 DELAY_test_tac.
+    1: lazymatch goal with | |- DELAY (DELAY (DELAY (1 = 2))) => idtac | |- _ => fail "unexpected goal" end.
+  Abort.
+
+  Goal ∃ x, Nat.iter 10 DELAY (x = 1) ∧ Nat.iter 6 DELAY (x = 2). simpl. eexists.
+    repeat DELAY_test_tac.
+    (* Same as rep above. *)
+  Abort.
+
+  Goal ∃ x, Nat.iter 10 DELAY (x = 1) ∧ Nat.iter 6 DELAY (x = 2). simpl. eexists.
+    do 5? (DELAY_test_tac).
+    (* Notice the difference to [rep] above: [do] also applies the
+    steps to the second subgoal. *)
+  Abort.
+
+  Goal ∃ x, Nat.iter 10 DELAY (x ≤ 1) ∧ Nat.iter 6 DELAY (x = 2). simpl. eexists.
+    rep <-3 DELAY_test_tac.
+    1: lazymatch goal with | |- DELAY (DELAY (DELAY (_ ≤ 1))) => idtac | |- _ => fail "unexpected goal" end.
+    2: lazymatch goal with | |- DELAY (DELAY (DELAY (DELAY (DELAY (DELAY (_ = 2)))))) => idtac | |- _ => fail "unexpected goal" end.
+  Abort.
+
+  Goal ∃ x, Nat.iter 10 DELAY (x ≤ 1) ∧ Nat.iter 6 DELAY (x = 2). simpl. eexists.
+    repeat DELAY_test_tac.
+    (* Notice the difference to [rep] above: [repeat] continues with
+    the second subgoal on failure. *)
+  Abort.
+End RepTest.

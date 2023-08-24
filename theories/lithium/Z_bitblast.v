@@ -244,7 +244,7 @@ Lemma bitblast_id_bounded z z' n :
   Bitblast z n (bool_decide (0 ≤ n < z') && BITBLAST_TESTBIT z n).
 Proof.
   move => [Hb]. constructor.
-  move: (Hb) => /Z_bounded_iff_bits_nonneg' Hn.
+  move: (Hb) => /Z.bounded_iff_bits_nonneg' Hn.
   case_bool_decide => //=.
   destruct (decide (0 ≤ n)); [|rewrite Z.testbit_neg_r //; lia].
   apply Hn; try lia.
@@ -381,7 +381,7 @@ Proof.
   move => [->] [<-]. constructor.
   case_bool_decide => /=. { rewrite Z.pow_neg_r ?bool_decide_false /= ?orb_false_r; [done|lia..]. }
   destruct (decide (0 ≤ n)). 2: { rewrite !Z.testbit_neg_r ?andb_false_r //; lia. }
-  rewrite -Z.land_ones; [|lia]. rewrite Z.land_spec Z_ones_spec; [|lia..].
+  rewrite -Z.land_ones; [|lia]. rewrite Z.land_spec Z.ones_spec; [|lia..].
   by rewrite andb_comm.
 Qed.
 Global Hint Resolve bitblast_mod | 10 : bitblast.
@@ -558,7 +558,7 @@ Goal ∀ z, 0 ≤ z < 2 ^ 64 →
 Proof.
   move => z ?. split.
   - move => Hx. split.
-    + apply Z_bounded_iff_bits_nonneg; [lia..|] => n ?. bitblast.
+    + apply Z.bounded_iff_bits_nonneg; [lia..|] => n ?. bitblast.
       by bitblast Hx with n.
     + bitblast as n. by bitblast Hx with n.
   - move => [H1 H2]. bitblast as n. by bitblast H2 with n.

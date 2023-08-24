@@ -1,4 +1,7 @@
-From lithium Require Import base tactics_extend simpl_classes infrastructure.
+From lithium Require Export base.
+From lithium Require Import hooks simpl_classes pure_definitions normalize.
+
+(** This file provides various pure solvers. *)
 
 (** * [refined_solver]
     Version of naive_solver which fails faster. *)
@@ -59,6 +62,50 @@ Tactic Notation "refined_solver" tactic(tac) :=
 Tactic Notation "refined_solver" := refined_solver eauto.
 
 (** * [normalize_and_simpl_goal] *)
+Ltac normalize_and_simpl_impl handle_exist :=
+  let do_intro :=
+    idtac;
+    match goal with
+    | |- (∃ _, _) → _ =>
+        lazymatch handle_exist with
+        | true => case
+        | false => fail 1 "exist not handled"
+        end
+    | |- (_ = _) → _ =>
+        check_injection_hook;
+        let Hi := fresh "Hi" in move => Hi; injection Hi; clear Hi
+    | |- ?P → _ => assert_is_not_trivial P; intros ?; subst
+    | |- _ => move => _
+    end;
+    after_intro_hook
+  in
+  lazymatch goal with
+  (* relying on the fact that unification variables cannot contain
+  dependent variables to distinguish between dependent and non
+  dependent forall *)
+  | |- ?P -> ?Q =>
+    lazymatch type of P with
+    | Prop => first [
+        (* first check if the hyp is trivial *)
+        assert_is_trivial P; intros _
+      | progress normalize_goal_impl
+      | let changed := open_constr:(_) in
+        notypeclasses refine (@simpl_impl_unsafe changed P _ _ Q _); [solve [refine _] |];
+        (* We need to simpl here to make sure that we only introduce
+        fully simpl'd terms into the context (and do beta reduction
+        for the lemma application above). *)
+        simpl;
+        lazymatch changed with
+        | true => idtac
+        | false => do_intro
+        end
+      | do_intro
+      ]
+    (* just some unused variable, forget it *)
+    | _ => move => _
+    end
+  end.
+
 Lemma intro_and_True P :
   (P ∧ True) → P.
 Proof. naive_solver. Qed.
@@ -80,41 +127,23 @@ Ltac normalize_and_simpl_goal_step :=
       | |- _ ∧ _ => idtac
       | _ => refine (intro_and_True _ _)
       end;
-      refine (apply_simpl_and _ _ _ _ _);
       lazymatch goal with
-      | |- true = true → _ => move => _; split_and?
+      | |- ?P ∧ ?Q =>
+        notypeclasses refine (@simpl_and_unsafe P _ _ Q _); [solve [refine _] |];
+        simpl;
+        split_and?
       end
-    |
-      lazymatch goal with
+    | lazymatch goal with
     (* relying on the fact that unification variables cannot contain
        dependent variables to distinguish between dependent and non dependent forall *)
-    | |- ?P -> ?Q =>
-      lazymatch type of P with
-      | Prop => first [
-        assert_is_trivial P; intros _ |
-        progress normalize_goal_impl |
-        notypeclasses refine (apply_simpl_impl _ _ _ _ _); [ solve [refine _] |]; simpl;
-        match goal with
-        | |- true = true -> _ => move => _
-        | |- false = false -> ?P → _ => move => _;
-          match P with
-          | ∃ _, _ => case
-          | _ = _ =>
-              check_injection_tac;
-              let Hi := fresh "Hi" in move => Hi; injection Hi; clear Hi
-          | _ => assert_is_not_trivial P; intros ?; subst
-          | _ => move => _
-          end
-        end]
-      (* just some unused variable, forget it *)
-      | _ => move => _
-      end
-    | |- forall _ : ?P, _ =>
-      lazymatch P with
-      | (prod _ _) => case
-      | unit => case
-      | _ => intro
-      end
+      | |- ?P -> ?Q =>
+        normalize_and_simpl_impl true
+      | |- forall _ : ?P, _ =>
+        lazymatch P with
+        | (prod _ _) => case
+        | unit => case
+        | _ => intro
+        end
     end ].
 
 Ltac normalize_and_simpl_goal := repeat normalize_and_simpl_goal_step.
@@ -156,47 +185,38 @@ Ltac enrich_context_base :=
            pose proof (filter_length P l)
            end.
 
-Ltac enrich_context_tac :=
-  enrich_context_base.
-
 Ltac enrich_context :=
-  enrich_context_tac;
+  enrich_context_base;
+  enrich_context_hook;
   unfold enrich_marker.
 
-(* Open Scope Z_scope. *)
-(* Goal ∀ n m, 0 < n → 1 < m → n `quot` m = n `rem` m. *)
-  (* move => n m ??. enrich_context. *)
-(* Abort. *)
+Section enrich_test.
+  Local Open Scope Z_scope.
+  Goal ∀ n m, 0 < n → 1 < m → n `quot` m = n `rem` m.
+    move => n m ??. enrich_context.
+  Abort.
+End enrich_test.
 
 (** * [solve_goal]  *)
-Ltac solve_goal_prepare_tac := idtac.
-Ltac solve_goal_normalized_prepare_tac := idtac.
-
-Local Open Scope Z_scope.
-Ltac reduce_closed_Z_tac := idtac.
 Ltac reduce_closed_Z :=
   idtac;
-  reduce_closed_Z_tac;
+  reduce_closed_Z_hook;
   repeat match goal with
-  | |- context [?a ≪ ?b] => progress reduce_closed (a ≪ b)
-  | H : context [?a ≪ ?b] |- _ => progress reduce_closed (a ≪ b)
-  | |- context [?a ≫ ?b] => progress reduce_closed (a ≫ b)
-  | H : context [?a ≫ ?b] |- _ => progress reduce_closed (a ≫ b)
+  | |- context [(?a ≪ ?b)%Z] => progress reduce_closed (a ≪ b)%Z
+  | H : context [(?a ≪ ?b)%Z] |- _ => progress reduce_closed (a ≪ b)%Z
+  | |- context [(?a ≫ ?b)%Z] => progress reduce_closed (a ≫ b)%Z
+  | H : context [(?a ≫ ?b)%Z] |- _ => progress reduce_closed (a ≫ b)%Z
   end.
 
 Tactic Notation "solve_goal" "with" tactic(tac) :=
   simpl;
   try fast_done;
-  solve_goal_prepare_tac;
+  solve_goal_prepare_hook;
   normalize_and_simpl_goal;
-  solve_goal_normalized_prepare_tac; reduce_closed_Z; enrich_context;
+  solve_goal_normalized_prepare_hook; reduce_closed_Z; enrich_context;
   repeat case_bool_decide => //; repeat case_decide => //; repeat case_match => //;
   tac.
-
-(* TODO sometimes this diverges, so we put a timeout on it.
-      Should really fix the refined_solver though. *)
-Ltac hammer :=
-  first [timeout 4 lia | timeout 4 nia | timeout 4 refined_solver lia].
-
 Tactic Notation "solve_goal" :=
-  solve_goal with hammer.
+  solve_goal with solve_goal_final_hook.
+
+
