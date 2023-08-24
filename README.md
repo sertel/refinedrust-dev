@@ -42,7 +42,7 @@ opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
 2. Install the necessary dependencies:
 ```
 opam pin add coq 8.17.0
-opam pin add coq-lambda-rust.dev git-rts@gitlab.mpi-sws.org:lgaeher/lambda-rust.git#rr
+opam pin add coq-lambda-rust.dev https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git
 make builddep
 ```
 3. Build the project
@@ -66,11 +66,11 @@ Then, assuming you want to translate `path-to-file.rs`, run:
 ```
 For example:
 ```
-./refinedrust run -- examples/section2.rs
+./refinedrust run -- examples/paper.rs
 ```
 This will create a new directory called `section2` in the `output` folder.
 
-To then compile the generated Coq code, switch to `output/section2` and run `dune build`.
+To then compile the generated Coq code, switch to `output/paper` and run `dune build`.
 
 In order to interactively look at the generated code using a Coq plugin like Coqtail, VSCoq, or Proof General for the editor of your choice, you need to add a line pointing to the directory of the generated code in the `_CoqProject` file.
 See the existing includes for inspiration.

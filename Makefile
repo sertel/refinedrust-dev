@@ -24,6 +24,8 @@ opam-version: "2.0"
 name: "refinedrust-builddep"
 maintainer: "Lennard Gäher"
 author: "Lennard Gäher"
+homepage: "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev"
+bug-reports: "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev"
 synopsis: "---"
 description: """
 ---
