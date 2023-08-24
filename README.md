@@ -1,7 +1,6 @@
 # RefinedRust verification framework
 
 This repository contains a public mirror of the RefinedRust development version.
-Currently, this does include the Coq source code of the type system. We will publish the implementation of the type system soon.
 
 ## Structure
 The Coq implementation of RefinedRust can be found in the `theories` subfolder.
@@ -38,7 +37,7 @@ opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
 2. Install the necessary dependencies:
 ```
 opam pin add coq 8.17.0
-opam pin add coq-lambda-rust.dev https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git
+opam pin add coq-lambda-rust.dev https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr
 make builddep
 ```
 3. Build the project
@@ -64,7 +63,7 @@ For example:
 ```
 ./refinedrust run -- examples/paper.rs
 ```
-This will create a new directory called `section2` in the `output` folder.
+This will create a new directory called `paper` in the `output` folder.
 
 To then compile the generated Coq code, switch to `output/paper` and run `dune build`.
 
