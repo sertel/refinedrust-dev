@@ -21,9 +21,9 @@ variables:
     paths:
     - _opam/
   only:
-  - main@gaeher/refinedrust-dev
-  - /^ci/@gaeher/refinedrust-dev
-  - /^time/@gaeher/refinedrust-dev
+  - main@lgaeher/refinedrust-dev
+  - /^ci/@lgaeher/refinedrust-dev
+  - /^time/@lgaeher/refinedrust-dev
   except:
   - triggers
   - schedules
@@ -37,8 +37,8 @@ build-coq.8.17.0-timing:
     DENY_WARNINGS: "1"
     OPAM_PKG: "1"
   only:
-  - main@gaeher/refinedrust-dev
-  - /^time/@gaeher/refinedrust-dev
+  - main@lgaeher/refinedrust-dev
+  - /^time/@lgaeher/refinedrust-dev
   # timing only for master and time/ branches
   tags:
   - fp-timing
@@ -49,7 +49,7 @@ build-coq.8.17.0:
     OPAM_PINS: "coq version 8.17.0"
     DENY_WARNINGS: "1"
   only:
-  - /^ci/@gaeher/refinedrust-dev
+  - /^ci/@lgaeher/refinedrust-dev
 
 trigger-iris.dev:
   <<: *template
