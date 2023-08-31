@@ -49,6 +49,7 @@ build-coq.8.17.0:
     OPAM_PINS: "coq version 8.17.0"
     DENY_WARNINGS: "1"
   only:
+  - main@lgaeher/refinedrust-dev
   - /^ci/@lgaeher/refinedrust-dev
 
 trigger-iris.dev:
