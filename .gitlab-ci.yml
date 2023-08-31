@@ -30,18 +30,18 @@ variables:
   - api
 
 ## Build jobs
-build-coq.8.17.0-timing:
-  <<: *template
-  variables:
-    OPAM_PINS: "coq version 8.17.0"
-    DENY_WARNINGS: "1"
-    OPAM_PKG: "1"
-  only:
-  - main@lgaeher/refinedrust-dev
-  - /^time/@lgaeher/refinedrust-dev
+#build-coq.8.17.0-timing:
+  #<<: *template
+  #variables:
+    #OPAM_PINS: "coq version 8.17.0"
+    #DENY_WARNINGS: "1"
+    #OPAM_PKG: "1"
+  #only:
+  #- main@lgaeher/refinedrust-dev
+  #- /^time/@lgaeher/refinedrust-dev
   # timing only for master and time/ branches
-  tags:
-  - fp-timing
+  #tags:
+  #- fp-timing
 
 build-coq.8.17.0:
   <<: *template
