@@ -21,7 +21,7 @@ variables:
     paths:
     - _opam/
   only:
-  - master@gaeher/refinedrust-dev
+  - main@gaeher/refinedrust-dev
   - /^ci/@gaeher/refinedrust-dev
   - /^time/@gaeher/refinedrust-dev
   except:
@@ -37,7 +37,7 @@ build-coq.8.17.0-timing:
     DENY_WARNINGS: "1"
     OPAM_PKG: "1"
   only:
-  - master@gaeher/refinedrust-dev
+  - main@gaeher/refinedrust-dev
   - /^time/@gaeher/refinedrust-dev
   # timing only for master and time/ branches
   tags:
