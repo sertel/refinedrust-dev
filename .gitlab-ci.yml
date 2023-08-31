@@ -1,0 +1,64 @@
+image: registry.mpi-sws.org/gaeher/rust-ci
+
+stages:
+  - build
+
+variables:
+  # dune takes care of parallelization itself and does not like running in parallel
+  CPU_CORES: "1"
+  MAKE_TARGET: "all_with_examples"
+  OCAML: "ocaml-variants.4.14.0+options ocaml-option-flambda"
+
+.template: &template
+  stage: build
+  tags:
+  - fp
+  script:
+  - git clone https://gitlab.mpi-sws.org/iris/ci.git ci -b opam2
+  - ci/buildjob
+  cache:
+    key: "$CI_JOB_NAME"
+    paths:
+    - _opam/
+  only:
+  - master@gaeher/refinedrust-dev
+  - /^ci/@gaeher/refinedrust-dev
+  - /^time/@gaeher/refinedrust-dev
+  except:
+  - triggers
+  - schedules
+  - api
+
+## Build jobs
+build-coq.8.17.0-timing:
+  <<: *template
+  variables:
+    OPAM_PINS: "coq version 8.17.0"
+    DENY_WARNINGS: "1"
+    OPAM_PKG: "1"
+  only:
+  - master@gaeher/refinedrust-dev
+  - /^time/@gaeher/refinedrust-dev
+  # timing only for master and time/ branches
+  tags:
+  - fp-timing
+
+build-coq.8.17.0:
+  <<: *template
+  variables:
+    OPAM_PINS: "coq version 8.17.0"
+    DENY_WARNINGS: "1"
+  only:
+  - /^ci/@gaeher/refinedrust-dev
+
+trigger-iris.dev:
+  <<: *template
+  variables:
+    STDPP_REPO: "iris/stdpp"
+    IRIS_REPO: "iris/iris"
+    OPAM_PINS: "coq version 8.17.0   git+https://gitlab.mpi-sws.org/$STDPP_REPO#$STDPP_REV   coq-iris.dev git git+https://gitlab.mpi-sws.org/$IRIS_REPO#$IRIS_REV"
+  except:
+  only:
+  - triggers
+  - schedules
+  - api

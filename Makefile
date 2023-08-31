@@ -14,6 +14,29 @@ clean:
 	@dune clean
 .PHONY: clean
 
+frontend-setup:
+	cd rr_frontend && ./rustup-toolchain
+
+frontend: frontend-setup
+	cd rr_frontend && ./refinedrust build
+
+#RUST_SRC = $(wildcard rr_frontend/examples/*.rs)
+RUST_SRC = rr_frontend/examples/paper.rs
+
+%.rs.gen: %.rs phony
+	cd rr_frontend && ./refinedrust run ../$<
+.PHONY: phony
+
+generate_all: $(addsuffix .gen, $(RUST_SRC))
+.PHONY: generate_all
+
+check_generate_all: generate_all
+	git diff --exit-code
+.PHONY: check_generate_all
+
+all_with_examples: frontend generate_all
+	dune build --display short
+
 builddep-opamfiles: builddep/refinedrust-builddep.opam
 	@true
 .PHONY: builddep-opamfiles
