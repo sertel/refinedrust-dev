@@ -15,7 +15,7 @@ clean:
 .PHONY: clean
 
 frontend-setup:
-	cd rr_frontend && ./rustup-toolchain
+	cd rr_frontend && ./rustup-toolchain $(RR_RUST_VERSION)
 
 frontend: frontend-setup
 	cd rr_frontend && ./refinedrust build

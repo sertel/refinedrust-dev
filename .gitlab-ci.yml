@@ -62,6 +62,7 @@ trigger-iris.dev:
   variables:
     STDPP_REPO: "iris/stdpp"
     IRIS_REPO: "iris/iris"
+    RR_RUST_VERSION: "HEAD"
     OPAM_PINS: "coq version 8.17.0 coq-lambda-rust.dev git git+https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr  coq-stdpp.dev git git+https://gitlab.mpi-sws.org/$STDPP_REPO#$STDPP_REV   coq-iris.dev git git+https://gitlab.mpi-sws.org/$IRIS_REPO#$IRIS_REV"
   except:
   only:
