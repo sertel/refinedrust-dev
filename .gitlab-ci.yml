@@ -20,6 +20,10 @@ variables:
     key: "$CI_JOB_NAME"
     paths:
     - _opam/
+    - ~/.rustup/toolchains
+    - ~/.rustup/update-hashes
+    - ~/.rustup/settings.toml
+    #- rr_frontend/target/
   only:
   - main@lgaeher/refinedrust-dev
   - /^ci/@lgaeher/refinedrust-dev
@@ -46,7 +50,7 @@ variables:
 build-coq.8.17.0:
   <<: *template
   variables:
-    OPAM_PINS: "coq version 8.17.0"
+    OPAM_PINS: "coq version 8.17.0 coq-lambda-rust.dev git+https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr"
     DENY_WARNINGS: "1"
   only:
   - main@lgaeher/refinedrust-dev
@@ -57,7 +61,7 @@ trigger-iris.dev:
   variables:
     STDPP_REPO: "iris/stdpp"
     IRIS_REPO: "iris/iris"
-    OPAM_PINS: "coq version 8.17.0   git+https://gitlab.mpi-sws.org/$STDPP_REPO#$STDPP_REV   coq-iris.dev git git+https://gitlab.mpi-sws.org/$IRIS_REPO#$IRIS_REV"
+    OPAM_PINS: "coq version 8.17.0 coq-lambda-rust.dev  git+https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr  coq-stdpp.dev git+https://gitlab.mpi-sws.org/$STDPP_REPO#$STDPP_REV   coq-iris.dev git git+https://gitlab.mpi-sws.org/$IRIS_REPO#$IRIS_REV"
   except:
   only:
   - triggers
