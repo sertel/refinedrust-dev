@@ -15,9 +15,7 @@ variables:
   - fp
   script:
   - git clone https://gitlab.mpi-sws.org/iris/ci.git ci -b opam2
-  - whoami
-  - ls -a $HOME
-  - ls -a $HOME/.rustup
+  - source "$HOME/.cargo/env"
   - ci/buildjob
   cache:
     key: "$CI_JOB_NAME"
