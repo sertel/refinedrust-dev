@@ -3672,7 +3672,7 @@ Section ltype_def.
      owned_subltype_step (MutLtype lt κ) (◁ uninit st) T
    *)
 
-  Fixpoint lty_uniq_deinitializable (lt : lty) : Prop :=
+  Definition lty_uniq_deinitializable (lt : lty) : Prop :=
     match lt with
     | BlockedLty _ _  => False
     | ShrBlockedLty _ _ => False
@@ -3732,7 +3732,7 @@ Section ltype_def.
     destruct lt; subst; eauto.
   Qed.
 
-  Fixpoint lty_uniq_extractable (lt : lty) : option (option lft) :=
+  Definition lty_uniq_extractable (lt : lty) : option (option lft) :=
     match lt with
     | BlockedLty _ κ  => Some (Some κ)
     | ShrBlockedLty _ _ => Some None
