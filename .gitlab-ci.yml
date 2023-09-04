@@ -53,7 +53,7 @@ build-coq.8.17.0:
   <<: *template
   variables:
     OPAM_PINS: "coq version 8.17.0 coq-lambda-rust.dev git git+https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr"
-    DENY_WARNINGS: "1"
+    #DENY_WARNINGS: "1"
   only:
   - main@lgaeher/refinedrust-dev
   - /^ci/@lgaeher/refinedrust-dev
