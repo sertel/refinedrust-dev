@@ -1,6 +1,6 @@
 (coq.theory
- (name caesium)
+ (name caesium.config)
  (package refinedrust)
  (flags :standard -w -notation-overridden -w -redundant-canonical-projection)
- (synopsis "Caesium language")
+ (synopsis "Configuration of the Caesium language")
  (theories lithium stdpp iris RecordUpdate Ltac2))

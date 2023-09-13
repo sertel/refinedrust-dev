@@ -1,5 +1,5 @@
-(lang dune 2.9)
+(lang dune 3.8)
 (name refinedrust)
 (package (name refinedrust))
 (package (name coq-lithium))
-(using coq 0.3)
+(using coq 0.8)

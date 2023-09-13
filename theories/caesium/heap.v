@@ -423,6 +423,7 @@ Fixpoint mem_cast (v : val) (ot : op_type) (st : (gset addr * heap_state)) : val
       (* The following reimplements integer to pointer casts as described in the VIP paper. *)
       v' ← val_to_bytes v;
       a ← val_to_Z v' usize_t;
+      (* Technically, this clause is redundant since val_to_loc already converts 0 to NULL. *)
       if bool_decide (a = 0) then
         Some (val_of_loc (ProvNull, a))
       else if bool_decide (a ∈ st.1) then

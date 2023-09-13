@@ -3012,10 +3012,10 @@ Section typing.
     iApply wps_assert_bool; [done.. | ]. iIntros "!> Hcred". by iApply ("Hs" with "CTX HE HL").
   Qed.
 
-  Lemma type_if E L π e s1 s2 fn R ϝ:
+  Lemma type_if E L π e s1 s2 fn R join ϝ :
     typed_val_expr π E L e (λ L' v rt ty r, typed_if E L' v (v ◁ᵥ{π} r @ ty)
           (typed_stmt π E L' s1 fn R ϝ) (typed_stmt π E L' s2 fn R ϝ))
-    ⊢ typed_stmt π E L (if{BoolOp}: e then s1 else s2) fn R ϝ.
+    ⊢ typed_stmt π E L (if{BoolOp, join}: e then s1 else s2) fn R ϝ.
   Proof.
     iIntros "He #CTX #HE HL". wps_bind.
     iApply ("He" with "CTX HE HL"). iIntros (L' v rt ty r) "HL Hv Hs".

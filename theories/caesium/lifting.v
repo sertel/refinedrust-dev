@@ -1729,11 +1729,18 @@ Qed.
 Lemma wp_get_member_union `{!LayoutAlg} Φ vl l ul uls n E:
   use_union_layout_alg uls = Some ul →
   val_to_loc vl = Some l →
-  Φ (val_of_loc (l at_union{ul}ₗ n)) -∗ WP Val vl at_union{uls} n @ E {{ Φ }}.
+ (* Technically, we only need vl ≠ NULL_bytes here, but we use
+  the loc_in_bounds precondition for uniformity with wp_get_member *)
+  loc_in_bounds l 0 (ly_size ul) -∗
+  Φ (val_of_loc (l at_union{ul}ₗ n)) -∗
+  WP Val vl at_union{uls} n @ E {{ Φ }}.
 Proof.
-  iIntros (Halg ->%val_of_to_loc) "?".
-  rewrite /GetMemberUnion/GetMemberUnionLoc.
-  by iApply @wp_value.
+  iIntros (Halg [|[??]]%val_of_to_loc) "Hlib HΦ"; subst.
+  2: {
+    iDestruct (loc_in_bounds_is_alloc with "Hlib") as %[[?[=]] | (? & ? & ?)].
+    rewrite /GetMemberUnion/GetMemberUnionLoc. by iApply @wp_value.
+  }
+  rewrite /GetMemberUnion/GetMemberUnionLoc. by iApply @wp_value.
 Qed.
 
 (* TODO: lemmas for accessing discriminant/data of enum *)
@@ -2288,12 +2295,9 @@ Proof.
   iModIntro. iSplit; first by eauto 10 using FreeS, val_to_of_loc.
   iNext. iIntros (???? Hstep ?) "Hcred". inv_stmt_step. iModIntro.
   iSplitR; first done.
-  match goal with
-  | H : val_to_loc _ = Some ?l |- _ => apply val_of_to_loc in H; injection H; intros <-; intros
-  end.
-  rewrite (free_block_inj σ.(st_heap) l (Layout n_size n_align) HeapAlloc hs' σ'); [ | done..].
-  iFrame.
-  by iApply ("HWP" with "Hcred").
+  revert select (val_to_loc _ = Some _) => /val_of_to_loc[/(inj _ _ _)Heq|[??]//]. subst.
+  erewrite (free_block_inj σ.(st_heap) _ (Layout n_size n_align) HeapAlloc hs' σ'); [ | done..].
+  iFrame. by iApply ("HWP" with "Hcred").
 Qed.
 
 Lemma wps_skip_credits Q Ψ s n m:
@@ -2441,10 +2445,10 @@ Proof.
   - iDestruct "Hs" as "[_ Hs]". iNext. by iApply "Hs".
 Qed.
 
-Lemma wps_if Q Ψ it v s1 s2 n:
+Lemma wps_if Q Ψ it join v s1 s2 n:
   val_to_Z v it = Some n →
   ▷ (£1 -∗ if bool_decide (n ≠ 0) then WPs s1 {{ Q, Ψ }} else WPs s2 {{ Q, Ψ }}) -∗
-  WPs (if{IntOp it}: (Val v) then s1 else s2) {{ Q , Ψ }}.
+  WPs (if{IntOp it, join}: (Val v) then s1 else s2) {{ Q , Ψ }}.
 Proof.
   iIntros (Hn) "Hs". rewrite !stmt_wp_eq. iIntros (?? ->) "?".
   iApply wp_lift_stmt_step. iIntros (?) "Hσ". iModIntro.
@@ -2453,10 +2457,10 @@ Proof.
   iFrame "Hσ". case_bool_decide; by iApply ("Hs" with "Hcred").
 Qed.
 
-Lemma wps_if_bool  Q Ψ v s1 s2 b:
+Lemma wps_if_bool Q Ψ v s1 s2 b join:
   val_to_bool v = Some b →
   ▷ (£1 -∗ if b then WPs s1 {{ Q, Ψ }} else WPs s2 {{ Q, Ψ }}) -∗
-  WPs (if{BoolOp}: (Val v) then s1 else s2) {{ Q , Ψ }}.
+  WPs (if{BoolOp, join}: (Val v) then s1 else s2) {{ Q , Ψ }}.
 Proof.
   iIntros (Hb) "Hs". rewrite !stmt_wp_eq. iIntros (?? ->) "?".
   iApply wp_lift_stmt_step. iIntros (?) "Hσ". iModIntro.
@@ -2465,11 +2469,11 @@ Proof.
   iFrame "Hσ". destruct b; by iApply ("Hs" with "Hcred").
 Qed.
 
-Lemma wps_if_ptr Q Ψ v s1 s2 l:
+Lemma wps_if_ptr Q Ψ v s1 s2 l join:
   val_to_loc v = Some l →
   wp_if_precond l -∗
   ▷ (£1 -∗ if bool_decide (l ≠ NULL_loc) then WPs s1 {{ Q, Ψ }} else WPs s2 {{ Q, Ψ }}) -∗
-  WPs (if{PtrOp}: (Val v) then s1 else s2) {{ Q , Ψ }}.
+  WPs (if{PtrOp, join}: (Val v) then s1 else s2) {{ Q , Ψ }}.
 Proof.
   iIntros (Hl) "Hlib Hs". rewrite !stmt_wp_eq. iIntros (?? ->) "?".
   iApply wp_lift_stmt_step. iIntros (σ1) "Hσ1 !>".

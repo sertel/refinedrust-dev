@@ -64,7 +64,9 @@ Notation "e1 'at_neg_offset{' ly , ot1 , ot2 } e2" := (BinOp (PtrNegOffsetOp ly)
   (at level 70, format "e1  at_neg_offset{ ly ,  ot1 ,  ot2 }  e2") : expr_scope.
 Notation "e1 'sub_ptr{' ly , ot1 , ot2 } e2" := (BinOp (PtrDiffOp ly) ot2 ot1 e1%E e2%E)
   (at level 70, format "e1  sub_ptr{ ly ,  ot1 ,  ot2 }  e2") : expr_scope.
-Notation "'if{' ot '}' ':' e1 'then' s1 'else' s2" := (IfS ot e1%E s1%E s2%E)
+Notation "'if{' ot ',' join '}' ':' e1 'then' s1 'else' s2" := (IfS ot join e1%E s1%E s2%E)
+  (at level 102, e1, s1, s2 at level 150, format "'[v' 'if{' ot ','  join '}' ':'  e1  'then' '/  ' s1 '/' 'else' '/  ' s2 ']'") : expr_scope.
+Notation "'if{' ot '}' ':' e1 'then' s1 'else' s2" := (IfS ot None e1%E s1%E s2%E)
   (at level 102, e1, s1, s2 at level 150, format "'[v' 'if{' ot '}' ':'  e1  'then' '/  ' s1 '/' 'else' '/  ' s2 ']'") : expr_scope.
 Notation "'expr:' e ; s" := (ExprS e%E s%E)
   (at level 80, s at level 200, format "'[v' 'expr:'  e ';' '/' s ']'") : expr_scope.
@@ -83,7 +85,7 @@ Notation "e1 ||{ ot1 , ot2 , rit } e2" := (LogicalOr ot1 ot2 rit e1 e2)
 Arguments LogicalOr : simpl never.
 Global Typeclasses Opaque LogicalOr.
 
-Definition Assert (ot : op_type) (e : expr) (s : stmt) : stmt := (if{ ot }: e then s else StuckS)%E.
+Definition Assert (ot : op_type) (e : expr) (s : stmt) : stmt := (if{ ot, None }: e then s else StuckS)%E.
 Notation "'assert{' ot '}' ':' e ; s" := (Assert ot e%E s%E)
   (at level 80, s at level 200, format "'[v' 'assert{' ot '}' ':'  e ';' '/' s ']'") : expr_scope.
 Arguments Assert : simpl never.

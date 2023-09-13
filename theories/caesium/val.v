@@ -43,9 +43,19 @@ Definition val_of_loc_n (n : nat) (l : loc) : val :=
 Definition val_of_loc : loc → val :=
   val_of_loc_n bytes_per_addr.
 
+(* [NULL_bytes(_n)] is the alternative representation of NULL as integer 0 bytes. *)
+Definition NULL_bytes_n (n : nat) : val := repeat (MByte byte0 None) n.
+Definition NULL_bytes := NULL_bytes_n bytes_per_addr.
+
 Definition val_to_loc_n (n : nat) (v : val) : option loc :=
   if v is MPtrFrag l _ :: _ then
     if (bool_decide (v = val_of_loc_n n l)) then Some l else None
+  (* A list of 0s is interpreted as NULL. This is mainly useful when
+  memcasting is turned off. Interpreting 0s as NULL does not cause the
+  steps for pointers to overlap with the steps for integers since the
+  steps are dispatched based on the op_type, not on val_to_loc. *)
+  else if v is MByte b _ :: _ then
+    if (bool_decide (v = NULL_bytes_n n)) then Some NULL_loc else None
   else None.
 
 Definition val_to_loc : val → option loc :=
@@ -76,32 +86,30 @@ Proof.
 Qed.
 
 Lemma val_of_to_loc_n n v l:
-  val_to_loc_n n v = Some l → v = val_of_loc_n n l.
+  val_to_loc_n n v = Some l → v = val_of_loc_n n l ∨ v = NULL_bytes_n n ∧ l = NULL_loc.
 Proof.
   rewrite /val_to_loc_n.
-  destruct v as [|b v'] eqn:Hv; first done. repeat case_match => //.
-  revert select (_ = _) => /bool_decide_eq_true -> ?. by simplify_eq.
+  destruct v as [|b v'] eqn:Hv; first done.
+  repeat case_match => //; case_bool_decide; naive_solver.
 Qed.
 
 Lemma val_of_to_loc v l:
-  val_to_loc v = Some l → v = val_of_loc l.
-Proof.
-  by move => /val_of_to_loc_n ->.
-Qed.
+  val_to_loc v = Some l → v = val_of_loc l ∨ v = NULL_bytes ∧ l = NULL_loc.
+Proof. apply val_of_to_loc_n. Qed.
 
 Lemma val_to_loc_n_length n v:
   is_Some (val_to_loc_n n v) → length v = n.
 Proof.
   rewrite /val_to_loc_n. move => [? H]. repeat case_match => //; simplify_eq.
-  revert select (bool_decide _ = _) => /bool_decide_eq_true ->.
-  by rewrite val_of_loc_n_length.
+  - revert select (bool_decide _ = _) => /bool_decide_eq_true ->.
+    rewrite /NULL_bytes_n. by rewrite repeat_length.
+  - revert select (bool_decide _ = _) => /bool_decide_eq_true ->.
+    by rewrite val_of_loc_n_length.
 Qed.
 
 Lemma val_to_loc_length v:
   is_Some (val_to_loc v) → length v = bytes_per_addr.
-Proof.
-  apply val_to_loc_n_length.
-Qed.
+Proof. apply val_to_loc_n_length. Qed.
 
 Global Instance val_of_loc_inj : Inj (=) (=) val_of_loc.
 Proof. move => x y Heq. have := val_to_of_loc x. have := val_to_of_loc y. rewrite Heq. by simplify_eq. Qed.
@@ -309,11 +317,15 @@ Proof.
     by case_bool_decide.
 Qed.
 
-Lemma val_to_loc_to_Z_disjoint v l it z:
+Lemma val_to_Z_val_of_loc_None l it:
+  val_to_Z (val_of_loc l) it = None.
+Proof. apply val_to_Z_val_of_loc_n_None. Qed.
+
+Lemma val_to_loc_to_Z_overlap v l it z:
   val_to_loc v = Some l →
   val_to_Z v it = Some z →
-  False.
-Proof. destruct v => //=. rewrite /val_to_loc/val_to_Z/=. destruct m => // _. by case_bool_decide. Qed.
+  v = NULL_bytes.
+Proof. move => /val_of_to_loc[->|[-> ?//]]. by rewrite val_to_Z_val_of_loc_None. Qed.
 
 Lemma val_of_Z_bool_is_Some p it b:
   is_Some (val_of_Z (bool_to_Z b) it p).

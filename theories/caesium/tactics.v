@@ -455,7 +455,7 @@ Local Unset Elimination Schemes.
 Inductive stmt :=
 | Goto (b : label)
 | Return (e : expr)
-| IfS (ot : op_type) (e : expr) (s1 s2 : stmt)
+| IfS (ot : op_type) (join : option label) (e : expr) (s1 s2 : stmt)
 | Switch (it : int_type) (e : expr) (m : gmap Z nat) (bs : list stmt) (def : stmt)
 | Assign (o : order) (ot : op_type) (e1 e2 : expr) (s : stmt)
 | AssignSE (o : order) (ot : op_type) (e1 e2 : expr) (s : stmt)
@@ -473,7 +473,7 @@ End stmt.
 Lemma stmt_ind (P : stmt → Prop):
   (∀ b : label, P (Goto b)) →
   (∀ e : expr, P (Return e)) →
-  (∀ (ot : op_type) (e : expr) (s1 : stmt), P s1 → ∀ s2 : stmt, P s2 → P (IfS ot e s1 s2)) →
+  (∀ (ot : op_type) (join : option label) (e : expr) (s1 : stmt), P s1 → ∀ s2 : stmt, P s2 → P (IfS ot join e s1 s2)) →
   (∀ (it : int_type) (e : expr) (m : gmap Z nat) (bs : list stmt) (def : stmt), P def → Forall P bs → P (Switch it e m bs def)) →
   (∀ (o : order) (ot : op_type) (e1 e2 : expr) (s : stmt), P s → P (Assign o ot e1 e2 s)) →
   (∀ (o : order) (ot : op_type) (e1 e2 : expr) (s : stmt), P s → P (AssignSE o ot e1 e2 s)) →
@@ -498,7 +498,7 @@ Fixpoint to_stmt `{LayoutAlg} (s : stmt) : lang.stmt :=
   match s with
   | Goto b => lang.Goto b
   | Return e => lang.Return (to_expr e)
-  | IfS ot e s1 s2 => lang.IfS ot (to_expr e) (to_stmt s1) (to_stmt s2)
+  | IfS ot join e s1 s2 => (if{ot, join}: to_expr e then to_stmt s1 else to_stmt s2)%E
   | Switch it e m bs def => lang.Switch it (to_expr e) m (to_stmt <$> bs) (to_stmt def)
   | Assign o ot e1 e2 s => lang.Assign o ot (to_expr e1) (to_expr e2) (to_stmt s)
   | AssignSE o ot e1 e2 s => notation.AssignSE o ot (to_expr e1) (to_expr e2) (to_stmt s)
@@ -530,11 +530,11 @@ Ltac of_stmt s :=
     let e := of_expr e in
     let s := of_stmt s in
     constr:(Assert ot e s)
-  | (if{?ot}: ?e then ?s1 else ?s2)%E =>
+  | (if{?ot, ?join}: ?e then ?s1 else ?s2)%E =>
     let e := of_expr e in
     let s1 := of_stmt s1 in
     let s2 := of_stmt s2 in
-    constr:(IfS ot e s1 s2)
+    constr:(IfS ot join e s1 s2)
   | lang.Goto ?b => constr:(Goto b)
   | lang.Return ?e =>
     let e := of_expr e in constr:(Return e)
@@ -576,7 +576,7 @@ Inductive stmt_ectx :=
 | AssignSERCtx (o : order) (ot : op_type) (e1 : expr) (s : stmt)
 | AssignSELCtx (o : order) (ot : op_type) (v2 : val) (s : stmt)
 | ReturnCtx
-| IfSCtx (ot : op_type) (s1 s2 : stmt)
+| IfSCtx (ot : op_type) (join: option label) (s1 s2 : stmt)
 | SwitchCtx (it : int_type) (m: gmap Z nat) (bs : list stmt) (def : stmt)
 | ExprSCtx (s : stmt)
 | AssertCtx (ot : op_type) (s : stmt)
@@ -593,7 +593,7 @@ Definition stmt_fill (Ki : stmt_ectx) (e : expr) : stmt :=
   | AssignSELCtx o ot v2 s => AssignSE o ot e (Val v2) s
   | ReturnCtx => Return e
   | ExprSCtx s => ExprS e s
-  | IfSCtx ot s1 s2 => IfS ot e s1 s2
+  | IfSCtx ot join s1 s2 => IfS ot join e s1 s2
   | SwitchCtx it m bs def => Switch it e m bs def
   | AssertCtx ot s => Assert ot e s
   | FreeLCtx e_align e' s => Free e e_align e' s
@@ -606,7 +606,7 @@ Definition find_stmt_fill (s : stmt) : option (stmt_ectx * expr) :=
   | Goto _ | Stmt _ | AnnotStmt _ _ _ | LocInfoS _ _ | SkipS _ | StuckS => None
   | Return e => if e is (Val v) then None else Some (ReturnCtx, e)
   | ExprS e s => if e is (Val v) then None else Some (ExprSCtx s, e)
-  | IfS ot e s1 s2 => if e is (Val v) then None else Some (IfSCtx ot s1 s2, e)
+  | IfS ot join e s1 s2 => if e is (Val v) then None else Some (IfSCtx ot join s1 s2, e)
   | Switch it e m bs def => if e is (Val v) then None else Some (SwitchCtx it m bs def, e)
   | Assign o ot e1 e2 s => if e2 is (Val v) then if e1 is (Val v) then None else Some (AssignLCtx o ot v s, e1) else Some (AssignRCtx o ot e1 s, e2)
   | AssignSE o ot e1 e2 s => if e2 is (Val v) then if e1 is (Val v) then None else Some (AssignSELCtx o ot v s, e1) else Some (AssignSERCtx o ot e1 s, e2)
@@ -635,10 +635,10 @@ Proof.
   eexists ([StmtCtx (lang.AssignRCtx _ _ _ _) rf])|
   eexists ([ExprCtx lang.SkipECtx; StmtCtx (lang.AssignLCtx _ _ _ _) rf])|
   eexists ([StmtCtx (lang.ReturnCtx) rf])|
-  eexists ([StmtCtx (lang.IfSCtx _ _ _) rf])|
+  eexists ([StmtCtx (lang.IfSCtx _ _ _ _) rf])|
   eexists ([StmtCtx (lang.SwitchCtx _ _ _ _) rf])|
   eexists ([StmtCtx (lang.ExprSCtx _) rf])|
-  eexists ([StmtCtx (lang.IfSCtx _ _ _) rf])|
+  eexists ([StmtCtx (lang.IfSCtx _ _ _ _) rf])|
   eexists ([StmtCtx (lang.FreeLCtx _ _ _) rf])|
   eexists ([StmtCtx (lang.FreeMCtx _ _ _) rf])|
   eexists ([StmtCtx (lang.FreeRCtx _ _ _) rf])|
@@ -787,7 +787,7 @@ Fixpoint subst_stmt (xs : list (var_name * val)) (s : stmt) : stmt :=
   match s with
   | Goto b => Goto b
   | Return e => Return (subst_l xs e)
-  | IfS ot e s1 s2 => IfS ot (subst_l xs e) (subst_stmt xs s1) (subst_stmt xs s2)
+  | IfS ot join e s1 s2 => IfS ot join (subst_l xs e) (subst_stmt xs s1) (subst_stmt xs s2)
   | Switch it e m' bs def => Switch it (subst_l xs e) m' (subst_stmt xs <$> bs) (subst_stmt xs def)
   | Assign o ot e1 e2 s => Assign o ot (subst_l xs e1) (subst_l xs e2) (subst_stmt xs s)
   | AssignSE o ot e1 e2 s => AssignSE o ot (subst_l xs e1) (subst_l xs e2) (subst_stmt xs s)

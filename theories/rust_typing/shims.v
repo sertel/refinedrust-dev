@@ -281,6 +281,7 @@ Proof.
   { shelve. }
   iPoseProof (ofty_value_t_untyped_from_array with "Hs") as "Hs".
   iPoseProof (ofty_value_t_untyped_from_array with "Ht") as "Ht".
+
   iApply typed_stmt_annot_skip.
   repeat liRStep; liShow.
 
@@ -484,7 +485,9 @@ Proof.
   iAssert ((ProvAlloc None, n : addr) ◁ₗ[π, Owned false] .@ ◁ unit_t)%I with "[Hl]" as "?".
   { rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iExists _. simpl. iSplitR; first done.
-    iSplitR. { iPureIntro. eapply Z.divide_1_l. }
+    iSplitR. { iPureIntro. rewrite /has_layout_loc/aligned_to.
+      destruct caesium_config.enforce_alignment; last done.
+      eapply Z.divide_1_l. }
     iSplitR; first done.
     iPoseProof (heap_mapsto_loc_in_bounds with "Hl") as "#Hlb".
     iSplitR; first done. iSplitR; first done.
@@ -494,7 +497,9 @@ Proof.
   repeat liRStep.
   Unshelve.
   all: unshelve_sidecond; sidecond_hook.
-  rewrite /aligned_to /=. apply Z.divide_refl.
+  rewrite /aligned_to /=.
+  destruct caesium_config.enforce_alignment; last done.
+  apply Z.divide_refl.
 Qed.
 
 (** inspired by NonNull::dangling *)
@@ -867,7 +872,7 @@ Proof.
   iApply (ofty_value_t_untyped_reduce_alignment with "Hl").
   - simpl. lia.
   - rewrite /has_layout_loc/ly_align/mk_array_layout/u8/=.
-    rewrite /aligned_to. apply Z.divide_1_l.
+    rewrite /aligned_to. destruct caesium_config.enforce_alignment; last done. apply Z.divide_1_l.
   - rewrite /layout_wf/ly_align/u8/=. apply Z.divide_1_l.
   - done.
 Qed.
@@ -1542,8 +1547,7 @@ liRStep; liShow.
 
   Unshelve. all: unshelve_sidecond; sidecond_hook.
   Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook.
-  all: try by (rewrite /has_layout_loc/layout_wf/aligned_to/ly_align/u8/=; apply Z.divide_1_l).
-
+  { rewrite /has_layout_loc/layout_wf/aligned_to /ly_align/u8/=. destruct caesium_config.enforce_alignment; last done. apply Z.divide_1_l. }
   { rewrite /has_layout_val drop_length/=. rewrite Hlen/new_ly/ly_size/=.  lia.  }
 Qed.
 
