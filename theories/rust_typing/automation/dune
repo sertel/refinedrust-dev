@@ -3,4 +3,4 @@
  (package refinedrust)
  (flags -w -notation-overridden -w -redundant-canonical-projection)
  (synopsis "RefinedRust automation components")
- (theories caesium refinedrust lithium))
+ (theories stdpp iris RecordUpdate Ltac2 caesium refinedrust lithium))

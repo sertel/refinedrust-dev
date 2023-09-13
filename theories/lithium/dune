@@ -2,4 +2,5 @@
  (name lithium)
  (package coq-lithium)
  (flags :standard -w -notation-overridden -w -redundant-canonical-projection)
- (synopsis "Lithium"))
+ (synopsis "Lithium")
+ (theories stdpp iris RecordUpdate Ltac2))

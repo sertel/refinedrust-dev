@@ -3,6 +3,4 @@
  (package refinedrust)
  (flags :standard -w -notation-overridden -w -redundant-canonical-projection)
  (synopsis "Caesium language")
- (theories
-   lithium ; removed by make prepare-install-refinedc
- ))
+ (theories lithium stdpp iris RecordUpdate Ltac2))

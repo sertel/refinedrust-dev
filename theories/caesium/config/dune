@@ -3,6 +3,4 @@
  (package refinedrust)
  (flags :standard -w -notation-overridden -w -redundant-canonical-projection)
  (synopsis "Configuration of the Caesium language")
- (theories 
-   ;lithium stdpp iris RecordUpdate Ltac2
-   ))
+ (theories lithium stdpp iris RecordUpdate Ltac2))
