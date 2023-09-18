@@ -32,6 +32,43 @@ Proof.
     inversion 1; econstructor; naive_solver.
 Qed.
 
+Lemma Forall2_cons_inv {A B} (P : A → B → Prop) l r x y :
+  Forall2 P (x :: l) (y :: r) →
+  P x y ∧ Forall2 P l r.
+Proof.
+  inversion 1; subst. done.
+Qed.
+
+
+(* TODO Move *)
+Lemma drop_app' {A} (l k : list A) n :
+  length l = n → drop n (l ++ k) = k.
+Proof. intros <-. apply drop_app. Qed.
+Lemma take_app' {A} (l k : list A) n :
+  length l = n → take n (l ++ k) = l.
+Proof. intros <-. apply take_app. Qed.
+
+
+(* TODO move *)
+Lemma list_to_map_lookup_fst {A B} `{Countable A} (l : list (A * B)) k : 
+  k ∈ l.*1 →
+  NoDup (l.*1) →
+  ∃ v, list_to_map (M := gmap A B) l !! k = Some v.
+Proof.
+  induction l as [ | [k1 v1] l IH]; simpl.
+  { intros []%elem_of_nil. }
+  intros [-> | Ha]%elem_of_cons Hnodup.
+  { exists v1. apply lookup_insert. }
+  inversion Hnodup as [ | ? ? Hnel Hnodup']; subst.
+  efeed pose proof IH as Hb; [done | done | ].
+  destruct Hb as (v & Hlook). exists v.
+  rewrite lookup_insert_ne; first done.
+  intros ->. apply Hnel. done.
+Qed.
+
+
+
+
 (* TODO move *)
 Definition list_map_option {X Y} (f : X → option Y) (l : list X) : option (list Y) :=
   foldr (λ (x : X) (y : option (list Y)),

@@ -895,3 +895,9 @@ Canonical Structure layoutO := leibnizO layout.
 Canonical Structure valO := leibnizO val.
 Canonical Structure exprO := leibnizO expr.
 Canonical Structure allocationO := leibnizO allocation.
+
+
+Ltac unfold_size_constants :=
+  rewrite /min_alloc_start/max_alloc_end;
+  rewrite /bits_per_int/bytes_per_int;
+  rewrite /bytes_per_addr/bits_per_byte/bytes_per_addr_log.

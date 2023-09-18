@@ -1,5 +1,22 @@
 From caesium Require Import lang.
 
+Ltac unfold_common_caesium_defs :=
+  unfold
+  (* Unfold [aligned_to] and [Z.divide] as lia can work with the underlying multiplication. *)
+    aligned_to,
+    (*Z.divide,*)
+  (* Unfold [addr] since [lia] may get stuck due to [addr]/[Z] mismatches. *)
+    addr,
+  (* Layout *)
+    ly_size, ly_with_align, ly_align_log, layout_wf,
+  (* Integer bounds *)
+    max_int, min_int, int_half_modulus, int_modulus,
+    bits_per_int, bytes_per_int,
+  (* Address bounds *)
+    max_alloc_end, min_alloc_start, bytes_per_addr,
+  (* Other byte-level definitions *)
+    bits_per_byte in *.
+
 (** get the named fields of a struct field list *)
 Definition named_fields (sl_fields : field_list) : list (var_name * layout) :=
   foldr (λ '(n, ly) acc, match n with Some n => (n, ly) :: acc | _ => acc end) [] sl_fields.
@@ -72,6 +89,19 @@ Lemma named_fields_field_names_length fields :
 Proof.
   rewrite named_fields_eq /field_names.
   apply omap_length_eq. intros ? [[] ] ? => //.
+Qed.
+
+Lemma mjoin_pad_struct_layout sl els f :
+  Forall2 (λ '(n, ly) v, v `has_layout_val` ly) (named_fields sl.(sl_members)) els →
+  (∀ ly, length (f ly) = ly_size ly) →
+  mjoin (pad_struct sl.(sl_members) els f) `has_layout_val` sl.
+Proof.
+  rewrite /has_layout_val/layout_of{2}/ly_size/=.
+  generalize (sl_members sl) => fields. clear sl.
+  induction fields as [ | [[name | ] field] fields IH] in els |-*; simpl; first done.
+  - intros Ha Hf. apply Forall2_cons_inv_l in Ha as (v & els' & Hlen & Ha%IH & ->); last done.
+    rewrite app_length Ha Hlen. done.
+  - intros Ha Hf. apply IH in Ha; last done. rewrite app_length Ha Hf//.
 Qed.
 
 (** We define a closed set of integer types that are allowed to appear as literals in the source code,
@@ -264,7 +294,20 @@ Record enum_layout_spec : Set := mk_els
     (* This is fixed (and not something chooseable by the layout algorithm), because Rust's MIR already has this type fixed. *)
     els_tag_it : IntType;
     els_variants : list (string * syn_type);
+    (* This is additional information that doesn't affect the layout algorithm, but just the operational behavior of enum operations *)
     els_tag_int : list (var_name * Z);
+    (* The variant list should have no duplicates *)
+    els_variants_nodup :
+      NoDup (fmap fst els_variants);
+    (* The variant lists should agree *)
+    els_tag_int_agree :
+      fmap fst els_tag_int = fmap fst els_variants;
+    (* the tags should have no duplicates *)
+    els_tag_int_nodup:
+      NoDup (fmap snd els_tag_int);
+    (* the tags should be in range of the integer type for the tags *)
+    els_tag_int_wf3 :
+      Forall (λ '(_, tag), tag ∈ (els_tag_it : int_type)) els_tag_int;
   }.
 
 Definition syn_type_of_els (els : enum_layout_spec) : syn_type :=
@@ -338,6 +381,40 @@ Solve Obligations with done.
    More restrictively, in order to make [NonNull::dangling] work, the alignment also needs to be a valid address. *)
 Definition ly_align_in_bounds (ly : layout) :=
   min_alloc_start ≤ ly_align ly ≤ max_alloc_end.
+Lemma ly_align_in_bounds_1 ly :
+  ly_align_log ly = 0%nat → ly_align_in_bounds ly.
+Proof.
+  rewrite /ly_align_in_bounds/ly_align => ->.
+  unfold_size_constants. simpl; nia.
+Qed.
+
+Lemma ly_align_log_in_u8 ly :
+  ly_align_in_bounds ly → Z.of_nat (ly_align_log ly) ∈ u8.
+Proof.
+  rewrite /ly_align_in_bounds/min_alloc_start/max_alloc_end/=/ly_align/bytes_per_addr/bytes_per_addr_log/=.
+  rewrite /bits_per_byte/=.
+  intros [Ha Hb].
+  split. { unfold_common_caesium_defs. simpl in *. lia. }
+  assert ((2 ^ ly_align_log ly) ≤ 2 ^ (8%nat * 8))%nat as Hle.
+  { apply Nat2Z.inj_le. etrans; first apply Hb.
+    rewrite Nat2Z.inj_pow. nia.
+  }
+  apply PeanoNat.Nat.pow_le_mono_r_iff in Hle; last lia.
+  unfold_common_caesium_defs. simpl in *. lia.
+Qed.
+Lemma ly_align_log_in_usize ly :
+  ly_align_in_bounds ly → Z.of_nat (ly_align_log ly) ∈ usize_t.
+Proof.
+  intros [_ Ha]%ly_align_log_in_u8.
+  split. { unfold_common_caesium_defs. simpl in *. lia. }
+  unfold_common_caesium_defs. simpl in *. lia.
+Qed.
+Lemma ly_align_in_usize ly :
+  ly_align_in_bounds ly → Z.of_nat (ly_align ly) ∈ usize_t.
+Proof.
+  intros [Ha Hb].
+  split; unfold_common_caesium_defs; simpl in *; lia.
+Qed.
 
 (** Use a layout algorithm recursively on a layout spec. *)
 (* NOTE on size limits from https://doc.rust-lang.org/stable/reference/types/numeric.html#machine-dependent-integer-types:
@@ -1501,3 +1578,5 @@ Proof.
   intros [-> | (ly' & Hly & ->)]; first done.
   intros (-> & _)%syn_type_has_layout_untyped_inv. done.
 Qed.
+
+

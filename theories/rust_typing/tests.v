@@ -295,7 +295,11 @@ Section test.
     ("0", T_st)].
   Program Definition std_option_Option_els : enum_layout_spec := mk_els "std_option_Option" ISize [
     ("None", std_option_Option_None_sls  : syn_type);
-    ("Some", std_option_Option_Some_sls : syn_type)] [("None", 0); ("Some", 1)].
+    ("Some", std_option_Option_Some_sls : syn_type)] [("None", 0); ("Some", 1)] _ _ _ _.
+  Next Obligation. repeat first [econstructor | set_solver]. Qed.
+  Next Obligation. done. Qed.
+  Next Obligation. repeat first [econstructor | set_solver]. Qed.
+  Next Obligation. repeat first [econstructor | solve_goal]. Qed.
 
   Lemma inv_test e_ly :
     use_enum_layout_alg std_option_Option_els = Some e_ly →
@@ -303,8 +307,7 @@ Section test.
   Proof.
     intros.
     inv_layout_alg.
-    (* TODO why doesn't this work*)
-    (*solve_layout_alg.*)
+    solve_layout_alg; solve[fail].
   Abort.
 
   (** Untyped *)

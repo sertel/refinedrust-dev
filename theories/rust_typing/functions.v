@@ -9,6 +9,7 @@ Definition to_runtime_function (fn : function) (lsa lsv : list loc) (lya lyv : l
 Definition introduce_typed_stmt {Σ} `{!typeGS Σ} (π : thread_id) (E : elctx) (L : llctx) (ϝ : lft) (fn : function) (lsa lsv : list loc) (lya lyv : list layout) (R : val → iProp Σ) : iProp Σ :=
   let rf := to_runtime_function fn lsa lsv lya lyv in
   typed_stmt π E L (Goto fn.(f_init)) rf R ϝ.
+Global Typeclasses Opaque to_runtime_function.
 Global Typeclasses Opaque introduce_typed_stmt.
 Global Arguments introduce_typed_stmt : simpl never.
 
@@ -176,35 +177,6 @@ Section function.
       iIntros "(%fn & % & -> & _)". eauto.
   Qed.
   Global Instance copyable_function_ptr fal fp : Copyable (function_ptr fal fp) := _.
-
-  (*
-    Typing for function calls:
-    - we get the arguments,
-    - then we instantiate the universal params [x] that the function has
-        this will in particular involve universal lifetimes and generics, but usually as evars.
-    - we show that we can adapt the arguments to have the right types expected by the function,
-      (this resolves some evars)
-    - we prove the additional precondition
-    - we show that lifetimes in the current local context are alive (so that we can obtain tokens to give the function)
-    - we show that the external context required by the function is satisfiable, assuming that ϝ is outlived by all local lifetimes.
-       (logically, we will end up instantiating the ϝ with the intersection of all local lifetimes + a new atomic lifetime)
-       to show this: we need to have instantiated the universal parameters already.
-    - then we obtain some result value v + an existential x'
-    - and the postcondition
-    - and continue with the result value in the continuation.
-
-    This completely abstracts the handling of the lifetime context for the function.
-    - for the new local lifetime context of the function, we will internally create a new atomic lifetime and instantiate the context with that.
-   *)
-  (* NOTE: to improve performance of the solver, it may make sense to reformulate the elctx_sat assumption. *)
-  (* TODO: how could we directly have lifetime annotations here?
-      Basically, would get a list of lifetimes.
-      But I guess I could make the interpretation give me a vector.
-      Only: how do I formulate that in a way that typechecks?
-      Well, I guess I could use a dependently typed function for that.
-
-   *)
-
 End function.
 Section call.
   Context `{!typeGS Σ}.
@@ -382,6 +354,8 @@ Section call.
     λ T, i2p (type_call_fnptr π E L (A := A)lfts eκs l v vl tys T fp lya).
 End call.
 
+Global Typeclasses Opaque function_ptr.
+Global Typeclasses Opaque typed_function.
 Arguments fn_ret_prop _ _ _ /.
 
 (* In principle we'd like a notation along these lines, but the recursive pattern for the parameter list isn't supported by Coq. *)
@@ -424,6 +398,3 @@ Definition bla1 `{typeGS Σ} :=
 Definition bla2 `{typeGS Σ} :=
   (fn(∀ () : 0 | x : unit, (λ _, []); () @ (uninit PtrSynType), () @ (uninit PtrSynType) ; (λ π, True)) → ∃ y : Z, () @ (uninit PtrSynType) ; (λ π, ⌜ (4 > y)%Z⌝)).
 End test.
-
-Global Typeclasses Opaque function_ptr.
-Global Typeclasses Opaque typed_function.

@@ -1972,6 +1972,58 @@ Proof.
     simpl. rewrite pad_struct_snoc_None; done.
 Qed.
 
+(* A slightly more usable version defined via a fixpoint *)
+Fixpoint struct_init_components `{!LayoutAlg} E (fields : list (var_name * syn_type)) (fs : list (string * expr)) (Φ : list val → iProp Σ) : iProp Σ :=
+  match fields with
+  | [] => Φ []
+  | (n, st) :: fields' =>
+      ∀ ly, ⌜syn_type_has_layout st ly⌝ -∗
+        WP (default (Val (replicate (ly_size ly) MPoison)) ((list_to_map fs : gmap _ _) !! n)) @ E {{ v, struct_init_components E fields' fs (λ vs, Φ (v :: vs)) }}
+  end.
+Instance struct_init_components_proper `{!LayoutAlg} E fields fs :
+  Proper (((=) ==> (≡)) ==> (≡)) (struct_init_components E fields fs).
+Proof.
+  intros a b Heq.
+  induction fields as [ | [ n st] fields IH] in a, b, Heq|-*; simpl.
+  { by iApply Heq. }
+  do 3 f_equiv.
+  apply wp_proper. intros ?. apply IH.
+  intros ? ? ->. apply Heq. done.
+Qed.
+Lemma wp_struct_init2 `{!LayoutAlg} E (Φ : val → iProp Σ) (sls : struct_layout_spec) (sl : struct_layout) (fs : list (string * expr)) :
+  use_struct_layout_alg sls = Some sl →
+  struct_init_components E sls.(sls_fields) fs (λ vl : list val, Φ (mjoin (M:=list)(pad_struct sl.(sl_members) vl (λ ly, (replicate (ly_size ly) MPoison))))) -∗
+  WP StructInit sls fs @ E {{ Φ }}.
+Proof.
+  iIntros (Halg) "Hinit".
+  iApply wp_struct_init; first done.
+  apply use_struct_layout_alg_inv in Halg as (mems & Halg & Hfields).
+  efeed pose proof struct_layout_alg_has_fields as Hmems; first apply Halg.
+  move: Hfields Hmems. clear Halg.
+  generalize (sls_fields sls) as fields => fields.
+  rewrite /sl_has_members.
+  generalize (sl_members sl) as all_mems => all_mems.
+  move => Hfields ?. clear sls. subst mems.
+
+  (* hack because rewrite doesn't work *)
+  iAssert (∀ vi Φ,
+    struct_init_components E fields fs (λ vl : list val, Φ (vi ++ vl)) -∗
+    foldr (λ '(n, st) (f : list val → iPropI Σ) (vl : list val), ∀ ly : layout, ⌜syn_type_has_layout st ly⌝ -∗ WP default (Val $ replicate (ly_size ly) ☠%V) (list_to_map (M:=gmap _ _) fs !! n) @ E {{ v, f (vl ++ [v]) }}) (λ vl : list val, Φ vl) fields vi)%I as "Ha".
+  {
+    iIntros (vi Ψ) "Ha". clear Hfields.
+    iInduction fields as [ | [n st] fields] "IH" forall (vi); simpl.
+    { rewrite app_nil_r. done. }
+    iIntros (ly) "%Hst". iPoseProof ("Ha" $! ly with "[//]") as "Ha".
+    iApply (wp_wand with "Ha").
+    iIntros (v) "Hinit".
+    iApply "IH".
+    iClear "IH".
+    iStopProof.
+    rewrite struct_init_components_proper; first eauto.
+    intros ?? ->. by rewrite -app_assoc. }
+  by iApply "Ha".
+Qed.
+
 Lemma wp_enum_init `{!LayoutAlg} E Φ (els : enum_layout_spec) el variant rsty e :
   use_enum_layout_alg els = Some el →
   WP e @ E {{ v,

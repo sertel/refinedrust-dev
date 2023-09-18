@@ -79,6 +79,7 @@ Definition is_array_ot `{!typeGS Σ} {rt} (ty : type rt) (len : nat) (ot : op_ty
         layout_wf ly'
   | _ => False
   end.
+Global Typeclasses Opaque is_array_ot.
 
 Section array.
   Context `{!typeGS Σ}.
@@ -343,7 +344,6 @@ Section array.
   (* TODO copy *)
 End array.
 
-Global Typeclasses Opaque array_t.
 
 Section lemmas.
   Context `{!typeGS Σ}.
@@ -1517,7 +1517,6 @@ Section rules.
     iMod ("Hsubt" with "[//] CTX HE HL") as "(Hincl & $ & $)".
     iModIntro. eauto with iFrame.
   Qed.
-  Global Typeclasses Opaque weak_subltype_list_interp.
 
    (* options;
        - require homogeneous and then use mut_subltype in the assumption
@@ -1562,7 +1561,6 @@ Section rules.
       by iFrame.
     - iIntros (?) "(% & $)"; done.
   Qed.
-  Global Typeclasses Opaque mut_subltype_list_interp.
 
   Lemma mut_subltype_list_replicate (E : elctx) (L : llctx) {rt} (lt1 : ltype rt) (lt2 : ltype rt) cap interp n ig i0 T :
     mut_subltype E L lt1 lt2 T
@@ -1596,7 +1594,6 @@ Section rules.
       by iFrame.
     - iIntros (T) "(%Heqt & $)". eauto.
   Qed.
-  Global Typeclasses Opaque mut_eqltype_list_interp.
 
   Lemma mut_eqltype_list_replicate (E : elctx) (L : llctx) {rt} (lt1 : ltype rt) (lt2 : ltype rt) cap interp n ig i0 T :
     mut_eqltype E L lt1 lt2 T
@@ -1743,7 +1740,7 @@ Section rules.
       iModIntro. iFrame. done.
     - iIntros (T) "(%Heqt & $)". done.
   Qed.
-  Global Typeclasses Opaque fold_overrides_list_interp.
+
   Lemma fold_overrides_list_replicate {rt} E L (def : type rt) (lt : ltype rt) n ig i0 cap (req : bool) T :
     (if req then mut_subltype E L lt (◁ def) T else mut_eqltype E L lt (◁ def) T)
     ⊢ fold_list E L ig (replicate n lt) i0 (fold_overrides_list_interp def cap req) T.
@@ -2072,7 +2069,7 @@ Section rules.
       T L' R' iml' rs'.
   Class StratifyLtypeArrayIter (π : thread_id) (E : elctx) (L : llctx) (mu : StratifyMutabilityMode) (md : StratifyDescendUnfoldMode) (ma : StratifyAscendMode) {M} (m : M) (l : loc) (ig : list nat) {rt} (def : type rt) (len : nat) (iml : list (nat * ltype rt)) (rs : list (place_rfn rt)) (k : bor_kind) : Type :=
     stratify_ltype_array_iter_proof T : iProp_to_Prop (stratify_ltype_array_iter π E L mu md ma m l ig def len iml rs k T).
-  Global Hint Mode StratifyLtypeArrayIter + + + + + + + + + + + + + + + + : typeclass_instances.
+
 
   Lemma stratify_ltype_array_iter_nil π E L mu md ma {M} (m : M) (l : loc) {rt} (def : type rt) (len : nat) (rs : list (place_rfn rt)) k ig (T : stratify_ltype_array_iter_cont_t rt) :
     T L True [] rs
@@ -2378,7 +2375,7 @@ Section value.
   Admitted.
 End value.
 
-Global Typeclasses Opaque stratify_ltype_array_iter.
+
 
 Section offset_ptr.
   Context `{!typeGS Σ}.
@@ -2446,7 +2443,7 @@ Section offset_rules.
       T _ ty' len iml rs' k' rte lte re.
   Class TypedArrayAccess (π : thread_id) (E : elctx) (L : llctx) (base : loc) (off : nat) (st : syn_type) {rt} (lt : ltype rt) (r : place_rfn rt) (k : bor_kind) : Type :=
     typed_array_access_proof T : iProp_to_Prop (typed_array_access π E L base off st lt r k T).
-  Global Hint Mode TypedArrayAccess + + + + + + + + + + : typeclass_instances.
+
 
   Lemma typed_array_access_unfold π E L base off st {rt} (ty : type rt) len (rs : place_rfn (list (place_rfn rt))) k T :
     typed_array_access π E L base off st (ArrayLtype ty len []) rs k T
@@ -2587,7 +2584,7 @@ Section offset_rules.
     iIntros (F' v ?) "Hoffset".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "->".
     iModIntro. iExists _, _, _, _, _. iR. iFrame "Hoff".
-    iSplitR. { rewrite /ty_own_val. done. }
+    iSplitR. { rewrite /ty_own_val/=. done. }
     iSpecialize ("HT" with "Hbase").
     iApply "HT".
   Qed.
@@ -2666,7 +2663,7 @@ Section offset_rules.
     iSplitR; last iSplitR.
     - iPureIntro. simpl. iIntros (ly1 ly2 Hst1 Hst2).
       f_equiv. by eapply syn_type_has_layout_inj.
-    - done.
+    - rewrite /ty_sidecond/=. done.
     - iIntros (v) "Hv". rewrite /ty_own_val/=. done.
   Qed.
   Global Instance owned_subtype_offset_alias_inst π E L pers l (offset : nat) l2 st :
@@ -2684,8 +2681,8 @@ Section offset_rules.
     iSplitR; last iSplitR.
     - iPureIntro. simpl. iIntros (ly1 ly2 Hst1 Hst2).
       f_equiv. by eapply syn_type_has_layout_inj.
-    - done.
-    - iIntros (v) "->". rewrite /ty_own_val/=.
+    - rewrite /ty_sidecond/=. done.
+    - rewrite /alias_ptr_t. iIntros (v) "->". rewrite /ty_own_val/=.
       rewrite /OffsetLocSt. rewrite Z.mul_0_r shift_loc_0//.
   Qed.
   Global Instance owned_subtype_alias_offset_inst π E L pers l (offset : nat) l2 st :
@@ -2806,7 +2803,23 @@ Section offset_rules.
   *)
 End offset_rules.
 
+Global Hint Mode TypedArrayAccess + + + + + + + + + + + + : typeclass_instances.
+Global Typeclasses Opaque typed_array_access.
 
+Global Typeclasses Opaque offset_ptr_t.
+Global Typeclasses Opaque array_t.
+
+
+Global Typeclasses Opaque weak_subltype_list_interp.
+Global Typeclasses Opaque mut_subltype_list_interp.
+Global Typeclasses Opaque mut_eqltype_list_interp.
+
+Global Typeclasses Opaque fold_overrides_list_interp.
+
+Global Typeclasses Opaque stratify_ltype_array_iter.
+Global Hint Mode StratifyLtypeArrayIter + + + + + + + + + + + + + + + + + + : typeclass_instances.
+Global Hint Mode ResolveGhostIter + + + + + + + + + + + + + + + : typeclass_instances.
+Global Typeclasses Opaque resolve_ghost_iter.
 
 
 
@@ -2887,3 +2900,4 @@ End offset_rules.
           => This is the path to take.
         + or go via lookup of iml -- needs custom lookup li_tactic then.
    *)
+

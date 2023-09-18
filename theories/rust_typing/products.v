@@ -36,6 +36,7 @@ Definition is_struct_ot `{typeGS Σ} (sls : struct_layout_spec) (tys : list rtyp
         True tys
   | _ => False
   end.
+Global Typeclasses Opaque is_struct_ot.
 
 (* Problem:
     the sl is embedded in the StructOp.
@@ -424,6 +425,129 @@ Section util.
   Qed.
 End util.
 
+Section init.
+  Context `{!typeGS Σ}.
+  Lemma struct_val_has_layout sls sl vs :
+    Forall3 (λ '(_, ly) '(_, st) v, syn_type_has_layout st ly ∧ v `has_layout_val` ly) (named_fields (sl_members sl)) (sls_fields sls)  vs →
+    mjoin (pad_struct (sl_members sl) vs (λ ly : layout, replicate (ly_size ly) ☠%V)) `has_layout_val` sl.
+  Proof.
+    rewrite {2}/has_layout_val{2}/ly_size/=.
+    generalize (sls_fields sls) as fields => fields. clear sls.
+    generalize (sl_members sl) as mems => mems. clear sl.
+    induction mems as [ | [oname ly] mems IH] in vs, fields |-*; simpl; first done.
+    destruct oname as [ name | ].
+    - (* named *)
+      intros Hf. apply Forall3_cons_inv_l in Hf as ([name2 st] & fields' & v & vs' & -> & -> & [Hst Hv] & Hf).
+      rewrite app_length. erewrite IH; last done.
+      simpl. rewrite Hv. done.
+    - intros Hf. rewrite app_length replicate_length. erewrite IH; last done. done.
+  Qed.
+
+  Lemma struct_init_val π sls sl vs {rts} (tys : hlist type rts) (rs : plist id rts) :
+    use_struct_layout_alg sls = Some sl →
+    length rts = length (sls_fields sls) →
+    ([∗ list] i↦v;Ty ∈ vs;hpzipl rts tys rs, let 'existT rt (ty, r) := Ty in
+      ∃ (name : string) (st : syn_type) (ly : layout),
+        ⌜sls_fields sls !! i = Some (name, st)⌝ ∗ ⌜syn_type_has_layout st ly⌝ ∗
+        ⌜syn_type_has_layout (ty_syn_type ty) ly⌝ ∗ v ◁ᵥ{ π} r @ ty) -∗
+    mjoin (pad_struct (sl_members sl) vs (λ ly : layout, replicate (ly_size ly) ☠%V)) ◁ᵥ{ π} (λ (X : Type) (a : X), # a) -<$> rs @ struct_t sls tys.
+  Proof.
+    iIntros (Hsl Hlen) "Hv".
+    rewrite {2}/ty_own_val/=.
+    iExists sl. iR. iR.
+
+    apply use_struct_layout_alg_inv in Hsl as (field_lys & Halg & Hfields).
+    specialize (struct_layout_alg_pad_align _ _ _ Halg) as Hpad.
+    specialize (sl_size sl) as Hsize.
+    apply struct_layout_alg_has_fields in Halg.
+    move: Halg Hfields Hlen Hpad Hsize.
+    rewrite /sl_has_members. intros ->.
+    rewrite /has_layout_val [ly_size sl]/ly_size/=.
+    intros Hsts Hlen Hpad Hsize.
+
+    iSplit.
+    { iApply bi.pure_mono; first apply (struct_val_has_layout sls).
+      move: Hsts Hlen.
+      generalize (sls_fields sls) as sts. generalize (sl_members sl) as mems.
+      intros mems sts.
+      generalize (named_fields mems) as lys. clear mems. intros lys Hsts Hlen.
+      iInduction vs as [ | v vs] "IH" forall (rts tys rs sts lys Hsts Hlen).
+      { destruct rts as [ | rt rts]; inv_hlist tys; [destruct rs | destruct rs as [r rs]]; simpl; last done.
+        destruct sts; last done. apply Forall2_nil_inv_l in Hsts as ->. iPureIntro. constructor. }
+      destruct rts as [ | rt rts]; inv_hlist tys; [destruct rs | destruct rs as [r rs]]; simpl; first done.
+      intros ty tys.
+      destruct sts as [ | st sts]; first done. simpl.
+      iDestruct "Hv" as "((%name & %st' & %ly & %Hst & %Hst' & %Hst'' & Hv) & Hvs)".
+      injection Hst as [= ->].
+      iPoseProof (ty_own_val_has_layout with "Hv") as "%Hly"; first done.
+      apply Forall2_cons_inv_l in Hsts as ([name2 ly'] & lys' & [-> Hst] & Hsts & ->).
+      simpl. assert (ly' = ly) as -> by by eapply syn_type_has_layout_inj.
+      iPoseProof ("IH" with "[//] [] Hvs") as "%Hf".
+      { iPureIntro. simpl in *. lia. }
+      iPureIntro. econstructor; last done. split; done. }
+    move: Hsts Hlen Hpad Hsize.
+    generalize (sls_fields sls) as sts. generalize (sl_members sl) as mems.
+    intros mems sts Hsts Hlen Hpad Hsize.
+    iInduction mems as [ | [name ly] mems] "IH" forall (rts tys rs sts vs Hsts Hlen Hpad Hsize); first done.
+    destruct name as [ name | ].
+    - (* named field *)
+      simpl in Hsts. apply Forall2_cons_inv_r in Hsts as ([name2 st] & sts' & [-> Hst] & Hsts & ->).
+      destruct rts as [ | rt rts]; first done.
+      inv_hlist tys. intros ty tys. destruct rs as [r rs].
+      simpl. destruct vs as [ | v vs]; first done. simpl.
+      iDestruct "Hv" as "((%name3 & %st' & %ly' & %Heq & %Hst1 & %Hst2 & Hv) & Hvs)".
+      injection Heq as [= <- <-].
+      assert (ly' = ly) as -> by by eapply (syn_type_has_layout_inj st).
+      iPoseProof (ty_own_val_has_layout with "Hv") as "%Hly"; first done.
+      rewrite -Hly.
+      iSplitL "Hv".
+      { iExists _, _. iR.  iR. iR. rewrite take_app. done. }
+      rewrite drop_app.
+      iApply ("IH" with "[//] [] [] [] Hvs").
+      + simpl in *. iPureIntro. lia.
+      + inversion Hpad. done.
+      + simpl in Hsize. iPureIntro. rewrite /fmap. lia.
+    - (* padding *)
+      simpl in Hsts. simpl.
+      iSplitR; first last.
+      { rewrite drop_app'; first last. { rewrite replicate_length//. }
+        iApply ("IH" with "[//] [//] [] [] Hv").
+        - inversion Hpad. done.
+        - simpl in Hsize. rewrite /fmap. iPureIntro. lia. }
+      iExists tt, _. iR. iR.
+      assert (syn_type_has_layout (UntypedSynType ly) ly).
+      { apply syn_type_has_layout_untyped; first done.
+        - inversion Hpad; subst. apply layout_wf_align_log_0. done.
+        - simpl in Hsize. lia.
+        - apply ly_align_in_bounds_1. inversion Hpad; subst. done. }
+      iR. rewrite take_app'; first last. { rewrite replicate_length//. }
+      rewrite uninit_own_spec.
+      iExists ly. iR.
+      rewrite /has_layout_val replicate_length //.
+  Qed.
+
+  Lemma struct_zst_empty_typed π sls sl :
+    struct_layout_spec_has_layout sls sl →
+    sls.(sls_fields) = [] →
+    sl.(sl_members) = [] →
+    ⊢ zst_val ◁ᵥ{π} -[] @ struct_t sls +[].
+  Proof.
+    intros Hsl Hfields Hmem.
+    rewrite /ty_own_val/=.
+    iExists sl. iR. rewrite Hfields. iR.
+    iSplitR. { iPureIntro. rewrite /has_layout_val /ly_size /layout_of Hmem //. }
+    by rewrite Hmem.
+  Qed.
+
+  (*Search pad_struct.*)
+  (*Search struct_layout.*)
+  (*Lemma struct_own_val_focus_components :*)
+    (*(v ◁ᵥ{π} rs @ struct_t sls lts) ⊣⊢ *)
+    (*([∗ list] *)
+
+End init.
+
+
 Section copy.
   Context `{!typeGS Σ}.
 
@@ -483,13 +607,13 @@ Section subtype.
   Context `{!typeGS Σ}.
 
   Import EqNotations.
-  Local Definition struct_t_incl_precond {rts1 rts2} (tys1 : hlist type rts1) (tys2 : hlist type rts2) rs1 rs2 :=
+  Definition struct_t_incl_precond {rts1 rts2} (tys1 : hlist type rts1) (tys2 : hlist type rts2) rs1 rs2 :=
     ([∗ list] t1; t2 ∈ hpzipl _ tys1 rs1; hpzipl _ tys2 rs2,
       match (projT2 t1).2, (projT2 t2).2 with
       | #r1, #r2 => type_incl r1 r2 (projT2 t1).1 (projT2 t2).1
       | _, _ => ∃ (Heq : projT1 t1 = projT1 t2), ⌜(projT2 t1).2 = rew <-Heq in (projT2 t2).2⌝ ∗ ∀ (r : projT1 t1), type_incl r (rew [id] Heq in r) (projT2 t1).1 (projT2 t2).1
       end)%I.
-  Local Instance struct_t_incl_precond_pers {rts1 rts2} (tys1 : hlist type rts1) (tys2 : hlist type rts2) rs1 rs2 :
+  Global Instance struct_t_incl_precond_pers {rts1 rts2} (tys1 : hlist type rts1) (tys2 : hlist type rts2) rs1 rs2 :
     Persistent (struct_t_incl_precond tys1 tys2 rs1 rs2).
   Proof.
     apply big_sepL2_persistent. intros ? [? [? []]] [? [? []]]; simpl; apply _.
@@ -2427,8 +2551,8 @@ Section rules.
   Next Obligation.
     iIntros (i0 E L i rt lt1 lt2 T) "(%Hsubt & HT)". by iFrame.
   Qed.
-  Global Typeclasses Opaque MutEqltypeStructHFR.
   Global Arguments MutEqltypeStructHFR : simpl never.
+
   Lemma mut_subltype_struct E L {rts} (lts1 lts2 : hlist ltype rts) sls1 sls2 T :
     ⌜sls1 = sls2⌝ ∗
     relate_hlist E L [] rts lts1 lts2 0 (MutEqltypeStructHFR (length rts)) T
@@ -2587,6 +2711,7 @@ Section rules.
         cast_ltype_to_type E L lt (λ ty,
           cast_ltype_to_type_iter E L lts (λ tys, T (ty +:: tys)))
     end.
+
   Local Lemma cast_ltype_to_type_iter_elim E L {rts} (lts : hlist ltype rts) T :
     cast_ltype_to_type_iter E L lts T -∗
     ∃ tys : hlist type rts, T tys ∗ ⌜Forall (λ '(existT x (lt1, lt2)), full_eqltype E L lt1 lt2) (hzipl2 rts lts ((λ X : Type, OfTy) +<$> tys))⌝.
@@ -2614,57 +2739,62 @@ Section rules.
   Global Instance cast_ltype_to_type_struct_inst E L {rts} (lts : hlist ltype rts) sls  :
     CastLtypeToType E L (StructLtype lts sls) := λ T, i2p (cast_ltype_to_type_struct E L lts sls T).
 
-  Lemma struct_zst_empty_typed π sls sl :
-    struct_layout_spec_has_layout sls sl →
-    sls.(sls_fields) = [] →
-    sl.(sl_members) = [] →
-    ⊢ zst_val ◁ᵥ{π} -[] @ struct_t sls +[].
-  Proof.
-    intros Hsl Hfields Hmem.
-    rewrite /ty_own_val/=.
-    iExists sl. iR. rewrite Hfields. iR.
-    iSplitR. { iPureIntro. rewrite /has_layout_val /ly_size /layout_of Hmem //. }
-    by rewrite Hmem.
-  Qed.
-
   (** Struct initialization *)
-  (* options:
-     - fold_list
-      + this might just be nicer.
-      + can't work, because we need to execute the WP.
-     - foldr
-     - custom fixpoint for easier induction
-   *)
   Fixpoint struct_init_fold π E L (fields : list (string * expr)) (sts : list (string * syn_type)) (T : ∀ (L : llctx) (rts : list Type), list val → hlist type rts → plist id rts → iProp Σ) : iProp Σ :=
-    match fields, sts with
-    | [], [] =>
+    match sts with
+    | [] =>
         T L [] [] +[] -[]
-    | (name, init) :: fields, (name2, st) :: sts =>
-        (* first check recursively, otherwise Coq takes forever to check the definition. *)
-        struct_init_fold π E L fields sts (λ L2 rts vs tys rs,
-          typed_val_expr π E L2 init (λ L3 v rt ty r,
-            ⌜name = name2⌝ ∗ ⌜ty.(ty_syn_type) = st⌝ ∗
+    | (name, st) :: sts =>
+        (* TODO should have a faster way to do the lookup *)
+        ∃ init, ⌜(list_to_map (M:=gmap _ _) fields) !! name = Some init⌝ ∗
+        typed_val_expr π E L init (λ L2 v rt ty r,
+        ⌜ty.(ty_syn_type) = st⌝ ∗
+        struct_init_fold π E L2 fields sts (λ L3 rts vs tys rs,
             T L3 (rt :: rts) (v :: vs) (ty +:: tys) (r -:: rs)))%I
-    | _, _ => False
     end.
 
-  (*
-  Lemma struct_init_fold_elim π E L fields sts T :
+  Lemma struct_init_fold_elim π E L fields sts T Φ :
     rrust_ctx -∗
     elctx_interp E -∗
     llctx_interp L -∗
     struct_init_fold π E L fields sts T -∗
-    ∃ (vs : list val) (rts : list Type) (tys : hlist type rts) (rs : plist id rs),
-    ([∗ list] a; b ∈ fields; sts,
-      let
-      True).
-    ⌜fields .*1 = sts.*1⌝ ∗
+    (∀ vs L3,
+      llctx_interp L3 -∗
+      (∃ (rts : list Type) (tys : hlist type rts) (rs : plist id rts),
+      (* get a type assignment for the values *)
+      ⌜length rts = length (sts)⌝ ∗
+      ([∗ list] i ↦ v; Ty ∈ vs; hpzipl rts tys rs,
+        let '(existT rt (ty, r)) := Ty in
+        ∃ name st ly, ⌜sts !! i = Some (name, st)⌝ ∗ ⌜syn_type_has_layout st ly⌝ ∗
+        ⌜syn_type_has_layout (ty_syn_type ty) ly⌝ ∗
+        v ◁ᵥ{ π} r @ ty
+      ) ∗
+      T L3 rts vs tys rs) -∗ Φ vs) -∗
+    struct_init_components ⊤ sts fields Φ
   .
-   *)
+  Proof.
+    iIntros "#CTX #HE HL Hf Hcont".
+    iInduction sts as [ | [name st] sts] "IH" forall (fields L  Φ T).
+    { simpl.
+      iApply ("Hcont" with "HL"). iExists [], +[], -[]. simpl. eauto. }
+    simpl. iDestruct "Hf" as (init Hlook) "Hf".
+    (* maybe want to phrase also with custom fold instead of foldr? *)
+    iIntros (ly) "%Hst". simpl.
+    iPoseProof ("Hf" with "CTX HE HL") as "Ha".
+    rewrite Hlook/=.
+    iApply (wp_wand with "(Ha [Hcont])").
+    2: { eauto. }
+    iIntros (L2 v rt ty r) "HL Hv [<- Hr]".
+    iApply ("IH" with "HL Hr").
+    iIntros (vs L3) "HL Hc".
+    iApply ("Hcont" with "HL").
+    iDestruct "Hc" as (rts tys rs) "(%Hlen & Ha & HT)".
+    iExists (rt :: rts), (ty +:: tys), (r -:: rs).
+    iFrame. iSplitR. { rewrite /=Hlen//. }
+    iExists name, (ty_syn_type ty). iExists ly.
+    iR. done.
+  Qed.
 
-  (* TODO Move *)
-  Definition typed_val_expr_cont_t := llctx → val → ∀ (rt : Type), type rt → rt → iProp Σ.
-  (*Local Lemma typed_struct_init' π E L  *)
   Lemma type_struct_init π E L (sls : struct_layout_spec) (fields : list (string * expr)) (T : typed_val_expr_cont_t) :
     ⌜struct_layout_spec_is_layoutable sls⌝ ∗
     struct_init_fold π E L fields sls.(sls_fields) (λ L2 rts vs tys rs,
@@ -2673,33 +2803,26 @@ Section rules.
   Proof.
     iIntros "(%Hly & HT)". destruct Hly as (sl & Hsl).
     iIntros (?) "#CTX #HE HL Hc".
-    rewrite /StructInit/StructInit' /use_struct_layout_alg' Hsl /=.
-    specialize (use_struct_layout_alg_inv _ _ Hsl) as (field_lys & Halg & Hfields).
-    specialize (struct_layout_alg_has_fields _ _ _ Halg) as ->.
-    move: Halg Hfields. remember (sl_members sl) as all_lys eqn: Hall_lys => Halg Hfields.
-
-    (* TODO: figure out how to prove this nicely. *)
-    (* point: I only need it in the last step, in the struct_t part. *)
-    (* I should generalize the wp reasoning and only use the struct stuff in the last part.
-       rather: I should just specify the value I get, and then the rest works with the v.
-     *)
-
-
-    (*
-    iInduction all_lys as [ | ly all_lys] "IH" forall (sl Hsl Hall_lys Halg).
-    - simpl in *. iApply (wp_concat _ _ []). iNext. iIntros "Hcred".
-      apply Forall2_nil_inv_r in Hfields.
-      rewrite Hfields. destruct fields as [ | [] ]; simpl; last done.
-      iApply ("Hc" with "HL [] HT"). iApply struct_zst_empty_typed; done.
-    -
-     *)
-  Admitted.
+    iApply wp_struct_init2; first done.
+    iApply (struct_init_fold_elim with "CTX HE HL HT").
+    iIntros (vs L3) "HL Ha".
+    iDestruct "Ha" as (rts tys rs) "(%Hlen & Hv & HT)".
+    iApply ("Hc" with "HL [Hv] HT").
+    simpl. by iApply struct_init_val.
+  Qed.
 
   (* TODO prove_place_cond *)
 
   (* TODO resolve hgost *)
 
 End rules.
+
+Global Typeclasses Opaque MutEqltypeStructHFR.
+Global Typeclasses Opaque cast_ltype_to_type_iter.
+Global Typeclasses Opaque stratify_ltype_struct_iter.
+
+Global Typeclasses Opaque unit_t.
+Global Typeclasses Opaque struct_t.
 
 (* Need this for unification to figure out how to apply typed_place lemmas -- if the plist simplifies, unification will be stuck *)
 Arguments plist : simpl never.

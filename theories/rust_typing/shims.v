@@ -466,6 +466,7 @@ Proof.
   start_function "ptr_invalid" ( () ) ( n ) => l.
   repeat liRStep. liShow.
   (* EraseProv *)
+  rewrite /typed_un_op/typed_val_expr.
   iIntros "Hv" (Φ) "#CTX #HE HL Hcont".
   rewrite {1}/ty_own_val /=. iDestruct "Hv" as %[Hv Hsz].
   iApply wp_erase_prov.
@@ -576,6 +577,7 @@ Proof.
     case_decide; case_decide; case_bool_decide; eauto with lia.
     iApply (loc_in_bounds_shorten_suf with "[Hbounds //]"). lia. }
   repeat liRStep; liShow.
+  rewrite /typed_bin_op/typed_val_expr.
   iIntros "Hv1 Hv2" (Φ) "#CTX #HE HL Hcont".
   rewrite {1}/ty_own_val /=. iDestruct "Hv1" as %[Hv1 Hsz1].
   rewrite {1}/ty_own_val /=. iDestruct "Hv2" as "->".
@@ -721,6 +723,7 @@ Proof.
   iSelect (_ ◁ᵥ{_} align_log2 @ _)%I (fun H => iRename H into "Halign_log2").
   rewrite {1 2}/ty_own_val /=. iDestruct "Hsize" as "[%Hsize _]".
   iDestruct "Halign_log2" as "[%Halign_log2 _]".
+  rewrite /typed_val_expr.
   iIntros (Φ) "#CTX HE HL Hcont".
   iApply (wp_alloc _ _ _ _ (Z.to_nat size) (Z.to_nat align_log2)).
   { rewrite Hsize. f_equiv.
@@ -792,6 +795,7 @@ Proof.
   iSelect (freeable_nz _ _ _ _) (fun H => iRename H into "Hfree").
   rewrite {1 2}/ty_own_val /=. iDestruct "Hsize" as "[%Hsize _]".
   iDestruct "Halign_log2" as "[%Halign_log2 _]".
+  rewrite /typed_stmt.
   iIntros "#CTX #HE HL".
   rewrite ltype_own_ofty_unfold /lty_of_ty_own. simpl.
   set (ly := Layout (Z.to_nat size) (Z.to_nat align_log2)).
@@ -844,88 +848,6 @@ Definition alloc_realloc `{!LayoutAlg} (alloc_alloc_loc : loc) (copy_nonoverlapp
 
 
 #[global] Typeclasses Opaque layout_wf.
-
-(* TODO move *)
-Lemma fupd_typed_val_expr `{!typeGS Σ} π E L e T :
-  (|={⊤}=> typed_val_expr π E L e T) -∗ typed_val_expr π E L e T.
-Proof.
-  iIntros "HT" (?) "CTX HE HL Hc".
-  iApply fupd_wp. iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hc").
-Qed.
-Lemma fupd_typed_call `{!typeGS Σ} π E L κs v (P : iProp Σ) vl tys T :
-  (|={⊤}=> typed_call π E L κs v P vl tys T) -∗ typed_call π E L κs v P vl tys T.
-Proof.
-  iIntros "HT HP Ha".
-  iApply fupd_typed_val_expr. iMod "HT" as "HT". iApply ("HT" with "HP Ha").
-Qed.
-
-
-(* TODO move *)
-Lemma ofty_value_t_untyped_to_bytes `{!typeGS Σ} π l vn ly :
-  l ◁ₗ[π, Owned false] #vn @ (◁ value_t (UntypedSynType ly)) -∗
-  l ◁ₗ[π, Owned false] #vn @ (◁ value_t (UntypedSynType $ mk_array_layout u8 (ly_size ly))).
-Proof.
-  (* We can always go to something with a lower alignment *)
-  iIntros "Hl". iPoseProof (ltype_own_has_layout with "Hl") as "(%ly' & %Halg & %Hly)".
-  simp_ltypes in Halg. simpl in Halg.
-  apply syn_type_has_layout_untyped_inv in Halg as (-> & ? & ?).
-  iApply (ofty_value_t_untyped_reduce_alignment with "Hl").
-  - simpl. lia.
-  - rewrite /has_layout_loc/ly_align/mk_array_layout/u8/=.
-    rewrite /aligned_to. destruct caesium_config.enforce_alignment; last done. apply Z.divide_1_l.
-  - rewrite /layout_wf/ly_align/u8/=. apply Z.divide_1_l.
-  - done.
-Qed.
-Lemma value_t_untyped_length `{!typeGS Σ} π v v1 ly :
-  v ◁ᵥ{π} v1 @ value_t (UntypedSynType ly) -∗
-  ⌜length v1 = ly_size ly⌝ ∗ ⌜length v = ly_size ly⌝.
-Proof.
-  rewrite /ty_own_val/=.
-  iDestruct 1 as "(%ot & %Hot & %Hmc & %Hly & %Hst)".
-  apply use_op_alg_untyped_inv in Hot as ->.
-  apply syn_type_has_layout_untyped_inv in Hst as (<- & ? & ?).
-  apply is_memcast_val_untyped_inv in Hmc as ->.
-  rewrite /has_layout_val in Hly. simpl in *.
-  done.
-Qed.
-Lemma ofty_value_t_untyped_length `{!typeGS Σ} F π l ly v1 :
-  lftE ⊆ F →
-  l ◁ₗ[π, Owned false] #v1 @ (◁ value_t (UntypedSynType ly)) ={F}=∗
-  ⌜length v1 = ly_size ly⌝ ∗ l ◁ₗ[π, Owned false] #v1 @ (◁ value_t (UntypedSynType ly)).
-Proof.
-  iIntros (?) "Hl".
-  rewrite ltype_own_ofty_unfold/lty_of_ty_own.
-  iDestruct "Hl" as "(%ly' & % & % & ? & ? & ? & %r' & <- & Hb)".
-  iMod (fupd_mask_mono with "Hb") as "(%v & Hl & Hv)"; first done.
-  iPoseProof (value_t_untyped_length with "Hv") as "(% & %)".
-  iR. iModIntro. iExists _. iFrame. iR. iR. iExists _. iR.
-  iModIntro. eauto with iFrame.
-Qed.
-
-Lemma ofty_value_t_untyped_split_adjacent_array `{!typeGS Σ} F π l (n m k : nat) ly v1 :
-  lftE ⊆ F →
-  n = (m + k)%nat →
-  layout_wf ly →
-  l ◁ₗ[ π, Owned false] # v1 @ (◁ value_t (UntypedSynType (mk_array_layout ly n))) ={F}=∗
-  l ◁ₗ[ π, Owned false] # (take (ly_size ly * k) v1) @ (◁ value_t (UntypedSynType (mk_array_layout ly k))) ∗
-  (l offset{ly}ₗ k) ◁ₗ[ π, Owned false] # (drop (ly_size ly * k) v1) @ (◁ value_t (UntypedSynType (mk_array_layout ly m))).
-Proof.
-  iIntros (? Hn ?).
-  rewrite /offset_loc.
-  assert (ly_size (mk_array_layout ly k) = ly_size ly * k)%nat as Heq. { simpl. lia. }
-  rewrite -Nat2Z.inj_mul. rewrite -{3}Heq.
-  iIntros "Hl". iMod (ofty_value_t_untyped_length with "Hl") as "(%Hlen & Hl)"; first done.
-  simpl in *.
-  iApply (ofty_value_t_split_adjacent with "Hl").
-  - done.
-  - simpl. lia.
-  - simpl. lia.
-  - simpl. lia.
-  - rewrite take_drop//.
-  - rewrite take_length. simpl. lia.
-  - by apply array_layout_wf.
-  - by apply array_layout_wf.
-Qed.
 
 Definition type_of_alloc_realloc `{!typeGS Σ} :=
   fn(∀ () : 0 | (old_size, align_log2, new_size, ptr_old, v) : (Z * Z * Z * loc * val), (λ ϝ, []); old_size @ int usize_t, align_log2 @ int usize_t, new_size @ int usize_t, ptr_old @ alias_ptr_t; λ π,
@@ -1588,23 +1510,6 @@ Definition box_new `{!LayoutAlg} (T_st : syn_type) (mem_size_of_T_loc : loc) (pt
  f_init := "_bb0";
 |}.
 
-(* TODO move *)
-Lemma typed_stmt_annot_credits `{!typeGS Σ} π E L {A} (a : A) s rf R ϝ n :
-  atime n -∗
-  (atime (S n) -∗ £ (S (num_laters_per_step n)) -∗ typed_stmt π E L s rf R ϝ) -∗
-  typed_stmt π E L (annot: a; s) rf R ϝ.
-Proof.
-  iIntros "Hat HT".
-  iIntros "#CTX #HE HL".
-  iMod (persistent_time_receipt_0) as "Hp".
-  iApply (derived.wps_annot_credits with "[] Hat Hp").
-  { iDestruct "CTX" as "(_ & $ & _)". }
-  iNext. iIntros "Hcred Hat".
-  rewrite Nat.add_0_r.
-  iApply ("HT" with "Hat Hcred CTX HE HL").
-Qed.
-
-
 Definition type_of_box_new `{!typeGS Σ} T_rt T_st :=
   fn(∀ () : 0 | (T, x) : type T_rt * T_rt, (λ ϝ, []); x @ T; λ π, ⌜ty_syn_type T = T_st⌝ ∗ ⌜ty_allows_reads T⌝ ∗ ⌜ty_allows_writes T⌝)
     → ∃ () : (), PlaceIn x @ box T; λ π, True.
@@ -1659,6 +1564,7 @@ Proof.
     }
     repeat liRStep.
   - (* non-zero branch, do the allocation *)
+    rewrite /typed_val_expr.
     iIntros (?) "#CTX #HE HL Hcont".
     rewrite /Box.
     unfold_no_enrich. inv_layout_alg.
@@ -2015,6 +1921,7 @@ Proof.
   repeat liRStep; liShow.
   typed_val_expr_bind.
   repeat liRStep; liShow.
+  rewrite /typed_val_expr.
   iIntros (?) "#CTX #HE HL HC".
   iRename select (_ ◁ᵥ{_} size @ int usize_t)%I into "Hv1".
   iRename select (_ ◁ᵥ{_} ly_size T_st_ly @ int usize_t)%I into "Hv2".

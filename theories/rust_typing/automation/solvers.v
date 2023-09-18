@@ -708,6 +708,7 @@ Section reorder_elctx.
     typed_stmt π E L s fn R ϝ.
   Proof.
     iIntros (HP) "Hs".
+    rewrite /typed_stmt.
     iIntros "#CTX #HE HL".
     iApply ("Hs" with "CTX [] HL").
     iApply elctx_interp_permut; done.

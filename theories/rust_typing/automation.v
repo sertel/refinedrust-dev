@@ -8,13 +8,6 @@ From refinedrust Require Import int programs program_rules functions references 
 From refinedrust.automation Require Export simpl solvers proof_state.
 Set Default Proof Using "Type".
 
-(* TODO: move *)
-Lemma Forall2_cons_inv {A B} (P : A → B → Prop) l r x y :
-  Forall2 P (x :: l) (y :: r) →
-  P x y ∧ Forall2 P l r.
-Proof.
-  inversion 1; subst. done.
-Qed.
 
 (** * Registering extensions *)
 (** More automation for modular arithmetics. *)
@@ -772,12 +765,13 @@ Section tac.
     rewrite /typed_function.
     iIntros (???) "!# Hx1 Hx2".
     iIntros (lsa lsv) "(Hstore & Hinit)".
-    rewrite /introduce_typed_stmt.
+    rewrite /introduce_typed_stmt /typed_stmt.
     iIntros "#CTX #HE HL".
     iApply fupd_wps.
     iPoseProof ("Ha" with "Hx1 Hx2") as "HT".
     iDestruct ("HT" $! lsa lsv) as "(%E' & %E'' & <- & %Heq & HT)".
     iPoseProof (elctx_interp_permut with "HE") as "HE'". { symmetry. apply Heq. }
+    rewrite /introduce_with_hooks.
     iMod ("HT" with "Hstore [] HE' HL Hinit") as "(%L2 & HL & HT)"; first done.
     iApply ("HT" with "CTX HE' HL").
   Qed.
@@ -868,6 +862,7 @@ Lemma tac_typed_val_expr_bind' `{!typeGS Σ} π E L K e T :
   typed_val_expr π E L (W.to_expr (W.fill K e)) T.
 Proof.
   iIntros "He".
+  rewrite /typed_val_expr.
   iIntros (Φ) "#CTX #HE HL Hcont".
   iApply tac_wp_bind'.
   iApply ("He" with "CTX HE HL").
@@ -896,6 +891,22 @@ Tactic Notation "typed_val_expr_bind" :=
   | _ => fail "typed_val_expr_bind: not a 'typed_val_expr'"
   end.
 
+Lemma fupd_typed_val_expr `{!typeGS Σ} π E L e T :
+  (|={⊤}=> typed_val_expr π E L e T) -∗ typed_val_expr π E L e T.
+Proof.
+  rewrite /typed_val_expr.
+  iIntros "HT" (?) "CTX HE HL Hc".
+  iApply fupd_wp. iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hc").
+Qed.
+Lemma fupd_typed_call `{!typeGS Σ} π E L κs v (P : iProp Σ) vl tys T :
+  (|={⊤}=> typed_call π E L κs v P vl tys T) -∗ typed_call π E L κs v P vl tys T.
+Proof.
+  rewrite /typed_call.
+  iIntros "HT HP Ha".
+  iApply fupd_typed_val_expr. iMod "HT" as "HT". iApply ("HT" with "HP Ha").
+Qed.
+
+
 Lemma tac_typed_stmt_bind `{!typeGS Σ} π E L s e Ks fn ϝ T :
   W.find_stmt_fill s = Some (Ks, e) →
   typed_val_expr π E L (W.to_expr e) (λ L' v rt ty r,
@@ -903,17 +914,17 @@ Lemma tac_typed_stmt_bind `{!typeGS Σ} π E L s e Ks fn ϝ T :
   typed_stmt π E L (W.to_stmt s) fn T ϝ.
 Proof.
   move => /W.find_stmt_fill_correct ->. iIntros "He".
+  rewrite /typed_stmt.
   iIntros "#CTX #HE HL".
   rewrite stmt_wp_eq. iIntros (? rf ?) "?".
   have [Ks' HKs']:= W.stmt_fill_correct Ks rf. rewrite HKs'.
   iApply wp_bind.
   iApply (wp_wand with "[He HL]").
-  { iApply ("He" with "CTX HE HL").
+  { rewrite /typed_val_expr. iApply ("He" with "CTX HE HL").
     iIntros (L' v rt ty r) "HL Hv Hcont".
     iApply ("Hcont" with "Hv CTX HE HL"). }
   iIntros (v) "HWP".
   rewrite -(HKs' (W.Val _)) /W.to_expr.
-  rewrite stmt_wp_eq /stmt_wp_def.
   iApply ("HWP" with "[//]"). done.
 Qed.
 
@@ -934,7 +945,14 @@ Lemma intro_typed_stmt `{!typeGS Σ} fn R ϝ π E L s :
   typed_stmt π E L s fn R ϝ -∗
   WPs s {{ f_code (rf_fn fn), typed_stmt_post_cond π ϝ fn R}}.
 Proof.
-  iIntros "#CTX #HE HL Hs". iApply ("Hs" with "CTX HE HL").
+  iIntros "#CTX #HE HL Hs".
+  rewrite /typed_stmt.
+  iApply ("Hs" with "CTX HE HL").
+Qed.
+Lemma fupd_typed_stmt `{!typeGS Σ} π E L s rf R ϝ :
+  ⊢ (|={⊤}=> typed_stmt π E L s rf R ϝ) -∗ typed_stmt π E L s rf R ϝ.
+Proof.
+  iIntros "HT". rewrite /typed_stmt. iIntros "CTX HE HL". iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL").
 Qed.
 
 Ltac to_typed_stmt SPEC :=
@@ -943,12 +961,6 @@ Ltac to_typed_stmt SPEC :=
   | FN : runtime_function |- envs_entails _ (WPs ?s {{ ?code, ?c }}) =>
     iApply (intro_typed_stmt FN with SPEC)
   end.
-
-Lemma fupd_typed_stmt `{!typeGS Σ} π E L s rf R ϝ :
-  ⊢ (|={⊤}=> typed_stmt π E L s rf R ϝ) -∗ typed_stmt π E L s rf R ϝ.
-Proof.
-  iIntros "HT". iIntros "CTX HE HL". iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL").
-Qed.
 
 (** ** Hints for automation *)
 Global Hint Extern 0 (LayoutSizeEq _ _) => rewrite /LayoutSizeEq; solve_layout_size : typeclass_instances.
@@ -973,6 +985,8 @@ Global Arguments Rel2 : simpl never.
 
 Global Hint Unfold OffsetLocSt : core.
 
+#[global] Typeclasses Opaque layout_wf.
+
 (* In my experience, this has led to more problems with [normalize_autorewrite] rewriting below definitions too eagerly. *)
 Export Unset Keyed Unification.
 
@@ -993,23 +1007,8 @@ Lemma unfold_int_elem_of_it (z : Z) (it : int_type) :
 Proof. done. Qed.
 
 Ltac unfold_common_defs :=
-  unfold
-  (* Unfold [aligned_to] and [Z.divide] as lia can work with the underlying multiplication. *)
-    aligned_to,
-    (*Z.divide,*)
-  (* Unfold [addr] since [lia] may get stuck due to [addr]/[Z] mismatches. *)
-    addr,
-  (* Layout *)
-    ly_size, ly_with_align, ly_align_log, layout_wf,
-    unit_sl,
-  (* Integer bounds *)
-    max_int, min_int, int_half_modulus, int_modulus,
-    bits_per_int, bytes_per_int,
-  (* Address bounds *)
-    max_alloc_end, min_alloc_start, bytes_per_addr,
-  (* Other byte-level definitions *)
-    bits_per_byte in *.
-
+  unfold_common_caesium_defs;
+  unfold unit_sl in *.
 
 Ltac solve_goal_normalized_prepare_hook ::=
   try rewrite -> unfold_int_elem_of_it in *;

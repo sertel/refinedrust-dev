@@ -29,14 +29,23 @@ Section typing.
     iModIntro. iPureIntro. split_and!; done.
   Qed.
 
+  Lemma type_int_val z (it : int_type) π :
+    ly_size it ≤ max_int isize_t →
+    z ∈ it → ⊢ i2v z it ◁ᵥ{π} z @ int it.
+  Proof.
+    intros ? Hn.
+    move: Hn => /(val_of_Z_is_Some None) [v Hv].
+    move: (Hv) => /val_to_of_Z Hn.
+    rewrite /ty_own_val/=. iPureIntro.
+    split; last done. rewrite /i2v Hv/=//.
+  Qed.
+
   Lemma type_val_int z (it : IntType) π (T : ∀ rt, type rt → rt → iProp Σ):
     ⌜z ∈ (it : int_type)⌝ ∗ T _ (int it) z ⊢ typed_value (I2v z it) π T.
   Proof.
     iIntros "[%Hn HT] #CTX".
-    move: Hn => /(val_of_Z_is_Some None) [v Hv].
-    move: (Hv) => /val_to_of_Z Hn.
-    iExists Z, (int it), z. iFrame "HT". rewrite /ty_own_val/=. iPureIntro.
-    split; first by rewrite /I2v /i2v Hv /=.
+    iExists Z, (int it), z. iFrame.
+    iApply type_int_val; last done.
     apply IntType_to_it_size_bounded.
   Qed.
   Global Instance type_val_int_inst n (it : IntType) π : TypedValue (I2v n it) π :=
@@ -207,8 +216,6 @@ Section typing.
   Global Instance type_switch_int_inst π E L n v it : TypedSwitch π E L v _ (int it) n it :=
     λ m ss def fn R ϝ, i2p (type_switch_int π E L n it m ss def fn R ϝ v).
 
-  (* TODO move *)
-  Definition typed_un_op_cont_t := llctx → val → ∀ rt : Type, type rt → rt → iProp Σ.
   Lemma type_neg_int π E L n it v (T : typed_un_op_cont_t) :
     (⌜n ∈ it⌝ -∗ ⌜it.(it_signed)⌝ ∗ ⌜n ≠ min_int it⌝ ∗ T L (i2v (-n) it) _ (int it) (-n))
     ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it)%I (NegOp) (IntOp it) T.

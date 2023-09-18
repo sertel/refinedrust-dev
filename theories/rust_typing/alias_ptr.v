@@ -1,4 +1,4 @@
-From refinedrust Require Export type ltypes programs program_rules.
+From refinedrust Require Export type ltypes programs.
 From refinedrust Require Import memcasts ltype_rules value.
 From iris Require Import options.
 
@@ -452,3 +452,5 @@ Section alias_ltype.
     λ T, i2p (type_extract_value_annot_alias π E L n v l T).
 
 End alias_ltype.
+
+Global Typeclasses Opaque alias_ptr_t.

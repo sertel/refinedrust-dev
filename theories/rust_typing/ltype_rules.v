@@ -1,7 +1,6 @@
 From caesium Require Export proofmode notation.
 From caesium Require Import derived.
 From refinedrust Require Export ltypes.
-From refinedrust Require Import programs.
 From iris Require Import options.
 
 
@@ -160,6 +159,21 @@ Proof.
     iExists ly. iFrame.
     iMod "Hb". iModIntro. iApply pinned_bor_shorten; done.
 Qed.
+Local Lemma enum_ltype_mono `{!typeGS Σ} {rt} (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) π :
+  (∀ b1 b2 r l, bor_kind_direct_incl b2 b1 -∗ l ◁ₗ[π, b1] r @ lte -∗ l ◁ₗ[π, b2] r @ lte) →
+  ∀ b1 b2 r l, bor_kind_direct_incl b2 b1 -∗
+    l ◁ₗ[π, b1] r @ EnumLtype en tag lte -∗ l ◁ₗ[π, b2] r @ EnumLtype en tag lte.
+Proof.
+  iIntros (IH b1 b2 r l) "#Hincl".
+  destruct b1, b2; try done; unfold bor_kind_direct_incl.
+  + iDestruct "Hincl" as "->"; eauto.
+  + rewrite !ltype_own_enum_unfold /enum_ltype_own.
+    iIntros "(%el & %Hen & %Hly & Hlb & [])".
+  + rewrite !ltype_own_enum_unfold /enum_ltype_own.
+    iDestruct "Hincl" as "(Hincl & ->)".
+    iIntros "(%el & %Hen & %Hly & Hlb & [])".
+Qed.
+
 
 Lemma ltype_bor_kind_direct_incl' `{!typeGS Σ} {rt} (lt : ltype rt) b1 b2 π r l :
   bor_kind_direct_incl b2 b1 -∗
@@ -238,6 +252,10 @@ Proof.
       apply elem_of_interpret_iml_inv in Hel as [ -> | []].
       { simp_ltypes. rewrite !ltype_own_ofty_unfold. by iApply lty_of_ty_mono. }
       by iDestruct (IH with "Hincl") as "(_ & $)".
+  - iIntros (rt en variant lte IH r l b1 b2) "#Hincl".
+    simp_ltypes. iSplitL; (iApply enum_ltype_mono; [ | done]).
+    + iIntros (????) "Hincl". iPoseProof (IH with "Hincl") as "($ & _)".
+    + iIntros (????) "Hincl". iPoseProof (IH with "Hincl") as "(_ & $)".
   - iIntros (rt_cur rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost IH1 IH2 IH3 r l b1 b2) "#Hincl".
     simp_ltypes.
     iAssert (□ (l ◁ₗ[ π, b1] r @ OpenedLtype lt_cur lt_inner lt_full Cpre Cpost -∗ l ◁ₗ[ π, b2] r @ OpenedLtype lt_cur lt_inner lt_full Cpre Cpost))%I as "#Ha"; first last.

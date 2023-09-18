@@ -3,11 +3,105 @@ From iris.bi Require Export fractional.
 From iris.base_logic.lib Require Export invariants na_invariants.
 From caesium Require Export proofmode notation.
 From caesium Require Import derived.
+From refinedrust Require Import int.
 From lrust.lifetime Require Export frac_borrow.
 From refinedrust Require Export hlist.
 From refinedrust Require Export base lft_contexts gvar_refinement type uninit_def.
 
 From iris Require Import options.
+
+(** * Basic enum infrastructure *)
+Section enum.
+  Context `{!typeGS Σ}.
+  (*Set Universe Polymorphism.*)
+
+  Record enum (rt : Type) : Type := mk_enum {
+    (* the layout spec *)
+    enum_els : enum_layout_spec;
+    (* out of the current refinement, extract the tag *)
+    enum_tag : rt → var_name;
+    (* out of the current refinement, extract the component type and refinement *)
+    enum_ty : rt → sigT (λ rt' : Type, type rt' * rt')%type;
+    (* convenience function: given the variant name, also project out the type *)
+    enum_tag_ty : var_name → option (sigT type);
+    (* explicitly track the lifetimes each of the variants needs -- needed for sharing *)
+    enum_lfts : list lft;
+    enum_wf_E : elctx;
+    enum_lfts_complete : ∀ (r : rt), ty_lfts (projT2 (enum_ty r)).1 ⊆ enum_lfts;
+    enum_wf_E_complete : ∀ (r : rt), ty_wf_E (projT2 (enum_ty r)).1 ⊆ enum_wf_E;
+    enum_tag_compat : ∀ (r : rt) (variant : var_name),
+      enum_tag r = variant →
+      ∃ rte lte re,
+        enum_ty r = existT rte (lte, re) ∧
+        enum_tag_ty variant = Some (existT rte lte)
+  }.
+  Global Arguments mk_enum {_}.
+  Global Arguments enum_els {_}.
+  Global Arguments enum_tag {_}.
+  Global Arguments enum_ty {_}.
+  Global Arguments enum_tag_ty {_}.
+  Global Arguments enum_lfts {_}.
+  Global Arguments enum_wf_E {_}.
+
+  (*Set Universe Polymorphism.*)
+  Definition enum_tag_ty' {rt} (en : enum rt) (v : var_name) : sigT type :=
+    default (existT _ $ uninit UnitSynType) (enum_tag_ty en v).
+  Definition enum_tag_rt {rt} (en : enum rt) (v : var_name) : Type :=
+    projT1 (enum_tag_ty' en v).
+  Definition enum_tag_type {rt} (en : enum rt) (v : var_name) : type (enum_tag_rt en v) :=
+    projT2 (enum_tag_ty' en v).
+
+  Definition enum_variant_rt {rt} (en : enum rt) (r : rt) : Type :=
+    projT1 (enum_ty en r).
+  Definition enum_variant_rfn {rt} (en : enum rt) (r : rt) : (enum_variant_rt en r) :=
+    snd (projT2 (enum_ty en r)).
+  Definition enum_variant_type {rt} (en : enum rt) (r : rt) : type (enum_variant_rt en r) :=
+    fst (projT2 (enum_ty en r)).
+
+  Definition enum_lookup_tag {rt} (e : enum rt) (r : rt) :=
+    els_lookup_tag e.(enum_els) (e.(enum_tag) r).
+
+  Definition size_of_enum_data (els : enum_layout_spec) :=
+    ly_size (use_union_layout_alg' (uls_of_els els)).
+
+  Definition els_data_ly (els : enum_layout_spec) :=
+    use_union_layout_alg' (uls_of_els els).
+
+  Lemma enum_tag_rt_variant_rt_eq {rt} (en : enum rt) r tag :
+    tag = enum_tag en r →
+    enum_tag_rt en tag = enum_variant_rt en r.
+  Proof.
+    intros ->.
+    edestruct (enum_tag_compat _ en r) as (rte & lte & re & Ha & Hb); first done.
+    rewrite /enum_tag_rt /enum_variant_rt /enum_tag_ty'.
+    rewrite Ha Hb/=//.
+  Qed.
+
+  Lemma enum_tag_ty_Some {rt} (en : enum rt) r {rte : Type} (tye : type rte) (re : rte) :
+    enum_ty en r = (existT rte (tye, re)) →
+    enum_tag_ty en (enum_tag en r) = Some (existT rte tye).
+  Proof.
+    destruct (enum_tag_compat _ en r _ eq_refl) as (rte' & lte' & re' & -> & ->).
+    intros Ha. injection Ha. intros _ _ ->.
+    apply existT_inj in Ha. injection Ha as -> ->.
+    done.
+  Qed.
+  Lemma enum_tag_ty_Some' {rt} (en : enum rt) r :
+    enum_tag_ty en (enum_tag en r) = Some (existT (projT1 (enum_ty en r)) (fst $ projT2 (enum_ty en r))).
+  Proof.
+    eapply (enum_tag_ty_Some _ _ _ (snd $ projT2 (enum_ty en r))).
+    destruct (enum_ty en r) as [? [??]]; done.
+  Qed.
+
+  Import EqNotations.
+  Lemma enum_tag_type_variant_type_eq {rt} (en : enum rt) r:
+    enum_tag_type en (enum_tag en r) = rew <-[type] (enum_tag_rt_variant_rt_eq en r _ eq_refl) in enum_variant_type en r.
+  Proof.
+    rewrite /enum_tag_type/enum_variant_type/enum_tag_ty'.
+    simpl.
+  Admitted.
+
+End enum.
 
 (** * Place types *)
 
@@ -16,6 +110,7 @@ Lemma maybe_later_mono {Σ} (P : iProp Σ) b : ▷?b P -∗ ▷ P.
 Proof.
   iIntros "P". by iPoseProof (bi.laterN_le _ 1 with "P") as "P"; first (destruct b; simpl; lia).
 Qed.
+
 
 (** bor_kind *)
 Section ltype.
@@ -208,6 +303,7 @@ Section ltype_def.
   *)
   Inductive place_rfn_mode := PlaceModeIn | PlaceModeGhost.
   (* concrete refinements *)
+  #[universes(polymorphic)]
   Inductive place_rfn (rt : Type) :=
     | PlaceIn (r : rt)
     | PlaceGhost (γ : gname).
@@ -514,6 +610,8 @@ Section ltype_def.
     | StructLty (lts : list lty) (sls : struct_layout_spec)
     (* [def] is the default element type; [lts] masks this for certain indices *)
     | ArrayLty {rt} (def : type rt) (len : nat) (lts : list (nat * lty))
+    (* [en] is the enum spec. [variant] is the current unfolded variant. [lte] is the current type of the variant. *)
+    | EnumLty {rt} (en : enum rt) (variant : string) (lte : lty)
     | OpenedLty
         (* NOTE: we parameterize over the refinement types here,
            as we don't have support for induction-recursion in Coq to define [lty_rfn] mutually.
@@ -558,6 +656,7 @@ Section ltype_def.
         (*unit*)
         plist (λ lt, place_rfn (lty_rt lt)) lts
     | @ArrayLty rt def len lts => list (place_rfn rt)
+    | @EnumLty rt en variant lte => rt
     | OpenedLty lt_cur lt_inner lt_full Cpre Cpost =>
         lty_rt lt_cur
     | CoreableLty κ lt_full =>
@@ -578,6 +677,7 @@ Section ltype_def.
     | ShrLty _ _ => PtrSynType
     | StructLty _ sls => sls
     | ArrayLty def len lts => ArraySynType (ty_syn_type def) len
+    | EnumLty en variant lte => en.(enum_els)
     | OpenedLty lt_cur _ _ _ _ => lty_st lt_cur
     | CoreableLty _ lt_full =>
         lty_st lt_full
@@ -598,6 +698,8 @@ Section ltype_def.
     | StructLty lts _ => Forall_cb lty_wf lts
     | @ArrayLty rt def len lts =>
         Forall_cb (λ '(i, lt), lty_wf lt ∧ lty_rt lt = rt(*∧ i < len *)) lts
+    | EnumLty en variant lte =>
+        lty_wf lte ∧ lty_rt lte = (enum_tag_rt en variant)
     | @OpenedLty rt_inner rt_full lt_cur lt_inner lt_full _ _ =>
         (* require that the refinements actually match *)
         rt_inner = lty_rt lt_inner ∧ rt_full = lty_rt lt_full ∧ lty_wf lt_cur ∧ lty_wf lt_inner ∧ lty_wf lt_full
@@ -633,6 +735,8 @@ Section ltype_def.
       (∀ lts : list lty, list_is_list lty P lts → ∀ sls : struct_layout_spec, P (StructLty lts sls)) →
       (∀ (rt : Type) (def : type rt) (len : nat) (lts : list (nat * lty)),
         list_is_list _ (λ '(_, lt), P lt) lts → P (ArrayLty def len lts)) →
+      (∀ (rt : Type) (en : enum rt) (variant : string) (lte : lty),
+        P lte → P (EnumLty en variant lte)) →
       (∀ (rt_inner rt_full : Type) (lt_cur lt_inner lt_full : lty)
         (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ),
           P lt_cur → P lt_inner → P lt_full → P (OpenedLty lt_cur lt_inner lt_full Cpre Cpost)) →
@@ -640,7 +744,7 @@ Section ltype_def.
       (∀ (rt_cur : Type) (lt_cur : lty) (r_cur : place_rfn rt_cur) (lt_full : lty), P lt_cur → P lt_full → P (ShadowedLty lt_cur r_cur lt_full)) →
       ∀ lt : lty, P lt.
   Proof.
-    intros P Hblocked Hshrblocked Hofty Halias Hmut Hshr Hbox Hptr Hstruct Harr Hopened Hcoreable Hshadow.
+    intros P Hblocked Hshrblocked Hofty Halias Hmut Hshr Hbox Hptr Hstruct Harr Henum Hopened Hcoreable Hshadow.
     (* doing induction does not give us the IH *)
     refine (fix IH (lt : lty) {struct lt} : P lt :=
       match lt return (P lt) with
@@ -656,17 +760,20 @@ Section ltype_def.
           _
       | @ArrayLty rt def len lts =>
           _
+      | EnumLty en variant lte =>
+          _
       | OpenedLty lt_cur lt_inner lt_full Cpre Cpost =>
           _
       | CoreableLty κ lt_full =>
           _
       | ShadowedLty lt_cur r_cur lt_full =>
           _
-      end); [apply IH.. | | | | | ].
+      end); [apply IH.. | | | | | | ].
       - apply Hstruct.
         apply list_is_list_full.
         apply IH.
       - apply Harr. apply list_is_list_full. intros []. apply IH.
+      - apply Henum. apply IH.
       - apply Hopened; apply IH.
       - apply Hcoreable; apply IH.
       - apply Hshadow; apply IH.
@@ -684,6 +791,7 @@ Section ltype_def.
       (∀ (lt : lty) (ls : bool), P lt → P (OwnedPtrLty lt ls)) →
       (∀ lts : list lty, (∀ lt, lt ∈ lts → P lt) → ∀ sls : struct_layout_spec, P (StructLty lts sls)) →
       (∀ (rt : Type) (def : type rt) (len : nat) (lts : list (nat * lty)), (∀ i lt, (i, lt) ∈ lts → P lt) → P (ArrayLty def len lts)) →
+      (∀ (rt : Type) (en : enum rt) (variant : var_name) (lte : lty), P lte → P (EnumLty en variant lte)) →
       (∀ (rt_inner rt_full : Type) (lt_cur lt_inner lt_full : lty)
         (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ),
           P lt_cur → P lt_inner → P lt_full → P (OpenedLty lt_cur lt_inner lt_full Cpre Cpost)) →
@@ -691,8 +799,8 @@ Section ltype_def.
       (∀ (rt_cur : Type) (lt_cur : lty) (r_cur : place_rfn rt_cur) (lt_full : lty), P lt_cur → P lt_full → P (ShadowedLty lt_cur r_cur lt_full)) →
       ∀ lt : lty, P lt.
   Proof.
-    intros P ? ? ? ? ? ? ? ? Hstruct Harr Hopened Hcoreable Hshadow lt.
-    induction lt as [ | | | | | | | | lts IH sls | rt def len lts IH | | | ] using lty_recursor; [by eauto.. | | | | | ].
+    intros P ? ? ? ? ? ? ? ? Hstruct Harr Henum Hopened Hcoreable Hshadow lt.
+    induction lt as [ | | | | | | | | lts IH sls | rt def len lts IH | | | | ] using lty_recursor; [by eauto.. | | | | | | ].
     - eapply Hstruct. intros lt Hin. induction lts as [ | lt' lts IH'].
       + apply elem_of_nil in Hin. done.
       + inversion IH; subst. apply elem_of_cons in Hin as [<- | Hin]; first done.
@@ -702,6 +810,7 @@ Section ltype_def.
       + apply elem_of_nil in Hin. done.
       + inversion IH; subst. apply elem_of_cons in Hin as [ [= <- <-] | Hin]; first done.
         by apply IH'.
+    - eapply Henum. done.
     - eapply Hopened; eauto.
     - eapply Hcoreable; eauto.
     - eapply Hshadow; eauto.
@@ -721,6 +830,8 @@ Section ltype_def.
       (∀ lts : list lty, (∀ lt, lt ∈ lts → P lt) → ∀ sls : struct_layout_spec, P (StructLty lts sls)) →
       (∀ (rt : Type) (def : type rt) (len : nat) (lts : list (nat * lty)),
         (∀ i lt, (i, lt) ∈ lts → P lt ∧ lty_rt lt = rt) → P (ArrayLty def len lts)) →
+      (∀ (rt : Type) (en : enum rt) (variant : var_name) (lte : lty),
+        (P lte ∧ lty_rt lte = (enum_tag_rt en variant)) → P (EnumLty en variant lte)) →
       (∀ (lt_cur lt_inner lt_full : lty) (Cpre : (lty_rt lt_inner) → lty_rt lt_full → iProp Σ)
         (Cpost : (lty_rt lt_inner) → (lty_rt lt_full) → iProp Σ),
           P lt_cur → P lt_inner → P lt_full → P (OpenedLty lt_cur lt_inner lt_full Cpre Cpost)) →
@@ -729,8 +840,8 @@ Section ltype_def.
         P lt_cur → P lt_full → P (ShadowedLty lt_cur r_cur lt_full)) →
       ∀ lt : lty, lty_wf lt → P lt.
   Proof.
-    intros P ???????? Hstruct Harr Hopened Hcoreable Hshadow lt Hwf.
-    induction lt as [ | | | | | | | | lts IH sls | rt def len lts IH | rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost IH1 IH2 IH3 | κ lt_full IH | ] using lty_induction; [by eauto.. | | | | | ].
+    intros P ???????? Hstruct Harr Henum Hopened Hcoreable Hshadow lt Hwf.
+    induction lt as [ | | | | | | | | lts IH sls | rt def len lts IH | rt en variant lte IH | rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost IH1 IH2 IH3 | κ lt_full IH | ] using lty_induction; [by eauto.. | | | | | | ].
     - eapply Hstruct. intros lt Hlt. eapply IH; first done.
       simpl in Hwf. apply Forall_Forall_cb in Hwf.
       eapply Forall_forall; done.
@@ -740,6 +851,9 @@ Section ltype_def.
       eapply Forall_forall in Hwf; last apply Hin.
       destruct Hwf as (? & ?). split_and!; [ | done..].
       eapply IH; done.
+    - simpl in Hwf. destruct Hwf as (Hwf & Hrt).
+      eapply Henum. split. { apply IH. apply Hwf. }
+      done.
     - destruct Hwf as (Heq1 & Heq2 & Hcur & Hinner & Hfull ). subst.
       eapply Hopened; eauto.
     - eapply Hcoreable; eauto.
@@ -759,6 +873,7 @@ Section ltype_def.
     | ShrLty lt _ => 1 + lty_size lt
     | StructLty lts _ => 1 + list_max (fmap lty_size lts)
     | ArrayLty def len lts => 1 + (list_max (fmap (λ '(_, lt), lty_size lt) lts))
+    | EnumLty en variant lte => 1 + lty_size lte
     | OpenedLty lt_cur lt_inner lt_full Cpre Cpost =>
         (* we will be using both [lt_cur] and [lt_inner] and [lt_full] recursively *)
         1 + max (lty_size lt_cur) (max (lty_size lt_inner) (lty_size lt_full))
@@ -800,6 +915,7 @@ Section ltype_def.
     | OwnedPtrLty lt ls => OwnedPtrLty (lty_core lt) ls
     | StructLty lts sls => StructLty (fmap lty_core lts) sls
     | ArrayLty def len lts => ArrayLty def len (fmap (λ '(i, lt), (i, lty_core lt)) lts)
+    | EnumLty en variant lte => EnumLty en variant (lty_core lte)
     | OpenedLty lt_cur lt_inner lt_full Cpre Cpost =>
         (** Rationale: below unfolded stuff, the core just doesn't matter, because we have currently
            anyways broken all contracts and invariants.
@@ -815,13 +931,13 @@ Section ltype_def.
   Lemma lty_core_syn_type_eq (lt : lty) :
     lty_st (lty_core lt) = lty_st lt.
   Proof.
-    induction lt as [ | | | | | | | | | ? IH | | | ]; by eauto.
+    induction lt as [ | | | | | | | | | ? IH | | | | ]; by eauto.
   Qed.
 
   Lemma lty_core_rt_eq lt :
     lty_rt (lty_core lt) = lty_rt lt.
   Proof.
-    induction lt as [ | | | | ? IH ? | ? IH ? | ? IH | ? ? IH | ? IH ? | ???? IH | | | ] using lty_induction; simpl; [done.. | | | | | | | done | done | done].
+    induction lt as [ | | | | ? IH ? | ? IH ? | ? IH | ? ? IH | ? IH ? | ???? IH | | | | ] using lty_induction; simpl; [done.. | | | | | | | | done | done | done].
     - by rewrite IH.
     - by rewrite IH.
     - by rewrite IH.
@@ -831,13 +947,14 @@ Section ltype_def.
       simpl. rewrite IH; first last. { apply elem_of_cons; eauto. }
       f_equiv. apply IH'. intros. apply IH. apply elem_of_cons; eauto.
     - done.
+    - done.
   Qed.
 
   (* We cannot get the other direction because of CoreableLty *)
   Lemma lty_core_wf lt :
     lty_wf lt → lty_wf (lty_core lt).
   Proof.
-    induction lt as [ | | | | | | | | lts IH sls | rt def len lts IH | | rt lt IH | ] using lty_induction; simpl; [done.. | | | done | | ].
+    induction lt as [ | | | | | | | | lts IH sls | rt def len lts IH | rt en variant lte IH | | rt lt IH | ] using lty_induction; simpl; [done.. | | | | done | | ].
     - rewrite -!Forall_Forall_cb.
       rewrite Forall_fmap.
       apply Forall_impl_strong.
@@ -849,6 +966,8 @@ Section ltype_def.
       intros [i lt] Hlt (? & Hrt). simpl.
       rewrite lty_core_rt_eq.
       split; last done. eapply IH; done.
+    - intros [Hwf Hrt]. split; first by apply IH.
+      rewrite lty_core_rt_eq. done.
     - done.
     - intros (? & ? & <-). eauto.
   Qed.
@@ -856,7 +975,7 @@ Section ltype_def.
   Lemma lty_size_core (lt : lty) :
     lty_size (lty_core lt) ≤ lty_size lt.
   Proof.
-    induction lt as [ | | | | | | | |lts IH sls | rt def len lts IH | | | ] using lty_induction; simpl; [lia.. | | | lia| lia | lia].
+    induction lt as [ | | | | | | | |lts IH sls | rt def len lts IH | | | | ] using lty_induction; simpl; [lia.. | | | lia | lia| lia | lia].
     - induction lts as [ | lt lts IH']; simpl; first done.
       efeed pose proof (IH lt) as IH0. { apply elem_of_cons. by left. }
       feed specialize IH'. { intros. apply IH. apply elem_of_cons. by right. }
@@ -1022,6 +1141,7 @@ Section ltype_def.
   Qed.
 
   Import EqNotations.
+  (*Set Printing All.*)
   Equations lty_own_pre (core : bool) (ltp : lty) (k : bor_kind) (π : thread_id) (r : place_rfn (lty_rt ltp)) (l : loc) : iProp Σ by wf ltp lty_size_rel :=
     lty_own_pre core (OfTyLty ty) k π r l :=
       (* OfTy *)
@@ -1284,6 +1404,36 @@ Section ltype_def.
                   lty_own_pre core ty.1 (Shared κ) π (rew <-Heq in ty.2) (offset_loc l ly i))
       end;
 
+    lty_own_pre core (@EnumLty rt en variant lte) k π r l :=
+    (** EnumLty *)
+      ∃ el rty,
+      ⌜enum_layout_spec_has_layout en.(enum_els) el⌝ ∗
+      ⌜l `has_layout_loc` el⌝ ∗
+      loc_in_bounds l 0 el.(ly_size) ∗
+      (* require all the tag info to be coherent -- in particular the refinement type *)
+      ⌜enum_tag_ty en variant = Some rty⌝ ∗
+      ⌜lty_rt lte = projT1 rty⌝ ∗
+      match k with
+      | Owned wl =>
+        maybe_creds wl ∗
+        ∃ r' : rt, place_rfn_interp_owned r r' ∗
+        ▷?wl |={lftE}=>(
+        ⌜enum_tag en r' = variant⌝ ∗
+        ∃ (Heq : lty_rt lte = enum_variant_rt en r'),
+        (* ownership of the discriminant *)
+        lty_of_ty_own (int en.(enum_els).(els_tag_it)) (Owned false) π (PlaceIn (enum_lookup_tag en r')) (l atst{sls_of_els en.(enum_els)}ₗ "discriminant") ∗
+        (* ownership of the data *)
+        lty_own_pre core lte (Owned false) π (rew <-[place_rfn]Heq in (PlaceIn (enum_variant_rfn en r'))) (l atst{sls_of_els en.(enum_els)}ₗ "data") ∗
+        (* ownership of the remaining padding after the data *)
+        (∃ v, ((l atst{sls_of_els en.(enum_els)}ₗ "data") +ₗ (size_of_st (lty_st lte))) ↦ v ∗ ⌜v `has_layout_val` ly_offset (els_data_ly en.(enum_els)) (size_of_st (lty_st lte))⌝) ∗
+        (* ownership of the padding fields of the sl *)
+        ([∗ list] i ↦ mly ∈ pad_struct el.(sl_members) [None; None] (λ ly, Some ly),
+        if mly is Some ly then lty_of_ty_own (uninit (UntypedSynType ly)) (Owned false) π (PlaceIn ()) (l +ₗ Z.of_nat (offset_of_idx el.(sl_members) i)) else True)
+        )
+      | _ =>
+          (* TODO *)
+          False
+      end;
     lty_own_pre core (@OpenedLty rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost) k π r l :=
       (** OpenedLty *)
       ∃ ly, ⌜use_layout_alg (lty_st lt_cur) = Some ly⌝ ∗
@@ -1372,7 +1522,6 @@ Section ltype_def.
         lty_own_pre core lt_full k π r l)%I
   .
   Solve Obligations with first [unfold lty_size_rel, ltof; simpl; lia | intros; eauto using struct_lts_size_decreasing, array_lts_size_decreasing].
-
   Definition lty_own := @lty_own_pre false.
   Definition lty_own_core := @lty_own_pre true.
 
@@ -1399,8 +1548,8 @@ Section ltype_def.
   Lemma lty_core_idemp (lt : lty) :
     lty_core (lty_core lt) = lty_core lt.
   Proof.
-    induction lt as [ | | | | | | | | lts IH ? | rt def len lts IH | | | ] using lty_induction;
-    [simpl; f_equiv.. | | ]; [solve[eauto].. | | | | | ].
+    induction lt as [ | | | | | | | | lts IH ? | rt def len lts IH | | | | ] using lty_induction;
+    [simpl; f_equiv.. | | ]; [solve[eauto].. | | | | | | ].
     - done.
     - induction lts as [ | lt lts IH']; first done.
       simpl. rewrite IH; first last. { apply elem_of_cons; eauto. }
@@ -1412,13 +1561,14 @@ Section ltype_def.
       intros. eapply (IH (i)). apply elem_of_cons; eauto.
     - done.
     - done.
+    - done.
   Qed.
 
   Lemma lty_own_has_layout (lt : lty) k π r l :
     lty_own lt k π r l -∗ ∃ ly : layout, ⌜syn_type_has_layout (lty_st lt) ly⌝ ∗ ⌜l `has_layout_loc` ly⌝.
   Proof.
     iIntros "Hown". rewrite /lty_own.
-    iInduction lt as [ | | | | | | | | | rt def len lts IH | ?? lt_cur lt_inner lt_full Cpre Cpost | | ] "IH" using lty_induction forall (k); simp lty_own_pre.
+    iInduction lt as [ | | | | | | | | | rt def len lts IH | | ?? lt_cur lt_inner lt_full Cpre Cpost | | ] "IH" using lty_induction forall (k); simp lty_own_pre.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
@@ -1434,6 +1584,9 @@ Section ltype_def.
       iExists (mk_array_layout ly len). iSplitR; last done.
       iPureIntro. simpl.
       eapply syn_type_has_layout_array; done.
+    - iDestruct "Hown" as (el [rte tye]) "(%Hen & %Hly & Hown)".
+      iExists _. iL.
+      iPureIntro. by eapply use_enum_layout_alg_Some_inv in Hen.
     - simpl. iDestruct "Hown" as "(%ly & ? & ? & ? & ? & _)".
       eauto.
     - iDestruct "Hown" as "(%ly & ? & ? & _)". eauto.
@@ -1446,7 +1599,7 @@ Section ltype_def.
     lty_own lt k π r l -∗ loc_in_bounds l 0 ly.(ly_size).
   Proof.
     iIntros (Ha) "Hown". rewrite /lty_own.
-    iInduction lt as [ | | | | | | | | | | ? ??? | | ] "IH" using lty_induction forall (k); simp lty_own_pre.
+    iInduction lt as [ | | | | | | | | | | | ? ??? | | ] "IH" using lty_induction forall (k); simp lty_own_pre.
     - iDestruct "Hown" as "(%ly' & %Halg' & ? & ? & ? & _)".
       have ?: ly' = ly by eapply syn_type_has_layout_inj. by subst.
     - iDestruct "Hown" as "(%ly' & % & _ & _ & ? & _)".
@@ -1470,6 +1623,11 @@ Section ltype_def.
       apply syn_type_has_layout_array_inv in Ha as (ly0 & Halg' & -> & ?).
       assert (ly0 = ly') as -> by by eapply syn_type_has_layout_inj.
       done.
+    - (* enum *)
+      iDestruct "Hown" as (el [rte tye]) "(%Hen & %Hly & Hlb & _)".
+      eapply use_enum_layout_alg_Some_inv in Hen.
+      have ?: layout_of el = ly by eapply syn_type_has_layout_inj.
+      subst. done.
     - iDestruct "Hown" as "(%ly' & %Halg & ? & ? & ? & ? & _)".
       simpl in *. assert (ly' = ly) as ->. { by eapply syn_type_has_layout_inj. }
       iFrame.
@@ -1597,7 +1755,7 @@ Section ltype_def.
     lty_own_pre true (lty_core lt) k π r l ≡ lty_own_pre true lt k π r' l.
   Proof.
     intros ->. rewrite /lty_own_core.
-    induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH | | | ] using lty_induction in k, π, r, l, Heq |-*; simpl in *.
+    induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH | rt en variant lt IH | | | ] using lty_induction in k, π, r, l, Heq |-*; simpl in *.
     - simp lty_own_pre. rewrite (UIP_refl _ _ Heq). done.
     - simp lty_own_pre. rewrite (UIP_refl _ _ Heq). done.
     - rewrite (UIP_refl _ _ Heq). done.
@@ -1690,10 +1848,25 @@ Section ltype_def.
       all: eapply ArrayLty_own_core_core_lift.
       all: intros ? [-> | []]%elem_of_interpret_iml_inv; simpl.
       all: intros ??? Heq; try rewrite (UIP_refl _ _ Heq); eauto.
+    - (* enum *)
+      simp lty_own_pre.
+      do 6 f_equiv.
+      f_equiv. f_equiv. f_equiv.
+      { rewrite lty_core_rt_eq. done. }
+      fold lty_rt. simpl.
+      rewrite (UIP_refl _ _ Heq). clear Heq.
+      f_equiv.
+      all: repeat f_equiv; try done.
+      admit.
+      (*all: rewrite -OfTyLty_core_id.*)
+      (*all: rewrite interpret_iml_fmap.*)
+      (*all: eapply ArrayLty_own_core_core_lift.*)
+      (*all: intros ? [-> | []]%elem_of_interpret_iml_inv; simpl.*)
+      (*all: intros ??? Heq; try rewrite (UIP_refl _ _ Heq); eauto.*)
     - simp lty_own_pre. rewrite (UIP_refl _ _ Heq). done.
     - simp lty_own_pre.
     - simp lty_own_pre.
-  Qed.
+  Admitted.
   Lemma lty_own_core_core' (lt : lty) k π r Heq l :
     lty_own_pre true (lty_core lt) k π r l ≡ lty_own_pre true lt k π (transport_rfn Heq r) l.
   Proof.
@@ -1771,7 +1944,7 @@ Section ltype_def.
     lty_own_pre true lt k π r l ≡ lty_own_pre core (lty_core lt) k π (transport_rfn Heq r) l.
   Proof.
     rewrite /lty_own_core /lty_own.
-    induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | def len lts IH IH' | | | ] using lty_induction in k, π, r, l, Heq, core |-*; simpl in *.
+    induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | def len lts IH IH' | rt en variant lt  IH | | | ] using lty_induction in k, π, r, l, Heq, core |-*; simpl in *.
     - simp lty_own_pre. rewrite (UIP_refl _ _ Heq). done.
     - simp lty_own_pre. rewrite (UIP_refl _ _ Heq). done.
     - rewrite (UIP_refl _ _ Heq). simp lty_own_pre. done.
@@ -1862,10 +2035,29 @@ Section ltype_def.
       all: try rewrite (UIP_refl _ _ Heq); simpl.
       all: try by (eapply IH').
       all: simp lty_own_pre; done.
+    - (* enum *)
+      simp lty_own_pre. fold lty_rt.
+      do 6 f_equiv. do 3 f_equiv.
+      { rewrite lty_core_rt_eq. done. }
+      (*{ iPureIntro. rewrite Forall_fmap. eapply Forall_iff. intros []; done. }*)
+      simpl.
+      rewrite (UIP_refl _ _ Heq). clear Heq. simpl.
+      f_equiv.
+      all: repeat f_equiv; try done.
+      (*all: rewrite !big_sepL_P_eq.*)
+      (*all: rewrite -OfTyLty_core_id.*)
+      (*all: rewrite interpret_iml_fmap ArrayLty_own_core_equiv_lift; first done.*)
+      (*all: intros ? [-> | []]%elem_of_interpret_iml_inv; simpl; intros ??? Heq ?.*)
+      (*all: try rewrite (UIP_refl _ _ Heq); simpl.*)
+      (*all: try by (eapply IH').*)
+      (*all: simp lty_own_pre; done.*)
+      admit.
+
     - rewrite (UIP_refl _ _ Heq). simp lty_own_pre. done.
     - simp lty_own_pre.
     - simp lty_own_pre.
-  Qed.
+  (*Qed.*)
+  Admitted.
 
   Local Lemma place_rfn_interp_shared_transport_eq {rt rt'} (r : place_rfn rt) (r' : rt) (Heq : rt = rt') :
     place_rfn_interp_shared r r' -∗
@@ -1878,7 +2070,7 @@ Section ltype_def.
     lty_own lt (Shared κ0) π r l -∗ lty_own (lty_core lt) (Shared κ0) π (transport_rfn Heq r) l.
   Proof.
     rewrite /lty_own_core /lty_own.
-    induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH  | | | ???? IH1 IH2] using lty_induction in κ0, π, r, l, Heq |-*; simpl in *.
+    induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH  | rt en variant lt IH | | | ???? IH1 IH2] using lty_induction in κ0, π, r, l, Heq |-*; simpl in *.
     - simp lty_own_pre. iIntros "(% & _ & _ & _ & _ & [])".
     - simp lty_own_pre. iIntros "(% & _ & _ & _ & _ & % & _ & [])".
     - rewrite (UIP_refl _ _ Heq). auto.
@@ -1933,7 +2125,8 @@ Section ltype_def.
         rewrite (UIP_refl _ _ Heq). done. }
       iModIntro. iMod "Hl" as "(Hf & Hl)". iModIntro. iFrame.
       iApply IH. done.
-    - simp lty_own_pre. fold lty_rt.
+    - (* struct *)
+      simp lty_own_pre. fold lty_rt.
       iIntros "(%sl & %Halg & %Hlen & %Hly & Hlb & %r' & Ha & #Hl)".
       rewrite big_sepL_P_eq.
       iExists sl. iR.
@@ -1951,7 +2144,8 @@ Section ltype_def.
       (*rewrite pad_struct_fmap. *)
       (* TODO *)
       admit.
-    - simp lty_own_pre.
+    - (* array *)
+      simp lty_own_pre.
       iIntros "(%ly & %Halg & %Hsz & %Hly & Hlb & %r' & Ha & %Hlen & #Hl)".
       rewrite big_sepL_P_eq.
       iExists ly. iR. iR. iR. iFrame.
@@ -1962,6 +2156,8 @@ Section ltype_def.
       iModIntro. iMod "Hl". iModIntro.
       rewrite big_sepL_P_eq.
       (* TODO *)
+      admit.
+    - (* enum *)
       admit.
     - simp lty_own_pre.
       iIntros "(%ly & % & % & ? & % & % & [])".
@@ -1999,24 +2195,28 @@ Section ltype_def.
   Next Obligation. done. Qed.
   Next Obligation. done. Qed.
   Arguments OfTy : simpl never.
+  Global Typeclasses Opaque OfTy.
 
   Program Definition AliasLtype (rt : Type) (st : syn_type) (l : loc) : ltype rt := {|
     ltype_lty := AliasLty rt st l;
   |}.
   Next Obligation. done. Qed.
   Next Obligation. done. Qed.
+  Global Typeclasses Opaque AliasLtype.
 
   Program Definition BlockedLtype {rt} (ty : type rt) (κ : lft) : ltype rt := {|
     ltype_lty := BlockedLty ty κ;
   |}.
   Next Obligation. done. Qed.
   Next Obligation. done. Qed.
+  Global Typeclasses Opaque BlockedLtype.
 
   Program Definition ShrBlockedLtype {rt} (ty : type rt) (κ : lft) : ltype rt := {|
     ltype_lty := ShrBlockedLty ty κ;
   |}.
   Next Obligation. done. Qed.
   Next Obligation. done. Qed.
+  Global Typeclasses Opaque ShrBlockedLtype.
 
 
   Program Definition BoxLtype {rt} (lt : ltype rt) : ltype (place_rfn rt) := {|
@@ -2029,6 +2229,7 @@ Section ltype_def.
     by intros rt [lty <- Hwf].
   Qed.
   Arguments BoxLtype : simpl never.
+  Global Typeclasses Opaque BoxLtype.
 
   Program Definition OwnedPtrLtype {rt} (lt : ltype rt) (ls : bool) : ltype (place_rfn rt * loc) := {|
     ltype_lty := OwnedPtrLty (lt.(ltype_lty)) ls;
@@ -2040,6 +2241,7 @@ Section ltype_def.
     by intros rt [lty <- Hwf].
   Qed.
   Arguments OwnedPtrLtype : simpl never.
+  Global Typeclasses Opaque OwnedPtrLtype.
 
   Program Definition MutLtype {rt} (lt : ltype rt) (κ : lft) : ltype (place_rfn rt * gname) := {|
     ltype_lty := MutLty (lt.(ltype_lty)) κ;
@@ -2051,6 +2253,7 @@ Section ltype_def.
     by intros rt [lty <- Hwf].
   Qed.
   Arguments MutLtype : simpl never.
+  Global Typeclasses Opaque MutLtype.
 
   Program Definition ShrLtype {rt} (lt : ltype rt) (κ : lft) : ltype (place_rfn rt) := {|
     ltype_lty := ShrLty (lt.(ltype_lty)) κ;
@@ -2062,6 +2265,7 @@ Section ltype_def.
     by intros rt [lty <- Hwf].
   Qed.
   Arguments ShrLtype : simpl never.
+  Global Typeclasses Opaque ShrLtype.
 
   #[universes(polymorphic)]
   Program Definition StructLtype {rts : list Type} (lts : hlist ltype rts) (sls : struct_layout_spec) : ltype (plist place_rfn rts) := {|
@@ -2080,6 +2284,7 @@ Section ltype_def.
     intros [lt <- Hwf] lts. split; first done. apply IH.
   Qed.
   Arguments StructLtype : simpl never.
+  Global Typeclasses Opaque StructLtype.
 
   Program Definition ArrayLtype {rt : Type} (def : type rt) (len : nat) (lts : list (nat * ltype rt)) : ltype (list (place_rfn rt)) := {|
     ltype_lty := @ArrayLty rt def len (map (λ '(i, lt), (i, lt.(ltype_lty))) lts);
@@ -2092,6 +2297,22 @@ Section ltype_def.
     induction lts as [ | [i lt] lts IH]; simpl; first done.
     split; last done. split_and!; [ apply ltype_lty_wf | rewrite !ltype_rt_agree// ].
   Qed.
+  Global Arguments ArrayLtype : simpl never.
+  Global Typeclasses Opaque ArrayLtype.
+
+  Program Definition EnumLtype {rt : Type} (en : enum rt) (variant : string) (lte : ltype ((enum_tag_rt en variant))) : ltype rt := {|
+    ltype_lty := @EnumLty rt en variant lte.(ltype_lty);
+  |}.
+  Next Obligation.
+    intros rt en variant lte. simpl. done.
+  Qed.
+  Next Obligation.
+    intros rt en variant lte. simpl. split_and!.
+    - apply ltype_lty_wf.
+    - rewrite ltype_rt_agree. done.
+  Qed.
+  Global Typeclasses Opaque EnumLtype.
+  Global Arguments ArrayLtype : simpl never.
 
   Program Definition OpenedLtype {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full)
       (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ) : ltype rt_cur := {|
@@ -2105,6 +2326,8 @@ Section ltype_def.
     intros rt_cur rt_inner rt_full [lt_cur <- Hcur] [lt_inner <- Hinner] [lt_full <- Hfull] Cpre Cpost; simpl.
     eauto.
   Qed.
+  Global Typeclasses Opaque OpenedLtype.
+  Global Arguments OpenedLtype : simpl never.
 
   Program Definition CoreableLtype {rt_full} (κs : list lft) (lt_full : ltype rt_full) : ltype rt_full := {|
     ltype_lty := CoreableLty κs (ltype_lty lt_full);
@@ -2115,6 +2338,8 @@ Section ltype_def.
   Next Obligation.
     intros rt_full κ [lt_full <- ?]. simpl. eauto.
   Qed.
+  Global Arguments CoreableLtype : simpl never.
+  Global Typeclasses Opaque CoreableLtype.
 
   Program Definition ShadowedLtype {rt_cur rt_full} (lt_cur : ltype rt_cur) (r_cur : place_rfn rt_cur) (lt_full : ltype rt_full) : ltype rt_full := {|
     ltype_lty := ShadowedLty (ltype_lty lt_cur) r_cur (ltype_lty lt_full);
@@ -2126,6 +2351,8 @@ Section ltype_def.
     intros rt_cur rt_full lt_cur r_cur lt_full. split_and!; [apply ltype_lty_wf.. | ].
     apply ltype_rt_agree.
   Qed.
+  Global Arguments ShadowedLtype : simpl never.
+  Global Typeclasses Opaque ShadowedLtype.
 
   Import EqNotations.
   Definition ltype_own_pre (core : bool) {rt} (lt : ltype rt) : bor_kind → thread_id → place_rfn rt → loc → iProp Σ :=
@@ -2137,6 +2364,7 @@ Section ltype_def.
   Lemma ltype_own_core_unseal : @ltype_own_core = ltype_own_core_def.
   Proof. rewrite -ltype_own_core_aux.(seal_eq) //. Qed.
   Global Arguments ltype_own_core {_}.
+  Global Typeclasses Opaque ltype_own_core.
 
   Local Definition ltype_own_def := @ltype_own_pre false.
   Local Definition ltype_own_aux : seal (@ltype_own_def). Proof. by eexists. Qed.
@@ -2144,6 +2372,7 @@ Section ltype_def.
   Lemma ltype_own_unseal : @ltype_own = ltype_own_def.
   Proof. rewrite -ltype_own_aux.(seal_eq) //. Qed.
   Global Arguments ltype_own {_}.
+  Global Typeclasses Opaque ltype_own.
 
   Definition ltype_st {rt} (lt : ltype rt) : syn_type := lty_st lt.(ltype_lty).
   Global Arguments ltype_st : simpl never.
@@ -2158,6 +2387,7 @@ Section ltype_def.
     intros rt [lt <- Hwf]; simpl. by apply lty_core_wf.
   Qed.
   Global Arguments ltype_core : simpl never.
+  Global Typeclasses Opaque ltype_core.
 
 
   Section induction.
@@ -2229,6 +2459,8 @@ Section ltype_def.
       (∀ (rt : Type) (def : type rt) (len : nat) (lts : list (nat * ltype rt)),
         (∀ i lt, (i, lt) ∈ lts → P _ lt) →
         P _ (ArrayLtype def len lts)) →
+      (∀ (rt : Type) (en : enum rt) (variant : var_name) (lte : ltype (enum_tag_rt en variant)),
+        P _ lte → P _ (EnumLtype en variant lte)) →
       (∀ (rt_cur rt_inner rt_full : Type) (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full)
         (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ),
         P _ lt_cur → P _ lt_inner → P _ lt_full →
@@ -2238,7 +2470,7 @@ Section ltype_def.
         P _ lt_cur → P _ lt_full → P _ (ShadowedLtype lt_cur r_cur lt_full)) →
       ∀ (rt : Type) (lt : ltype rt), P _ lt.
     Proof.
-      intros Hblocked Hshrblocked Hofty Halias Hmut Hshr Hbox Hptr Hstruct Harr Hopened Hcoreable Hshadow.
+      intros Hblocked Hshrblocked Hofty Halias Hmut Hshr Hbox Hptr Hstruct Harr Hen Hopened Hcoreable Hshadow.
 
       assert (P_irrel:
         ∀ rt (lt : lty) Heq1 Heq2 Hwf1 Hwf2, P rt (mk_ltype rt lt Heq1 Hwf1) → P rt (mk_ltype rt lt Heq2 Hwf2)).
@@ -2246,7 +2478,7 @@ Section ltype_def.
         intros Hwf1 Hwf2. rewrite (proof_irrelevance _ Hwf1 Hwf2). done. }
 
       intros rt [lt <- Hwf].
-      induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH | rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost IH_cur IH_inner IH_full | κ lt_full IH | rt_cur lt_cur r_cur lt_full IH_cur IH_full] using lty_induction; simpl.
+      induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH | rt en variant lte IH | rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost IH_cur IH_inner IH_full | κ lt_full IH | rt_cur lt_cur r_cur lt_full IH_cur IH_full] using lty_induction; simpl.
       - eapply P_irrel. apply Hblocked.
       - eapply P_irrel. apply Hshrblocked.
       - eapply P_irrel. apply Hofty.
@@ -2271,6 +2503,15 @@ Section ltype_def.
         generalize (ArrayLtype_obligation_1 _ def len (make_ltype_list lts Hwf)).
         rewrite make_ltype_list_map_proj_eq.
         simpl. intros <- Hwf'. eapply P_irrel.
+      - (* enum *)
+        (*assert (lty_rt lte *)
+        (*set (lte' := mk_ltype lte *)
+        simpl in Hwf. destruct Hwf as (Hwf & Hrt).
+        specialize (IH Hwf).
+        move: IH.
+        (*specialize (Hen _ en variant _ (rew Hrt in IH Hwf)).*)
+        admit.
+
       - destruct Hwf as (Heq1 & Heq2 & Hwf_cur & Hwf_inner & Hwf_full); subst.
         specialize (Hopened _ _ _ _ _ _ Cpre Cpost (IH_cur Hwf_cur) (IH_inner Hwf_inner) (IH_full Hwf_full)).
         eapply P_irrel. eapply Hopened.
@@ -2279,7 +2520,8 @@ Section ltype_def.
       - destruct Hwf as (Hwf_cur & Hwf_full & <-).
         specialize (Hshadow _ _ _ r_cur _ (IH_cur Hwf_cur) (IH_full Hwf_full)).
         eapply P_irrel. eapply Hshadow.
-    Qed.
+    (*Qed.*)
+    Admitted.
   End induction.
 
   (** Unfolding equations for [ltype] *)
@@ -2530,6 +2772,56 @@ Section ltype_def.
                   ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Shared κ) π r0 (offset_loc l ly i)
       end.
 
+  (*
+     What do we have?
+     - enum_ty gives us the rt + type + refinement for current full refinement
+        we want to use this to extract the actual refinement
+     - enum_tag_rt gives us the rt for the string variant
+          derived from enum_tag_ty
+        (if it exists)
+        we need that this agrees with what is output by enum_ty
+
+     I guess we should have a compat property somewhere:
+      ∀ r,
+        enum_tag r = Some variant →
+        ∃ rte lte re,
+          enum_ty r = existT rte (lte, re) ∧
+          enum_tag_ty variant = Some (existT rte lte)
+
+     Maybe add this as requirement to the record.
+
+   *)
+
+  Definition enum_ltype_own
+    (rec : ltype_own_type)
+    (rec_core : ltype_own_type)
+    (rt : Type) (en : enum rt)
+    (tag : var_name) (lte : ltype (enum_tag_rt en tag))
+    (k : bor_kind) (π : thread_id) (r : place_rfn rt) (l : loc) : iProp Σ :=
+      ∃ el,
+      ⌜enum_layout_spec_has_layout en.(enum_els) el⌝ ∗
+      ⌜l `has_layout_loc` el⌝ ∗
+      loc_in_bounds l 0 el.(ly_size) ∗
+      match k with
+      | Owned wl =>
+        maybe_creds wl ∗
+        ∃ r' : rt, place_rfn_interp_owned r r' ∗
+        ▷?wl |={lftE}=>(
+        ∃ (Heq : enum_variant_rt en r' = enum_tag_rt en tag),
+        (* ownership of the discriminant *)
+        lty_of_ty_own (int en.(enum_els).(els_tag_it)) (Owned false) π (PlaceIn (enum_lookup_tag en r')) (l atst{sls_of_els en.(enum_els)}ₗ "discriminant") ∗
+        (* ownership of the data *)
+        rec _ lte (Owned false) π (rew [place_rfn] Heq in (PlaceIn (enum_variant_rfn en r'))) (l atst{sls_of_els en.(enum_els)}ₗ "data") ∗
+        (* ownership of the remaining padding after the data *)
+        (∃ v, ((l atst{sls_of_els en.(enum_els)}ₗ "data") +ₗ (size_of_st (ltype_st lte))) ↦ v ∗ ⌜v `has_layout_val` ly_offset (els_data_ly en.(enum_els)) (size_of_st (ltype_st lte))⌝) ∗
+        (* ownership of the padding fields of the sl *)
+        ([∗ list] i ↦ mly ∈ pad_struct el.(sl_members) [None; None] (λ ly, Some ly),
+        if mly is Some ly then lty_of_ty_own (uninit (UntypedSynType ly)) (Owned false) π (PlaceIn ()) (l +ₗ Z.of_nat (offset_of_idx el.(sl_members) i)) else True))
+      | _ =>
+          (* TODO *)
+          False
+      end.
+
   Definition opened_ltype_own
       (rec : ltype_own_type) (rec_core : ltype_own_type)
       {rt_cur rt_inner rt_full : Type}
@@ -2741,7 +3033,7 @@ Section ltype_def.
     generalize (ltype_rt_agree (MutLtype lt κ)).
     generalize (ltype_rt_agree lt). simpl.
     intros <- Heq. rewrite (UIP_refl _ _ Heq).
-    intros r. repeat f_equiv; done.
+    intros r. repeat (first [fast_done | f_equiv]).
   Qed.
   Lemma ltype_own_mut_ref_unfold {rt} (lt : ltype rt) κ k π r l :
     ltype_own (MutLtype lt κ) k π r l ≡ mut_ltype_own (@ltype_own) (@ltype_own_core) lt κ k π r l.
@@ -2948,7 +3240,7 @@ Section ltype_def.
     rewrite big_sepL2_alt.
     rewrite -Hlen. rewrite Heq. rewrite left_id.
     rewrite zip_fmap_l big_sepL_fmap.
-    f_equiv. intros ? [lt r']. simpl.
+    f_equiv; last done. intros ? [lt r']. simpl.
     iSplit.
     { iIntros "(%Heq2 & $ & Hb)". generalize (ltype_rt_agree lt) => Heq3.
       rewrite (UIP_t _ _ _ Heq2 Heq3). done.
@@ -2970,17 +3262,18 @@ Section ltype_def.
     (*f_equiv.*)
     (*{ rewrite Forall_fmap. iPureIntro. apply Forall_iff. intros []; done. }*)
     f_equiv.
-    - do 4 f_equiv.
+    - do 4 f_equiv; first done.
       apply sep_equiv_proper => Hlen.
       repeat f_equiv. rewrite big_sepL_P_eq.
       rewrite -OfTy_ltype_lty.
       rewrite interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
       rewrite interpret_iml_length //.
-    - do 3 f_equiv. apply sep_equiv_proper => Hlen.
-      repeat f_equiv. rewrite big_sepL_P_eq.
+    - do 3 f_equiv; first done.
+      apply sep_equiv_proper => Hlen.
+      do 2 f_equiv. rewrite big_sepL_P_eq.
       rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
       rewrite interpret_iml_length//.
-    - do 8 f_equiv.
+    - do 7 f_equiv. all: f_equiv; first done.
       all: apply sep_equiv_proper => Hlen.
       all: repeat f_equiv; rewrite big_sepL_P_eq.
       all: rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap//.
@@ -2993,6 +3286,47 @@ Section ltype_def.
   Lemma ltype_own_core_array_unfold {rt : Type} (def : type rt) (len : nat) (lts : list (nat * ltype rt)) k π r l :
     ltype_own_core (ArrayLtype def len lts) k π r l ≡ array_ltype_own (@ltype_own_core) (@ltype_own_core) rt def len lts k π r l.
   Proof. rewrite {1 2} ltype_own_core_unseal. apply ltype_own_pre_array_unfold. Qed.
+
+  Lemma ltype_own_pre_enum_unfold {rt : Type} (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) (core : bool) k π r l :
+    ltype_own_pre core (EnumLtype en tag lte) k π r l ≡ enum_ltype_own (@ltype_own_pre core) (@ltype_own_core) rt en tag lte k π r l.
+  Proof.
+    rewrite /enum_ltype_own ?ltype_own_core_unseal /ltype_own_core_def ?ltype_own_unseal /ltype_own_def /ltype_own_pre.
+    simp lty_own_pre.
+    generalize (ltype_rt_agree (EnumLtype en tag lte)).
+    fold lty_rt. simpl.
+    intros Heq1. rewrite (UIP_refl _ _ Heq1). cbn.
+    do 1 f_equiv.
+    f_equiv.
+    (*
+    (*f_equiv.*)
+    (*{ rewrite Forall_fmap. iPureIntro. apply Forall_iff. intros []; done. }*)
+    f_equiv.
+    - do 4 f_equiv; first done.
+      apply sep_equiv_proper => Hlen.
+      repeat f_equiv. rewrite big_sepL_P_eq.
+      rewrite -OfTy_ltype_lty.
+      rewrite interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
+      rewrite interpret_iml_length //.
+    - do 3 f_equiv; first done.
+      apply sep_equiv_proper => Hlen.
+      do 2 f_equiv. rewrite big_sepL_P_eq.
+      rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
+      rewrite interpret_iml_length//.
+    - do 7 f_equiv. all: f_equiv; first done.
+      all: apply sep_equiv_proper => Hlen.
+      all: repeat f_equiv; rewrite big_sepL_P_eq.
+      all: rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap//.
+      all: rewrite interpret_iml_length//.
+  Qed.
+     *)
+  Admitted.
+
+  Lemma ltype_own_enum_unfold {rt : Type} (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) k π r l :
+    ltype_own (EnumLtype en tag lte) k π r l ≡ enum_ltype_own (@ltype_own) (@ltype_own_core) rt en tag lte k π r l.
+  Proof. rewrite ?ltype_own_unseal. apply ltype_own_pre_enum_unfold. Qed.
+  Lemma ltype_own_core_enum_unfold {rt : Type} (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) k π r l :
+    ltype_own_core (EnumLtype en tag lte) k π r l ≡ enum_ltype_own (@ltype_own_core) (@ltype_own_core) rt en tag lte k π r l.
+  Proof. rewrite {1 2} ltype_own_core_unseal. apply ltype_own_pre_enum_unfold. Qed.
 
   Lemma ltype_own_opened_unfold {rt_cur rt_inner rt_full : Type} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full)
       (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ) k π r l :
@@ -3289,6 +3623,20 @@ Section ltype_def.
      *)
   (*Qed.*)
   Admitted.
+  Lemma ltype_core_enum {rt} (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) :
+    ltype_core (EnumLtype en tag lte) = EnumLtype en tag (ltype_core lte).
+  Proof.
+    rewrite /ltype_core /EnumLtype /=.
+    match goal with
+    | |- mk_ltype _ ?lt1 ?H1 ?H3 = mk_ltype _ ?lt2 ?H2 ?H4 =>
+        generalize H1 as Heq1; generalize H2 as Heq2;
+        generalize H3 as Hwf1; generalize H4 as Hwf2
+    end; simpl.
+    intros [Hwf1 Hrt1] [Hwf2 Hrt2] Heq1 Heq2.
+    rewrite (UIP_refl _ _ Heq1).
+    rewrite (UIP_refl _ _ Heq2).
+    f_equiv. apply proof_irrelevance.
+  Qed.
   Lemma ltype_core_opened {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost :
     ltype_core (OpenedLtype lt_cur lt_inner lt_full Cpre Cpost) = OpenedLtype lt_cur lt_inner lt_full Cpre Cpost.
   Proof.
@@ -3344,6 +3692,9 @@ Section ltype_def.
   Proof. done. Qed.
   Lemma ltype_st_array {rt} (def : type rt) (len : nat) (lts : list (nat * ltype rt)) :
     ltype_st (ArrayLtype def len lts) = ArraySynType (ty_syn_type def) len.
+  Proof. rewrite /ltype_st /= //. Qed.
+  Lemma ltype_st_enum {rt} (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) :
+    ltype_st (EnumLtype en tag lte) = en.(enum_els).
   Proof. rewrite /ltype_st /= //. Qed.
   Lemma ltype_st_opened {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost :
     ltype_st (OpenedLtype lt_cur lt_inner lt_full Cpre Cpost) = ltype_st lt_cur.
@@ -3401,6 +3752,7 @@ Section ltype_def.
     | ShrLty lt κ => lty_blocked_lfts lt
     | StructLty lts sls => concat (map lty_blocked_lfts lts)
     | ArrayLty def len lts => concat (map (λ '(_, lt), lty_blocked_lfts lt) lts)
+    | EnumLty en tag lte => lty_blocked_lfts lte
     | OpenedLty _ _ _ _ _  => []
     | CoreableLty κs _ => κs
     | ShadowedLty lt_cur r_cur lt_full => lty_blocked_lfts lt_full
@@ -3688,6 +4040,8 @@ Section ltype_def.
         True
     | ArrayLty def len lts =>
         True
+    | EnumLty en tag lte =>
+        True
     | OpenedLty _ _ _ _ _ => False
     | CoreableLty _ _ => True
     | ShadowedLty lt _ _ =>
@@ -3716,6 +4070,8 @@ Section ltype_def.
       by iIntros "(%ly & %Halg & %Hly & ? & Hcred & ? & ? & $ & Hb)".
     - rewrite /lty_own. simp lty_own_pre.
       by iIntros "(%ly & %Halg & %Hly & ? & Hcred & ? & ? & $ & Hb)".
+    - rewrite /lty_own. simp lty_own_pre.
+      iDestruct 1 as "(%el & %rty & ? & ? & ? & ? & ? & [])".
     - rewrite /lty_own. simp lty_own_pre.
       by iIntros "(%ly & %Halg & ? & ? & $ & _)".
   Qed.
@@ -3747,6 +4103,8 @@ Section ltype_def.
     | StructLty lts sls =>
         Some None
     | ArrayLty def len lts =>
+        Some None
+    | EnumLty en tag lte =>
         Some None
     | OpenedLty _ _ _ _ _ => None
     | CoreableLty _ _ => Some None
@@ -3796,6 +4154,8 @@ Section ltype_def.
     - rewrite /lty_own. simp lty_own_pre. injection Hdeinit as <-.
       iIntros "(%ly & %Halg & ? & ? & ? & ? & ? & ? & _)".
       iModIntro. iIntros (??). by iFrame.
+    - rewrite /lty_own. simp lty_own_pre. injection Hdeinit as <-.
+      iIntros "(%el & %rty & ? & ? & ? & ? & ? & [])".
     - rewrite /lty_own. simp lty_own_pre. injection Hdeinit as <-.
       iIntros "(%ly & %Halg & ? & ? & ? & _)".
       iModIntro. iIntros (??). by iFrame.
@@ -3847,6 +4207,8 @@ Ltac simp_ltype_core Heq :=
       rewrite (ltype_core_struct) in Heq
   | _ = ltype_core (ArrayLtype _ _ _) =>
       rewrite (ltype_core_array) in Heq
+  | _ = ltype_core (EnumLtype _ _ _) =>
+      rewrite ltype_core_enum in Heq
   | _ = ltype_core (OpenedLtype _ _ _ _ _) =>
       rewrite (ltype_core_opened) in Heq
   | _ = ltype_core (CoreableLtype _ _) =>
@@ -3877,6 +4239,8 @@ Ltac simp_ltype_st Heq :=
       rewrite (ltype_st_struct) in Heq; simpl in Heq
   | _ = ltype_st (ArrayLtype _ _ _) =>
       rewrite (ltype_st_array) in Heq; simpl in Heq
+  | _ = ltype_st (EnumLtype _ _ _) =>
+      rewrite (ltype_st_enum) in Heq; simpl in Heq
   | _ = ltype_st (OpenedLtype _ _ _ _ _) =>
       rewrite (ltype_st_opened) in Heq
   | _ = ltype_st (CoreableLtype _ _) =>
@@ -4571,6 +4935,13 @@ Section blocked.
   Proof.
   Admitted.
 
+  Lemma enum_ltype_imp_unblockable {rt} κs (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) :
+    imp_unblockable κs lte -∗
+    imp_unblockable κs (EnumLtype en tag lte).
+  Proof.
+  Admitted.
+
+
   (* Unblocking is trivial for OpenedLtype, since the core is trivial.
      However, that also doesn't buy us much, since we will anyways never have OpenedLtype below an intact mutable reference.
   *)
@@ -4675,6 +5046,8 @@ Section blocked.
         * simpl. rewrite lft_dead_list_app. by iDestruct "Hdead" as "($ & _)".
         * simpl. rewrite lft_dead_list_app. iDestruct "Hdead" as "(_ & Hdead)".
           by iApply "IH".
+    - iIntros (rt en tag lte Hub).
+      by iApply enum_ltype_imp_unblockable.
     - iIntros (rt_cur rt_inner rt_full lt_cur lt_inner ty_full Cpre R Cpost IH1 IH2).
       iApply opened_ltype_imp_unblockable.
     - iIntros (rt_full κ' lt_full Hdead). iApply coreable_ltype_imp_unblockable.

@@ -1086,7 +1086,7 @@ Section rules.
     (∃ M, named_lfts M ∗ li_tactic (compute_map_lookup_nofail_goal M κ_name) (λ κ,
       (named_lfts M -∗ typed_borrow_mut π E L e κ ty_annot (λ L' v γ rt ty r,
         T L' v (place_rfn rt * gname)%type (mut_ref ty κ) (PlaceIn r, γ)))))
-    ⊢ typed_val_expr π E L (&ref{Mut, ty_annot, κ_name} e) T.
+    ⊢ typed_val_expr π E L (&ref{Mut, ty_annot, κ_name} e)%E T.
   Proof.
     rewrite /compute_map_lookup_nofail_goal.
     iIntros "HT".
@@ -1555,9 +1555,8 @@ Section shr_ref.
     iPoseProof (heap_mapsto_agree with "Hmt1 Hmt2") as "%Heq"; first done.
     subst vl'. rewrite heap_mapsto_fractional. iFrame.
   Qed.
-
-
 End shr_ref.
+
 Section subtype.
   Context `{typeGS Σ}.
 
@@ -2307,7 +2306,7 @@ Section rules.
   Lemma type_shr_bor E L T e π κ_name ty_annot :
     (∃ M, named_lfts M ∗ li_tactic (compute_map_lookup_nofail_goal M κ_name) (λ κ,
     (named_lfts M -∗ typed_borrow_shr π E L e κ ty_annot (λ L' v rt ty r, T L' v (place_rfn rt) (shr_ref ty κ) (PlaceIn r)))))
-    ⊢ typed_val_expr π E L (&ref{Shr, ty_annot, κ_name} e) T.
+    ⊢ typed_val_expr π E L (&ref{Shr, ty_annot, κ_name} e)%E T.
   Proof.
     rewrite /compute_map_lookup_nofail_goal.
     iIntros "(%M & Hnamed & %κ & _ & HT)". iIntros (Φ) "#(LFT & TIME & LLCTX) #HE HL HΦ".

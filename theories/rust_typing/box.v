@@ -273,7 +273,7 @@ Section unfold.
     iExists l', ly'. iSplitR; first done. iFrame "∗ %".
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iDestruct "Hb" as "(%ly'' & % & % & Hsc & Hlb' & [Hcred Hat] & Hb)".
-    enough (ly'' = ly') as ->. { iModIntro. iFrame. }
+    enough (ly'' = ly') as ->. { iModIntro. by iFrame. }
     eapply syn_type_has_layout_inj; done.
   Qed.
   Lemma box_ltype_unfold_2_owned wl r :
@@ -286,7 +286,7 @@ Section unfold.
     iExists r'. iFrame. iNext.
     iDestruct "Hb" as ">(%v & Hl & %l' & %ly' & -> & %Halg & %Hly & Hlb & Hsc' & Hf & Hcred & Hat & Hb)".
     iExists l', ly'. iFrame "∗ %".
-    rewrite ltype_own_ofty_unfold /lty_of_ty_own. iModIntro. iExists ly'.
+    rewrite ltype_own_ofty_unfold /lty_of_ty_own. iModIntro. iR. iExists ly'.
     iDestruct "Hb" as "(%ri & Hrfn & Hb)". iFrame "% ∗".
     eauto with iFrame.
   Qed.

@@ -1,5 +1,5 @@
 From stdpp Require Import gmap.
-From refinedrust Require Export base type ltypes lft_contexts annotations.
+From refinedrust Require Export base type ltypes lft_contexts annotations ltype_rules.
 From caesium Require Import lang proofmode derived lifting.
 Set Default Proof Using "Type".
 
@@ -518,7 +518,6 @@ Section option_map.
     | Some o => Φ o T
     | None => T d
     end.
-  Global Typeclasses Opaque typed_option_map.
   Class TypedOptionMap {A R} (o : option A) (Φ : A → (R → iProp Σ) → iProp Σ) (d : R) :=
     typed_option_map_proof T : iProp_to_Prop (typed_option_map o Φ d T).
   Lemma typed_option_map_some {A R} (a : A) Φ (d : R) T :
@@ -715,7 +714,7 @@ Section judgments.
       ∃ L' R, maybe_logical_step step F (Q ∗ R) ∗ llctx_interp L' ∗ T L' R.
   Class SubsumeFull (E : elctx) (L : llctx) (step : bool) (P Q : iProp Σ) : Type :=
     subsume_full_proof T : iProp_to_Prop (subsume_full E L step P Q T).
-  Global Hint Mode SubsumeFull + + - + - : typeclass_instances.
+
   Lemma subsume_full_id E L step P T :
     T L True ⊢ subsume_full E L step P P T.
   Proof.
@@ -750,14 +749,13 @@ Section judgments.
     (rrust_ctx -∗ ∃ rt (ty : type rt) r, v ◁ᵥ{π} r @ ty ∗ T rt ty r).
   Class TypedValue (v : val) π : Type :=
     typed_value_proof T : iProp_to_Prop (typed_value v π T).
-  Global Hint Mode TypedValue + + : typeclass_instances.
 
   (** Typing of value expressions (unfolding [typed_value] for easier usage) *)
-  Definition typed_val_expr π (E : elctx) (L : llctx) (e : expr) (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) : iProp Σ :=
+  Definition typed_val_expr_cont_t := llctx → val → ∀ (rt : Type), type rt → rt → iProp Σ.
+  Definition typed_val_expr π (E : elctx) (L : llctx) (e : expr) (T : typed_val_expr_cont_t) : iProp Σ :=
     (∀ Φ, rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (∀ L' v rt (ty : type rt) r, llctx_interp L' -∗ v ◁ᵥ{π} r @ ty -∗ T L' v rt ty r -∗ Φ v) -∗
     WP e {{ Φ }}).
-  Global Arguments typed_val_expr _ _ _ _%E _%I.
 
   (** Typing of binary op expressions *)
   Definition typed_bin_op (π : thread_id) (E : elctx) (L : llctx) (v1 : val) (P1 : iProp Σ) (v2 : val) (P2 : iProp Σ)
@@ -765,19 +763,20 @@ Section judgments.
     (P1 -∗ P2 -∗ typed_val_expr π E L (BinOp o ot1 ot2 v1 v2) T).
   Class TypedBinOp (π : thread_id) (E : elctx) (L : llctx) (v1 : val) (P1 : iProp Σ) (v2 : val) (P2 : iProp Σ) (o : bin_op) (ot1 ot2 : op_type) : Type :=
     typed_bin_op_proof T : iProp_to_Prop (typed_bin_op π E L v1 P1 v2 P2 o ot1 ot2 T).
-  Global Hint Mode TypedBinOp + + + + + + + + + + : typeclass_instances.
+
   (* class for instances specialized to value ownership *)
   Class TypedBinOpVal (π : thread_id) (E : elctx) (L : llctx) (v1 : val) {rt1} (ty1 : type rt1) (r1 : rt1) (v2 : val) {rt2} (ty2 : type rt2) (r2 : rt2) (o : bin_op) (ot1 ot2 : op_type) : Type :=
     typed_bin_op_val :: TypedBinOp π E L v1 (v1 ◁ᵥ{π} r1 @ ty1) v2 (v2 ◁ᵥ{π} r2 @ ty2) o ot1 ot2.
   Global Hint Mode TypedBinOpVal + + + + + + + + + + + + + + : typeclass_instances.
 
   (** Typing of unary op expressions *)
+  Definition typed_un_op_cont_t := llctx → val → ∀ rt : Type, type rt → rt → iProp Σ.
   Definition typed_un_op (π : thread_id) (E : elctx) (L : llctx) (v : val) (P : iProp Σ) (o : un_op) (ot : op_type)
     (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) : iProp Σ :=
     (P -∗ typed_val_expr π E L (UnOp o ot v) T).
   Class TypedUnOp π (E : elctx) (L : llctx) (v : val) (P : iProp Σ) (o : un_op) (ot : op_type) : Type :=
     typed_un_op_proof T : iProp_to_Prop (typed_un_op π E L v P o ot T).
-  Global Hint Mode TypedUnOp + + + + + + + : typeclass_instances.
+
   (* class for instances specialized to value ownership *)
   Class TypedUnOpVal π (E : elctx) (L : llctx) (v : val) {rt} (ty : type rt) (r : rt) (o : un_op) (ot : op_type) : Type :=
     typed_un_op_val :: TypedUnOp π E L v (v ◁ᵥ{π} r @ ty) o ot.
@@ -791,13 +790,11 @@ Section judgments.
      typed_val_expr π E L (Call v (Val <$> vl)) T)%I.
   Class TypedCall π (E : elctx) (L : llctx) (eκs : list lft) (v : val) (P : iProp Σ) (vl : list val) (tys : list (sigT (λ rt, type rt * rt)%type)) : Type :=
     typed_call_proof T : iProp_to_Prop (typed_call π E L eκs v P vl tys T).
-  Global Hint Mode TypedCall + + + + + + + + : typeclass_instances.
 
   Definition typed_if (E : elctx) (L : llctx) (v : val) (P T1 T2 : iProp Σ) : iProp Σ :=
     (P -∗ ∃ b, ⌜val_to_bool v = Some b⌝ ∗ (if b then T1 else T2)).
   Class TypedIf E L (v : val) (P : iProp Σ) : Type :=
     typed_if_proof T1 T2 : iProp_to_Prop (typed_if E L v P T1 T2).
-  Global Hint Mode TypedIf + + + + : typeclass_instances.
 
   (** Typing of annotated expressions -- annotation determined by the [A]*)
   (* A is the annotation from the code *)
@@ -806,7 +803,6 @@ Section judgments.
     (rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ P ={⊤}[∅]▷=∗^n |={⊤}=> ∃ L2 rt (ty : type rt) r, llctx_interp L2 ∗ v ◁ᵥ{π} r @ ty ∗ T L2 v rt ty r).
   Class TypedAnnotExpr (π : thread_id) (E : elctx) (L : llctx) (n : nat) {A} (a : A) (v : val) (P : iProp Σ) : Type :=
     typed_annot_expr_proof T : iProp_to_Prop (typed_annot_expr π E L n a v P T).
-  Global Hint Mode TypedAnnotExpr + + + + + + + + : typeclass_instances.
 
   (** Learn from a hypothesis on introduction with [introduce_with_hooks], defined below *)
   Class LearnFromHyp (P : iProp Σ) := {
@@ -814,14 +810,12 @@ Section judgments.
     learn_from_hyp_proof :
       ∀ F, ⌜lftE ⊆ F⌝ -∗ P ={F}=∗ P ∗ ⌜learn_from_hyp_Q⌝;
   }.
-  Global Hint Mode LearnFromHyp - : typeclass_instances.
 
   Class LearnFromHypVal {rt} (ty : type rt) (r : rt) := {
     learn_from_hyp_val_Q : Prop;
     learn_from_hyp_val_proof :
       ∀ F π v, ⌜lftE ⊆ F⌝ -∗ v ◁ᵥ{π} r @ ty ={F}=∗ v ◁ᵥ{π} r @ ty ∗ ⌜learn_from_hyp_val_Q⌝;
   }.
-  Global Hint Mode LearnFromHypVal - - - : typeclass_instances.
   Global Program Instance learn_hyp_val π v {rt} (ty : type rt) r :
     LearnFromHypVal ty r → LearnFromHyp (v ◁ᵥ{π} r @ ty) :=
     λ H, {| learn_from_hyp_Q := learn_from_hyp_val_Q |}.
@@ -860,7 +854,6 @@ Section judgments.
     ∀ F, ⌜lftE ⊆ F⌝ -∗ elctx_interp E -∗ llctx_interp L -∗ P ={F}=∗ ∃ L', llctx_interp L' ∗ T L'.
   Class IntroduceWithHooks (E : elctx) (L : llctx) (P : iProp Σ) : Type :=
     introduce_with_hooks_proof T : iProp_to_Prop (introduce_with_hooks E L P T).
-  Global Hint Mode IntroduceWithHooks + + - : typeclass_instances.
 
   Lemma introduce_with_hooks_sep E L P1 P2 T :
     introduce_with_hooks E L P1 (λ L', introduce_with_hooks E L' P2 T) ⊢
@@ -974,7 +967,7 @@ Section judgments.
     (rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ v ◁ᵥ{π} r @ ty -∗ ⌜val_to_bool v = Some true⌝ ∗ llctx_interp L ∗ typed_stmt π E L s fn R ϝ)%I.
   Class TypedAssert (π : thread_id) (E : elctx) (L : llctx) (v : val) {rt} (ty : type rt) (r : rt) : Type :=
     typed_assert_proof s fn R ϝ : iProp_to_Prop (typed_assert π E L v ty r s fn R ϝ).
-  Global Hint Mode TypedAssert + + + + + + + : typeclass_instances.
+
 
   (** annotated statements are allowed to execute an update and take a step *)
   (* TODO: make this more useful and actually use it *)
@@ -982,7 +975,6 @@ Section judgments.
     (rrust_ctx ={⊤}[∅]▷=∗ T).
   Class TypedAnnotStmt {A} (a : A) : Type :=
     typed_annot_stmt_proof T : iProp_to_Prop (typed_annot_stmt a T).
-  Global Hint Mode TypedAnnotStmt + + : typeclass_instances.
 
   Definition typed_switch (π : thread_id) (E : elctx) (L : llctx) (v : val) rt (ty : type rt) (r : rt) (it : int_type) (m : gmap Z nat) (ss : list stmt) (def : stmt) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
     (v ◁ᵥ{π} r @ ty -∗ ∃ z, ⌜val_to_Z v it = Some z⌝ ∗
@@ -992,7 +984,6 @@ Section judgments.
       end).
   Class TypedSwitch (π : thread_id) (E : elctx) (L : llctx) (v : val) rt (ty : type rt) (r : rt) (it : int_type) : Type :=
     typed_switch_proof m ss def fn R ϝ : iProp_to_Prop (typed_switch π E L v rt ty r it m ss def fn R ϝ).
-  Global Hint Mode TypedSwitch + + + + + + + + : typeclass_instances.
 
 
 
@@ -1128,7 +1119,6 @@ Section judgments.
     (⊢ ∀ L, rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ T L Φ' -∗
       (∀ L' K l, llctx_interp L' -∗ Φ' L' K l -∗ place_to_wp π K (Φ ∘ val_of_loc) l) -∗
         WP e {{ Φ }}).
-  Global Hint Mode IntoPlaceCtx + + + - : typeclass_instances.
 
   Section find_place_ctx_correct.
   Arguments W.to_expr : simpl nomatch.
@@ -1643,7 +1633,6 @@ Section judgments.
   (** Instances need to have priority >= 10, the ones below are reserved for ghost resolution, id, etc. *)
   Class TypedPlace E L π l1 {rto} (ltyo : ltype rto) (r1 : place_rfn rto) (bmin0 b1 : bor_kind) (P : list place_ectx_item) : Type :=
     typed_place_proof T : iProp_to_Prop (typed_place π E L l1 ltyo r1 bmin0 b1 P T).
-  Global Hint Mode TypedPlace + + + + + + + + + + : typeclass_instances.
 
   Import EqNotations.
   Lemma typed_place_id {rt} π E L (lt : ltype rt) bmin0 b r l (T : place_cont_t rt) :
@@ -1696,6 +1685,192 @@ Section judgments.
   Qed.
   (* intentionally not an instance -- since [eqltype] is transitive, that would not be a good idea. *)
 
+  (* generic instance constructors for descending below ofty *)
+  Lemma typed_place_ofty_access_val_owned π E L {rt} l (ty : type rt) (r : rt) bmin0 wl P T :
+    ty.(ty_has_op_type) PtrOp MCCopy →
+    (∀ F v, ⌜lftE ⊆ F⌝ -∗
+      v ◁ᵥ{π} r @ ty ={F}=∗
+      ∃ (l2 : loc) (rt2 : Type) (lt2 : ltype rt2) r2 b2, ⌜v = l2⌝ ∗
+        v ◁ᵥ{π} r @ ty ∗ l2 ◁ₗ[π, b2] r2 @ lt2 ∗
+        typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
+          T L' [] li b3 bmin rti ltyi ri
+            (match strong with
+             | Some strong => Some $ mk_strong (λ _, _) (λ _ _ _, ◁ ty) (λ _ _, #r) (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)
+             | None => None
+             end)
+            (match weak with
+             | Some weak => Some $ mk_weak (λ _ _, ◁ ty) (λ _, #r) (λ ltyi2 ri2, llft_elt_toks κs ∗ l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)
+             | None =>
+                 match strong with
+                  | Some strong => Some $ mk_weak (λ _ _, ◁ ty) (λ _, #r) (λ ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)
+                  | None => None
+                  end
+              end)
+        ))
+    ⊢ typed_place π E L l (◁ ty) (PlaceIn r) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) T.
+  Proof.
+    iIntros (Hot) "HT".
+    iIntros (????) "#CTX #HE HL #Hincl Hl Hcont". iApply fupd_place_to_wp.
+    iPoseProof (ofty_ltype_acc_owned ⊤ with "Hl") as "(%ly & %Halg & %Hly & Hsc & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
+    simpl. iModIntro.
+    iDestruct "CTX" as "(LFT & TIME & LLCTX)".
+    iApply (wp_logical_step with "TIME Hcl"); [done.. | ].
+    specialize (ty_op_type_stable Hot) as Halg'.
+    assert (ly = ot_layout PtrOp) as -> by by eapply syn_type_has_layout_inj.
+    iPoseProof (ty_own_val_has_layout with "Hv") as "%Hlyv"; first done.
+    iApply (wp_deref with "Hl"); [by right | | done | done | ].
+    { by rewrite val_to_of_loc. }
+    iNext. iIntros (st) "Hl Hcred Ha".
+    iMod ("HT" with "[] Hv") as "(%l2 & %rt2 & %lt2 & %r2 & %b2 & -> & Hv & Hl2 & HT)"; first done.
+    iMod ("Ha" with "Hl [//] Hsc Hv") as "Hl".
+    iModIntro.
+    iExists l2. rewrite mem_cast_id_loc. iSplitR; first done.
+    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hl2").
+    { iApply bor_kind_incl_refl. }
+    iIntros (L2 κs l3 b3 bmin rti ltyi ri strong weak) "#Hincl1 Hl3 Hcl HT HL".
+    iApply ("Hcont" with "[//] Hl3 [Hcl Hl] HT HL").
+    iSplit.
+    -  (* strong *) iDestruct "Hcl" as "[Hcl _]". simpl.
+      destruct strong as [ strong | ]; simpl; last done.
+      iIntros (rti2 ltyi2 ri2) "Hl2 %Hst".
+      iMod ("Hcl" with "Hl2 [//]") as "(Hl' & % & Hstrong)".
+      iModIntro. iFrame. done.
+    - (* weak *)
+      destruct weak as [weak | ]; simpl.
+      + iDestruct "Hcl" as "[_ Hcl]". simpl.
+        iIntros (ltyi2 ri2 ?) "#Hincl3 Hl2 Hcond".
+        iMod ("Hcl" with "Hincl3 Hl2 Hcond") as "(Hl' & Hcond & Htoks & Hweak)".
+        iModIntro. iFrame. iSplitL.
+        { iApply typed_place_cond_refl. done. }
+        rewrite /llft_elt_toks. done.
+      + destruct strong as [ strong | ]; simpl; last done.
+        iDestruct "Hcl" as "[Hcl _]".
+        iIntros (ltyi2 ri2 ?) "#Hincl3 Hl2 Hcond".
+        iPoseProof (typed_place_cond_syn_type_eq with "Hcond") as "%Hst".
+        iMod ("Hcl" with "Hl2 [//]") as "(Hl' & %Hst' & Hweak)".
+        iFrame. iModIntro.
+        iSplitL. { iApply typed_place_cond_refl. done. }
+        rewrite /llft_elt_toks. done.
+  Qed.
+
+  (* TODO generalize this similarly as the one above? *)
+  Lemma typed_place_ofty_access_val_uniq π E L {rt} l (ty : type rt) (r : rt) bmin0 κ γ P T :
+    ty.(ty_has_op_type) PtrOp MCCopy →
+    ⌜lctx_lft_alive E L κ⌝ ∗
+    (∀ F v, ⌜lftE ⊆ F⌝ -∗
+      v ◁ᵥ{π} r @ ty ={F}=∗
+      ∃ (l2 : loc) (rt2 : Type) (lt2 : ltype rt2) r2 b2, ⌜v = l2⌝ ∗
+        v ◁ᵥ{π} r @ ty ∗ l2 ◁ₗ[π, b2] r2 @ lt2 ∗
+        typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
+          T L' κs li b3 bmin rti ltyi ri
+          (option_map (λ strong, mk_strong (λ _, _) (λ _ _ _, ◁ ty) (λ _ _, PlaceIn r)
+            (* give back ownership through R *)
+            (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
+          (option_map (λ weak, mk_weak (λ _ _, ◁ ty) (λ _, PlaceIn r)
+            (λ ltyi2 ri2, l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)) weak)
+        ))
+    ⊢ typed_place π E L l (◁ ty) (PlaceIn r) bmin0 (Uniq κ γ) (DerefPCtx Na1Ord PtrOp true :: P) T.
+  Proof.
+    iIntros (Hot) "(%Hal & HT)".
+    iIntros (????) "#CTX #HE HL #Hincl Hl Hcont". iApply fupd_place_to_wp.
+    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
+    iMod (fupd_mask_subseteq lftE) as "HF_cl"; first done.
+    iMod (Hal with "HE HL") as "(%q' & Htok & HL_cl2)"; first done.
+    iPoseProof (ofty_ltype_acc_uniq lftE with "CTX Htok HL_cl2 Hl") as "(%ly & %Halg & %Hly & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
+    iMod "HF_cl" as "_".
+    simpl. iModIntro.
+    iDestruct "CTX" as "(LFT & TIME & LLCTX)".
+    iApply (wp_logical_step with "TIME Hcl"); [done.. | ].
+    specialize (ty_op_type_stable Hot) as Halg'.
+    assert (ly = ot_layout PtrOp) as -> by by eapply syn_type_has_layout_inj.
+    iPoseProof (ty_own_val_has_layout with "Hv") as "%Hlyv"; first done.
+    iApply (wp_deref with "Hl"); [by right | | done | done | ].
+    { by rewrite val_to_of_loc. }
+    iNext. iIntros (st) "Hl Hcred [Ha _]".
+    iMod ("HT" with "[] Hv") as "(%l2 & %rt2 & %lt2 & %r2 & %b2 & -> & Hv & Hl2 & HT)"; first done.
+    iMod (fupd_mask_mono with "(Ha Hl Hv)") as "(Hl & HL)"; first done.
+    iPoseProof ("HL_cl" with "HL") as "HL".
+    iModIntro.
+    iExists l2. rewrite mem_cast_id_loc. iSplitR; first done.
+    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hl2").
+    { iApply bor_kind_incl_refl. }
+    iIntros (L2 κs l3 b3 bmin rti ltyi ri strong weak) "#Hincl1 Hl3 Hcl HT HL".
+    iApply ("Hcont" with "[//] Hl3 [Hcl Hl] HT HL").
+    iSplit.
+    -  (* strong *) iDestruct "Hcl" as "[Hcl _]". simpl.
+      destruct strong as [ strong | ]; simpl; last done.
+      iIntros (rti2 ltyi2 ri2) "Hl2 %Hst".
+      iMod ("Hcl" with "Hl2 [//]") as "(Hl' & % & Hstrong)".
+      iModIntro. iFrame. done.
+    - (* weak *) iDestruct "Hcl" as "[_ Hcl]". simpl.
+      destruct weak as [weak | ]; simpl; last done.
+      iIntros (ltyi2 ri2 ?) "#Hincl3 Hl2 Hcond".
+      iMod ("Hcl" with "Hincl3 Hl2 Hcond") as "(Hl' & Hcond & Htoks & Hweak)".
+      iModIntro. iFrame.
+      iApply typed_place_cond_refl. done.
+  Qed.
+
+  (* NOTE: we need to require it to be a simple type to get this generic lemma *)
+  Lemma typed_place_ofty_access_val_shared π E L {rt} l (ty : simple_type rt) (r : rt) bmin0 κ P T :
+    ty.(ty_has_op_type) PtrOp MCCopy →
+    ⌜lctx_lft_alive E L κ⌝ ∗
+    (∀ F v, ⌜lftE ⊆ F⌝ -∗
+      v ◁ᵥ{π} r @ ty ={F}=∗
+      ∃ (l2 : loc) (rt2 : Type) (lt2 : ltype rt2) r2 b2, ⌜v = l2⌝ ∗
+        v ◁ᵥ{π} r @ ty ∗ l2 ◁ₗ[π, b2] r2 @ lt2 ∗
+        typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
+          T L' κs li b3 bmin rti ltyi ri
+          (option_map (λ strong, mk_strong (λ _, _) (λ _ _ _, ◁ ty) (λ _ _, PlaceIn r)
+            (* give back ownership through R *)
+            (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
+          (option_map (λ weak, mk_weak (λ _ _, ◁ ty) (λ _, PlaceIn r)
+            (λ ltyi2 ri2, l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)) weak)
+        ))
+    ⊢ typed_place π E L l (◁ ty) (PlaceIn r) bmin0 (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) T.
+  Proof.
+    iIntros (Hot) "(%Hal & HT)".
+    iIntros (????) "#CTX #HE HL #Hincl #Hl Hcont". iApply fupd_place_to_wp.
+    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
+    iMod (Hal with "HE HL") as "(%q' & Htok & HL_cl2)"; first done.
+    iPoseProof (ofty_ltype_acc_shared ⊤ with "Hl") as "(%ly & %Halg & %Hly & Hlb & >Hb)"; first done.
+    rewrite simple_type_shr_equiv. iDestruct "Hb" as "(%v & %ly' & % & %Hly' & Hloc & Hv)".
+    assert (ly' = ly) as -> by by eapply syn_type_has_layout_inj.
+
+    iDestruct "CTX" as "(LFT & TIME & LLCTX)".
+    iMod (frac_bor_acc with "LFT Hloc Htok") as "(%q0 & >Hloc & Hl_cl)"; first done.
+    simpl. iModIntro.
+    specialize (ty_op_type_stable Hot) as Halg'.
+    assert (ly = ot_layout PtrOp) as -> by by eapply syn_type_has_layout_inj.
+    iPoseProof (ty_own_val_has_layout with "Hv") as "#>%Hlyv"; first done.
+    iApply wp_fupd.
+    iApply (wp_deref with "Hloc"); [by right | | done | done | ].
+    { by rewrite val_to_of_loc. }
+    iNext. iIntros (st) "Hloc Hcred".
+    iMod ("HT" with "[] Hv") as "(%l2 & %rt2 & %lt2 & %r2 & %b2 & -> & Hv & Hl2 & HT)"; first done.
+    iMod ("Hl_cl" with "Hloc") as "Htok".
+    iMod ("HL_cl2" with "Htok") as "HL". iPoseProof ("HL_cl" with "HL") as "HL".
+    iModIntro.
+    iExists l2. rewrite mem_cast_id_loc. iSplitR; first done.
+    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hl2").
+    { iApply bor_kind_incl_refl. }
+    iIntros (L2 κs l3 b3 bmin rti ltyi ri strong weak) "#Hincl1 Hl3 Hcl HT HL".
+    iApply ("Hcont" with "[//] Hl3 [Hcl Hv] HT HL").
+    iSplit.
+    -  (* strong *) iDestruct "Hcl" as "[Hcl _]". simpl.
+      destruct strong as [ strong | ]; simpl; last done.
+      iIntros (rti2 ltyi2 ri2) "Hl2 %Hst".
+      iMod ("Hcl" with "Hl2 [//]") as "(Hl' & % & Hstrong)".
+      iModIntro. iFrame. iSplitR; done.
+    - (* weak *) iDestruct "Hcl" as "[_ Hcl]". simpl.
+      destruct weak as [weak | ]; simpl; last done.
+      iIntros (ltyi2 ri2 ?) "#Hincl3 Hl2 Hcond".
+      iMod ("Hcl" with "Hincl3 Hl2 Hcond") as "(Hl' & Hcond & Htoks & Hweak)".
+      iModIntro. iFrame. iSplitR; first done.
+      iApply typed_place_cond_refl. done.
+  Qed.
+
+
+
   (** Fold an [lty] to a [type].
     This is usually used after accessing a place, to push the ◁ to the outside again.
   *)
@@ -1704,7 +1879,7 @@ Section judgments.
     ∃ ty, ⌜full_eqltype E L lt (◁ ty)⌝ ∗ T ty.
   Class CastLtypeToType {rt} (E : elctx) (L : llctx) (lt : ltype rt) : Type :=
     cast_ltype_to_type_proof T : iProp_to_Prop (cast_ltype_to_type E L lt T).
-  Global Hint Mode CastLtypeToType + + + + : typeclass_instances.
+
 
   (** Update the refinement of an [ltype]. If [lb = true], this can take a logical step and thus descend below other types.
       On the other hand, if [lb = false], this should only do an update at the top-level.
@@ -1724,7 +1899,6 @@ Section judgments.
       llctx_interp L' ∗ T L' r' R progress.
   Class ResolveGhost {rt} π E L rm lb l (lt : ltype rt) b γ : Type :=
     resolve_ghost_proof T : iProp_to_Prop (resolve_ghost π E L rm lb l lt b γ T).
-  Global Hint Mode ResolveGhost + + + + + + + + + + : typeclass_instances.
 
   Inductive FindObsMode : Set :=
     | FindObsModeDirect
@@ -1734,7 +1908,6 @@ Section judgments.
     ∀ F, ⌜lftE ⊆ F⌝ -∗ |={F}=> (∃ r : rt, gvar_pobs γ r ∗ T (Some r)) ∨ T None.
   Class FindObservation (rt : Type) (γ : gname) (m : FindObsMode) : Type :=
     find_observation_proof T : iProp_to_Prop (find_observation rt γ m T).
-  Global Hint Mode FindObservation + + + : typeclass_instances.
 
 
   (** *** Stratification: unfold, unblock, and fold an ltype. *)
@@ -1793,7 +1966,6 @@ Section judgments.
 
   Class StratifyLtype {rt} π E L mu mdu ma {M} (ml : M) l (lt : ltype rt) (r : place_rfn rt) b : Type :=
     stratify_ltype_proof T : iProp_to_Prop (stratify_ltype π E L mu mdu ma ml l lt r b T).
-  Global Hint Mode StratifyLtype + + + + + + + + + + + + + : typeclass_instances.
 
   (** Post-hook that is run after stratification visits a node.
      This is intended to be overridden by different stratification clients, depending on [ml]. *)
@@ -1810,7 +1982,6 @@ Section judgments.
       T L' R rt' lt' r'.
   Class StratifyLtypePostHook {rt} π E L {M} (ml : M) l (lt : ltype rt) (r : place_rfn rt) b : Type :=
     stratify_ltype_post_hook_proof T : iProp_to_Prop (stratify_ltype_post_hook π E L ml l lt r b T).
-  Global Hint Mode StratifyLtypePostHook + + + + + + + + + + : typeclass_instances.
 
   (** Low-priority instance in case no overrides are provided for this [ml]. *)
   Lemma stratify_ltype_post_hook_id {rt} (π : thread_id) (E : elctx) (L : llctx) {M} (ml : M) (l : loc) (lt : ltype rt) (r : place_rfn rt) (b : bor_kind) (T : stratify_ltype_post_hook_cont_t) :
@@ -1905,7 +2076,6 @@ Section judgments.
     type_incl r1 r2 ty1 ty2 ∗ llctx_interp L ∗ T.
   Class Subtype (E : elctx) (L : llctx) {rt1 rt2} r1 r2 (ty1 : type rt1) (ty2 : type rt2) : Type :=
     subtype_proof T : iProp_to_Prop (weak_subtype E L r1 r2 ty1 ty2 T).
-  Global Hint Mode Subtype + + + - + - + - : typeclass_instances.
 
   Definition weak_subltype E L {rt1 rt2} (b : bor_kind) r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) (T : iProp Σ) : iProp Σ :=
     ∀ F, ⌜lftE ⊆ F⌝ -∗
@@ -1915,7 +2085,6 @@ Section judgments.
     ltype_incl b r1 r2 lt1 lt2 ∗ llctx_interp L ∗ T.
   Class SubLtype (E : elctx) (L : llctx) {rt1 rt2} b r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) : Type :=
     subltype_proof T : iProp_to_Prop (weak_subltype E L b r1 r2 lt1 lt2 T).
-  Global Hint Mode SubLtype + + + - + + - + - : typeclass_instances.
 
   (** Owned value subtyping (is NOT compatible with shared references). *)
   Definition owned_type_incl π {rt1 rt2} (r1 : rt1) (r2 : rt2) (ty1 : type rt1) (ty2 : type rt2) : iProp Σ :=
@@ -1941,7 +2110,6 @@ Section judgments.
     (□?pers owned_type_incl π r1 r2 ty1 ty2) ∗ llctx_interp L' ∗ T L'.
   Class OwnedSubtype (π : thread_id) (E : elctx) (L : llctx) (pers : bool) {rt1 rt2} (r1 : rt1) (r2 : rt2) (ty1 : type rt1) (ty2 : type rt2) : Type :=
     owned_subtype_proof T : iProp_to_Prop (owned_subtype π E L pers r1 r2 ty1 ty2 T).
-  Global Hint Mode OwnedSubtype + + + + + - + - + - : typeclass_instances.
 
   Lemma owned_subtype_weak_subtype π E L pers {rt1 rt2} (r1 : rt1) (r2 : rt2) (ty1 : type rt1) (ty2 : type rt2) T :
     weak_subtype E L r1 r2 ty1 ty2 (T L)
@@ -1987,7 +2155,6 @@ Section judgments.
     llctx_interp L' ∗ T L' R.
   Class OwnedSubltypeStep (π : thread_id) (E : elctx) (L : llctx) {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) (lt1 : ltype rt1) (lt2 : ltype rt2) : Type :=
     owned_subltype_step_proof T : iProp_to_Prop (owned_subltype_step π E L r1 r2 lt1 lt2 T).
-  Global Hint Mode OwnedSubltypeStep + + + + - + - + - : typeclass_instances.
 
   Lemma owned_subltype_step_weak_subltype π E L {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) lt1 lt2 T :
     weak_subltype E L (Owned false) r1 r2 lt1 lt2 (T L True)
@@ -2009,25 +2176,21 @@ Section judgments.
     ⌜full_subtype E L ty1 ty2⌝ ∗ T.
   Class MutSubtype (E : elctx) (L : llctx) {rt} (ty1 ty2 : type rt) : Type :=
     mut_subtype_proof T : iProp_to_Prop (mut_subtype E L ty1 ty2 T).
-  Global Hint Mode MutSubtype + + + + - : typeclass_instances.
 
   Definition mut_subltype E L {rt} (lt1 lt2 : ltype rt) (T : iProp Σ) : iProp Σ :=
     ⌜full_subltype E L lt1 lt2⌝ ∗ T.
   Class MutSubLtype (E : elctx) (L : llctx) {rt} (lt1 lt2 : ltype rt) : Type :=
     mut_subltype_proof T : iProp_to_Prop (mut_subltype E L lt1 lt2 T).
-  Global Hint Mode MutSubLtype + + + + - : typeclass_instances.
 
   Definition mut_eqtype E L {rt} (ty1 ty2 : type rt) (T : iProp Σ) : iProp Σ :=
     ⌜full_eqtype E L ty1 ty2⌝ ∗ T.
   Class MutEqtype (E : elctx) (L : llctx) {rt} (ty1 ty2 : type rt) : Type :=
     mut_eqtype_proof T : iProp_to_Prop (mut_eqtype E L ty1 ty2 T).
-  Global Hint Mode MutEqtype + + + + - : typeclass_instances.
 
   Definition mut_eqltype E L {rt} (lt1 lt2 : ltype rt) (T : iProp Σ) : iProp Σ :=
     ⌜full_eqltype E L lt1 lt2⌝ ∗ T.
   Class MutEqLtype (E : elctx) (L : llctx) {rt} (lt1 lt2 : ltype rt) : Type :=
     mut_eqltype_proof T : iProp_to_Prop (mut_eqltype E L lt1 lt2 T).
-  Global Hint Mode MutEqLtype + + + + - : typeclass_instances.
 
   (** ** Prove a proposition using subtyping *)
   Inductive ProofMode :=
@@ -2043,7 +2206,6 @@ Section judgments.
       ∃ L' κs R, maybe_logical_step step F ((if pm is ProveWithStratify then (lft_dead_list κs ={lftE}=∗ P) else P) ∗ R) ∗ llctx_interp L' ∗ T L' κs R.
   Class ProveWithSubtype (E : elctx) (L : llctx) (step : bool) (pm : ProofMode) (P : iProp Σ) : Type :=
     prove_with_subtype_proof T : iProp_to_Prop (prove_with_subtype E L step pm P T).
-  Global Hint Mode ProveWithSubtype + + + + ! : typeclass_instances.
 
   (* TODO: move *)
   Lemma maybe_logical_step_compose (E : coPset) step (P Q : iProp Σ) :
@@ -2339,7 +2501,6 @@ Section judgments.
         T upd.
   Class ProvePlaceCond (E : elctx) (L : llctx) {rt1 rt2} (bmin : bor_kind) (lt1 : ltype rt1) (lt2 : ltype rt2) : Type :=
     prove_place_cond_proof T : iProp_to_Prop (prove_place_cond E L bmin lt1 lt2 T).
-  Global Hint Mode ProvePlaceCond + + + + + + + : typeclass_instances.
 
   Lemma prove_place_cond_eqltype_l E L bmin {rt1 rt2} (lt1 lt1' : ltype rt1) (lt2 : ltype rt2) T :
     full_eqltype E L lt1 lt1' →
@@ -2376,7 +2537,6 @@ Section judgments.
     (if b then typed_place_cond_rfn bmin r1 r2 else True%I) ∗ T.
   Class ProvePlaceRfnCond {rt1 rt2} b bmin (r1 : place_rfn rt1) (r2 : place_rfn rt2) :=
     prove_place_rfn_cond_proof T : iProp_to_Prop (prove_place_rfn_cond b bmin r1 r2 T).
-  Global Hint Mode ProvePlaceRfnCond + + + + + + : typeclass_instances.
 
   Lemma prove_place_rfn_cond_shared {rt} κ (r1 r2 : place_rfn rt) T :
     ⌜r1 = r2⌝ ∗ T ⊢ prove_place_rfn_cond true (Shared κ) r1 r2 T.
@@ -2416,7 +2576,6 @@ Section judgments.
   Definition lctx_lft_alive_count_goal (E : elctx) (L : llctx) (κ : lft)
       (T : (list lft) * llctx → iProp Σ) : iProp Σ :=
     ∃ κs L', ⌜lctx_lft_alive_count E L κ κs L'⌝ ∗ T (κs, L').
-  Typeclasses Opaque lctx_lft_alive_count_goal.
   Program Definition lctx_lft_alive_count_hint E L κ (κs : list lft) (L' : llctx) :
     lctx_lft_alive_count E L κ κs L' →
     LiTactic (lctx_lft_alive_count_goal E L κ) := λ a, {|
@@ -2430,7 +2589,6 @@ Section judgments.
   (** ** Releasing lifetime tokens *)
   Definition llctx_release_toks_goal (L : llctx) (κs : list lft) (T : llctx → iProp Σ) : iProp Σ :=
     ∃ L', ⌜llctx_release_toks L κs L'⌝ ∗ T L'.
-  Typeclasses Opaque llctx_release_toks_goal.
   Program Definition llctx_release_toks_hint L κs (L' : llctx) :
     llctx_release_toks L κs L' →
     LiTactic (llctx_release_toks_goal L κs) := λ a, {|
@@ -2535,7 +2693,6 @@ Section judgments.
         end
     end.
   *)
-  Global Typeclasses Transparent typed_place_finish.
 
   (** ** Read judgments *)
   (* In a given lifetime context, we can read from [e], in the process determining that [e] reads from a location [l] and getting a value typed at a type [ty] with a layout compatible with [ot], and afterwards, the remaining [T L' v ty' r'] needs to be proved, where [ty'] is the new type of the read value and [v] is the read value.
@@ -2624,7 +2781,6 @@ Section judgments.
               T L' (mem_cast v ot st) rt3 ty3 r3 rt' lt' r' res))).
   Class TypedReadEnd (π : thread_id) (E : elctx) (L : llctx) (l : loc) {rt} (lt : ltype rt) (r : place_rfn rt) (b2 bmin : bor_kind) (br : access_allowed) (ot : op_type) : Type :=
     typed_read_end_proof T : iProp_to_Prop (typed_read_end π E L l lt r b2 bmin br ot T).
-  Global Hint Mode TypedReadEnd + + + + + + + + + + + : typeclass_instances.
 
   (** ** Write judgments *)
   (* In a given lifetime context, we can write [v] to [e], compatible with [ot], where the written value has type [ty] at refinement [r], and afterwards, the remaining [T] needs to be proved.
@@ -2689,7 +2845,6 @@ Section judgments.
         T L' rt3 ty3 r3 res)))).
   Class TypedWriteEnd (π : thread_id) (E : elctx) (L : llctx) (ot : op_type) (v1 : val) {rt1} (ty1 : type rt1) (r1 : rt1) (b2 bmin : bor_kind) (br : access_allowed) (l2 : loc) {rt2} (lt2 : ltype rt2) (r2 : place_rfn rt2) : Type :=
     typed_write_end_proof T : iProp_to_Prop (typed_write_end π E L ot v1 ty1 r1 b2 bmin br l2 lt2 r2 T).
-  Global Hint Mode TypedWriteEnd + + + + + + + + + + + + + + + : typeclass_instances.
 
   (** ** Borrow judgments *)
   (** [typed_borrow_mut] gets triggered when we borrow mutably at lifetime [κ] from a place [e].
@@ -2752,7 +2907,6 @@ Section judgments.
     T γ (BlockedLtype ty κ) (PlaceGhost γ)).
   Class TypedBorrowMutEnd π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : place_rfn rt) (b2 bmin : bor_kind) : Type :=
     typed_borrow_mut_end_proof T : iProp_to_Prop (typed_borrow_mut_end π E L κ l ty r b2 bmin T).
-  Global Hint Mode TypedBorrowMutEnd + + + + + + + + + + : typeclass_instances.
 
   (** [typed_borrow_shr] gets triggered when we do a shared borrow at lifetime [κ] from a place [e].
 
@@ -2812,7 +2966,6 @@ Section judgments.
     T lt (PlaceIn r))).
   Class TypedBorrowShrEnd π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : rt) (b2 bmin : bor_kind) : Type :=
     typed_borrow_shr_end_proof T : iProp_to_Prop (typed_borrow_shr_end π E L κ l ty r b2 bmin T).
-  Global Hint Mode TypedBorrowShrEnd + + + + + + + + + + : typeclass_instances.
 
   (** ** Address-of judgments *)
   (** [*mut] address of *)
@@ -2858,7 +3011,6 @@ Section judgments.
     T L' rt0 ty0 r0 rt' lt' r')).
   Class TypedAddrOfMutEnd (π : thread_id) (E : elctx) (L : llctx) (l : loc) {rt} (lt : ltype rt) (r : place_rfn rt) (b2 bmin : bor_kind) : Type :=
     typed_addr_of_mut_end_proof T : iProp_to_Prop (typed_addr_of_mut_end π E L l lt r b2 bmin T).
-  Global Hint Mode TypedAddrOfMutEnd + + + + +  + + + + : typeclass_instances.
 
   (*
      expected flow:
@@ -3119,7 +3271,6 @@ Section folding.
       ∃ L' acc' m', llctx_interp L' ∗ logical_step F (Acc_interp acc') ∗ T L' m' acc').
   Class TypedContextFold (π : thread_id) (E : elctx) (L : llctx) {M} (m : M) (tctx : list loc) (acc : Acc) :=
     typed_context_fold_proof T : iProp_to_Prop (typed_context_fold π E L m tctx acc T).
-  Global Hint Mode TypedContextFold + + + + + + + : typeclass_instances.
 
   (**
     This does a context fold step, by transforming [tctx] and [acc].
@@ -3135,7 +3286,6 @@ Section folding.
       (∃ L' acc' m', llctx_interp L' ∗ logical_step F (Acc_interp acc') ∗ T L' m' acc')).
   Class TypedContextFoldStep {M} (π : thread_id) (E : elctx) (L : llctx) (m : M) (l : loc) {rt} (lt : ltype rt) (r : place_rfn rt) (tctx : list loc) (acc : Acc) :=
     typed_context_fold_step_proof T : iProp_to_Prop (typed_context_fold_step π E L m l lt r tctx acc T).
-  Global Hint Mode TypedContextFoldStep + + + + + + + + + + + : typeclass_instances.
 
   (** Terminator for the context folding typing process.
     It gathers up the folding result and takes a program step to strip the accumulated laters.
@@ -3257,7 +3407,6 @@ Section relate_list.
   .
   Class RelateList {A B} (E : elctx) (L : llctx) (ig : list nat) (l1 : list A) (l2 : list B) (i0 : nat) (R : FoldableRelation) : Type :=
     relate_list_proof T : iProp_to_Prop (relate_list E L ig l1 l2 i0 R T).
-  Global Hint Mode RelateList + + + + + + ! + + : typeclass_instances.
 
   Lemma relate_list_ig_cons_le {A B} E L ig (j i0 : nat) (l1 : list A) (l2 : list B) (R : FoldableRelation) :
     (j < i0)%nat →
@@ -3543,7 +3692,6 @@ Section relate_hlist.
   .
   Class RelateHList {A} {G H : A → Type} (E : elctx) (L : llctx) (ig : list nat) (Xs : list A) (l1 : hlist G Xs) (l2 : hlist H Xs) (i0 : nat) (R : @HetFoldableRelation A G H) : Type :=
     relate_hlist_proof T : iProp_to_Prop (relate_hlist E L ig Xs l1 l2 i0 R T).
-  Global Hint Mode RelateHList + + + + + + + + ! + + : typeclass_instances.
 
   Lemma relate_hlist_nil {A} {G H : A → Type} E L ig (l1 : hlist G []) (l2 : hlist H []) i0 R T :
     T ⊢ relate_hlist E L ig [] l1 l2 i0 R T.
@@ -3674,7 +3822,6 @@ Section fold_list.
     else ((⌜i0 + length l ≤ R.(fp_cap)⌝ -∗ ⌜R.(fp_inv)⌝ -∗ [∗ list] i ↦ a ∈ l, if decide ((i + i0)%nat ∈ ig) then True else R.(fp_core_pred) E L (i + i0)%nat a) ∗ T)%I.
   Class FoldList {A} (E : elctx) (L : llctx) (ig : list nat) (l : list A) (i0 : nat) (R : FoldablePredicate) : Type :=
     fold_list_proof T : iProp_to_Prop (fold_list E L ig l i0 R T).
-  Global Hint Mode FoldList + + + + + + + : typeclass_instances.
 
   Lemma fold_list_ig_cons_le {A} E L ig (j i0 : nat) (l1 : list A) (R : FoldablePredicate) :
     (j < i0)%nat →
@@ -3929,13 +4076,11 @@ Section endlft_triggers.
     ∀ F, ⌜lftE ⊆ F⌝ -∗ elctx_interp E -∗ llctx_interp L -∗ [† κ] ={F}=∗ ∃ L', llctx_interp L' ∗ T L'.
   Class TypedOnEndlft (π : thread_id) (E : elctx) (L : llctx) (κ : lft) (worklist : list (sigT (@id Type) * iProp Σ)) :=
     typed_on_endlft_proof T : iProp_to_Prop (typed_on_endlft π E L κ worklist T).
-  Global Hint Mode TypedOnEndlft + + + + + : typeclass_instances.
 
   Definition typed_on_endlft_trigger {K} (E : elctx) (L : llctx) (key : K) (P : iProp Σ) (T : llctx → iProp Σ) : iProp Σ :=
     ∀ F, ⌜lftE ⊆ F⌝ -∗ elctx_interp E -∗ llctx_interp L -∗ P ={F}=∗ ∃ L', llctx_interp L' ∗ T L'.
   Class TypedOnEndlftTrigger {K} (E : elctx) (L : llctx) (key : K) (P : iProp Σ) :=
     typed_on_endlft_trigger_proof T : iProp_to_Prop (typed_on_endlft_trigger E L key P T).
-  Global Hint Mode TypedOnEndlftTrigger + + + + + : typeclass_instances.
 
   (* no instance, automation needs to manually instantiate the worklist *)
   Lemma typed_on_endlft_pre_init worklist π E L κ T :

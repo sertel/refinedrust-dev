@@ -80,6 +80,7 @@ Global Arguments inv_P_share {_ _ _ _}.
 Global Arguments inv_P_shr_mono {_ _ _ _}.
 Global Arguments inv_P_shr_pers {_ _ _ _}.
 Global Existing Instance inv_P_shr_pers.
+Global Typeclasses Opaque mk_ex_inv_def.
 
 (** Smart constructor for persistent and timeless [P] *)
 Program Definition mk_pers_ex_inv_def `{!typeGS Σ} {X : Type} {Y : Type} (P : X → Y → iProp Σ)
@@ -100,6 +101,7 @@ Next Obligation.
   rewrite right_id. iMod (bor_persistent with "LFT Hb Htok") as "(>HP & Htok)"; first done.
   iApply logical_step_intro. by iFrame.
 Qed.
+Global Typeclasses Opaque mk_pers_ex_inv_def.
 
 Section ex.
   Context `{!typeGS Σ}.
@@ -609,6 +611,8 @@ Section stratify.
     λ T, i2p (typed_place_ex_plain_t_shared π E L l ty x κ bmin K T).
 
 End stratify.
+Global Typeclasses Opaque ex_plain_t.
+
 
 (* TODO move *)
 (* ty_share *)
@@ -910,3 +914,4 @@ Module test.
   Next Obligation. rewrite /S_b. ex_plain_t_solve_shr_mono. Qed.
   Next Obligation. rewrite /P_b. ex_plain_t_solve_shr. Qed.
 End test.
+

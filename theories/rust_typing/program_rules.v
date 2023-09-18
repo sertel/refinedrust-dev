@@ -1063,7 +1063,7 @@ Section typing.
       iMod (unblock_blocked with "Hdead Hl") as "Hl"; first done.
       iPoseProof ("Hp" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hl") as ">Hb".
       iDestruct "Hb" as "(%L' & %R & %rt' & %lt' & %r' & Hl & Hstep & HT)".
-      iModIntro. iExists L', R, rt', lt', r'. iFrame.
+      iModIntro. iExists L', R, rt', lt', r'. by iFrame.
     - by iApply stratify_ltype_id.
   Qed.
   (* No instance here, as we may not always want to do that. *)
@@ -1972,7 +1972,7 @@ Section typing.
    *)
   Lemma type_use E L ot T e o π :
     ⌜if o is Na2Ord then False else True⌝ ∗ typed_read π E L e ot T
-    ⊢ typed_val_expr π E L (use{ot, o} e) T.
+    ⊢ typed_val_expr π E L (use{ot, o} e)%E T.
   Proof.
     iIntros "[% Hread]" (Φ) "#(LFT & TIME & LLCTX) #HE HL HΦ".
     wp_bind.
@@ -2027,7 +2027,7 @@ Section typing.
 
   Lemma type_mut_addr_of π E L e T :
     typed_addr_of_mut π E L e T
-    ⊢ typed_val_expr π E L (&raw{Mut} e) T.
+    ⊢ typed_val_expr π E L (&raw{Mut} e)%E T.
   Proof.
     iIntros "HT" (?) "#CTX #HE HL Hcont".
     rewrite /Raw. wp_bind.
@@ -3075,6 +3075,20 @@ Section typing.
     iApply wps_annot. iApply step_fupd_intro; first done.
     iIntros "!> _". iApply ("Hs" with "CTX HE HL").
   Qed.
+  Lemma typed_stmt_annot_credits `{!typeGS Σ} π E L {A} (a : A) s rf R ϝ n :
+    atime n -∗
+    (atime (S n) -∗ £ (S (num_laters_per_step n)) -∗ typed_stmt π E L s rf R ϝ) -∗
+    typed_stmt π E L (annot: a; s) rf R ϝ.
+  Proof.
+    iIntros "Hat HT".
+    iIntros "#CTX #HE HL".
+    iMod (persistent_time_receipt_0) as "Hp".
+    iApply (derived.wps_annot_credits with "[] Hat Hp").
+    { iDestruct "CTX" as "(_ & $ & _)". }
+    iNext. iIntros "Hcred Hat".
+    rewrite Nat.add_0_r.
+    iApply ("HT" with "Hat Hcred CTX HE HL").
+  Qed.
 
   Lemma typed_expr_assert_type π E L n sty v {rt} (ty : type rt) r T :
     (∃ lfts, named_lfts lfts ∗
@@ -3512,3 +3526,113 @@ Global Hint Extern 1 (Subsume (?v ◁ᵥ{_} ?r1 @ ?ty1) (?v ◁ᵥ{_} ?r2 @ ?ty2
   class_apply own_val_subsume_id_inst : typeclass_instances.
 Global Hint Extern 1 (Subsume (?l ◁ₗ{_, _} ?r1 @ ?ty) (?l ◁ₗ{_, _} ?r2 @ ?ty)) =>
   class_apply own_shr_subsume_id_inst : typeclass_instances.
+
+
+Global Typeclasses Opaque subsume_full.
+Global Typeclasses Opaque credit_store.
+Global Typeclasses Opaque typed_value.
+Global Typeclasses Opaque typed_option_map.
+Global Typeclasses Opaque typed_val_expr.
+
+Global Typeclasses Opaque typed_bin_op.
+
+Global Typeclasses Opaque typed_un_op.
+
+Global Typeclasses Opaque typed_if.
+
+Global Typeclasses Opaque typed_call.
+
+Global Typeclasses Opaque typed_annot_expr.
+
+Global Typeclasses Opaque introduce_with_hooks.
+Global Typeclasses Opaque typed_stmt_post_cond.
+
+Global Typeclasses Opaque typed_assert.
+
+Global Typeclasses Opaque typed_annot_stmt.
+
+Global Typeclasses Opaque typed_switch.
+
+Global Typeclasses Opaque typed_place.
+
+Global Typeclasses Opaque cast_ltype_to_type.
+
+Global Typeclasses Opaque resolve_ghost.
+
+Global Typeclasses Opaque find_observation.
+
+Global Typeclasses Opaque stratify_ltype.
+Global Typeclasses Opaque typed_stmt.
+
+Global Typeclasses Opaque typed_block.
+
+
+Global Typeclasses Opaque stratify_ltype_post_hook.
+
+Global Typeclasses Opaque weak_subtype.
+
+Global Typeclasses Opaque weak_subltype.
+
+Global Typeclasses Opaque owned_subtype.
+
+Global Typeclasses Opaque owned_subltype_step.
+
+Global Typeclasses Opaque mut_subtype.
+
+Global Typeclasses Opaque mut_subltype.
+
+Global Typeclasses Opaque mut_eqtype.
+
+Global Typeclasses Opaque mut_eqltype.
+
+Global Typeclasses Opaque prove_with_subtype.
+
+Global Typeclasses Opaque prove_place_cond.
+Global Typeclasses Opaque prove_place_rfn_cond.
+Global Typeclasses Opaque typed_read_end.
+
+Global Typeclasses Opaque typed_write_end.
+
+Global Typeclasses Opaque typed_borrow_mut.
+
+Global Typeclasses Opaque typed_borrow_mut_end.
+
+Global Typeclasses Opaque typed_borrow_shr.
+
+Global Typeclasses Opaque typed_borrow_shr_end.
+
+Global Typeclasses Opaque typed_addr_of_mut.
+
+Global Typeclasses Opaque typed_addr_of_mut_end.
+
+Global Typeclasses Opaque typed_context_fold.
+
+
+Global Typeclasses Opaque typed_context_fold_end.
+
+Global Typeclasses Opaque relate_list.
+
+Global Typeclasses Opaque relate_hlist.
+
+Global Typeclasses Opaque fold_list.
+
+Global Typeclasses Opaque typed_on_endlft.
+
+Global Typeclasses Opaque typed_on_endlft_trigger.
+Global Typeclasses Opaque typed_pre_context_fold.
+
+Global Typeclasses Opaque typed_context_fold_step.
+
+Global Typeclasses Opaque typed_write.
+
+
+
+Global Typeclasses Opaque llctx_release_toks_goal.
+
+Global Typeclasses Opaque lctx_lft_alive_count_goal.
+
+Global Typeclasses Opaque typed_place_finish.
+
+Global Typeclasses Transparent typed_place_finish.
+
+Global Typeclasses Opaque typed_read.

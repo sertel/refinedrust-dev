@@ -324,6 +324,20 @@ Proof.
   - rewrite shift_loc_assoc_nat. apply IH => //. apply: has_layout_loc_trans => //. rewrite /ly_align_log. lia.
 Qed.
 
+Lemma struct_layout_member_size_bound sl n :
+  ∀ on ly, (on, ly) ∈ sl_members sl → ly_size sl ≤ n → ly_size ly ≤ n.
+Proof.
+  intros on ly.
+  rewrite /layout_of{1}/ly_size/=.
+  generalize (sl_members sl) as mems.
+  induction mems as [ | [n2 ly2] mem IH].
+  { intros []%elem_of_nil. }
+  intros Ha%elem_of_cons. destruct Ha as [[= <- <-] | Hel].
+  - simpl. lia.
+  - simpl. intros Ha. apply IH; first done.
+    unfold fmap. lia.
+Qed.
+
 Definition GetMemberLoc (l : loc) (s : struct_layout) (m : var_name) : loc :=
   (l +ₗ Z.of_nat (default 0%nat (offset_of s.(sl_members) m))).
 Notation "l 'at{' s '}ₗ' m" := (GetMemberLoc l s m) (at level 10, format "l  'at{' s '}ₗ'  m") : stdpp_scope.

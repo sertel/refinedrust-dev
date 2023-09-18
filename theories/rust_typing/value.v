@@ -1,4 +1,4 @@
-From refinedrust Require Export type ltypes programs program_rules.
+From refinedrust Require Export type ltypes programs.
 From refinedrust Require Import memcasts ltype_rules.
 From iris Require Import options.
 
@@ -17,6 +17,8 @@ Proof. destruct ot;simpl; done. Qed.
 
 Definition is_value_ot `{!LayoutAlg} (st : syn_type) (ot' : op_type) (mt : memcast_compat_type) : Prop :=
   ∃ ot, use_op_alg st = Some ot ∧ is_value_ot_core ot ot' mt ∧ syn_type_has_layout st (ot_layout ot).
+
+Global Typeclasses Opaque is_value_ot.
 
 Lemma is_value_ot_untyped `{!LayoutAlg} st mt ly :
   syn_type_has_layout st ly →
@@ -428,6 +430,75 @@ Section value.
       (* length v1 = ly_size ly1  *)
   Admitted.
 
+  Lemma ofty_value_t_untyped_to_bytes π l vn ly :
+    l ◁ₗ[π, Owned false] #vn @ (◁ value_t (UntypedSynType ly)) -∗
+    l ◁ₗ[π, Owned false] #vn @ (◁ value_t (UntypedSynType $ mk_array_layout u8 (ly_size ly))).
+  Proof.
+    (* We can always go to something with a lower alignment *)
+    iIntros "Hl". iPoseProof (ltype_own_has_layout with "Hl") as "(%ly' & %Halg & %Hly)".
+    simp_ltypes in Halg. simpl in Halg.
+    apply syn_type_has_layout_untyped_inv in Halg as (-> & ? & ?).
+    iApply (ofty_value_t_untyped_reduce_alignment with "Hl").
+    - rewrite /mk_array_layout/u8{2}/ly_size/=. lia.
+    - rewrite /has_layout_loc/ly_align/mk_array_layout/u8/=.
+      rewrite /aligned_to. destruct caesium_config.enforce_alignment; last done.
+      apply Z.divide_1_l.
+    - rewrite /layout_wf/ly_align/u8/=. apply Z.divide_1_l.
+    - done.
+  Qed.
+  Lemma value_t_untyped_length π v v1 ly :
+    v ◁ᵥ{π} v1 @ value_t (UntypedSynType ly) -∗
+    ⌜length v1 = ly_size ly⌝ ∗ ⌜length v = ly_size ly⌝.
+  Proof.
+    rewrite /ty_own_val/=.
+    iDestruct 1 as "(%ot & %Hot & %Hmc & %Hly & %Hst)".
+    apply use_op_alg_untyped_inv in Hot as ->.
+    apply syn_type_has_layout_untyped_inv in Hst as (<- & ? & ?).
+    apply is_memcast_val_untyped_inv in Hmc as ->.
+    rewrite /has_layout_val in Hly. simpl in *.
+    done.
+  Qed.
+  Lemma ofty_value_t_untyped_length F π l ly v1 :
+    lftE ⊆ F →
+    l ◁ₗ[π, Owned false] #v1 @ (◁ value_t (UntypedSynType ly)) ={F}=∗
+    ⌜length v1 = ly_size ly⌝ ∗ l ◁ₗ[π, Owned false] #v1 @ (◁ value_t (UntypedSynType ly)).
+  Proof.
+    iIntros (?) "Hl".
+    rewrite ltype_own_ofty_unfold/lty_of_ty_own.
+    iDestruct "Hl" as "(%ly' & % & % & ? & ? & ? & %r' & <- & Hb)".
+    iMod (fupd_mask_mono with "Hb") as "(%v & Hl & Hv)"; first done.
+    iPoseProof (value_t_untyped_length with "Hv") as "(% & %)".
+    iR. iModIntro. iExists _. iFrame. iR. iR. iExists _. iR.
+    iModIntro. eauto with iFrame.
+  Qed.
+
+  Lemma ofty_value_t_untyped_split_adjacent_array F π l (n m k : nat) ly v1 :
+    lftE ⊆ F →
+    n = (m + k)%nat →
+    layout_wf ly →
+    l ◁ₗ[ π, Owned false] # v1 @ (◁ value_t (UntypedSynType (mk_array_layout ly n))) ={F}=∗
+    l ◁ₗ[ π, Owned false] # (take (ly_size ly * k) v1) @ (◁ value_t (UntypedSynType (mk_array_layout ly k))) ∗
+    (l offset{ly}ₗ k) ◁ₗ[ π, Owned false] # (drop (ly_size ly * k) v1) @ (◁ value_t (UntypedSynType (mk_array_layout ly m))).
+  Proof.
+    iIntros (? Hn ?).
+    rewrite /offset_loc.
+    assert (ly_size (mk_array_layout ly k) = ly_size ly * k)%nat as Heq. {
+      rewrite /mk_array_layout/ly_mult{1}/ly_size. lia. }
+    rewrite -Nat2Z.inj_mul. rewrite -{3}Heq.
+    iIntros "Hl". iMod (ofty_value_t_untyped_length with "Hl") as "(%Hlen & Hl)"; first done.
+    simpl in *.
+    iApply (ofty_value_t_split_adjacent with "Hl").
+    - done.
+    - simpl. lia.
+    - simpl. lia.
+    - simpl. rewrite /mk_array_layout/ly_mult/ly_size/=. lia.
+    - rewrite take_drop//.
+    - rewrite take_length. simpl.
+      rewrite Heq. rewrite Hlen.
+      rewrite /mk_array_layout/ly_mult{2}/ly_size. lia.
+    - by apply array_layout_wf.
+    - by apply array_layout_wf.
+  Qed.
 End value.
 
 Global Hint Unfold value_t : tyunfold.
@@ -507,7 +578,7 @@ Section rules.
 
   (* if both are using the same st, unify the values *)
   Lemma subsume_full_ofty_value_unify_vs π E L step l vs1 vs2 st T :
-    ⌜vs1 = vs2⌝ ∗ T L True%I 
+    ⌜vs1 = vs2⌝ ∗ T L True%I
     ⊢ subsume_full E L step (l ◁ₗ[π, Owned false] PlaceIn vs1 @ ◁ value_t st) (l ◁ₗ[π, Owned false] PlaceIn vs2 @ ◁ value_t st) T.
   Proof.
     iIntros "(-> & HT)". iApply subsume_full_id. done.
@@ -1161,3 +1232,5 @@ Section rules.
     λ T, i2p (type_read_ofty_move_uniq E L π T l ty r ot κ γ bmin).
 
 End rules.
+
+Global Typeclasses Opaque value_t.

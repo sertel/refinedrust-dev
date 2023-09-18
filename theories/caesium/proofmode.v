@@ -58,3 +58,4 @@ Tactic Notation "wp_bind" :=
     unfold W.to_expr; simpl
   | _ => fail "wp_bind: not a 'wp'"
   end.
+
