@@ -23,8 +23,10 @@ Definition lft_userN : namespace := nroot .@ "lft_usr".
    necessary. *)
 Definition lft_userE : coPset := ↑lft_userN.
 
+Definition rrustE : coPset := ↑rrustN.
 Definition lftE : coPset := ↑lftN.
 Definition timeE : coPset := ↑timeN.
+Definition shrE : coPset := ↑shrN.
 
 Create HintDb refinedc_typing.
 
@@ -76,9 +78,9 @@ Declare Scope printing_sugar.
 Create HintDb tyunfold.
 
 (* Marker to prevent Lithium's machinery from simplifying a hypothesis. *)
-Definition introduce_direct {Σ} (P : iProp Σ) := P. 
+Definition introduce_direct {Σ} (P : iProp Σ) := P.
 Global Arguments introduce_direct : simpl never.
-Global Typeclasses Opaque introduce_direct. 
+Global Typeclasses Opaque introduce_direct.
 
 (* We override the lifetime logic's version with a direct fixpoint version for nicer unfolding + computation. *)
 Fixpoint lft_intersect_list (κs : list lft) : lft :=

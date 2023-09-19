@@ -555,16 +555,16 @@ Section rules.
     ⊢ typed_val_expr π E L (EnumInit els variant rsty e) T.
   Proof.
     iIntros "(%Hly & HT)". destruct Hly as [el Hly].
-    iIntros (?) "#CTX #HE HL Hc".
+    iIntros (?) "#CTX #HE HL Hna Hc".
     iApply wp_enum_init; first done.
-    iApply ("HT" with "CTX HE HL [Hc]").
-    iIntros (L2 v rt ty r) "HL Hv HT".
+    iApply ("HT" with "CTX HE HL Hna [Hc]").
+    iIntros (L2 v rt ty r) "HL Hna Hv HT".
     iDestruct "HT" as "(%Hlook_st & %M & Hlfts & HT)".
     iPoseProof ("HT" with "Hlfts") as "HT".
     rewrite /interpret_rust_type_goal.
     iDestruct "HT" as "(%rto &  %tyo & %en & -> & <- & HT)".
     rewrite /trigger_tc. iDestruct "HT" as "(%ro & %Hc & HT)".
-    iApply ("Hc" with "HL [Hv] HT").
+    iApply ("Hc" with "HL Hna [Hv] HT").
     iEval (rewrite /ty_own_val/=).
     destruct Hc as [[Hproj Htag]].
     iExists _, _, _, _.

@@ -65,7 +65,7 @@ Section typing.
       typed_bin_op π E L v1 (v1 ◁ᵥ{π} n1 @ int it) v2 (v2 ◁ᵥ{π} n2 @ int it) op (IntOp it) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
-    iIntros "%Hop HT [%Hv1 %] [%Hv2 _]" (Φ) "#CTX #HE HL HΦ".
+    iIntros "%Hop HT [%Hv1 %] [%Hv2 _]" (Φ) "#CTX #HE HL Hna HΦ".
     iDestruct ("HT" with "[] []" ) as "HT".
     1-2: iPureIntro; by apply: val_to_Z_in_range.
     iApply (wp_binop_det_pure (val_of_bool b)).
@@ -74,7 +74,7 @@ Section typing.
         by apply val_of_bool_iff_val_of_Z.
       - move => ->. econstructor; [done.. | ].
         by apply val_of_bool_iff_val_of_Z. }
-    iIntros "!> Hcred". iApply ("HΦ" with "HL") => //.
+    iIntros "!> Hcred". iApply ("HΦ" with "HL Hna") => //.
     rewrite /ty_own_val/=. by destruct b.
   Qed.
 
@@ -141,11 +141,11 @@ Section typing.
       typed_bin_op π E L v1 (v1 ◁ᵥ{π} n1 @ int it) v2 (v2 ◁ᵥ{π} n2 @ int it) op (IntOp it) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
-    iIntros "%Hop HT [%Hv1 %] [%Hv2 _] %Φ #CTX #HE HL HΦ".
+    iIntros "%Hop HT [%Hv1 %] [%Hv2 _] %Φ #CTX #HE HL Hna HΦ".
     iDestruct ("HT" with "[] []" ) as (Hsc) "HT".
     1-2: iPureIntro; by apply: val_to_Z_in_range.
     iApply wp_int_arithop; [done..|].
-    iIntros (v Hv) "!> Hcred". rewrite /i2v Hv/=. iApply ("HΦ" with "HL [] HT").
+    iIntros (v Hv) "!> Hcred". rewrite /i2v Hv/=. iApply ("HΦ" with "HL Hna [] HT").
     rewrite /ty_own_val/=.
     iPureIntro. split; first by apply: val_to_of_Z. done.
   Qed.
@@ -221,7 +221,7 @@ Section typing.
     ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it)%I (NegOp) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
-    iIntros "HT [%Hv %Hit] %Φ #CTX #HE HL HΦ". move: (Hv) => /val_to_Z_in_range ?.
+    iIntros "HT [%Hv %Hit] %Φ #CTX #HE HL Hna HΦ". move: (Hv) => /val_to_Z_in_range ?.
     iDestruct ("HT" with "[//]") as (Hs Hn) "HT".
     have [|v' Hv']:= val_of_Z_is_Some None it (- n). {
       unfold elem_of, int_elem_of_it, max_int, min_int in *.
@@ -229,7 +229,7 @@ Section typing.
     }
     rewrite /i2v Hv'/=.
     iApply wp_neg_int => //. iNext. iIntros "Hcred".
-    iApply ("HΦ" with "HL [] HT").
+    iApply ("HΦ" with "HL Hna [] HT").
     rewrite /ty_own_val/=.
     iPureIntro. split; last done. by apply: val_to_of_Z.
   Qed.
@@ -243,7 +243,7 @@ Section typing.
     ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it)%I (NotIntOp) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
-    iIntros "HT [%Hv %Hit] %Φ #CTX #HE HL HΦ". move: (Hv) => /val_to_Z_in_range ?.
+    iIntros "HT [%Hv %Hit] %Φ #CTX #HE HL Hna HΦ". move: (Hv) => /val_to_Z_in_range ?.
     iDestruct ("HT" with "[//]") as "HT".
     set (nz := (if it_signed it then Z.lnot n else Z_lunot (bits_per_int it) n)).
     have [|v' Hv']:= val_of_Z_is_Some None it nz. {
@@ -261,7 +261,7 @@ Section typing.
     { intros. subst nz. split; [inversion 1; simplify_eq/= | move => ->]; simplify_eq/=; first done.
       econstructor; done. }
     rewrite Hv' /=.
-    iIntros "!> Hcred". iApply ("HΦ" with "HL"); last done.
+    iIntros "!> Hcred". iApply ("HΦ" with "HL Hna"); last done.
     rewrite /ty_own_val/=. iPureIntro.
     split; last done. by apply: val_to_of_Z.
   Qed.
@@ -274,13 +274,13 @@ Section typing.
     ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it1)%I (CastOp (IntOp it2)) (IntOp it1) T.
   Proof.
     rewrite /ty_own_val/=.
-    iIntros "[%Hit2 HT] [%Hv %Hit] %Φ #CTX #HE HL HΦ".
+    iIntros "[%Hit2 HT] [%Hv %Hit] %Φ #CTX #HE HL Hna HΦ".
     iSpecialize ("HT" with "[]").
     { iPureIntro. by apply: val_to_Z_in_range. }
     destruct (val_of_Z_is_Some (val_to_byte_prov v) it2 (wrap_to_it n it2)) as (n' & Hit').
     { apply wrap_to_it_in_range. }
     iApply wp_cast_int => //.
-    iNext. iIntros "Hcred". iApply ("HΦ" with "HL [] HT") => //.
+    iNext. iIntros "Hcred". iApply ("HΦ" with "HL Hna [] HT") => //.
     rewrite /ty_own_val/=.
     iPureIntro. split; last done. by apply: val_to_of_Z.
   Qed.
@@ -330,14 +330,14 @@ Section typing.
     ⊢ typed_bin_op π E L v1 (v1 ◁ᵥ{π} b1 @ bool_t) v2 (v2 ◁ᵥ{π} b2 @ bool_t) op (BoolOp) (BoolOp) T.
   Proof.
     rewrite /ty_own_val/=.
-    iIntros "%Hop HT %Hv1 %Hv2" (Φ) "#CTX #HE HL HΦ".
+    iIntros "%Hop HT %Hv1 %Hv2" (Φ) "#CTX #HE HL Hna HΦ".
     iApply (wp_binop_det_pure (val_of_bool b)).
     { destruct op, b1, b2; simplify_eq.
       all: split; [ inversion 1; simplify_eq/= | move => -> ]; simplify_eq/=.
       all: try by (symmetry; eapply val_of_bool_iff_val_of_Z).
       all: econstructor => //; case_bool_decide; try done.
       all: by apply val_of_bool_iff_val_of_Z. }
-    iIntros "!> Hcred". iApply ("HΦ" with "HL"); last done.
+    iIntros "!> Hcred". iApply ("HΦ" with "HL Hna"); last done.
     rewrite /ty_own_val/=.
     iPureIntro. by destruct b.
   Qed.
@@ -354,11 +354,11 @@ Section typing.
     ⊢ typed_un_op π E L v (v ◁ᵥ{π} b @ bool_t) NotBoolOp BoolOp T.
   Proof.
     rewrite /ty_own_val/=.
-    iIntros "HT %Hv" (Φ) "#CTX #HE HL HΦ".
+    iIntros "HT %Hv" (Φ) "#CTX #HE HL Hna HΦ".
     iApply (wp_unop_det_pure (val_of_bool (negb b))).
     { intros. split; [inversion 1; simplify_eq/= | move => ->]; simplify_eq/=; first done.
       econstructor; done. }
-    iIntros "!> Hcred". iApply ("HΦ" with "HL"); last done.
+    iIntros "!> Hcred". iApply ("HΦ" with "HL Hna"); last done.
     rewrite /ty_own_val/=. iPureIntro. by destruct b.
   Qed.
   Global Instance type_notop_bool_inst π E L v b :
@@ -368,7 +368,7 @@ Section typing.
   | TraceIfBool (b : bool).
 
   Lemma type_if_bool E L π b v T1 T2:
-    (case_destruct b (λ b' _, 
+    (case_destruct b (λ b' _,
       li_trace (TraceIfBool b, b') (
       if b' then T1 else T2)))
     ⊢ typed_if E L v (v ◁ᵥ{π} b @ bool_t) T1 T2.
@@ -383,7 +383,7 @@ Section typing.
     (⌜b = true⌝ ∗ typed_stmt π E L s fn R ϝ)
     ⊢ typed_assert π E L v (bool_t) b s fn R ϝ.
   Proof.
-    iIntros "[-> Hs] #CTX #HE HL Hb". by iFrame.
+    iIntros "[-> Hs] #CTX #HE HL Hna Hb". by iFrame.
   Qed.
   Global Instance type_assert_bool_inst E L π b v : TypedAssert π E L v (bool_t) b :=
     λ s fn R ϝ, i2p (type_assert_bool E L π b s fn R v ϝ).

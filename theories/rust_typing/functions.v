@@ -207,7 +207,7 @@ Section call.
       T L3 v ((fp κs x).(fp_fr) x').(fr_rt) ((fp κs x).(fp_fr) x').(fr_ty) ((fp κs x).(fp_fr) x').(fr_ref))))
     ) ⊢ typed_call π E L eκs v (v ◁ᵥ{π} l @ function_ptr sta fp) vl tys T.
   Proof.
-    simpl. iIntros "HT (%fn & %local_sts & -> & He & %Halg & %Halgl & Hfn) Htys" (Φ) "#CTX #HE HL HΦ".
+    simpl. iIntros "HT (%fn & %local_sts & -> & He & %Halg & %Halgl & Hfn) Htys" (Φ) "#CTX #HE HL Hna HΦ".
     iDestruct ("HT" with "Htys") as "(%Heq & %x & HP)". subst lfts.
     set (aκs := list_to_tup eκs).
     iApply fupd_wp. iMod ("HP" with "[] [] CTX HE HL") as "(%L1 & % & %R2 & >(Hvl & R2) & HL & HT)"; [done.. | ].
@@ -243,7 +243,7 @@ Section call.
       apply map_eq_cons in Ha as (xa & ? & -> & <- & <-).
       destruct vl => //=. iDestruct "Hvl" as "[Hv Hvl]".
       destruct xa as (rt & (ty & r)).
-      iDestruct ("IH" with "[//] He HΦ Hvl") as %?.
+      iDestruct ("IH" with "[//] He Hna HΦ Hvl") as %?.
       iDestruct (ty_has_layout with "Hv") as "(%ly' & % & %)".
       assert (ly = ly') as ->. { by eapply syn_type_has_layout_inj. }
       iPureIntro. constructor => //.
@@ -283,7 +283,7 @@ Section call.
     iDestruct ("Hfn" $! lsa' lsv') as "Hm". unfold introduce_typed_stmt.
     iExists _. iSplitR "Hr HR HΦ HL HL_cl HL_cl' Hkill" => /=.
     - iMod (persistent_time_receipt_0) as "#Htime".
-      iApply ("Hm" with "[-Hϝ] [$LFT $TIME $LCTX] HE' [$Hϝ//]"). iFrame.
+      iApply ("Hm" with "[-Hϝ Hna] [$LFT $TIME $LCTX] HE' [$Hϝ//] Hna"). iFrame.
       iSplitL "Hcred Hc". { rewrite credit_store_eq /credit_store_def. iFrame. }
       move: Hlen1 Hlya. move: (lsa' : list _) => lsa'' Hlen1 Hly. clear lsa' Hall.
       move: Hlen3 Halg. move: (fp_atys (fp aκs x)) => atys Hlen3 Hl.
@@ -332,7 +332,7 @@ Section call.
         iExists _. iSplitR; first done. iNext. eauto with iFrame. }
       iApply ("IH" with "[//] [//] [//] [//] [$] [$] [$]").
     - (* handle the postcondition at return *)
-      iIntros "!>" (v). iDestruct 1 as (κs1) "(Hls & Hϝ & HPr)".
+      iIntros "!>" (v). iDestruct 1 as (κs1) "(Hls & Hϝ & Hna & HPr)".
       simpl. rewrite !big_sepL2_alt. iDestruct (big_sepL_app with "Hls") as "[? ?]".
       rewrite !zip_fmap_r !big_sepL_fmap. iFrame.
       iSplitR. { iPureIntro. apply Forall2_length in Halg.
@@ -346,7 +346,7 @@ Section call.
       iDestruct ("HPr") as (?) "(Hty & HR2 & _)".
       iMod ("Hr" with "[] HE HL [HR2 HR]") as "(%L3 & HL & Hr)"; first done.
       { iFrame. }
-      iApply ("HΦ" with "HL Hty").
+      iApply ("HΦ" with "HL Hna Hty").
       by iApply ("Hr").
   Qed.
   Global Instance type_call_fnptr_inst π E L {A} (lfts : nat) eκs l v vl fp lya tys :

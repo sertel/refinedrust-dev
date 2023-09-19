@@ -766,14 +766,14 @@ Section tac.
     iIntros (???) "!# Hx1 Hx2".
     iIntros (lsa lsv) "(Hstore & Hinit)".
     rewrite /introduce_typed_stmt /typed_stmt.
-    iIntros "#CTX #HE HL".
+    iIntros "#CTX #HE HL Hna".
     iApply fupd_wps.
     iPoseProof ("Ha" with "Hx1 Hx2") as "HT".
     iDestruct ("HT" $! lsa lsv) as "(%E' & %E'' & <- & %Heq & HT)".
     iPoseProof (elctx_interp_permut with "HE") as "HE'". { symmetry. apply Heq. }
     rewrite /introduce_with_hooks.
     iMod ("HT" with "Hstore [] HE' HL Hinit") as "(%L2 & HL & HT)"; first done.
-    iApply ("HT" with "CTX HE' HL").
+    iApply ("HT" with "CTX HE' HL Hna").
   Qed.
 End tac.
 
@@ -863,11 +863,11 @@ Lemma tac_typed_val_expr_bind' `{!typeGS Σ} π E L K e T :
 Proof.
   iIntros "He".
   rewrite /typed_val_expr.
-  iIntros (Φ) "#CTX #HE HL Hcont".
+  iIntros (Φ) "#CTX #HE HL Hna Hcont".
   iApply tac_wp_bind'.
-  iApply ("He" with "CTX HE HL").
-  iIntros (L' v rt ty r) "HL Hv Hcont'".
-  iApply ("Hcont'" with "Hv CTX HE HL"). done.
+  iApply ("He" with "CTX HE HL Hna").
+  iIntros (L' v rt ty r) "HL Hna Hv Hcont'".
+  iApply ("Hcont'" with "Hv CTX HE HL Hna"). done.
 Qed.
 Lemma tac_typed_val_expr_bind `{!typeGS Σ} π E L e Ks e' T :
   W.find_expr_fill e false = Some (Ks, e') →
@@ -895,8 +895,8 @@ Lemma fupd_typed_val_expr `{!typeGS Σ} π E L e T :
   (|={⊤}=> typed_val_expr π E L e T) -∗ typed_val_expr π E L e T.
 Proof.
   rewrite /typed_val_expr.
-  iIntros "HT" (?) "CTX HE HL Hc".
-  iApply fupd_wp. iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hc").
+  iIntros "HT" (?) "CTX HE HL Hna Hc".
+  iApply fupd_wp. iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hna Hc").
 Qed.
 Lemma fupd_typed_call `{!typeGS Σ} π E L κs v (P : iProp Σ) vl tys T :
   (|={⊤}=> typed_call π E L κs v P vl tys T) -∗ typed_call π E L κs v P vl tys T.
@@ -915,14 +915,14 @@ Lemma tac_typed_stmt_bind `{!typeGS Σ} π E L s e Ks fn ϝ T :
 Proof.
   move => /W.find_stmt_fill_correct ->. iIntros "He".
   rewrite /typed_stmt.
-  iIntros "#CTX #HE HL".
+  iIntros "#CTX #HE HL Hna".
   rewrite stmt_wp_eq. iIntros (? rf ?) "?".
   have [Ks' HKs']:= W.stmt_fill_correct Ks rf. rewrite HKs'.
   iApply wp_bind.
-  iApply (wp_wand with "[He HL]").
-  { rewrite /typed_val_expr. iApply ("He" with "CTX HE HL").
-    iIntros (L' v rt ty r) "HL Hv Hcont".
-    iApply ("Hcont" with "Hv CTX HE HL"). }
+  iApply (wp_wand with "[Hna He HL]").
+  { rewrite /typed_val_expr. iApply ("He" with "CTX HE HL Hna").
+    iIntros (L' v rt ty r) "HL Hna Hv Hcont".
+    iApply ("Hcont" with "Hv CTX HE HL Hna"). }
   iIntros (v) "HWP".
   rewrite -(HKs' (W.Val _)) /W.to_expr.
   iApply ("HWP" with "[//]"). done.
@@ -942,12 +942,13 @@ Lemma intro_typed_stmt `{!typeGS Σ} fn R ϝ π E L s :
   rrust_ctx -∗
   elctx_interp E -∗
   llctx_interp L -∗
+  na_own π shrE -∗
   typed_stmt π E L s fn R ϝ -∗
   WPs s {{ f_code (rf_fn fn), typed_stmt_post_cond π ϝ fn R}}.
 Proof.
-  iIntros "#CTX #HE HL Hs".
+  iIntros "#CTX #HE HL Hna Hs".
   rewrite /typed_stmt.
-  iApply ("Hs" with "CTX HE HL").
+  iApply ("Hs" with "CTX HE HL Hna").
 Qed.
 Lemma fupd_typed_stmt `{!typeGS Σ} π E L s rf R ϝ :
   ⊢ (|={⊤}=> typed_stmt π E L s rf R ϝ) -∗ typed_stmt π E L s rf R ϝ.

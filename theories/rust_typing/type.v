@@ -342,6 +342,26 @@ Fixpoint shr_locsE (l : loc) (n : nat) : coPset :=
   | S n => ↑shrN.@l ∪ shr_locsE (l +ₗ 1%nat) n
   end.
 
+Lemma shr_locsE_incl' l n :
+  shr_locsE l n ⊆ ↑shrN ∧ (∀ m, n < m → ↑shrN.@(l +ₗ m) ## (shr_locsE l n)).
+Proof.
+  induction n as [ | n IH] in l |-*; simpl.
+  - set_solver.
+  - specialize (IH (l +ₗ 1%nat)) as (? & Ha).
+    split.
+    + solve_ndisj.
+    + intros m Hm. specialize (Ha (m - 1)).
+      assert (n < m -1) as Hb by lia.
+      specialize (Ha Hb) as Hc.
+      rewrite shift_loc_assoc in Hc.
+      replace (1%nat + (m - 1)) with m in Hc by lia.
+      assert (l +ₗ m ≠ l). { rewrite -{2}(shift_loc_0 l). intros Heq%shift_loc_inj2. lia. }
+      solve_ndisj.
+Qed.
+Lemma shr_locsE_incl l n :
+  shr_locsE l n ⊆ ↑shrN.
+Proof. apply shr_locsE_incl'. Qed.
+
 Class Copyable `{!typeGS Σ} {rt} (ty : type rt) := {
   copy_own_persistent π r v : Persistent (ty.(ty_own_val) π r v);
   (* sharing predicates of copyable types should actually allow us to get a Copy out from below the reference *)

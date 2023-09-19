@@ -1043,7 +1043,7 @@ Section rules.
       T L v' _ (value_t ty.(ty_syn_type)) v val (◁ value_t ty.(ty_syn_type)) (#v) ResultStrong)
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong ot T.
   Proof.
-    iIntros "(%Hotalg & %Hot & Hs)" (F ???) "#CTX #HE HL".
+    iIntros "(%Hotalg & %Hot & Hs)" (F ???) "#CTX #HE HL Hna".
     iIntros "_ Hb".
     iPoseProof (ofty_ltype_acc_owned with "Hb") as "(%ly & %Halg & %Hly & Hsc & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
     iPoseProof (ty_own_val_has_layout with "Hv") as "%Hlyv"; first done.
@@ -1086,7 +1086,7 @@ Section rules.
         ∀ v, T L v _ ty r unit (◁ uninit ty.(ty_syn_type)) (#()) ResultStrong)
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong (UntypedOp ly) T.
   Proof.
-    iIntros "(%Hot & Hs)" (F ???) "#CTX #HE HL".
+    iIntros "(%Hot & Hs)" (F ???) "#CTX #HE HL Hna".
     iIntros "_ Hb".
     iPoseProof (ofty_ltype_acc_owned with "Hb") as "(%ly' & %Halg & %Hly & Hsc & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
     iPoseProof (ty_own_val_has_layout with "Hv") as "%Hlyv"; first done.
@@ -1118,7 +1118,7 @@ Section rules.
         ∀ v, T L v _ ty r unit (◁ uninit ty.(ty_syn_type)) (#()) ResultStrong)
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong ot T.
   Proof.
-    iIntros "(%Hot & Hs)" (F ???) "#CTX #HE HL".
+    iIntros "(%Hot & Hs)" (F ???) "#CTX #HE HL Hna".
     iIntros "_ Hb".
     iPoseProof (ofty_ltype_acc_owned with "Hb") as "(%ly' & %Halg & %Hly & Hsc & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
     iPoseProof (ty_own_val_has_layout with "Hv") as "%Hlyv"; first done.
@@ -1196,7 +1196,7 @@ Section rules.
         ∀ v, T L2 v _ ty r unit (OpenedLtype (◁ uninit ty.(ty_syn_type)) (◁ ty) (◁ ty) (λ r1 r2, ⌜r1 = r2⌝) (λ _ _, llft_elt_toks κs)) (#()) ResultStrong))
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Uniq κ γ) bmin AllowStrong ot T.
   Proof.
-    iIntros "HT" (F ???) "#CTX #HE HL".
+    iIntros "HT" (F ???) "#CTX #HE HL Hna".
     rewrite /lctx_lft_alive_count_goal.
     iDestruct "HT" as (κs L2) "(%Hal & %Hot & HT)".
     iIntros "Hincl0 Hb".

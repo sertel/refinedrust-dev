@@ -467,19 +467,19 @@ Proof.
   repeat liRStep. liShow.
   (* EraseProv *)
   rewrite /typed_un_op/typed_val_expr.
-  iIntros "Hv" (Φ) "#CTX #HE HL Hcont".
+  iIntros "Hv" (Φ) "#CTX #HE HL Hna Hcont".
   rewrite {1}/ty_own_val /=. iDestruct "Hv" as %[Hv Hsz].
   iApply wp_erase_prov.
   { rewrite /has_layout_val. erewrite (val_to_Z_ot_length _ (IntOp usize_t)); done. }
-  iApply  ("Hcont" $! _ _ _ (int usize_t) n with "HL []").
+  iApply  ("Hcont" $! _ _ _ (int usize_t) n with "HL Hna []").
   { rewrite /ty_own_val/=. iSplit; last done. iPureIntro. by apply val_to_Z_erase_prov. }
 
-  iIntros "Hv" (Φ') "_ _ HL Hcont".
+  iIntros "Hv" (Φ') "_ _ HL Hna Hcont".
   rewrite {1}/ty_own_val /=. iDestruct "Hv" as %[Hv' _].
   iApply wp_cast_int_ptr_prov_none; [done | done | done | | done | ].
   { apply val_to_byte_prov_erase_prov. }
   iIntros "!> Hl Hcred".
-  iApply ("Hcont" $! _ _ _ (alias_ptr_t) _ with "HL").
+  iApply ("Hcont" $! _ _ _ (alias_ptr_t) _ with "HL Hna").
   { rewrite /ty_own_val /=. done. }
   iAssert (val_of_loc (ProvAlloc None, n : addr) ◁ᵥ{π} (ProvAlloc None, n : addr) @ alias_ptr_t)%I as "?".
   { rewrite /ty_own_val /= //. }
@@ -578,7 +578,7 @@ Proof.
     iApply (loc_in_bounds_shorten_suf with "[Hbounds //]"). lia. }
   repeat liRStep; liShow.
   rewrite /typed_bin_op/typed_val_expr.
-  iIntros "Hv1 Hv2" (Φ) "#CTX #HE HL Hcont".
+  iIntros "Hv1 Hv2" (Φ) "#CTX #HE HL Hna Hcont".
   rewrite {1}/ty_own_val /=. iDestruct "Hv1" as %[Hv1 Hsz1].
   rewrite {1}/ty_own_val /=. iDestruct "Hv2" as "->".
   iDestruct (loc_in_bounds_ptr_in_range with "Hbounds'") as %[Hran1 Hran2].
@@ -606,7 +606,7 @@ Proof.
   iPoseProof ("Hatcl" with "Hat'") as "Hstore".
   iPoseProof (credit_store_donate with "Hstore Hcred") as "Hstore".
   iPoseProof (credit_store_donate_atime with "Hstore Hat") as "Hstore".
-  iApply ("Hcont" $! _ _ _ (alias_ptr_t) with "HL").
+  iApply ("Hcont" $! _ _ _ (alias_ptr_t) with "HL Hna").
   { rewrite /ty_own_val /=. done. }
   iAssert ((l offset{use_layout_alg' T_st}ₗ offset) ◁ᵥ{ π} l offset{use_layout_alg' T_st}ₗ offset @ alias_ptr_t)%I as "?".
   { rewrite /ty_own_val /= //. }
@@ -724,7 +724,7 @@ Proof.
   rewrite {1 2}/ty_own_val /=. iDestruct "Hsize" as "[%Hsize _]".
   iDestruct "Halign_log2" as "[%Halign_log2 _]".
   rewrite /typed_val_expr.
-  iIntros (Φ) "#CTX HE HL Hcont".
+  iIntros (Φ) "#CTX HE HL Hna Hcont".
   iApply (wp_alloc _ _ _ _ (Z.to_nat size) (Z.to_nat align_log2)).
   { rewrite Hsize. f_equiv.
     apply val_to_Z_unsigned_nonneg in Hsize; last done. lia. }
@@ -732,7 +732,7 @@ Proof.
     apply val_to_Z_unsigned_nonneg in Halign_log2; last done. lia. }
   { lia. }
   iIntros "!>" (l) "Hl Hf %Hly Hcred".
-  iApply ("Hcont" $! _ _ _ (alias_ptr_t) l with "HL []").
+  iApply ("Hcont" $! _ _ _ (alias_ptr_t) l with "HL Hna []").
   { rewrite /ty_own_val /=. done. }
   set (ly := (Layout (Z.to_nat size) (Z.to_nat align_log2))).
   iAssert (l ◁ₗ[π, Owned false] .@ ◁ (uninit (UntypedSynType ly)))%I with "[Hl]" as "Hl'".
@@ -796,7 +796,7 @@ Proof.
   rewrite {1 2}/ty_own_val /=. iDestruct "Hsize" as "[%Hsize _]".
   iDestruct "Halign_log2" as "[%Halign_log2 _]".
   rewrite /typed_stmt.
-  iIntros "#CTX #HE HL".
+  iIntros "#CTX #HE HL Hna".
   rewrite ltype_own_ofty_unfold /lty_of_ty_own. simpl.
   set (ly := Layout (Z.to_nat size) (Z.to_nat align_log2)).
   iDestruct "Hptr" as "(%ly' & %Hst & %Hly & _ & #Hlb & _ & %r' & <- & Hb)".
@@ -816,7 +816,7 @@ Proof.
     destruct ((Z.to_nat size)) eqn:Heq; first lia. done. }
   iIntros "!> Hcred".
 
-  to_typed_stmt "CTX HE HL".
+  to_typed_stmt "CTX HE HL Hna".
   repeat liRStep; liShow.
 
   Unshelve. all: unshelve_sidecond; sidecond_hook; prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; unsolved_sidecond_hook.
@@ -1565,7 +1565,7 @@ Proof.
     repeat liRStep.
   - (* non-zero branch, do the allocation *)
     rewrite /typed_val_expr.
-    iIntros (?) "#CTX #HE HL Hcont".
+    iIntros (?) "#CTX #HE HL Hna Hcont".
     rewrite /Box.
     unfold_no_enrich. inv_layout_alg.
     have: (Z.of_nat $ ly_size T_st_ly) ∈ usize_t by done.
@@ -1584,7 +1584,7 @@ Proof.
     iIntros "!> %l Hl Hfree %Hly [Hcred1 Hcred] Hat".
     rewrite (additive_time_receipt_succ 1). iDestruct "Hat" as "[Hat1 Hat]".
     iPoseProof ("Hstore" with "Hat1") as "Hstore".
-    iApply ("Hcont" $! _ _ _ (box (uninit (ty_syn_type T))) (PlaceIn ()) with "HL [Hfree Hl Hcred Hat]").
+    iApply ("Hcont" $! _ _ _ (box (uninit (ty_syn_type T))) (PlaceIn ()) with "HL Hna [Hfree Hl Hcred Hat]").
     { iExists _, _. iSplitR; first done. iSplitR; first done.
       match goal with | H : use_layout_alg (ty_syn_type T) = Some ?ly |- _ => rename ly into T_ly; rename H into H_T end.
       iR.
@@ -1922,7 +1922,7 @@ Proof.
   typed_val_expr_bind.
   repeat liRStep; liShow.
   rewrite /typed_val_expr.
-  iIntros (?) "#CTX #HE HL HC".
+  iIntros (?) "#CTX #HE HL Hna HC".
   iRename select (_ ◁ᵥ{_} size @ int usize_t)%I into "Hv1".
   iRename select (_ ◁ᵥ{_} ly_size T_st_ly @ int usize_t)%I into "Hv2".
   iPoseProof (ty_own_int_in_range with "Hv1") as "%Hsz". destruct Hsz.
@@ -1932,7 +1932,7 @@ Proof.
   iDestruct "Hv2" as "(%HTsize & _)".
   iApply wp_check_int_arithop; [done.. | ].
   iNext. iIntros "_".
-  iApply ("HC" $! _ _ _ (bool_t) with "HL"). { iApply type_val_bool'. }
+  iApply ("HC" $! _ _ _ (bool_t) with "HL Hna"). { iApply type_val_bool'. }
 
   repeat liRStep.
 

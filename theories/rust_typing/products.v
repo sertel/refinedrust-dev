@@ -2757,9 +2757,11 @@ Section rules.
     rrust_ctx -∗
     elctx_interp E -∗
     llctx_interp L -∗
+    na_own π (↑shrN) -∗
     struct_init_fold π E L fields sts T -∗
     (∀ vs L3,
       llctx_interp L3 -∗
+      na_own π (↑shrN) -∗
       (∃ (rts : list Type) (tys : hlist type rts) (rs : plist id rts),
       (* get a type assignment for the values *)
       ⌜length rts = length (sts)⌝ ∗
@@ -2773,21 +2775,21 @@ Section rules.
     struct_init_components ⊤ sts fields Φ
   .
   Proof.
-    iIntros "#CTX #HE HL Hf Hcont".
+    iIntros "#CTX #HE HL Hna Hf Hcont".
     iInduction sts as [ | [name st] sts] "IH" forall (fields L  Φ T).
     { simpl.
-      iApply ("Hcont" with "HL"). iExists [], +[], -[]. simpl. eauto. }
+      iApply ("Hcont" with "HL Hna"). iExists [], +[], -[]. simpl. eauto. }
     simpl. iDestruct "Hf" as (init Hlook) "Hf".
     (* maybe want to phrase also with custom fold instead of foldr? *)
     iIntros (ly) "%Hst". simpl.
     iPoseProof ("Hf" with "CTX HE HL") as "Ha".
     rewrite Hlook/=.
-    iApply (wp_wand with "(Ha [Hcont])").
+    iApply (wp_wand with "(Ha Hna [Hcont])").
     2: { eauto. }
-    iIntros (L2 v rt ty r) "HL Hv [<- Hr]".
-    iApply ("IH" with "HL Hr").
-    iIntros (vs L3) "HL Hc".
-    iApply ("Hcont" with "HL").
+    iIntros (L2 v rt ty r) "HL Hna Hv [<- Hr]".
+    iApply ("IH" with "HL Hna Hr").
+    iIntros (vs L3) "HL Hna Hc".
+    iApply ("Hcont" with "HL Hna").
     iDestruct "Hc" as (rts tys rs) "(%Hlen & Ha & HT)".
     iExists (rt :: rts), (ty +:: tys), (r -:: rs).
     iFrame. iSplitR. { rewrite /=Hlen//. }
@@ -2802,12 +2804,12 @@ Section rules.
     ⊢ typed_val_expr π E L (StructInit sls fields) T.
   Proof.
     iIntros "(%Hly & HT)". destruct Hly as (sl & Hsl).
-    iIntros (?) "#CTX #HE HL Hc".
+    iIntros (?) "#CTX #HE HL Hna Hc".
     iApply wp_struct_init2; first done.
-    iApply (struct_init_fold_elim with "CTX HE HL HT").
-    iIntros (vs L3) "HL Ha".
+    iApply (struct_init_fold_elim with "CTX HE HL Hna HT").
+    iIntros (vs L3) "HL Hna Ha".
     iDestruct "Ha" as (rts tys rs) "(%Hlen & Hv & HT)".
-    iApply ("Hc" with "HL [Hv] HT").
+    iApply ("Hc" with "HL Hna [Hv] HT").
     simpl. by iApply struct_init_val.
   Qed.
 
