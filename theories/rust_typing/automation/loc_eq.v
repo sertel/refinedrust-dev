@@ -40,8 +40,8 @@ Ltac prepare_loc_eq :=
   rewrite ?/offset_loc ?shift_loc_assoc; rewrite ?/shift_loc;
   (* Checking that both sides have the same [alloc_id]. *)
   notypeclasses refine (eq_loc _ _ _ _); [ reflexivity | simpl ];
-  (* Unfold [addr] (useful if we use [ring]) and rewrite with the hints. *)
-  unfold addr in *; autorewrite with refinedrust_loc_eq_rewrite.
+  (* Rewrite with the hints. *)
+  autorewrite with refinedrust_loc_eq_rewrite.
 
 (** Solver for location equality. *)
 Ltac solve_loc_eq :=

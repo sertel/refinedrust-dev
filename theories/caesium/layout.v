@@ -108,6 +108,13 @@ Proof.
   by apply Z.divide_mul_l.
 Qed.
 
+Lemma ly_size_mk_array_layout (n : nat) ly :
+  ly_size (mk_array_layout ly n) = (ly_size ly * n)%nat.
+Proof.
+  rewrite /mk_array_layout /ly_mult /ly_size //.
+Qed.
+
+
 (*** Lemmas about [layout] *)
 
 Lemma ly_align_log_ly_align_eq_iff ly1 ly2:

@@ -1436,3 +1436,38 @@ Global Arguments pnth : simpl nomatch.
 Global Arguments lnth : simpl nomatch.
 Global Arguments hlist_insert : simpl nomatch.
 Global Arguments plist_insert : simpl nomatch.
+
+Section of_list.
+  Context {X} {F : X → Type} (a : X).
+  Fixpoint list_to_plist (l : list (F a)) : plist F (replicate (length l) a) :=
+    match l with
+    | [] => -[]
+    | x :: l => x -:: list_to_plist l
+    end.
+
+  Fixpoint mk_const_hlist (x : F a) n : hlist F (replicate n a) :=
+    match n with
+    | 0 => +[]
+    | S n => x +:: mk_const_hlist x n
+    end.
+  Fixpoint mk_const_plist (x : F a) n : plist F (replicate n a) :=
+    match n with
+    | 0 => -[]
+    | S n => x -:: mk_const_plist x n
+    end.
+
+  Lemma mk_const_plist_pzipl_lookup c n i :
+    i < n → pzipl _ (mk_const_plist c n) !! i = Some (existT _ c).
+  Proof.
+    induction n as [ | n IH] in i |-*; simpl; first lia.
+    intros Ha. destruct i as [ | i]; simpl; first done.
+    apply IH. lia.
+  Qed.
+  Lemma mk_const_hlist_hzipl_lookup c n i :
+    i < n → hzipl _ (mk_const_hlist c n) !! i = Some (existT _ c).
+  Proof.
+    induction n as [ | n IH] in i |-*; simpl; first lia.
+    intros Ha. destruct i as [ | i]; simpl; first done.
+    apply IH. lia.
+  Qed.
+End of_list.

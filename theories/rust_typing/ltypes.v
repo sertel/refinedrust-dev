@@ -103,13 +103,210 @@ Section enum.
 
 End enum.
 
+Section array.
+  Context `{!typeGS Σ}.
+  Section list_map.
+    Context {K : Type} `{!EqDecision K}.
+    Fixpoint lookup_iml {X} (iml : list (K * X)) (i : K) : option X :=
+      match iml with
+      | [] => None
+      | (j, x) :: iml => if decide (i = j) then Some x else lookup_iml iml i
+      end.
+
+    Lemma lookup_iml_Some_iff {X} (iml : list (K * X)) i x :
+      (∃ a, iml !! a = Some (i, x) ∧ (∀ b j y, b < a → iml !! b = Some (j, y) → j ≠ i)) ↔ lookup_iml iml i = Some x.
+    Proof.
+      induction iml as [ | [j y] iml IH] in i |-*; simpl.
+      - split.
+        + intros (? & Ha & _). rewrite lookup_nil in Ha. done.
+        + intros [=].
+      - split.
+        + intros (a & Hlook & Hle). destruct a as [ | a].
+          * simpl in *. injection Hlook as -> ->. rewrite decide_True; done.
+          * simpl in *. destruct (decide (i = j)) as [<- | Hneq].
+            { by efeed pose proof (Hle 0); [lia | done | done | ]. }
+            eapply IH. eexists. split; first done. intros. eapply (Hle (S b)); last done. lia.
+        + destruct (decide (i = j)) as [<- | Hneq].
+          * intros [= ->]. exists 0. simpl. split; first done. intros. lia.
+          * intros (a & Ha & Hleq)%IH. exists (S a).
+            split; first done. intros ???? Hlook.
+            destruct b; simpl in *. { congruence. }
+            eapply Hleq; last done. lia.
+    Qed.
+    Lemma lookup_iml_None {X} (iml : list (K * X)) i :
+      (∀ b j y, iml !! b = Some (j, y) → j ≠ i) ↔ lookup_iml iml i = None.
+    Proof.
+      induction iml as [ | [j y] iml IH] in i |-*; simpl.
+      { split; first done. naive_solver. }
+      split.
+      - intros Ha. destruct (decide (i = j)) as [<- | ]; first last.
+        { eapply IH. intros. eapply (Ha (S b)); done. }
+        by efeed pose proof (Ha 0); [done | done | ].
+      - destruct (decide (i = j)) as [<- | ]; first done.
+        intros Ha b ??. destruct b as [ | b]; first (simpl; congruence).
+        simpl. intros Hlook. eapply IH; done.
+    Qed.
+  End list_map.
+
+  (* Interpretation of an insertion list: from front to back. The same index may appear multiple times,
+      then the first occurrence is what is relevant. *)
+  Definition interpret_inserts {X} (iml : list (nat * X)) (ls : list X) : list X :=
+    foldr (λ '(i, x) acc, <[i := x]> acc) ls iml.
+  Definition interpret_iml {X} (def : X) (len : nat) (iml : list (nat * X)) : list X :=
+    interpret_inserts iml (replicate len def).
+
+  Lemma interpret_inserts_length {X} (iml : list (nat * X)) (ls : list X) :
+    length (interpret_inserts iml ls) = length ls.
+  Proof.
+    induction iml as [ | [i x] iml IH]; simpl; first done.
+    rewrite insert_length //.
+  Qed.
+  Lemma interpret_iml_length {X} (def : X) (len : nat) (iml : list (nat * X)) :
+    length (interpret_iml def len iml) = len.
+  Proof.
+    rewrite /interpret_iml interpret_inserts_length replicate_length //.
+  Qed.
+
+  Lemma lookup_interpret_inserts_Some_inv {X} (iml : list (nat * X)) (ls : list X) i x :
+    interpret_inserts iml ls !! i = Some x →
+    ((i, x) ∈ iml) ∨ ls !! i = Some x.
+  Proof.
+    intros Ha. specialize (lookup_lt_Some _ _ _ Ha) as Hlen.
+    induction iml as [ | [j y] iml IH] in i, Hlen, Ha |-*; simpl; first by eauto.
+    move: Ha. simpl in *.
+    rewrite insert_length in Hlen.
+    destruct (decide (i = j)) as [ <- | Hneq].
+    - rewrite list_lookup_insert; last done.
+      intros [= ->]. left. apply elem_of_cons. by left.
+    - rewrite list_lookup_insert_ne; last done.
+      intros Ha%IH; last done.
+      destruct Ha as [ Ha| Ha].
+      + left. rewrite elem_of_cons. by right.
+      + right. done.
+  Qed.
+  Lemma lookup_interpret_iml_Some_inv {X} (iml : list (nat * X)) def len i x :
+    interpret_iml def len iml !! i = Some x →
+    i < len ∧ (x = def ∨ (i, x) ∈ iml).
+  Proof.
+    rewrite /interpret_iml. intros Ha.
+    specialize (lookup_lt_Some _ _ _ Ha) as Hlen.
+    rewrite interpret_inserts_length replicate_length in Hlen.
+    split; first done.
+    apply lookup_interpret_inserts_Some_inv in Ha as [ | Ha]; first by eauto.
+    apply lookup_replicate_1 in Ha as [ ]. by left.
+  Qed.
+
+  Lemma lookup_interpret_inserts_1 {X} (iml : list (nat * X)) (ls : list X) i :
+    lookup_iml iml i = None →
+    interpret_inserts iml ls !! i = ls !! i.
+  Proof.
+    intros Ha. induction iml as [ | [j x] iml IH]; simpl in *; first done.
+    destruct (decide (i = j)) as [<- | Hneq]; first done.
+    rewrite list_lookup_insert_ne; last done. by eapply IH.
+  Qed.
+  Lemma lookup_interpret_inserts_Some_2 {X} (iml : list (nat * X)) (ls : list X) i x :
+    i < length ls →
+    lookup_iml iml i = Some x →
+    interpret_inserts iml ls !! i = Some x.
+  Proof.
+    induction iml as [ | [j y] iml IH]; simpl; first done.
+    intros Hlen Ha. destruct (decide (i = j)) as [<- | Hneq].
+    - injection Ha as ->. rewrite list_lookup_insert; first done.
+      rewrite interpret_inserts_length //.
+    - rewrite list_lookup_insert_ne; last done. by eapply IH.
+  Qed.
+
+  Lemma lookup_interpret_iml_Some_1 {X} (iml : list (nat * X)) (def : X) len i :
+    lookup_iml iml i = None →
+    i < len →
+    interpret_iml def len iml !! i = Some def.
+  Proof.
+    intros Ha Hlen. rewrite lookup_interpret_inserts_1; last done.
+    rewrite lookup_replicate; done.
+  Qed.
+  Lemma lookup_interpret_iml_None_1 {X} (iml : list (nat * X)) (def : X) len i :
+    lookup_iml iml i = None →
+    len ≤ i →
+    interpret_iml def len iml !! i = None.
+  Proof.
+    intros Ha Hlen. rewrite lookup_interpret_inserts_1; last done.
+    apply lookup_replicate_None; done.
+  Qed.
+  Lemma lookup_interpret_iml_Some_2 {X} (iml : list (nat * X)) (def : X) len i x :
+    lookup_iml iml i = Some x →
+    i < len →
+    interpret_iml def len iml !! i = Some x.
+  Proof.
+    intros Ha Hlen. induction iml as [ | [j y] iml IH]; simpl; first done.
+    simpl in *. destruct (decide (i = j)) as [<- | Hneq].
+    - injection Ha as ->. rewrite list_lookup_insert; first done.
+      rewrite interpret_iml_length//.
+    - rewrite list_lookup_insert_ne; last done. by apply IH.
+  Qed.
+
+  Lemma elem_of_interpret_iml_inv {X} (def : X) iml len x :
+    x ∈ interpret_iml def len iml → x = def ∨ ∃ i, (i, x) ∈ iml.
+  Proof.
+    intros (i & Hel)%elem_of_list_lookup_1.
+    apply lookup_interpret_iml_Some_inv in Hel as (? & [? | ?]); eauto.
+  Qed.
+
+
+  Lemma interpret_inserts_fmap {X Y} (f : X → Y) iml ls :
+    interpret_inserts ((λ '(a, b), (a, f b)) <$> iml) (f <$> ls) =
+    f <$> interpret_inserts iml ls.
+  Proof.
+    induction iml as [ | [i x] iml IH]; simpl; first done.
+    rewrite list_fmap_insert. f_equiv. by apply IH.
+  Qed.
+  Lemma interpret_iml_fmap {X Y} (f : X → Y) (def : X) len iml :
+    interpret_iml (f def) len ((λ '(a, b), (a, f b)) <$> iml) =
+    f <$> interpret_iml def len iml.
+  Proof.
+    rewrite /interpret_iml -interpret_inserts_fmap.
+    rewrite fmap_replicate. done.
+  Qed.
+
+  Lemma interpret_inserts_nil {X} (iml : list (nat * X)) :
+    interpret_inserts iml [] = [].
+  Proof.
+    induction iml as [ | [] iml IH]; simpl; first done.
+    rewrite IH. done.
+  Qed.
+  Lemma interpret_iml_0 {X} (def : X) (iml : list (nat * X)) :
+    interpret_iml def 0 iml = [].
+  Proof.
+    rewrite /interpret_iml. rewrite interpret_inserts_nil//.
+  Qed.
+
+  Fixpoint cut_iml {X} (iml : list (nat * X)) : list (nat * X) :=
+    match iml  with
+    | [] => []
+    | (0, x) :: iml => cut_iml iml
+    | (S i, x) :: iml => (i, x) :: cut_iml iml
+    end.
+
+  Lemma interpret_inserts_cons {X} (iml : list (nat * X)) h (l : list _) :
+    interpret_inserts iml (h :: l) =
+    (match lookup_iml iml 0 with | Some a => a | _ => h end) :: interpret_inserts (cut_iml iml) l.
+  Proof.
+    induction iml as [ | [i x] iml IH] in h, l |-*; simpl; first done.
+    rewrite IH. destruct i as [ | i]; simpl; done.
+  Qed.
+  Lemma interpret_iml_succ {X} len (def : X) (iml : list (nat * X)) :
+    interpret_iml def (S len) iml =
+    (match lookup_iml iml 0 with | Some a => a | _ => def end) :: interpret_iml def len (cut_iml iml).
+  Proof.
+    rewrite /interpret_iml/=. rewrite interpret_inserts_cons//.
+  Qed.
+
+  Lemma insert_interpret_iml {X} (def : X) (len : nat) (iml : list (nat * X)) i x :
+    <[i := x]> (interpret_iml def len iml) = interpret_iml def len ((i, x) :: iml).
+  Proof. done. Qed.
+End array.
+
 (** * Place types *)
 
-(* TODO move *)
-Lemma maybe_later_mono {Σ} (P : iProp Σ) b : ▷?b P -∗ ▷ P.
-Proof.
-  iIntros "P". by iPoseProof (bi.laterN_le _ 1 with "P") as "P"; first (destruct b; simpl; lia).
-Qed.
 
 
 (** bor_kind *)
@@ -419,177 +616,6 @@ Section ltype_def.
     (l : loc)
     (π : thread_id)
   .
-
-  (* TODO move *)
-  Lemma zip_fmap_l {A B C} (l1 : list A) (l2 : list B) (f : A → C) :
-    zip (f <$> l1) l2 = (λ x : A * B, (f x.1, x.2)) <$> (zip l1 l2).
-  Proof.
-    induction l1 as [ | a l1 IH] in l2 |-*; destruct l2 as [ | l2]; simpl; [done.. | ].
-    f_equiv. apply IH.
-  Qed.
-
-  (* TODO move *)
-  Section list_map.
-    Context {K : Type} `{!EqDecision K}.
-    Fixpoint lookup_iml {X} (iml : list (K * X)) (i : K) : option X :=
-      match iml with
-      | [] => None
-      | (j, x) :: iml => if decide (i = j) then Some x else lookup_iml iml i
-      end.
-
-    Lemma lookup_iml_Some_iff {X} (iml : list (K * X)) i x :
-      (∃ a, iml !! a = Some (i, x) ∧ (∀ b j y, b < a → iml !! b = Some (j, y) → j ≠ i)) ↔ lookup_iml iml i = Some x.
-    Proof.
-      induction iml as [ | [j y] iml IH] in i |-*; simpl.
-      - split.
-        + intros (? & Ha & _). rewrite lookup_nil in Ha. done.
-        + intros [=].
-      - split.
-        + intros (a & Hlook & Hle). destruct a as [ | a].
-          * simpl in *. injection Hlook as -> ->. rewrite decide_True; done.
-          * simpl in *. destruct (decide (i = j)) as [<- | Hneq].
-            { by efeed pose proof (Hle 0); [lia | done | done | ]. }
-            eapply IH. eexists. split; first done. intros. eapply (Hle (S b)); last done. lia.
-        + destruct (decide (i = j)) as [<- | Hneq].
-          * intros [= ->]. exists 0. simpl. split; first done. intros. lia.
-          * intros (a & Ha & Hleq)%IH. exists (S a).
-            split; first done. intros ???? Hlook.
-            destruct b; simpl in *. { congruence. }
-            eapply Hleq; last done. lia.
-    Qed.
-    Lemma lookup_iml_None {X} (iml : list (K * X)) i :
-      (∀ b j y, iml !! b = Some (j, y) → j ≠ i) ↔ lookup_iml iml i = None.
-    Proof.
-      induction iml as [ | [j y] iml IH] in i |-*; simpl.
-      { split; first done. naive_solver. }
-      split.
-      - intros Ha. destruct (decide (i = j)) as [<- | ]; first last.
-        { eapply IH. intros. eapply (Ha (S b)); done. }
-        by efeed pose proof (Ha 0); [done | done | ].
-      - destruct (decide (i = j)) as [<- | ]; first done.
-        intros Ha b ??. destruct b as [ | b]; first (simpl; congruence).
-        simpl. intros Hlook. eapply IH; done.
-    Qed.
-  End list_map.
-
-  (* Interpretation of an insertion list: from front to back. The same index may appear multiple times,
-      then the first occurrence is what is relevant. *)
-  Definition interpret_inserts {X} (iml : list (nat * X)) (ls : list X) : list X :=
-    foldr (λ '(i, x) acc, <[i := x]> acc) ls iml.
-  Definition interpret_iml {X} (def : X) (len : nat) (iml : list (nat * X)) : list X :=
-    interpret_inserts iml (replicate len def).
-
-  Lemma interpret_inserts_length {X} (iml : list (nat * X)) (ls : list X) :
-    length (interpret_inserts iml ls) = length ls.
-  Proof.
-    induction iml as [ | [i x] iml IH]; simpl; first done.
-    rewrite insert_length //.
-  Qed.
-  Lemma interpret_iml_length {X} (def : X) (len : nat) (iml : list (nat * X)) :
-    length (interpret_iml def len iml) = len.
-  Proof.
-    rewrite /interpret_iml interpret_inserts_length replicate_length //.
-  Qed.
-
-  Lemma lookup_interpret_inserts_Some_inv {X} (iml : list (nat * X)) (ls : list X) i x :
-    interpret_inserts iml ls !! i = Some x →
-    ((i, x) ∈ iml) ∨ ls !! i = Some x.
-  Proof.
-    intros Ha. specialize (lookup_lt_Some _ _ _ Ha) as Hlen.
-    induction iml as [ | [j y] iml IH] in i, Hlen, Ha |-*; simpl; first by eauto.
-    move: Ha. simpl in *.
-    rewrite insert_length in Hlen.
-    destruct (decide (i = j)) as [ <- | Hneq].
-    - rewrite list_lookup_insert; last done.
-      intros [= ->]. left. apply elem_of_cons. by left.
-    - rewrite list_lookup_insert_ne; last done.
-      intros Ha%IH; last done.
-      destruct Ha as [ Ha| Ha].
-      + left. rewrite elem_of_cons. by right.
-      + right. done.
-  Qed.
-  Lemma lookup_interpret_iml_Some_inv {X} (iml : list (nat * X)) def len i x :
-    interpret_iml def len iml !! i = Some x →
-    i < len ∧ (x = def ∨ (i, x) ∈ iml).
-  Proof.
-    rewrite /interpret_iml. intros Ha.
-    specialize (lookup_lt_Some _ _ _ Ha) as Hlen.
-    rewrite interpret_inserts_length replicate_length in Hlen.
-    split; first done.
-    apply lookup_interpret_inserts_Some_inv in Ha as [ | Ha]; first by eauto.
-    apply lookup_replicate_1 in Ha as [ ]. by left.
-  Qed.
-
-  Lemma lookup_interpret_inserts_1 {X} (iml : list (nat * X)) (ls : list X) i :
-    lookup_iml iml i = None →
-    interpret_inserts iml ls !! i = ls !! i.
-  Proof.
-    intros Ha. induction iml as [ | [j x] iml IH]; simpl in *; first done.
-    destruct (decide (i = j)) as [<- | Hneq]; first done.
-    rewrite list_lookup_insert_ne; last done. by eapply IH.
-  Qed.
-  Lemma lookup_interpret_inserts_Some_2 {X} (iml : list (nat * X)) (ls : list X) i x :
-    i < length ls →
-    lookup_iml iml i = Some x →
-    interpret_inserts iml ls !! i = Some x.
-  Proof.
-    induction iml as [ | [j y] iml IH]; simpl; first done.
-    intros Hlen Ha. destruct (decide (i = j)) as [<- | Hneq].
-    - injection Ha as ->. rewrite list_lookup_insert; first done.
-      rewrite interpret_inserts_length //.
-    - rewrite list_lookup_insert_ne; last done. by eapply IH.
-  Qed.
-
-  Lemma lookup_interpret_iml_Some_1 {X} (iml : list (nat * X)) (def : X) len i :
-    lookup_iml iml i = None →
-    i < len →
-    interpret_iml def len iml !! i = Some def.
-  Proof.
-    intros Ha Hlen. rewrite lookup_interpret_inserts_1; last done.
-    rewrite lookup_replicate; done.
-  Qed.
-  Lemma lookup_interpret_iml_None_1 {X} (iml : list (nat * X)) (def : X) len i :
-    lookup_iml iml i = None →
-    len ≤ i →
-    interpret_iml def len iml !! i = None.
-  Proof.
-    intros Ha Hlen. rewrite lookup_interpret_inserts_1; last done.
-    apply lookup_replicate_None; done.
-  Qed.
-  Lemma lookup_interpret_iml_Some_2 {X} (iml : list (nat * X)) (def : X) len i x :
-    lookup_iml iml i = Some x →
-    i < len →
-    interpret_iml def len iml !! i = Some x.
-  Proof.
-    intros Ha Hlen. induction iml as [ | [j y] iml IH]; simpl; first done.
-    simpl in *. destruct (decide (i = j)) as [<- | Hneq].
-    - injection Ha as ->. rewrite list_lookup_insert; first done.
-      rewrite interpret_iml_length//.
-    - rewrite list_lookup_insert_ne; last done. by apply IH.
-  Qed.
-
-  Lemma elem_of_interpret_iml_inv {X} (def : X) iml len x :
-    x ∈ interpret_iml def len iml → x = def ∨ ∃ i, (i, x) ∈ iml.
-  Proof.
-    intros (i & Hel)%elem_of_list_lookup_1.
-    apply lookup_interpret_iml_Some_inv in Hel as (? & [? | ?]); eauto.
-  Qed.
-
-
-  Lemma interpret_inserts_fmap {X Y} (f : X → Y) iml ls :
-    interpret_inserts ((λ '(a, b), (a, f b)) <$> iml) (f <$> ls) =
-    f <$> interpret_inserts iml ls.
-  Proof.
-    induction iml as [ | [i x] iml IH]; simpl; first done.
-    rewrite list_fmap_insert. f_equiv. by apply IH.
-  Qed.
-  Lemma interpret_iml_fmap {X Y} (f : X → Y) (def : X) len iml :
-    interpret_iml (f def) len ((λ '(a, b), (a, f b)) <$> iml) =
-    f <$> interpret_iml def len iml.
-  Proof.
-    rewrite /interpret_iml -interpret_inserts_fmap.
-    rewrite fmap_replicate. done.
-  Qed.
 
   (** ** Definition *)
   (** ltypes are Type-indexed by their refinement type.

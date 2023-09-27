@@ -482,7 +482,7 @@ Section unfold.
     (* split up the struct ownership *)
     rewrite /ty_own_val/=.
     iDestruct "Hv" as "(%sl & %Halg' & _ & %Hvly & Hv)".
-    rewrite reshape_pointsto; last done.
+    rewrite heap_mapsto_reshape_sl; last done. iDestruct "Hl" as "(_ & Hl)".
     iPoseProof (big_sepL2_sep_sepL_l with "[$Hl $Hv]") as "Ha".
 
     (*

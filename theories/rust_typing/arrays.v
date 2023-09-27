@@ -85,57 +85,6 @@ Section array.
   Context `{!typeGS Σ}.
   Context {rt : Type}.
 
-  (* TODO: move *)
-  (* for simplicity: restricting to uniform sizes *)
-  Lemma heap_mapsto_mjoin_uniform l (vs : list val) (sz : nat) :
-    (∀ v, v ∈ vs → length v = sz) →
-    l ↦ mjoin vs ⊣⊢ loc_in_bounds l 0 (length vs * sz) ∗ ([∗ list] i ↦ v ∈ vs, (l +ₗ (sz * i)) ↦ v).
-  Proof.
-    intros Hsz.
-    assert (length (mjoin vs) = length vs * sz) as Hlen.
-    { induction vs as [ | v vs IH]; simpl; first lia.
-      rewrite app_length. rewrite Hsz; [ | apply elem_of_cons; by left].
-      f_equiv. apply IH. intros. apply Hsz. apply elem_of_cons; by right. }
-    induction vs as [ | v vs IH] in l, Hlen, Hsz |-*; simpl.
-    { rewrite right_id. by rewrite heap_mapsto_nil. }
-    iSplit.
-    - iIntros "Hl". iPoseProof (heap_mapsto_loc_in_bounds with "Hl") as "#Hlb".
-      rewrite heap_mapsto_app. iDestruct "Hl" as "[Hl1 Hl]".
-      rewrite Z.mul_0_r shift_loc_0_nat. iFrame "Hl1".
-      iSplitR. { rewrite Hlen. done. }
-      iPoseProof (IH with "Hl") as "Ha".
-      { intros. apply Hsz. apply elem_of_cons; by right. }
-      { simpl in Hlen. rewrite app_length in Hlen. rewrite Hsz in Hlen; [ | apply elem_of_cons; by left]. lia. }
-      iDestruct "Ha" as "(_ & Ha)".
-      iApply (big_sepL_wand with "Ha").
-      iApply big_sepL_intro. iIntros "!>" (k v' _).
-      rewrite shift_loc_assoc.
-      rewrite (Hsz v); [ | apply elem_of_cons; by left].
-      assert ((sz + sz * k)%Z = (sz * S k)%Z) as -> by lia.
-      eauto.
-    - iIntros "(Hlb & Hv)".
-      rewrite Z.mul_0_r shift_loc_0_nat heap_mapsto_app.
-      iDestruct "Hv" as "($ & Hv)".
-      iApply IH.
-      { intros. apply Hsz. apply elem_of_cons; by right. }
-      { simpl in Hlen. rewrite app_length in Hlen. rewrite Hsz in Hlen; [ | apply elem_of_cons; by left]. lia. }
-      iSplitL "Hlb".
-      + iApply (loc_in_bounds_offset with "Hlb"); first done.
-        { simpl. rewrite /addr. lia. }
-        { simpl. rewrite Hsz; [ | apply elem_of_cons; by left].
-          rewrite /addr. lia. }
-      + iApply (big_sepL_wand with "Hv").
-        iApply big_sepL_intro.
-        iIntros "!>" (???) "Hv".
-        rewrite shift_loc_assoc.
-        rewrite (Hsz v); [ | apply elem_of_cons; by left].
-        assert ((sz + sz * k)%Z = (sz * S k)%Z) as -> by lia.
-        eauto.
-  Qed.
-
-
-
-
 
 
   Program Definition array_t (ty : type rt) (len : nat) : type (list (place_rfn rt)) := {|
@@ -300,9 +249,8 @@ Section array.
         { eapply lookup_lt_Some in Hlook1. lia. }
         iApply loc_in_bounds_offset; last done.
         { done. }
-        { rewrite /offset_loc. simpl. rewrite /addr. lia. }
-        { rewrite /mk_array_layout /ly_mult {2}/ly_size. rewrite /offset_loc /= /addr.
-          rewrite /addr. nia. }
+        { rewrite /offset_loc. simpl. lia. }
+        { rewrite /mk_array_layout /ly_mult {2}/ly_size. rewrite /offset_loc /=. nia. }
       - iApply (logical_step_wand with "Hb"). iIntros "(? & ?)".
         eauto with iFrame.
     }
@@ -347,13 +295,6 @@ End array.
 
 Section lemmas.
   Context `{!typeGS Σ}.
-
-  (* TODO move *)
-  Lemma ly_size_mk_array_layout n ly :
-    ly_size (mk_array_layout ly n) = ly_size ly * n.
-  Proof.
-    rewrite /mk_array_layout /ly_mult /ly_size //.
-  Qed.
 
   Lemma array_t_own_val_split {rt} (ty : type rt) π n1 n2 v1 v2 rs1 rs2 :
     length rs1 = n1 →
@@ -516,54 +457,6 @@ End subtype.
 Section subltype.
   Context `{!typeGS Σ}.
 
-  (* TODO move *)
-  Lemma interpret_inserts_nil {X} (iml : list (nat * X)) :
-    interpret_inserts iml [] = [].
-  Proof.
-    induction iml as [ | [] iml IH]; simpl; first done.
-    rewrite IH. done.
-  Qed.
-  Lemma interpret_iml_0 {X} (def : X) (iml : list (nat * X)) :
-    interpret_iml def 0 iml = [].
-  Proof.
-    rewrite /interpret_iml. rewrite interpret_inserts_nil//.
-  Qed.
-
-  Fixpoint cut_iml {X} (iml : list (nat * X)) : list (nat * X) :=
-    match iml  with
-    | [] => []
-    | (0, x) :: iml => cut_iml iml
-    | (S i, x) :: iml => (i, x) :: cut_iml iml
-    end.
-
-  (* TODO move *)
-  Lemma interpret_inserts_cons {X} (iml : list (nat * X)) h l :
-    interpret_inserts iml (h :: l) =
-    (match lookup_iml iml 0 with | Some a => a | _ => h end) :: interpret_inserts (cut_iml iml) l.
-  Proof.
-    induction iml as [ | [i x] iml IH] in h, l |-*; simpl; first done.
-    rewrite IH. destruct i as [ | i]; simpl; done.
-  Qed.
-  Lemma interpret_iml_succ {X} len (def : X) (iml : list (nat * X)) :
-    interpret_iml def (S len) iml =
-    (match lookup_iml iml 0 with | Some a => a | _ => def end) :: interpret_iml def len (cut_iml iml).
-  Proof.
-    rewrite /interpret_iml/=. rewrite interpret_inserts_cons//.
-  Qed.
-
-  (* TODO move *)
-  Lemma big_sepL_prep_for_ind {A} (Φ : nat → A → iProp Σ) (l : list A) :
-    (∀ k, [∗ list] i ↦ x ∈ l, Φ (k + i) x) -∗
-    ([∗ list] i ↦ x ∈ l, Φ i x).
-  Proof.
-    iIntros "Ha". iApply ("Ha" $! 0).
-  Qed.
-  Lemma big_sepL2_prep_for_ind {A B} (Φ : nat → A → B → iProp Σ) (l1 : list A) (l2 : list B) :
-    (∀ k, [∗ list] i ↦ x; y ∈ l1; l2, Φ (k + i) x y) -∗
-    ([∗ list] i ↦ x; y ∈ l1; l2, Φ i x y).
-  Proof.
-    iIntros "Ha". iApply ("Ha" $! 0).
-  Qed.
 
   Local Lemma array_ltype_incl_big_wand_in {rt1 rt2} k π F (def1 : type rt1) (def2 : type rt2) len (lts1 : list (nat * ltype rt1)) (lts2 : list (nat * ltype rt2)) rs1 rs2 l b ly :
     lftE ⊆ F →
@@ -621,13 +514,6 @@ Section subltype.
     done.
   Qed.
 
-  (* TODO move *)
-  Lemma zip_length {A B} (l1 : list A) (l2 : list B) :
-    length (zip l1 l2) = min (length l1) (length l2).
-  Proof.
-    induction l1 as [ | x l1 IH] in l2 |-*; destruct l2 as [ | y l2]; simpl; [done.. | ].
-    rewrite IH. done.
-  Qed.
 
   Local Lemma array_ltype_incl'_shared_in {rt1 rt2} (def1 : type rt1) (def2 : type rt2) len (lts1 : list (nat * ltype rt1)) (lts2 : list (nat * ltype rt2)) κ' rs1 rs2 :
     ty_syn_type def1 = ty_syn_type def2 →
@@ -1224,28 +1110,6 @@ End lemmas.
 Section rules.
   Context `{!typeGS Σ}.
 
-  (*TODO move *)
-  Lemma loc_in_bounds_array_offset len m k l ly :
-    k < len →
-    loc_in_bounds l m (ly_size ly * len) -∗
-    loc_in_bounds (l offset{ly}ₗ k) 0 (ly_size ly).
-  Proof.
-    iIntros (Hlen).
-    iApply loc_in_bounds_offset.
-    - done.
-    - simpl. rewrite /addr. lia.
-    - simpl.
-      rewrite -Z.add_assoc.
-      assert (ly_size ly * (k + 1) ≤ ly_size ly * len)%Z as Ha by nia.
-      rewrite Z.mul_add_distr_l Z.mul_1_r in Ha.
-      rewrite Nat2Z.inj_mul. eapply Zplus_le_compat_l. done.
-  Qed.
-
-  (* TODO move *)
-  Lemma insert_interpret_iml {X} (def : X) (len : nat) (iml : list (nat * X)) i x :
-    <[i := x]> (interpret_iml def len iml) = interpret_iml def len ((i, x) :: iml).
-  Proof. done. Qed.
-
   (** ** typed_place *)
   Lemma typed_place_array_owned π E L {rt rtv} (def : type rt) (lts : list (nat * ltype rt)) (len : nat) (rs : list (place_rfn rt)) wl bmin ly l it v (tyv : type rtv) (i : rtv) P T :
     (∃ i',
@@ -1796,22 +1660,6 @@ Section rules.
     SubLtype E L k rs1 rs2 (◁ array_t def1 len1)%I (ArrayLtype def2 len2 lts2) | 14 :=
     λ T, i2p (weak_subltype_array_ofty_l E L def1 def2 len1 len2 lts2 rs1 rs2 k T).
 
-
-  (* TODO move *)
-  Lemma big_sepL2_Forall2 {A B} (Φ : A → B → Prop) l1 l2 :
-    ([∗ list] x;y ∈ l1; l2, ⌜Φ x y⌝) -∗ ⌜Forall2 Φ l1 l2⌝ : iProp Σ.
-  Proof.
-    iIntros "Ha". iInduction l1 as [ | x l1] "IH" forall (l2) "Ha"; destruct l2 as [ | y l2]; simpl; [done.. | ].
-    iDestruct "Ha" as "(%Ha & Hb)". iPoseProof ("IH" with "Hb") as "%Hc".
-    iPureIntro. constructor; done.
-  Qed.
-  Lemma big_sepL_Forall {A} (Φ : A → Prop) l :
-    ([∗ list] x ∈ l, ⌜Φ x⌝) -∗ ⌜Forall Φ l⌝ : iProp Σ.
-  Proof.
-    iIntros "Ha". iInduction l as [ | x l] "IH"; simpl; first done.
-    iDestruct "Ha" as "(%Ha & Hb)". iPoseProof ("IH" with "Hb") as "%Hc".
-    iPureIntro. constructor; done.
-  Qed.
 
   (** mut_subltype *)
   Lemma mut_subltype_array E L {rt} (def1 def2 : type rt) len1 len2 (lts1 lts2 : list (nat * ltype rt)) T:

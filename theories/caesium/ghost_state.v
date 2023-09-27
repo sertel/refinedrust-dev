@@ -608,6 +608,41 @@ Section loc_in_bounds.
   Proof.
     intros ???. rewrite loc_in_bounds_eq. iRight. done.
   Qed.
+
+  Lemma loc_in_bounds_sl_offset sl m k l ly :
+    snd <$> sl_members sl !! k = Some ly →
+    loc_in_bounds l m (ly_size sl) -∗
+    loc_in_bounds (l +ₗ offset_of_idx (sl_members sl) k) 0 (ly_size ly).
+  Proof.
+    iIntros (Hlook).
+    iApply loc_in_bounds_offset.
+    - done.
+    - simpl. lia.
+    - rewrite {2}/ly_size /=.
+      elim: (sl_members sl) k l Hlook => //.
+      intros [n ly0] s IH k l Hlook.
+      rewrite /offset_of_idx.
+      destruct k as [ | k]; simpl in *.
+      + injection Hlook as [= ->]. lia.
+      + eapply (IH k (l +ₗ (ly_size ly0))) in Hlook.
+        simpl in Hlook. move: Hlook. rewrite /offset_of_idx /fmap. lia.
+  Qed.
+
+  Lemma loc_in_bounds_array_offset (len : nat) m (k : nat) l ly :
+    k < len →
+    loc_in_bounds l m (ly_size ly * len) -∗
+    loc_in_bounds (l offset{ly}ₗ k) 0 (ly_size ly).
+  Proof.
+    iIntros (Hlen).
+    iApply loc_in_bounds_offset.
+    - done.
+    - simpl. lia.
+    - simpl.
+      rewrite -Z.add_assoc.
+      assert (ly_size ly * (k + 1) ≤ ly_size ly * len)%Z as Ha by nia.
+      rewrite Z.mul_add_distr_l Z.mul_1_r in Ha.
+      rewrite Nat2Z.inj_mul. eapply Zplus_le_compat_l. done.
+  Qed.
 End loc_in_bounds.
 
 Section heap.
@@ -1002,6 +1037,104 @@ Section heap.
     iApply (big_sepL_impl with "Hl"). iIntros (???) "!> H".
     rewrite heap_mapsto_mbyte_eq /heap_mapsto_mbyte_def /=.
     iDestruct "H" as (?) "[% H]". by destruct l; simplify_eq/=.
+  Qed.
+
+  Lemma heap_mapsto_reshape_sl (sl : struct_layout) v l q :
+    v `has_layout_val` sl →
+    l ↦{q} v ⊣⊢ loc_in_bounds l 0 (ly_size sl) ∗ ([∗ list] i ↦ v ∈ reshape (ly_size <$> (sl_members sl).*2) v, (l +ₗ offset_of_idx (sl_members sl) i) ↦{q} v).
+  Proof.
+    rewrite /has_layout_val {1 2}/ly_size /=.
+
+    elim: (sl_members sl) l v; simpl.
+    { intros l v Hlen. destruct v; last done.
+      rewrite right_id. apply heap_mapsto_nil. }
+    intros [m ly] s IH l v Hlen; simpl in Hlen.
+
+    specialize (take_drop (ly_size ly) v) as Heq.
+    rewrite -Heq.
+    assert (length (take (ly_size ly) v) = ly_size ly) as Hlen2.
+    { rewrite take_length. lia. }
+
+    iSplit.
+    - iIntros "Hpts". iPoseProof (heap_mapsto_loc_in_bounds with "Hpts") as "#Ha".
+      simpl. iSplitR.
+      { rewrite -Hlen Heq//. }
+      rewrite heap_mapsto_app.
+      iDestruct "Hpts" as "(Hpts1 & Hpts)".
+      rewrite /offset_of_idx. simpl. setoid_rewrite <-shift_loc_assoc_nat.
+      iSplitL "Hpts1".
+      { simpl. rewrite shift_loc_0_nat -{4}Hlen2 take_app. done. }
+      iPoseProof (IH with "Hpts") as "(_ & Hc)".
+      { rewrite drop_length Hlen. unfold fmap. lia. }
+      rewrite -{6}Hlen2.
+      rewrite drop_app.
+      rewrite take_length.
+      rewrite Nat.min_l; first done.
+      lia.
+    - iIntros "(#Ha & Hb & Hc)".
+      rewrite /offset_of_idx. simpl.
+      rewrite heap_mapsto_app.
+      rewrite shift_loc_0_nat. rewrite -{2}Hlen2 take_app. iFrame.
+      iApply IH.
+      { rewrite drop_length Hlen. rewrite /fmap. lia. }
+      iSplitR.
+      { iApply loc_in_bounds_offset_suf; last done.
+        - done.
+        - simpl. lia.
+        - simpl. rewrite take_length /fmap. lia. }
+          iEval (rewrite -{2}Hlen2) in "Hc". rewrite drop_app.
+          iApply (big_sepL_wand with "Hc").
+          iApply big_sepL_intro. iModIntro.
+          iIntros (k v' Hlook) "Hp".
+          rewrite shift_loc_assoc_nat.
+          rewrite take_length. rewrite Nat.min_l; first done.
+          lia.
+  Qed.
+
+  (* for simplicity: restricting to uniform sizes *)
+  Lemma heap_mapsto_mjoin_uniform l (vs : list val) (sz : nat) q :
+    (∀ v, v ∈ vs → length v = sz) →
+    l ↦{q} mjoin vs ⊣⊢ loc_in_bounds l 0 (length vs * sz) ∗ ([∗ list] i ↦ v ∈ vs, (l +ₗ (sz * i)) ↦{q} v).
+  Proof.
+    intros Hsz.
+    assert (length (mjoin vs) = length vs * sz)%nat as Hlen.
+    { induction vs as [ | v vs IH]; simpl; first lia.
+      rewrite app_length. rewrite Hsz; [ | apply elem_of_cons; by left].
+      f_equiv. apply IH. intros. apply Hsz. apply elem_of_cons; by right. }
+    induction vs as [ | v vs IH] in l, Hlen, Hsz |-*; simpl.
+    { rewrite right_id. by rewrite heap_mapsto_nil. }
+    iSplit.
+    - iIntros "Hl". iPoseProof (heap_mapsto_loc_in_bounds with "Hl") as "#Hlb".
+      rewrite heap_mapsto_app. iDestruct "Hl" as "[Hl1 Hl]".
+      rewrite Z.mul_0_r shift_loc_0_nat. iFrame "Hl1".
+      iSplitR. { rewrite Hlen. done. }
+      iPoseProof (IH with "Hl") as "Ha".
+      { intros. apply Hsz. apply elem_of_cons; by right. }
+      { simpl in Hlen. rewrite app_length in Hlen. rewrite Hsz in Hlen; [ | apply elem_of_cons; by left]. lia. }
+      iDestruct "Ha" as "(_ & Ha)".
+      iApply (big_sepL_wand with "Ha").
+      iApply big_sepL_intro. iIntros "!>" (k v' _).
+      rewrite shift_loc_assoc.
+      rewrite (Hsz v); [ | apply elem_of_cons; by left].
+      assert ((sz + sz * k)%Z = (sz * S k)%Z) as -> by lia.
+      eauto.
+    - iIntros "(Hlb & Hv)".
+      rewrite Z.mul_0_r shift_loc_0_nat heap_mapsto_app.
+      iDestruct "Hv" as "($ & Hv)".
+      iApply IH.
+      { intros. apply Hsz. apply elem_of_cons; by right. }
+      { simpl in Hlen. rewrite app_length in Hlen. rewrite Hsz in Hlen; [ | apply elem_of_cons; by left]. lia. }
+      iSplitL "Hlb".
+      + iApply (loc_in_bounds_offset with "Hlb"); first done.
+        { simpl. lia. }
+        { simpl. rewrite Hsz; [ | apply elem_of_cons; by left]. lia. }
+      + iApply (big_sepL_wand with "Hv").
+        iApply big_sepL_intro.
+        iIntros "!>" (???) "Hv".
+        rewrite shift_loc_assoc.
+        rewrite (Hsz v); [ | apply elem_of_cons; by left].
+        assert ((sz + sz * k)%Z = (sz * S k)%Z) as -> by lia.
+        eauto.
   Qed.
 End heap.
 

@@ -1,94 +1,18 @@
 From caesium Require Import lang.
 
-Ltac unfold_common_caesium_defs :=
-  unfold
-  (* Unfold [aligned_to] and [Z.divide] as lia can work with the underlying multiplication. *)
-    aligned_to,
-    (*Z.divide,*)
-  (* Unfold [addr] since [lia] may get stuck due to [addr]/[Z] mismatches. *)
-    addr,
-  (* Layout *)
-    ly_size, ly_with_align, ly_align_log, layout_wf,
-  (* Integer bounds *)
-    max_int, min_int, int_half_modulus, int_modulus,
-    bits_per_int, bytes_per_int,
-  (* Address bounds *)
-    max_alloc_end, min_alloc_start, bytes_per_addr,
-  (* Other byte-level definitions *)
-    bits_per_byte in *.
-
-(** get the named fields of a struct field list *)
-Definition named_fields (sl_fields : field_list) : list (var_name * layout) :=
-  foldr (λ '(n, ly) acc, match n with Some n => (n, ly) :: acc | _ => acc end) [] sl_fields.
-Lemma elem_of_named_fields x ly members :
-  (x, ly) ∈ named_fields members ↔ (Some x, ly) ∈ members.
+Lemma mjoin_has_struct_layout sl vs :
+  Forall2 (λ v ly, v `has_layout_val` ly) vs sl.(sl_members).*2 →
+  mjoin vs `has_layout_val` sl.
 Proof.
-  induction members as [ | [[y|] ly'] members IH].
-  - simpl. split; rewrite !elem_of_nil; done.
-  - simpl. rewrite !elem_of_cons IH. naive_solver.
-  - simpl. rewrite elem_of_cons. naive_solver.
-Qed.
-Lemma elem_of_named_fields_field_names fields v ly :
-  (v, ly) ∈ named_fields fields → v ∈ field_names fields.
-Proof.
-  induction fields as [ | [[]] fields IH]; simpl.
-  - rewrite elem_of_nil. done.
-  - rewrite elem_of_cons. intros [[= <- <-] | ? ]; apply elem_of_cons.
-    + eauto.
-    + right. by apply IH.
-  - done.
-Qed.
-Lemma named_fields_lookup_1 fields v ly i :
-  named_fields fields !! i = Some (v, ly) → ∃ j, fields !! j = Some (Some v, ly).
-Proof.
-  induction fields as [ | [[]] fields IH] in i |-*; simpl; first done.
-  - destruct i as [ | i]; simpl.
-    + intros [= -> ->]. exists 0%nat. done.
-    + intros (j & ?)%IH. exists (S j). done.
-  - intros (j & ?)%IH. exists (S j). done.
-Qed.
-Lemma named_fields_lookup_2 fields v ly i :
-  fields !! i = Some (Some v, ly) → ∃ j, named_fields fields !! j = Some (v, ly).
-Proof.
-  induction fields as [ | [[]] fields IH] in i |-*; simpl; first done.
-  - destruct i as [ | i]; simpl.
-    + intros [= -> ->]. exists 0%nat. done.
-    + intros (j & ?)%IH. exists (S j). done.
-  - destruct i as [ | i].
-    + intros [=].
-    + intros (j & ?)%IH. exists j. done.
-Qed.
-(** A stronger version that gives us the concrete index, if there are no duplicate field names *)
-Lemma named_fields_lookup_field_index_of fields i x ly :
-  NoDup (field_names fields) →
-  named_fields fields !! i = Some (x, ly) →
-  field_index_of fields x = Some i.
-Proof.
-  intros Hnd.
-  induction fields  as [ | [[]] fields IH] in i, Hnd |-*; simpl; first done.
-  - case_bool_decide as Heq.
-    + injection Heq as [= <-].
-      inversion Hnd; subst.
-      destruct i as [ | i]; first done.
-      simpl. intros Hel%elem_of_list_lookup_2.
-      exfalso.
-      apply elem_of_named_fields_field_names in Hel. done.
-    + destruct i as [ | i]. { intros [= <- <-]. done. }
-      simpl. inversion Hnd; subst. intros Hlook. erewrite IH; done.
-  - rewrite option_fmap_id. simpl in Hnd. apply IH. done.
-Qed.
-Lemma named_fields_eq fields :
-  named_fields fields = omap (λ '(name, ly), name ← name; Some(name, ly)) fields.
-Proof.
-  induction fields as [ | [[name | ] ly] fields IH]; simpl; first done.
-  - rewrite IH. done.
-  - done.
-Qed.
-Lemma named_fields_field_names_length fields :
-  length (named_fields fields) = length (field_names fields).
-Proof.
-  rewrite named_fields_eq /field_names.
-  apply omap_length_eq. intros ? [[] ] ? => //.
+  rewrite /has_layout_val/layout_of{2}/ly_size/=.
+  generalize (sl_members sl) => fields. clear sl.
+  induction fields as [ | [n field] fields IH] in vs |-*; simpl; intros Hf.
+  - apply Forall2_nil_inv_r in Hf as ->. done.
+  - destruct vs as [ | v vs].
+    { apply Forall2_nil_inv_l in Hf. naive_solver. }
+    apply Forall2_cons_inv in Hf as (Hlen & Hf).
+    simpl. rewrite app_length Hlen.
+    rewrite IH; done.
 Qed.
 
 Lemma mjoin_pad_struct_layout sl els f :
@@ -96,12 +20,12 @@ Lemma mjoin_pad_struct_layout sl els f :
   (∀ ly, length (f ly) = ly_size ly) →
   mjoin (pad_struct sl.(sl_members) els f) `has_layout_val` sl.
 Proof.
-  rewrite /has_layout_val/layout_of{2}/ly_size/=.
-  generalize (sl_members sl) => fields. clear sl.
+  intros Ha Hb. apply mjoin_has_struct_layout.
+  move: Ha. generalize (sl_members sl) => fields. clear sl.
   induction fields as [ | [[name | ] field] fields IH] in els |-*; simpl; first done.
-  - intros Ha Hf. apply Forall2_cons_inv_l in Ha as (v & els' & Hlen & Ha%IH & ->); last done.
-    rewrite app_length Ha Hlen. done.
-  - intros Ha Hf. apply IH in Ha; last done. rewrite app_length Ha Hf//.
+  - destruct els as [ | v els]; simpl; first inversion 1.
+    intros [Ha Hf]%Forall2_cons_inv. econstructor; first done. by apply IH.
+  - intros Hf. econstructor; first apply Hb. by apply IH.
 Qed.
 
 (** We define a closed set of integer types that are allowed to appear as literals in the source code,
@@ -385,7 +309,7 @@ Lemma ly_align_in_bounds_1 ly :
   ly_align_log ly = 0%nat → ly_align_in_bounds ly.
 Proof.
   rewrite /ly_align_in_bounds/ly_align => ->.
-  unfold_size_constants. simpl; nia.
+  unfold_common_caesium_defs. simpl; nia.
 Qed.
 
 Lemma ly_align_log_in_u8 ly :

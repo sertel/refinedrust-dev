@@ -10,10 +10,10 @@ Delimit Scope loc_scope with L.
 Global Open Scope loc_scope.
 
 (** Physical address. *)
-Definition addr := Z.
+Notation addr := Z (only parsing).
 
 (** Allocation identifier (unique to an allocation), see [heap.v]. *)
-Definition alloc_id := Z.
+Notation alloc_id := Z (only parsing).
 Definition dummy_alloc_id : alloc_id := 0.
 
 (** Provenances *)

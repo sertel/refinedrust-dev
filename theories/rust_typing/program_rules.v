@@ -2717,8 +2717,9 @@ Section typing.
       prove_place_cond E L3 bmin lt2 lt2' (λ upd,
       prove_place_rfn_cond (if upd is ResultWeak _ then true else false) bmin ri2 ri2' (
       (* needs to be a type *)
-      (* TODO: drop this assumption to support borrowing of partially shr-blocked places / find some other formulation *)
+      (* we require unblocking to have happened before. TODO: maybe also in a nested way? *)
       ∃ ty2 ri2'', ⌜ri2' = #ri2''⌝ ∗
+      (* TODO: drop this assumption to support borrowing of partially shr-blocked places / find some other formulation *)
       mut_eqltype E L3 lt2' (◁ ty2) (
         typed_option_map (option_combine orty (match bmin with Owned _ => Some () | _ => None end))
           (λ '(rty, _) (T : sigT (λ rt, type rt * rt * access_result rt2' rt)%type → _),

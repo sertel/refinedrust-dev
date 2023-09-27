@@ -295,6 +295,20 @@ Qed.
 Lemma offset_of_idx_le_size sl i:
   (offset_of_idx (sl_members sl) i ≤ ly_size sl)%nat.
 Proof. apply: sum_list_with_take. Qed.
+Lemma offset_of_idx_with_mem_le_size sl i ly:
+  snd <$> sl_members sl !! i = Some ly →
+  (offset_of_idx (sl_members sl) i + ly_size ly ≤ ly_size sl)%nat.
+Proof.
+  intros Hlook.
+  rewrite {2}/ly_size/=.
+  rewrite /offset_of_idx.
+  rewrite -{2}(take_drop i (ly_size <$> (sl_members sl).*2)).
+  rewrite sum_list_with_app.
+  enough (ly_size ly ≤ sum_list (drop i (ly_size <$> (sl_members sl).*2))) by lia.
+  erewrite drop_S; first last.
+  { rewrite !list_lookup_fmap Hlook//. }
+  simpl. lia.
+Qed.
 
 Lemma offset_of_bound i sl:
   offset_of_idx sl.(sl_members) i ≤ max_int isize_t.
@@ -337,6 +351,97 @@ Proof.
   - simpl. intros Ha. apply IH; first done.
     unfold fmap. lia.
 Qed.
+
+Lemma struct_layout_field_aligned (sl : struct_layout) l :
+  l `has_layout_loc` sl →
+  ∀ k ly,
+  snd <$> sl_members sl !! k = Some ly →
+  l +ₗ offset_of_idx (sl_members sl) k `has_layout_loc` ly.
+Proof.
+  intros Hl%check_fields_aligned_alt_correct k ly Hlook.
+  elim: (sl_members sl) l Hl k Hlook => //.
+  intros [n ly0] s IH l [Hl0 Hl] k Hlook.
+  rewrite /offset_of_idx.
+  destruct k as [ | k]; simpl in *.
+  { injection Hlook as [= ->]. rewrite shift_loc_0_nat. done. }
+  rewrite -(shift_loc_assoc_nat l).
+  eapply IH; done.
+Qed.
+
+(** get the named fields of a struct field list *)
+Definition named_fields (sl_fields : field_list) : list (var_name * layout) :=
+  foldr (λ '(n, ly) acc, match n with Some n => (n, ly) :: acc | _ => acc end) [] sl_fields.
+Lemma elem_of_named_fields x ly members :
+  (x, ly) ∈ named_fields members ↔ (Some x, ly) ∈ members.
+Proof.
+  induction members as [ | [[y|] ly'] members IH].
+  - simpl. split; rewrite !elem_of_nil; done.
+  - simpl. rewrite !elem_of_cons IH. naive_solver.
+  - simpl. rewrite elem_of_cons. naive_solver.
+Qed.
+Lemma elem_of_named_fields_field_names fields v ly :
+  (v, ly) ∈ named_fields fields → v ∈ field_names fields.
+Proof.
+  induction fields as [ | [[]] fields IH]; simpl.
+  - rewrite elem_of_nil. done.
+  - rewrite elem_of_cons. intros [[= <- <-] | ? ]; apply elem_of_cons.
+    + eauto.
+    + right. by apply IH.
+  - done.
+Qed.
+Lemma named_fields_lookup_1 fields v ly i :
+  named_fields fields !! i = Some (v, ly) → ∃ j, fields !! j = Some (Some v, ly).
+Proof.
+  induction fields as [ | [[]] fields IH] in i |-*; simpl; first done.
+  - destruct i as [ | i]; simpl.
+    + intros [= -> ->]. exists 0%nat. done.
+    + intros (j & ?)%IH. exists (S j). done.
+  - intros (j & ?)%IH. exists (S j). done.
+Qed.
+Lemma named_fields_lookup_2 fields v ly i :
+  fields !! i = Some (Some v, ly) → ∃ j, named_fields fields !! j = Some (v, ly).
+Proof.
+  induction fields as [ | [[]] fields IH] in i |-*; simpl; first done.
+  - destruct i as [ | i]; simpl.
+    + intros [= -> ->]. exists 0%nat. done.
+    + intros (j & ?)%IH. exists (S j). done.
+  - destruct i as [ | i].
+    + intros [=].
+    + intros (j & ?)%IH. exists j. done.
+Qed.
+(** A stronger version that gives us the concrete index, if there are no duplicate field names *)
+Lemma named_fields_lookup_field_index_of fields i x ly :
+  NoDup (field_names fields) →
+  named_fields fields !! i = Some (x, ly) →
+  field_index_of fields x = Some i.
+Proof.
+  intros Hnd.
+  induction fields  as [ | [[]] fields IH] in i, Hnd |-*; simpl; first done.
+  - case_bool_decide as Heq.
+    + injection Heq as [= <-].
+      inversion Hnd; subst.
+      destruct i as [ | i]; first done.
+      simpl. intros Hel%elem_of_list_lookup_2.
+      exfalso.
+      apply elem_of_named_fields_field_names in Hel. done.
+    + destruct i as [ | i]. { intros [= <- <-]. done. }
+      simpl. inversion Hnd; subst. intros Hlook. erewrite IH; done.
+  - rewrite option_fmap_id. simpl in Hnd. apply IH. done.
+Qed.
+Lemma named_fields_eq fields :
+  named_fields fields = omap (λ '(name, ly), name ← name; Some(name, ly)) fields.
+Proof.
+  induction fields as [ | [[name | ] ly] fields IH]; simpl; first done.
+  - rewrite IH. done.
+  - done.
+Qed.
+Lemma named_fields_field_names_length fields :
+  length (named_fields fields) = length (field_names fields).
+Proof.
+  rewrite named_fields_eq /field_names.
+  apply omap_length_eq. intros ? [[] ] ? => //.
+Qed.
+
 
 Definition GetMemberLoc (l : loc) (s : struct_layout) (m : var_name) : loc :=
   (l +ₗ Z.of_nat (default 0%nat (offset_of s.(sl_members) m))).

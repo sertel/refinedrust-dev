@@ -115,6 +115,30 @@ Lemma aligned_to_2_max_r l n1 n2 :
   l `aligned_to` 2 ^ n2.
 Proof. rewrite Nat.max_comm. apply aligned_to_2_max_l. Qed.
 
+Lemma zip_fmap_l {A B C} (l1 : list A) (l2 : list B) (f : A → C) :
+  zip (f <$> l1) l2 = (λ x : A * B, (f x.1, x.2)) <$> (zip l1 l2).
+Proof.
+  induction l1 as [ | a l1 IH] in l2 |-*; destruct l2 as [ | l2]; simpl; [done.. | ].
+  f_equiv. apply IH.
+Qed.
+
+Lemma zip_length {A B} (l1 : list A) (l2 : list B) :
+  length (zip l1 l2) = min (length l1) (length l2).
+Proof.
+  induction l1 as [ | x l1 IH] in l2 |-*; destruct l2 as [ | y l2]; simpl; [done.. | ].
+  rewrite IH. done.
+Qed.
+
+Lemma list_subseteq_mjoin {A} (l : list (list A)) (x : list A) : 
+  x ∈ l → x ⊆ mjoin l.
+Proof.
+  induction l as [ | y l' IH] in x |-*; simpl.
+  - intros []%elem_of_nil.
+  - intros [ -> | Hel]%elem_of_cons.
+    + set_solver.
+    + apply IH in Hel. set_solver.
+Qed.
+
 Lemma reshape_replicate_elem_length {A} (vs : list A) v n m :
   length vs = n * m →
   v ∈ reshape (replicate n m) vs →
@@ -221,6 +245,21 @@ Proof.
     iApply "IH"; done.
 Qed.
 
+Lemma big_sepL2_Forall2 {Σ} {A B} (Φ : A → B → Prop) l1 l2 :
+  ([∗ list] x;y ∈ l1; l2, ⌜Φ x y⌝) -∗ ⌜Forall2 Φ l1 l2⌝ : iProp Σ.
+Proof.
+  iIntros "Ha". iInduction l1 as [ | x l1] "IH" forall (l2) "Ha"; destruct l2 as [ | y l2]; simpl; [done.. | ].
+  iDestruct "Ha" as "(%Ha & Hb)". iPoseProof ("IH" with "Hb") as "%Hc".
+  iPureIntro. constructor; done.
+Qed.
+Lemma big_sepL_Forall {Σ} {A} (Φ : A → Prop) l :
+  ([∗ list] x ∈ l, ⌜Φ x⌝) -∗ ⌜Forall Φ l⌝ : iProp Σ.
+Proof.
+  iIntros "Ha". iInduction l as [ | x l] "IH"; simpl; first done.
+  iDestruct "Ha" as "(%Ha & Hb)". iPoseProof ("IH" with "Hb") as "%Hc".
+  iPureIntro. constructor; done.
+Qed.
+
 (* when we know that the length is equal, we can get a stronger lemma *)
 Lemma big_sepL2_laterN' {Σ} {A B} (Φ : nat → A → B → iProp Σ) (l1 : list A) (l2 : list B) n :
   length l1 = length l2 →
@@ -312,6 +351,20 @@ Lemma big_sepL_exists {Σ} {A X} (Φ : nat → A → X → iProp Σ) (l : list A
   ([∗ list] i ↦ a ∈ l, ∃ x : X, Φ i a x) ⊣⊢
   (∃ xl : list X, [∗ list] i ↦ a; x ∈ l; xl, Φ i a x).
 Proof. apply (big_sepL_exists' _ _ 0). Qed.
+
+
+Lemma big_sepL_prep_for_ind {Σ} {A} (Φ : nat → A → iProp Σ) (l : list A) :
+  (∀ k, [∗ list] i ↦ x ∈ l, Φ (k + i) x) -∗
+  ([∗ list] i ↦ x ∈ l, Φ i x).
+Proof.
+  iIntros "Ha". iApply ("Ha" $! 0).
+Qed.
+Lemma big_sepL2_prep_for_ind {Σ} {A B} (Φ : nat → A → B → iProp Σ) (l1 : list A) (l2 : list B) :
+  (∀ k, [∗ list] i ↦ x; y ∈ l1; l2, Φ (k + i) x y) -∗
+  ([∗ list] i ↦ x; y ∈ l1; l2, Φ i x y).
+Proof.
+  iIntros "Ha". iApply ("Ha" $! 0).
+Qed.
 
 Section big_sepL.
   Context {Σ: gFunctors}.
@@ -556,4 +609,11 @@ Proof.
     iApply (fupd_mask_mono with "HP"); done.
   - rewrite !left_id. iApply (fupd_mask_mono with "HP"); done.
 Qed.
+
+Lemma maybe_later_mono (P : iProp Σ) b : ▷?b P -∗ ▷ P.
+Proof.
+  iIntros "P". by iPoseProof (bi.laterN_le _ 1 with "P") as "P"; first (destruct b; simpl; lia).
+Qed.
 End util.
+
+

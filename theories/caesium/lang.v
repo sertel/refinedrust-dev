@@ -896,8 +896,19 @@ Canonical Structure valO := leibnizO val.
 Canonical Structure exprO := leibnizO expr.
 Canonical Structure allocationO := leibnizO allocation.
 
+Ltac unfold_common_caesium_defs :=
+  unfold
+  (* Unfold [aligned_to] and [Z.divide] as lia can work with the underlying multiplication. *)
+    aligned_to,
+    (*Z.divide,*)
+  (* Layout *)
+    ly_size, ly_with_align, ly_align_log, layout_wf,
+  (* Integer bounds *)
+    max_int, min_int, int_half_modulus, int_modulus,
+    bits_per_int, bytes_per_int,
+  (* Address bounds *)
+    max_alloc_end, min_alloc_start, bytes_per_addr,
+  (* Other byte-level definitions *)
+    bits_per_byte in *.
 
-Ltac unfold_size_constants :=
-  rewrite /min_alloc_start/max_alloc_end;
-  rewrite /bits_per_int/bytes_per_int;
-  rewrite /bytes_per_addr/bits_per_byte/bytes_per_addr_log.
+
