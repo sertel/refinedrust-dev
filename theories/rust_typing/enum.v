@@ -10,6 +10,7 @@ Section union.
       but we are anyways already not handling tags correctly, so who cares... *)
   (* TODO rather factor out into a padded type, as in RefinedC? *)
   Program Definition active_union_t {rt} (ty : type rt) (variant : string) (uls : union_layout_spec) : type rt := {|
+    ty_rt_inhabited := ty.(ty_rt_inhabited);
     ty_own_val π r v :=
       (∃ ul ly, ⌜use_union_layout_alg uls = Some ul⌝ ∗
         ⌜layout_of_union_member variant ul = Some ly⌝ ∗
@@ -245,6 +246,7 @@ Section enum.
      However, here the inner type also depends on the outer refinement, which is not supported by [ex_plain_t] right now. *)
   Program Definition enum_t {rt} (e : enum rt) : type rt :=
     {|
+    ty_rt_inhabited := e.(enum_rt_inhabited);
     ty_own_val π r v :=
       (∃ rt' ty' r' ly,
       ⌜e.(enum_ty) r = existT rt' (ty', r')⌝ ∗

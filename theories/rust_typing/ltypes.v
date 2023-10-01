@@ -16,6 +16,7 @@ Section enum.
   (*Set Universe Polymorphism.*)
 
   Record enum (rt : Type) : Type := mk_enum {
+    enum_rt_inhabited : Inhabited rt;
     (* the layout spec *)
     enum_els : enum_layout_spec;
     (* out of the current refinement, extract the tag *)
@@ -35,7 +36,8 @@ Section enum.
         enum_ty r = existT rte (lte, re) ∧
         enum_tag_ty variant = Some (existT rte lte)
   }.
-  Global Arguments mk_enum {_}.
+  Global Arguments mk_enum {_ _}.
+  Global Arguments enum_rt_inhabited {_}.
   Global Arguments enum_els {_}.
   Global Arguments enum_tag {_}.
   Global Arguments enum_ty {_}.

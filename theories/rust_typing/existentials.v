@@ -106,7 +106,7 @@ Global Typeclasses Opaque mk_pers_ex_inv_def.
 Section ex.
   Context `{!typeGS Σ}.
   (* [Y] is the abstract refinement type, [X] is the inner refinement type *)
-  Context (X Y : Type)
+  Context (X Y : Type) `{!Inhabited Y}
     (* invariant on the contained refinement *)
     (P : ex_inv_def X Y)
   .
@@ -115,6 +115,7 @@ Section ex.
      [P] is a predicate specifying an invariant, potentially containing additional ownership.
      [R] determines a relation between the inner and outer refinement. *)
   Program Definition ex_plain_t (ty : type X) : type Y := {|
+    ty_rt_inhabited := _;
     ty_own_val π r v :=
       (∃ x : X, P.(inv_P) π x r ∗ ty.(ty_own_val) π x v)%I;
     ty_shr κ π r l :=
@@ -186,7 +187,7 @@ End ex.
 Notation "'∃;' P ',' τ" := (ex_plain_t _ _ P τ) (at level 40) : stdpp_scope.
 Section open.
   Context `{!typeGS Σ}.
-  Context {rt X : Type} (P : ex_inv_def rt X).
+  Context {rt X : Type} (P : ex_inv_def rt X) `{!Inhabited X}.
 
   Lemma ex_plain_t_open_owned F π (ty : type rt) wl l (x : X) :
     lftE ⊆ F →
@@ -354,7 +355,7 @@ End open.
 
 Section subtype.
   Context `{!typeGS Σ}.
-  Context {rt X : Type}.
+  Context {rt X : Type} `{!Inhabited X}.
   Lemma weak_subtype_ex_plain_t E L (P1 P2 : ex_inv_def rt X) (ty1 ty2 : type rt) (r1 r2 : X) T :
     ⌜r1 = r2⌝ ∗ ⌜ty1 = ty2⌝ ∗ ⌜P1 = P2⌝ ∗ T
     ⊢ weak_subtype E L r1 r2 (∃; P1, ty1) (∃; P2, ty2) T.
@@ -371,20 +372,20 @@ Section subtype.
   Proof.
     iIntros "(-> & -> & HT)". iFrame. iPureIntro. intros ?. apply subtype_refl.
   Qed.
-  Global Instance mut_subtype_ex_plain_t_inst E L P1 P2 (ty1 ty2 : type rt) :
+  Global Instance mut_subtype_ex_plain_t_inst E L (P1 : ex_inv_def rt X) P2 (ty1 ty2 : type rt) :
     MutSubtype E L (∃; P1, ty1) (∃; P2, ty2) := λ T, i2p (mut_subtype_ex_plain_t E L P1 P2 ty1 ty2 T).
   Lemma mut_eqtype_ex_plain_t E L (P1 P2 : ex_inv_def rt X) (ty1 ty2 : type rt) T :
     ⌜P1 = P2⌝ ∗ ⌜ty1 = ty2⌝ ∗ T ⊢ mut_eqtype E L (∃; P1, ty1) (∃; P2, ty2) T.
   Proof.
     iIntros "(-> & -> & HT)". iFrame. iPureIntro. intros ?. apply eqtype_refl.
   Qed.
-  Global Instance mut_eqtype_ex_plain_t_inst E L P1 P2 (ty1 ty2 : type rt) :
+  Global Instance mut_eqtype_ex_plain_t_inst E L (P1 : ex_inv_def rt X) P2 (ty1 ty2 : type rt) :
     MutEqtype E L (∃; P1, ty1) (∃; P2, ty2) := λ T, i2p (mut_eqtype_ex_plain_t E L P1 P2 ty1 ty2 T).
 End subtype.
 
 Section stratify.
   Context `{!typeGS Σ}.
-  Context {rt X : Type} (P : ex_inv_def rt X).
+  Context {rt X : Type} `{!Inhabited X} (P : ex_inv_def rt X).
 
   (** Subsumption rule for introducing an existential *)
   (* TODO could have a more specific instance for persistent invariants with pers = true *)

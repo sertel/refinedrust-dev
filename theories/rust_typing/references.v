@@ -1544,16 +1544,13 @@ Section shr_ref.
     iModIntro.
     assert (ly = void*) as ->. { injection Ha. done. }
     iSplitR; first done.
-    iExists _. iDestruct "Hmt" as "[Hmt1 Hmt2]".
-    iSplitL "Hmt1". { iNext. iExists li. iFrame "Hmt1". iExists li, ly', r'. iFrame "#". eauto. }
-    iIntros "Htok2 Hmt1". iDestruct "Hmt1" as (vl') "[Hmt1 #Hown']".
+    iExists _, li. iDestruct "Hmt" as "[Hmt1 Hmt2]".
+    iSplitL "Hmt1". { iNext. iFrame "Hmt1". iExists li, ly', r'. iFrame "#". eauto. }
+    iIntros "Htok2 Hmt1".
     iDestruct ("Htok" with "Htok2") as "$".
-    iAssert (▷ ⌜length (li : val) = length vl'⌝)%I as ">%".
-    { iNext. iDestruct (ty_has_layout with "Hown'") as "(% & %Ha' & %Hly)".
-      injection Ha' as <-. rewrite Hly. done. }
     iApply "Hclose". iModIntro. rewrite -{3}(Qp.div_2 q').
     iPoseProof (heap_mapsto_agree with "Hmt1 Hmt2") as "%Heq"; first done.
-    subst vl'. rewrite heap_mapsto_fractional. iFrame.
+    rewrite heap_mapsto_fractional. iFrame.
   Qed.
 End shr_ref.
 

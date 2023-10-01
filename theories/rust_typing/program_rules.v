@@ -2146,7 +2146,7 @@ Section typing.
 
       iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
       iMod (lctx_lft_alive_tok_noend κ with "HE HL") as (q') "(Htok & HL & Hclose)"; [solve_ndisj | done | ].
-      iMod (copy_shr_acc _ _ _ shrE with "CTX Hl' Hna Htok") as "(>%Hly' & (%q'' & Hna & (%v & >Hll & #Hv) & Hclose_l))";
+      iMod (copy_shr_acc _ _ _ shrE with "CTX Hl' Hna Htok") as "(>%Hly' & (%q'' & %v & Hna & (>Hll & #Hv) & Hclose_l))";
         [solve_ndisj | solve_ndisj | | ].
       { apply shr_locsE_incl. }
       iDestruct (ty_own_val_has_layout with "Hv") as "#>%Hlyv"; first done.

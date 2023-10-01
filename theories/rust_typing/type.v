@@ -45,6 +45,7 @@ Here, we use later credits at a logical step to get to
   &(κ' ⊓ κ) inner
  *)
 Record type `{!typeGS Σ} (rt : Type) := {
+  ty_rt_inhabited :: Inhabited rt;
   ty_own_val : thread_id → rt → val → iProp Σ;
   ty_syn_type : syn_type;
   (* this is formulated as a property of the semantic type, because the memcast compatibility is a semantic property *)
@@ -136,6 +137,7 @@ Arguments ty_shr : simpl never.
 #[export] Existing Instance ty_sidecond_timeless.
 #[export] Existing Instance ty_sidecond_persistent.
 
+Arguments ty_rt_inhabited {_ _ _}.
 Arguments ty_own_val {_ _ _}.
 Arguments ty_sidecond {_ _ _}.
 Arguments ty_has_op_type {_ _ _}.
@@ -229,7 +231,8 @@ End memcast.
 (** simple types *)
 (* Simple types are copy, have a simple sharing predicate, and do not nest. *)
 Record simple_type `{!typeGS Σ} (rt : Type) :=
-  { st_own : thread_id → rt → val → iProp Σ;
+  { st_rt_inhabited :: Inhabited rt;
+    st_own : thread_id → rt → val → iProp Σ;
     st_syn_type : syn_type;
     st_has_op_type : op_type → memcast_compat_type → Prop;
     st_has_layout π r v :
@@ -267,7 +270,8 @@ Qed.
 
 
 Program Definition ty_of_st `{!typeGS Σ} rt (st : simple_type rt) : type rt :=
-  {| ty_own_val tid r v := (st.(st_own) tid r v)%I;
+  {| ty_rt_inhabited := st.(st_rt_inhabited _);
+     ty_own_val tid r v := (st.(st_own) tid r v)%I;
      ty_has_op_type := st.(st_has_op_type);
      ty_syn_type := st.(st_syn_type);
      ty_sidecond := True;
@@ -343,7 +347,7 @@ Fixpoint shr_locsE (l : loc) (n : nat) : coPset :=
   end.
 
 Lemma shr_locsE_incl' l n :
-  shr_locsE l n ⊆ ↑shrN ∧ (∀ m, n < m → ↑shrN.@(l +ₗ m) ## (shr_locsE l n)).
+  shr_locsE l n ⊆ ↑shrN ∧ (∀ m, n ≤ m → ↑shrN.@(l +ₗ m) ## (shr_locsE l n)).
 Proof.
   induction n as [ | n IH] in l |-*; simpl.
   - set_solver.
@@ -351,7 +355,7 @@ Proof.
     split.
     + solve_ndisj.
     + intros m Hm. specialize (Ha (m - 1)).
-      assert (n < m -1) as Hb by lia.
+      assert (n ≤ m -1) as Hb by lia.
       specialize (Ha Hb) as Hc.
       rewrite shift_loc_assoc in Hc.
       replace (1%nat + (m - 1)) with m in Hc by lia.
@@ -373,9 +377,9 @@ Class Copyable `{!typeGS Σ} {rt} (ty : type rt) := {
     ty.(ty_shr) κ π r l -∗
     na_own π F -∗ q.[κ] ={E}=∗
     ▷ ⌜l `has_layout_loc` ly⌝ ∗
-    ∃ q', na_own π (F ∖ shr_locsE l ly.(ly_size)) ∗
-     ▷ (l ↦{q'}: ty.(ty_own_val) π r) ∗
-     (na_own π (F ∖ shr_locsE l ly.(ly_size)) -∗ ▷l ↦{q'}: ty.(ty_own_val) π r ={E}=∗ na_own π F ∗ q.[κ])
+    ∃ q' v, na_own π (F ∖ shr_locsE l ly.(ly_size)) ∗
+     ▷ (l ↦{q'} v ∗ ty.(ty_own_val) π r v) ∗
+     (na_own π (F ∖ shr_locsE l ly.(ly_size)) -∗ ▷l ↦{q'} v ={E}=∗ na_own π F ∗ q.[κ])
 }.
 #[export] Hint Mode Copyable - - + + : typeclass_instances.
 #[export] Existing Instance copy_own_persistent.
@@ -387,16 +391,13 @@ Next Obligation.
   iDestruct (na_own_acc with "Htok") as "[$ Htok]"; first solve_ndisj.
   iMod (frac_bor_acc with "LFT Hf Hlft") as (q') "[Hmt Hclose]"; first solve_ndisj.
   iModIntro. iFrame "Hly". iExists _. iDestruct "Hmt" as "[Hmt1 Hmt2]".
+  iExists v.
   iSplitL "Hmt1"; first by auto with iFrame.
-  iIntros "Htok2 Hmt1". iDestruct "Hmt1" as (vl') "[Hmt1 #Hown']".
+  iIntros "Htok2 Hmt1".
   iDestruct ("Htok" with "Htok2") as "$".
-  iAssert (▷ ⌜length v = length vl'⌝)%I as ">%".
-  { iNext.
-    iDestruct (ty_own_val_has_layout with "Hown'") as %->; first done.
-    iDestruct (st_own_has_layout with "Hown") as %->; done. }
   iApply "Hclose". iModIntro. rewrite -{3}(Qp.div_2 q').
   iPoseProof (heap_mapsto_agree with "Hmt1 Hmt2") as "%Heq"; first done.
-  subst vl'. rewrite heap_mapsto_fractional. iFrame.
+  rewrite heap_mapsto_fractional. iFrame.
 Qed.
 Bind Scope bi_scope with type.
 
@@ -412,6 +413,7 @@ Section ofe.
 
   Inductive type_equiv' (ty1 ty2 : type rt) : Prop :=
     Type_equiv :
+      (ty1.(ty_rt_inhabited).(inhabitant) = ty2.(ty_rt_inhabited).(inhabitant)) →
       (∀ ot mt, ty1.(ty_has_op_type) ot mt ↔ ty2.(ty_has_op_type) ot mt) →
       (∀ π r v, ty1.(ty_own_val) π r v ≡ ty2.(ty_own_val) π r v) →
       (∀ κ π r l, ty1.(ty_shr) κ π r l ≡ ty2.(ty_shr) κ π r l) →
@@ -424,6 +426,7 @@ Section ofe.
   Instance type_equiv : Equiv (type rt) := type_equiv'.
   Inductive type_dist' (n : nat) (ty1 ty2 : type rt) : Prop :=
     Type_dist :
+      (ty1.(ty_rt_inhabited).(inhabitant) = (ty2.(ty_rt_inhabited).(inhabitant))) →
       (∀ ot mt, ty1.(ty_has_op_type) ot mt ↔ ty2.(ty_has_op_type) ot mt) →
       (∀ π r v, ty1.(ty_own_val) π r v ≡{n}≡ ty2.(ty_own_val) π r v) →
       (∀ κ π r v, ty1.(ty_shr) κ π r v ≡{n}≡ ty2.(ty_shr) κ π r v) →
@@ -437,8 +440,9 @@ Section ofe.
 
   (* type rt is isomorphic to { x : T | P x } *)
   Let T :=
-    prodO (prodO (prodO (prodO (prodO (prodO (prodO
-      (thread_id -d> rt -d> val -d> iPropO Σ)
+    prodO (prodO (prodO (prodO (prodO (prodO (prodO (prodO
+      (leibnizO rt)
+      (thread_id -d> rt -d> val -d> iPropO Σ))
       (lft -d> thread_id -d> rt -d> loc -d> iPropO Σ))
       (syn_typeO))
       (op_type -d> leibnizO memcast_compat_type -d> PropO))
@@ -449,11 +453,11 @@ Section ofe.
   Let P (x : T) : Prop :=
     (*let '(T_own_val, T_shr, T_syn_type, T_depth, T_ot, T_sidecond, T_drop, T_lfts, T_wf_E) := x in*)
     (* ty_has_layout *)
-    (∀ π r v, x.1.1.1.1.1.1.1 π r v -∗ ∃ ly : layout, ⌜syn_type_has_layout x.1.1.1.1.1.2 ly⌝ ∗ ⌜v `has_layout_val` ly⌝) ∧
+    (∀ π r v, x.1.1.1.1.1.1.1.2 π r v -∗ ∃ ly : layout, ⌜syn_type_has_layout x.1.1.1.1.1.2 ly⌝ ∗ ⌜v `has_layout_val` ly⌝) ∧
     (* ty_op_type_stable *)
     (∀ ot mt, x.1.1.1.1.2 ot mt → syn_type_has_layout x.1.1.1.1.1.2 (ot_layout ot)) ∧
     (* ty_own_val_sidecond *)
-    (∀ π r v, x.1.1.1.1.1.1.1 π r v -∗ x.1.1.1.2) ∧
+    (∀ π r v, x.1.1.1.1.1.1.1.2 π r v -∗ x.1.1.1.2) ∧
     (* ty_shr_persistent *)
     (∀ κ π r l, Persistent (x.1.1.1.1.1.1.2 κ π r l)) ∧
     (* ty_shr_aligned *)
@@ -465,14 +469,14 @@ Section ofe.
       ⌜syn_type_has_layout x.1.1.1.1.1.2 ly⌝ -∗
       ⌜l `has_layout_loc` ly⌝ -∗
       loc_in_bounds l 0 (ly_size ly) -∗
-      &{κ} (∃ v, l ↦ v ∗ x.1.1.1.1.1.1.1 π r v) -∗ logical_step E (x.1.1.1.1.1.1.2 κ π r l ∗ q.[κ ⊓ κ'])) ∧
+      &{κ} (∃ v, l ↦ v ∗ x.1.1.1.1.1.1.1.2 π r v) -∗ logical_step E (x.1.1.1.1.1.1.2 κ π r l ∗ q.[κ ⊓ κ'])) ∧
     (* ty_shr_mono *)
     (∀ κ κ' π r (l : loc), κ' ⊑ κ -∗ x.1.1.1.1.1.1.2 κ π r l -∗ x.1.1.1.1.1.1.2 κ' π r l) ∧
     (* ty_own_ghost_drop *)
-    (∀ π r v F, lftE ⊆ F → x.1.1.1.1.1.1.1 π r v -∗ logical_step F (x.1.1.2 π r)) ∧
+    (∀ π r v F, lftE ⊆ F → x.1.1.1.1.1.1.1.2 π r v -∗ logical_step F (x.1.1.2 π r)) ∧
     (* ty_memcast_compat *)
-    (∀ ot mt st π r v, x.1.1.1.1.2 ot mt → x.1.1.1.1.1.1.1 π r v -∗
-      match mt with | MCNone => True | MCCopy => x.1.1.1.1.1.1.1 π r (mem_cast v ot st) | MCId => ⌜mem_cast_id v ot⌝ end) ∧
+    (∀ ot mt st π r v, x.1.1.1.1.2 ot mt → x.1.1.1.1.1.1.1.2 π r v -∗
+      match mt with | MCNone => True | MCCopy => x.1.1.1.1.1.1.1.2 π r (mem_cast v ot st) | MCId => ⌜mem_cast_id v ot⌝ end) ∧
     (* ty_has_op_type_compat *)
     (*(∀ ot mt, use_op_alg x.1.1.1.1.1.2 = Some ot → mt ≠ MCId → x.1.1.1.1.2 ot mt) ∧*)
     (* ty_sidecond_timeless *)
@@ -484,7 +488,8 @@ Section ofe.
   Local Set Program Cases.
 
   Definition type_unpack (ty : type rt) : T :=
-    (ty.(ty_own_val),
+    (ty.(ty_rt_inhabited).(inhabitant),
+     ty.(ty_own_val),
      ty.(ty_shr),
      ty.(ty_syn_type),
      ty.(ty_has_op_type),
@@ -493,8 +498,9 @@ Section ofe.
      ty.(ty_lfts),
      ty.(ty_wf_E)).
   Program Definition type_pack (x : T) (H : P x) : type rt :=
-    let '(T_own_val, T_shr, T_syn_type, T_ot, T_sidecond, T_drop, T_lfts, T_wf_E) := x in
+    let '(T_inh, T_own_val, T_shr, T_syn_type, T_ot, T_sidecond, T_drop, T_lfts, T_wf_E) := x in
     {|
+      ty_rt_inhabited := populate T_inh;
       ty_own_val := T_own_val;
       ty_has_op_type := T_ot;
       ty_syn_type := T_syn_type;
@@ -505,9 +511,9 @@ Section ofe.
       ty_wf_E := T_wf_E;
     |}.
   Solve Obligations with
-    intros [[[[[[[T_own_val T_shr] T_syn_type] T_ot] T_sidecond] T_drop] T_lfts] T_wf_E];
+    intros [[[[[[[[T_inh T_own_val] T_shr] T_syn_type] T_ot] T_sidecond] T_drop] T_lfts] T_wf_E];
     intros (? & ? & ? & ? & ? & ? & ? & ? & ? & ? & ?);
-    intros ???????? Heq; injection Heq; intros -> -> -> -> -> -> -> ->;
+    intros ????????? Heq; injection Heq; intros -> -> -> -> -> -> -> ->;
     done.
 
   Definition type_ofe_mixin : OfeMixin (type rt).
@@ -515,11 +521,11 @@ Section ofe.
     apply (iso_ofe_mixin type_unpack).
     - intros t1 t2. split.
       + destruct 1; done.
-      + intros [[[[[[[]]]]]]]; simpl in *.
+      + intros [[[[[[[[]]]]]]]]; simpl in *.
         by constructor.
     - intros t1 t2. split.
       + destruct 1; done.
-      + intros [[[[[[[]]]]]]]; simpl in *.
+      + intros [[[[[[[[]]]]]]]]; simpl in *.
         by constructor.
   Qed.
   Canonical Structure typeO : ofe := Ofe (type rt) type_ofe_mixin.
@@ -533,7 +539,7 @@ Section ofe.
     ty1 ≡@{type rt} ty2 →
     ty_own_val ty1 π r v -∗
     ty_own_val ty2 π r v.
-  Proof. intros [_ -> _]; eauto. Qed.
+  Proof. intros [_ _ -> _]; eauto. Qed.
 
   Global Instance ty_shr_ne n:
     Proper (dist n ==> eq ==> eq ==> eq ==> eq ==> dist n) ty_shr.
@@ -544,17 +550,17 @@ Section ofe.
     ty1 ≡@{type rt} ty2 →
     ty_shr ty1 κ π r l -∗
     ty_shr ty2 κ π r l.
-  Proof. intros [_ _ -> _]; eauto. Qed.
+  Proof. intros [_ _ _ -> _]; eauto. Qed.
 
   Local Ltac intro_T :=
-        intros [[[[[[[T_own_val T_shr ] T_syn_type] T_ot] T_sidecond] T_drop] T_lfts] T_wf_E].
+        intros [[[[[[[[T_inh T_own_val] T_shr ] T_syn_type] T_ot] T_sidecond] T_drop] T_lfts] T_wf_E].
   Global Instance type_cofe : Cofe typeO.
   Proof.
     apply (iso_cofe_subtype' P type_pack type_unpack).
     - by intros [].
     - split; [by destruct 1|].
-      by intros [[[[[[[]]]]]]]; constructor.
-    - intros [[[[[[[]]]]]]] Hx; done.
+      by intros [[[[[[[[]]]]]]]]; constructor.
+    - intros [[[[[[[[]]]]]]]] Hx; done.
     - repeat apply limit_preserving_and; repeat (apply limit_preserving_forall; intros ?).
       + apply bi.limit_preserving_emp_valid => n ty1 ty2. intro_T; f_equiv;
         [ apply T_own_val | f_equiv; rewrite T_syn_type; done].
