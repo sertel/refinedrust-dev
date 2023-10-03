@@ -63,6 +63,11 @@ Proof.
     iCombine "Ha Ha2" as "Ha". rewrite -fractional. done.
 Qed.
 
+Global Instance fractional_bi_later {Σ} (Φ : Qp → iProp Σ) :
+  Fractional Φ → Fractional (λ q, ▷ Φ q)%I.
+Proof.
+  rewrite /Fractional. intros Ha p q. rewrite Ha bi.later_sep//.
+Qed.
 
 Lemma list_max_insert (l : list nat) i n :
   list_max (<[i := n]> l) ≤ Nat.max n (list_max l).
@@ -115,21 +120,8 @@ Lemma aligned_to_2_max_r l n1 n2 :
   l `aligned_to` 2 ^ n2.
 Proof. rewrite Nat.max_comm. apply aligned_to_2_max_l. Qed.
 
-Lemma zip_fmap_l {A B C} (l1 : list A) (l2 : list B) (f : A → C) :
-  zip (f <$> l1) l2 = (λ x : A * B, (f x.1, x.2)) <$> (zip l1 l2).
-Proof.
-  induction l1 as [ | a l1 IH] in l2 |-*; destruct l2 as [ | l2]; simpl; [done.. | ].
-  f_equiv. apply IH.
-Qed.
 
-Lemma zip_length {A B} (l1 : list A) (l2 : list B) :
-  length (zip l1 l2) = min (length l1) (length l2).
-Proof.
-  induction l1 as [ | x l1 IH] in l2 |-*; destruct l2 as [ | y l2]; simpl; [done.. | ].
-  rewrite IH. done.
-Qed.
-
-Lemma list_subseteq_mjoin {A} (l : list (list A)) (x : list A) : 
+Lemma list_subseteq_mjoin {A} (l : list (list A)) (x : list A) :
   x ∈ l → x ⊆ mjoin l.
 Proof.
   induction l as [ | y l' IH] in x |-*; simpl.
@@ -201,6 +193,55 @@ Lemma and_proper (A B C : Prop) :
   (A → B ↔ C) →
   (A ∧ B) ↔ (A ∧ C).
 Proof. naive_solver. Qed.
+
+Lemma zip_flip {A B} (l1 : list A) (l2 : list B) :
+  zip l1 l2 = (λ '(x1, x2), (x2, x1)) <$> zip l2 l1.
+Proof.
+  induction l1 as [ | x1 l1 IH] in l2 |-*; simpl.
+  { destruct l2; done. }
+  destruct l2 as [ | x2 l2]; first done.
+  simpl. f_equiv. apply IH.
+Qed.
+Lemma zip_assoc_r {A B C} (l1 : list A) (l2 : list B) (l3 : list C) :
+  zip l1 (zip l2 l3) = (λ '((x, y), z), (x, (y, z))) <$> zip (zip l1 l2) l3.
+Proof.
+  induction l1 as [ | x l1 IH] in l2, l3 |-*; simpl; first done.
+  destruct l2 as [ | y l2]; first done.
+  destruct l3 as [ | z l3]; first done.
+  simpl. f_equiv. apply IH.
+Qed.
+Lemma zip_assoc_l {A B C} (l1 : list A) (l2 : list B) (l3 : list C) :
+  zip (zip l1 l2) l3 = (λ '(x, (y, z)), ((x, y), z)) <$> zip l1 (zip l2 l3).
+Proof.
+  induction l1 as [ | x l1 IH] in l2, l3 |-*; simpl; first done.
+  destruct l2 as [ | y l2]; first done.
+  destruct l3 as [ | z l3]; first done.
+  simpl. f_equiv. apply IH.
+Qed.
+
+Lemma zip_fmap_l {A B C} (l1 : list A) (l2 : list B) (f : A → C) :
+  zip (f <$> l1) l2 = (λ x : A * B, (f x.1, x.2)) <$> (zip l1 l2).
+Proof.
+  induction l1 as [ | a l1 IH] in l2 |-*; destruct l2 as [ | l2]; simpl; [done.. | ].
+  f_equiv. apply IH.
+Qed.
+
+Lemma zip_length {A B} (l1 : list A) (l2 : list B) :
+  length (zip l1 l2) = min (length l1) (length l2).
+Proof.
+  induction l1 as [ | x l1 IH] in l2 |-*; destruct l2 as [ | y l2]; simpl; [done.. | ].
+  rewrite IH. done.
+Qed.
+
+Lemma zip_app {A B} (l1 l2 : list A) (l1' l2' : list B) :
+  length l1 = length l1' →
+  zip (l1 ++ l2) (l1' ++ l2') = zip l1 l1' ++ zip l2 l2'.
+Proof.
+  intros Hlen. induction l1 as [ | h1 l1 IH] in l1', Hlen |-*; simpl.
+  { destruct l1'; done. }
+  destruct l1' as [ | h1' l1']; first done.
+  simpl. f_equiv. apply IH. simpl in *; lia.
+Qed.
 
 (** ** big_sepL *)
 Lemma big_sepL2_insert {Σ} {A B} (l1 : list A) (l2 : list B) (i : nat) (x1 : A) (x2 : B) (Φ : nat → A → B → iProp Σ) (m : nat) :
@@ -445,6 +486,101 @@ Proof.
   iPoseProof ("IH" with "[] [//] HR") as "(Hb & HR)".
   { simpl in *. iPureIntro. lia. }
   iFrame.
+Qed.
+
+Lemma big_sepL_eliminate_sequence {Σ} {A} (P : nat → iProp Σ) (l : list A) Φ i0 :
+  ([∗ list] i ↦ x ∈ l, Φ (i + i0) x) -∗
+  P i0 -∗
+  (□ ∀ i x, ⌜l !! i = Some x⌝ -∗ P (i + i0) -∗ Φ (i + i0) x -∗ P (S (i + i0))) -∗
+  P (length l + i0).
+Proof.
+  induction l as [ | x l IH] in i0 |-*; simpl.
+  { iIntros "_ $ _"; done. }
+  iIntros "(Ha & Hl) HP #Hp".
+  setoid_rewrite <-Nat.add_succ_r.
+  iApply (IH with "Hl [-]").
+  - iApply ("Hp" $! 0 with "[] HP Ha"). done.
+  - iModIntro. iIntros (i y Hlook) "HP Ha".
+    rewrite {1 2}Nat.add_succ_r.
+    iApply ("Hp" $! (S i) with "[] HP Ha"). done.
+Qed.
+
+Lemma big_sepL_eliminate_sequence_rev {Σ} {A} (P : nat → iProp Σ) (l : list A) Φ :
+  ([∗ list] i ↦ x ∈ l, Φ i x) -∗
+  P (length l) -∗
+  □ (∀ i x, ⌜l !! i = Some x⌝ -∗ P (S i) -∗ Φ i x -∗ P i) -∗
+  P 0.
+Proof.
+  induction l as [ | x l IH] using rev_ind; simpl.
+  { iIntros "_ $ _ "; done. }
+  iIntros "Hl HP #Hstep".
+  rewrite big_sepL_app.
+  rewrite !app_length/=.
+  rewrite Nat.add_0_r. iDestruct "Hl" as "(Hl & Ha & _)".
+  rewrite Nat.add_succ_r Nat.add_0_r.
+  iPoseProof ("Hstep" with "[] HP Ha") as "HP".
+  { rewrite lookup_app_r; last lia. rewrite Nat.sub_diag. done. }
+  iApply (IH with "Hl HP").
+  iModIntro. iIntros (i y Hlook) "HP Hp".
+  iApply ("Hstep" with "[] HP Hp"). iPureIntro.
+  by apply lookup_app_l_Some.
+Qed.
+
+Lemma big_sepL2_from_big_sepL {Σ} {A B} (l : list (A * B)) (Φ : _ → _ → _ → iProp Σ) :
+  ([∗ list] i ↦ x ∈ l, Φ i x.1 x.2) ⊢
+  [∗ list] i ↦ x; y ∈ l.*1; l.*2, Φ i x y.
+Proof.
+  iIntros "Ha". iApply big_sepL2_alt. rewrite !fmap_length. iR.
+  rewrite zip_fst_snd//.
+Qed.
+Lemma big_sepL2_from_zip {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ → _ → iProp Σ) :
+  length l1 = length l2 →
+  ([∗ list] i ↦ x ∈ zip l1 l2, Φ i x.1 x.2) ⊢
+  [∗ list] i ↦ x; y ∈ l1; l2, Φ i x y.
+Proof.
+  iIntros (?) "Ha". iApply big_sepL2_alt. iR. done.
+Qed.
+Lemma big_sepL2_to_zip {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ → _ → iProp Σ) :
+  ([∗ list] i ↦ x; y ∈ l1; l2, Φ i x y) ⊢
+  [∗ list] i ↦ x ∈ zip l1 l2, Φ i x.1 x.2.
+Proof.
+  rewrite big_sepL2_alt. iIntros "(_ & $)".
+Qed.
+
+Local Lemma big_sepL2_later' {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ → _ → iProp Σ) n :
+  length l1 = length l2 →
+  ▷ ([∗ list] i ↦ x; y ∈ l1; l2, Φ (i + n) x y) ⊣⊢ [∗ list] i ↦ x; y ∈ l1; l2, ▷ Φ (i + n) x y.
+Proof.
+  intros Hlen. induction l1 as [ | x l1 IH] in l2, Hlen, n |-*; simpl.
+  { destruct l2; simpl; last done. iSplit; iIntros "_"; done. }
+  destruct l2 as [ | y l2]; first done.
+  simpl in *. iSplit.
+  - iIntros "(Ha & Hb)". iFrame.
+    setoid_rewrite <-Nat.add_succ_r. rewrite -IH; last lia. done.
+  - iIntros "(Ha & Hb)". setoid_rewrite <-Nat.add_succ_r.
+    rewrite -IH; last lia. iNext. iFrame.
+Qed.
+Lemma big_sepL2_later {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ → _ → iProp Σ) :
+  length l1 = length l2 →
+  ▷ ([∗ list] i ↦ x; y ∈ l1; l2, Φ i x y) ⊣⊢ [∗ list] i ↦ x; y ∈ l1; l2, ▷ Φ i x y.
+Proof.
+  specialize (big_sepL2_later' l1 l2 Φ 0). setoid_rewrite Nat.add_0_r. done.
+Qed.
+
+Lemma big_sepL2_exists_r {Σ} {A B C} l1 l2 (Φ : nat → A → B → C → iProp Σ):
+  ([∗ list] i ↦ x; y ∈ l1; l2, ∃ z, Φ i x y z) ⊢ ∃ l3, ⌜length l2 = length l3⌝ ∗ ([∗ list] i ↦ x; y ∈ l1; zip l2 l3, Φ i x y.1 y.2).
+Proof.
+  iIntros "Ha". iPoseProof (big_sepL2_length with "Ha") as "%Hlen".
+  rewrite big_sepL2_to_zip.
+  rewrite big_sepL_exists. iDestruct "Ha" as "(%l3 & Ha)".
+  iPoseProof (big_sepL2_length with "Ha") as "%Hlen2".
+  rewrite zip_with_length in Hlen2.
+  rewrite big_sepL2_to_zip.
+  rewrite zip_assoc_l big_sepL_fmap.
+  iExists l3. iSplitR. { iPureIntro. lia. }
+  iApply (big_sepL2_from_zip). { rewrite zip_with_length. lia. }
+  iApply (big_sepL_impl with "Ha").
+  iModIntro. iIntros (? [? [? ?]] ?); simpl. eauto.
 Qed.
 
 (** ** General Iris/BI things *)

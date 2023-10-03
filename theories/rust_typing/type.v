@@ -45,7 +45,7 @@ Here, we use later credits at a logical step to get to
   &(κ' ⊓ κ) inner
  *)
 Record type `{!typeGS Σ} (rt : Type) := {
-  ty_rt_inhabited :: Inhabited rt;
+  ty_rt_inhabited : Inhabited rt;
   ty_own_val : thread_id → rt → val → iProp Σ;
   ty_syn_type : syn_type;
   (* this is formulated as a property of the semantic type, because the memcast compatibility is a semantic property *)
@@ -136,6 +136,7 @@ Arguments ty_shr : simpl never.
 #[export] Existing Instance ty_shr_persistent.
 #[export] Existing Instance ty_sidecond_timeless.
 #[export] Existing Instance ty_sidecond_persistent.
+#[export] Existing Instance ty_rt_inhabited.
 
 Arguments ty_rt_inhabited {_ _ _}.
 Arguments ty_own_val {_ _ _}.
@@ -152,6 +153,8 @@ Arguments ty_own_ghost_drop {_ _ _}.
 Arguments ty_op_type_stable {_ _ _} [_ _ _].
 (*Arguments ty_has_op_type_compat {_ _ _} [_ _ _].*)
 (*Existing Instance ty_ghost_drop_timeless.*)
+
+Global Hint Extern 3 (type ?rt) => lazymatch goal with H : type rt |- _ => apply H end : typeclass_instances.
 
 Definition rt_of `{!typeGS Σ} {rt} (ty : type rt) : Type := rt.
 Definition st_of `{!typeGS Σ} {rt} (ty : type rt) : syn_type := ty_syn_type ty.
@@ -231,7 +234,7 @@ End memcast.
 (** simple types *)
 (* Simple types are copy, have a simple sharing predicate, and do not nest. *)
 Record simple_type `{!typeGS Σ} (rt : Type) :=
-  { st_rt_inhabited :: Inhabited rt;
+  { st_rt_inhabited : Inhabited rt;
     st_own : thread_id → rt → val → iProp Σ;
     st_syn_type : syn_type;
     st_has_op_type : op_type → memcast_compat_type → Prop;
@@ -254,6 +257,7 @@ Record simple_type `{!typeGS Σ} (rt : Type) :=
       (*st_has_op_type ot mt;*)
   }.
 #[export] Existing Instance st_own_persistent.
+#[export] Existing Instance st_rt_inhabited.
 #[export] Instance: Params (@st_own) 4 := {}.
 Arguments st_own {_ _ _}.
 Arguments st_has_op_type {_ _ _}.
@@ -365,6 +369,49 @@ Qed.
 Lemma shr_locsE_incl l n :
   shr_locsE l n ⊆ ↑shrN.
 Proof. apply shr_locsE_incl'. Qed.
+
+Lemma loc_in_shr_locsE l (off sz : nat) :
+  off < sz →
+  ↑shrN.@(l +ₗ off) ⊆ shr_locsE l sz.
+Proof.
+  intros Hlt. induction sz as [ | sz IH] in l, off, Hlt |-*; simpl.
+  { lia. }
+  destruct off as [ | off].
+  { rewrite shift_loc_0_nat. set_solver. }
+  apply union_subseteq_r'.
+  rewrite -(shift_loc_assoc_nat _ 1).
+  apply IH. lia.
+Qed.
+
+Lemma shr_locsE_disjoint l (n m : nat) :
+  (n ≤ m)%Z → ↑shrN.@(l +ₗ m) ## shr_locsE l n.
+Proof. apply shr_locsE_incl'. Qed.
+
+Lemma shr_locsE_offset l (off sz1 sz2 sz : nat) F :
+  sz1 ≤ off →
+  off + sz2 ≤ sz →
+  shr_locsE l sz ⊆ F →
+  shr_locsE (l +ₗ off) sz2 ⊆ F ∖ shr_locsE l sz1.
+Proof.
+  intros Hl1 Hl2 Hl3.
+  induction sz2 as [ | sz2 IH] in sz1, off, sz, Hl1, Hl2, Hl3 |-*.
+  { simpl. set_solver. }
+  simpl. apply union_least.
+  - apply namespaces.coPset_subseteq_difference_r.
+    2: { etrans; last apply Hl3. apply loc_in_shr_locsE. lia. }
+    apply shr_locsE_disjoint. lia.
+  - rewrite shift_loc_assoc.
+    rewrite -Nat2Z.inj_add. eapply IH; last done; lia.
+Qed.
+
+Lemma shr_locsE_add l (sz1 sz2 : nat) :
+  shr_locsE l (sz1 + sz2) = shr_locsE l sz1 ∪ shr_locsE (l +ₗ sz1) sz2.
+Proof.
+  induction sz1 as [ | sz1 IH] in l |-*; simpl.
+  { rewrite shift_loc_0_nat. set_solver. }
+  rewrite IH shift_loc_assoc -Nat2Z.inj_add.
+  set_solver.
+Qed.
 
 Class Copyable `{!typeGS Σ} {rt} (ty : type rt) := {
   copy_own_persistent π r v : Persistent (ty.(ty_own_val) π r v);
