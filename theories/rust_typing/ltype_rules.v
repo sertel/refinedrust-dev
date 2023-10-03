@@ -927,9 +927,9 @@ Section open.
     iDestruct "Hb" as "(%r' & Hauth & Hb)".
     iMod (fupd_mask_mono with "Hb") as "Hb"; first done.
     iDestruct "Hb" as "(%v & Hl & Hv)".
-    iModIntro.
 
-    iPoseProof (place_rfn_interp_mut_owned with "Hrfn Hauth") as "(Hrfn & Hobs & Hauth)".
+    iMod (place_rfn_interp_mut_owned with "Hrfn Hauth") as "(Hrfn & Hobs & Hauth)".
+    iModIntro.
     iDestruct "Hcred" as "(Hcred1 & Hcred)".
     iApply (opened_ltype_create_uniq_simple with "Hobs Hauth Hcred1 Hat Hincl Hcl_tok Hcl_b [] []").
     - done.

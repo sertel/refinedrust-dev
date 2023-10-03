@@ -3,7 +3,7 @@ From stdpp Require Import gmap list.
 From caesium Require Export base layout int_type loc.
 Set Default Proof Using "Type".
 
-Definition var_name := string.
+Notation var_name := string (only parsing).
 
 Definition field_list := list (option var_name * layout).
 

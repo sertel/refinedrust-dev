@@ -518,17 +518,25 @@ Section ltype_def.
   Definition place_rfn_interp_owned {rt} (r : place_rfn rt) (r' : rt) : iProp Σ :=
     match r with
     | PlaceIn r'' => ⌜r'' = r'⌝
-    | PlaceGhost γ' =>
-        (* credit is paid for at borrow time, and used by resolve_ghost *)
-        gvar_auth γ' r' ∗ £1
+    | PlaceGhost γ' => gvar_pobs γ' r'
+    end.
+
+  Definition place_rfn_interp_owned_blocked {rt} (r : place_rfn rt) (r' : rt) : iProp Σ :=
+    match r with
+    | PlaceIn r'' => ⌜r'' = r'⌝
+    | PlaceGhost γ' => gvar_auth γ' r'
     end.
 
   (* interpretation of place_rfn under mut *)
   Definition place_rfn_interp_mut {rt} (r : place_rfn rt) γ : iProp Σ :=
     match r with
     | PlaceIn r' => gvar_obs γ r'
-    | PlaceGhost γ' =>
-      £1 ∗ Rel2 γ' γ (@eq rt)
+    | PlaceGhost γ' => Rel2 γ' γ (@eq rt)
+    end.
+  Definition place_rfn_interp_mut_blocked {rt} (r : place_rfn rt) γ : iProp Σ :=
+    match r with
+    | PlaceIn r' => gvar_obs γ r'
+    | PlaceGhost γ' => Rel2 γ' γ (@eq rt)
     end.
 
   (* interpretation of place_rfn under shared *)
@@ -536,7 +544,7 @@ Section ltype_def.
   Definition place_rfn_interp_shared {rt} (r : place_rfn rt) (r' : rt) : iProp Σ :=
     match r with
     | PlaceIn r'' => ⌜r'' = r'⌝
-    | _ => True
+    | PlaceGhost γ => gvar_pobs γ r'
     end.
   Global Instance place_rfn_interp_shared_pers {rt} (r : place_rfn rt) r' : Persistent (place_rfn_interp_shared r r').
   Proof. destruct r; apply _. Qed.
@@ -546,18 +554,18 @@ Section ltype_def.
   Global Instance place_rfn_interp_owned_timeless {rt} (r : place_rfn rt) r' : Timeless (place_rfn_interp_owned r r').
   Proof. destruct r; apply _. Qed.
 
-  Lemma place_rfn_interp_mut_owned {rt} (r : place_rfn rt) r' γ :
+  Lemma place_rfn_interp_mut_owned {rt} (r : place_rfn rt) (r' : rt) γ :
     place_rfn_interp_mut r γ -∗
-    gvar_auth γ r' -∗
+    gvar_auth γ r' ==∗
     place_rfn_interp_owned r r' ∗
     gvar_obs γ r' ∗ gvar_auth γ r'.
   Proof.
     iIntros "Hrfn Hauth".
-    destruct r as [r'' | γ'].
+    destruct r as [r'' | γ']; simpl.
     - iPoseProof (gvar_agree with "Hauth Hrfn") as "#->".
       iSplitR; first done. by iFrame.
-    - iDestruct "Hrfn" as "(Hcred & %r1 & %r2 & Hauth' & Hobs & ->)".
-      iPoseProof (gvar_agree with "Hauth Hobs") as "#->". by iFrame.
+    - iDestruct "Hrfn" as "(%r1 & %r2 & Hauth' & Hobs & ->)".
+      iPoseProof (gvar_agree with "Hauth Hobs") as "#->". iFrame. done.
   Qed.
   Lemma place_rfn_interp_owned_mut {rt} (r : place_rfn rt) r' γ :
     place_rfn_interp_owned r r' -∗
@@ -567,10 +575,25 @@ Section ltype_def.
     iIntros "Hrfn Hobs".
     destruct r as [r'' | γ'].
     - iDestruct "Hrfn" as "<-". iFrame.
-    - iDestruct "Hrfn" as "(Hauth' & Hcred)".
-      iFrame. iExists _, _. by iFrame.
+    - iDestruct "Hrfn" as "Hauth'". simpl.
+      rewrite /Rel2. iExists _, _. by iFrame.
   Qed.
 
+  (** lemmas for unblocking *)
+  Lemma place_rfn_interp_owned_blocked_unblock {rt} (r : place_rfn rt) (r' : rt) :
+    place_rfn_interp_owned_blocked r r' ==∗ place_rfn_interp_owned r r'. 
+  Proof.
+    destruct r as [ r'' | γ]; simpl; first by eauto.
+    iApply gvar_auth_persist.
+  Qed.
+  Lemma place_rfn_interp_mut_blocked_unblock {rt} (r : place_rfn rt) (γ : gname) :
+    place_rfn_interp_mut_blocked r γ ==∗ place_rfn_interp_mut r γ.
+  Proof.
+    destruct r as [ r' | γ']; simpl; first by eauto.
+    eauto.
+  Qed.
+
+  (** lemmas for sharing *)
   Lemma place_rfn_interp_owned_share F {rt} (r : place_rfn rt) (r' : rt) q κ :
     lftE ⊆ F →
     lft_ctx -∗
@@ -582,8 +605,31 @@ Section ltype_def.
     iMod (bor_acc with "LFT Hb Htok") as "(>Hrfn & Hcl)"; first solve_ndisj.
     destruct r.
     - iDestruct "Hrfn" as "->". iMod ("Hcl" with "[//]") as "(? & $)". eauto.
-    - iMod ("Hcl" with "Hrfn") as "(? & $)". eauto.
+    - iDestruct "Hrfn" as "#Hrfn". iMod ("Hcl" with "Hrfn") as "(? & $)". eauto.
   Qed.
+  Lemma place_rfn_interp_mut_share (F : coPset) {rt} `{!Inhabited rt} (r : place_rfn rt) (r' : rt) γ (q : Qp) κ :
+    lftE ⊆ F →
+    lft_ctx -∗
+    &{κ} (place_rfn_interp_mut r γ) -∗
+    &{κ} (gvar_auth γ r') -∗
+    q.[κ] ={F}=∗
+    place_rfn_interp_shared r r' ∗ &{κ} (place_rfn_interp_mut r γ) ∗ &{κ} (gvar_auth γ r') ∗ q.[κ].
+  Proof.
+    iIntros (?) "#CTX Hobs Hauth (Htok1 & Htok2)".
+    iMod (bor_acc with "CTX Hobs Htok1") as "(Hobs & Hcl_obs)"; first solve_ndisj.
+    iMod (bor_acc with "CTX Hauth Htok2") as "(>Hauth & Hcl_auth)"; first solve_ndisj.
+    iAssert (|={F}=> place_rfn_interp_shared r r' ∗ gvar_auth γ r' ∗ ▷ place_rfn_interp_mut r γ)%I with "[Hauth Hobs]" as ">(Hrfn & Hauth & Hobs)".
+    { destruct r.
+      - iDestruct "Hobs" as ">Hobs". iPoseProof (gvar_agree with "Hauth Hobs") as "#->". eauto with iFrame.
+      - simpl. rewrite /Rel2. iDestruct "Hobs" as "(%v1 & %v2 & >#Hpobs & >Hobs & >%Heq')". rewrite Heq'.
+        iPoseProof (gvar_agree with "Hauth Hobs") as "%Heq". rewrite Heq.
+        iFrame. iR. iModIntro. iModIntro. iExists _, _. iFrame. iR. done.
+    }
+    iMod ("Hcl_obs" with "[$Hobs]") as "($ & Htok_κ')".
+    iMod ("Hcl_auth" with "[$Hauth]") as "($ & Htoka2)".
+    by iFrame.
+  Qed.
+
 
   (** For adding information to the context *)
   Definition place_rfn_interp_mut_extracted {rt} (r : place_rfn rt) (γ : gname) : iProp Σ :=
@@ -602,14 +648,14 @@ Section ltype_def.
   Proof.
     destruct r; simpl.
     - iIntros "Hobs". iApply (gvar_obs_persist with "Hobs").
-    - by iIntros "(_ & $)".
+    - eauto.
   Qed.
   Lemma place_rfn_interp_owned_extract {rt} (r : place_rfn rt) (r' : rt) :
     place_rfn_interp_owned r r' ==∗ place_rfn_interp_owned_extracted r r'.
   Proof.
     destruct r; simpl.
     - eauto.
-    - iIntros "(Hauth & _)". iApply (gvar_obs_persist with "Hauth").
+    - eauto.
   Qed.
 
   Implicit Types
@@ -1090,7 +1136,7 @@ Section ltype_def.
     match k with
     | Owned wl =>
         ([† κ] ={lftE}=∗
-          ∃ (r' : rt), place_rfn_interp_owned r r' ∗ |={lftE}=> l ↦: (ty.(ty_own_val) π r')) ∗
+          ∃ (r' : rt), place_rfn_interp_owned_blocked r r' ∗ |={lftE}=> l ↦: (ty.(ty_own_val) π r')) ∗
         (* and the original credits *)
         maybe_creds wl
     | Shared κ' =>
@@ -1101,7 +1147,7 @@ Section ltype_def.
     | Uniq κ' γ' =>
         (* borrow needs to be synced up with OfTy *)
         ([† κ] ={lftE}=∗
-          place_rfn_interp_mut r γ' ∗
+          place_rfn_interp_mut_blocked r γ' ∗
           &pin{κ'} (∃ r' : rt, gvar_auth γ' r' ∗ |={lftE}=> l ↦: ty.(ty_own_val) π r')) ∗
         (* and the original credits *)
         £ num_cred ∗ atime 1
@@ -4734,7 +4780,7 @@ Section ghost_variables.
   Qed.
 
   Lemma GRel2_use_obs κ γ1 γ2 R v1 :
-    [† κ] -∗ gvar_obs γ1 v1 -∗ GRel2 κ γ1 γ2 R ={lftE}=∗ ∃ v2, gvar_obs γ2 v2 ∗ gvar_obs γ1 v1 ∗ gvar_auth γ1 v1 ∗ ⌜R v1 v2⌝.
+    [† κ] -∗ gvar_obs γ1 v1 -∗ GRel2 κ γ1 γ2 R ={lftE}=∗ ∃ v2, gvar_obs γ2 v2 ∗ gvar_obs γ1 v1 ∗ gvar_pobs γ1 v1 ∗ ⌜R v1 v2⌝.
   Proof.
     iIntros "Hdead Hobs Hr". iMod ("Hr" with "Hdead") as "Hr".
     iModIntro. iApply (Rel2_use_obs with "Hobs Hr").
@@ -4824,6 +4870,7 @@ Section blocked.
       iIntros "(%ly & %Hst & %Hly & Hsc & Hlb & Hinh & Hcred)".
       iMod ("Hinh" with "Hdead") as "Hv".
       iDestruct "Hv" as "(%r' & Hrfn & >(%v & Hl & Hv))".
+      iMod (place_rfn_interp_owned_blocked_unblock with "Hrfn") as "Hrfn".
       iModIntro. iExists ly. iSplitR; first done. iSplitR; first done. iFrame "Hsc Hlb Hcred".
       iExists r'. iFrame "Hrfn". iModIntro. iExists v. iFrame. done.
   Qed.

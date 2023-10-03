@@ -929,9 +929,7 @@ Section typing.
     iMod ("HT" with "[//]") as "HT". iDestruct "HT" as "[(%r & Hobs & HT) | (-> & HT)]".
     - rewrite ltype_own_ofty_unfold /lty_of_ty_own.
       iDestruct "Hl" as "(%ly & ? & ? & ? & ? & ? & %r' & Hrfn & Hb)".
-      (* don't really need the cred here *)
-      iDestruct "Hrfn" as "(Hauth & _)".
-      iPoseProof (gvar_pobs_agree with "Hauth Hobs") as "->".
+      iPoseProof (gvar_pobs_agree_2 with "Hrfn Hobs") as "->".
       iModIntro. iExists L, _, True%I, _. iFrame.
       iApply maybe_logical_step_intro. simpl. iSplitL; last done.
       rewrite ltype_own_ofty_unfold /lty_of_ty_own. eauto with iFrame.
@@ -952,10 +950,8 @@ Section typing.
     iMod ("HT" with "[//]") as "HT". iDestruct "HT" as "[(%r & Hobs & HT) | (-> & HT)]".
     - rewrite ltype_own_ofty_unfold /lty_of_ty_own.
       iDestruct "Hl" as "(%ly & ? & ? & ? & ? & ? & ? & Hrfn & Hb)".
-      (* don't actually need the cred here *)
-      iDestruct "Hrfn" as "(_ & Hrfn)".
       iDestruct "Hrfn" as "(%v1 & %v2 & Hauth & Hobs' & %HR)".
-      iPoseProof (gvar_pobs_agree with "Hauth Hobs") as "->".
+      iPoseProof (gvar_pobs_agree_2 with "Hauth Hobs") as "->".
       simpl. subst.
       iModIntro. iExists L, _, True%I, _. iFrame.
       iApply maybe_logical_step_intro. iSplitL; last done.
@@ -2689,7 +2685,7 @@ Section typing.
         iFrame "Hlb Hcreda". iDestruct "Hcred" as "(Hcred1 & Hcred2 & Hcred)".
         iIntros "Hdead". iMod ("Hinh" with "Hdead") as "Hinh".
         iApply (lc_fupd_add_later with "Hcred1").
-        iNext. iFrame "Hcred2". done. }
+        iNext. done. }
       iSplitR.
       { iSplit.
         + iApply ofty_blocked_place_cond_ty. iIntros (?). destruct bmin; simpl; done.

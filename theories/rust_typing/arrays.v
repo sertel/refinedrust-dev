@@ -235,9 +235,7 @@ Section array.
         - iIntros "(%a & ? & ? & ?)". eauto with iFrame.
         - iIntros "(? & %a & ? & ?)". eauto with iFrame. }
       iMod (bor_sep with "LFT Ha") as "(Hrfn & Hb)"; first done.
-      iAssert (|={E}=> place_rfn_interp_shared x r' ∗ q0.[κ])%I with "[Hrfn Htok1]" as ">(Ha & Htok1)".
-      { destruct x; first last. { iModIntro. iFrame. done. }
-        simpl. iMod (bor_persistent with "LFT Hrfn Htok1") as "(>Ha & $)"; first done. eauto. }
+      iMod (place_rfn_interp_owned_share with "LFT Hrfn Htok1") as "(Hrfn & Htok1)"; first done.
       iCombine "Htok1 Htok2" as "Htok". rewrite lft_tok_sep. iModIntro.
       iPoseProof (ty_share with "[$LFT $TIME $LCTX] Htok [] [] [] Hb") as "Hb"; first done.
       - done.

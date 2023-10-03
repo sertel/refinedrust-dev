@@ -3,7 +3,7 @@ From refinedrust Require Import programs uninit ltypes.
 From caesium Require Import derived.
 
 Section owned_ptr.
-  Context `{typeGS Σ} {rt} 
+  Context `{typeGS Σ} {rt}
   (*`{Inhabited rt} *)
   (inner : type rt).
 
@@ -77,11 +77,7 @@ Section owned_ptr.
     iMod (bor_sep with "LFT Hb") as "(Hrfn & Hb)"; first solve_ndisj.
 
     (* get observation about refinement *)
-    iAssert (|={E}=> (place_rfn_interp_shared r ri ∗ q.[κ]))%I with "[Htok Hrfn]" as ">(Hrfn & Htok)".
-    { iMod (bor_acc with "LFT Hrfn Htok") as "(>Hrfn & Hcl)"; first solve_ndisj.
-      destruct r.
-      - iDestruct "Hrfn" as "->". iMod ("Hcl" with "[//]") as "(? & $)". eauto.
-      - iMod ("Hcl" with "Hrfn") as "(? & $)". eauto. }
+    iMod (place_rfn_interp_owned_share with "LFT Hrfn Htok") as "(Hrfn & Htok)"; first done.
 
     (* use credits to remove the later + fupd from Hb *)
     iDestruct "Htok" as "(Htok1 & Htok)".
@@ -149,7 +145,7 @@ Section owned_ptr.
       + iPureIntro. by apply Hl.
     - iApply (mem_cast_compat_loc (λ v, _)); first done.
       iIntros "(%ly & -> & _)". eauto.
-  Qed. 
+  Qed.
 
 End owned_ptr.
 
@@ -158,7 +154,7 @@ End owned_ptr.
 Section rules.
   Context `{!typeGS Σ}.
 
-  
+
 
 
 End rules.

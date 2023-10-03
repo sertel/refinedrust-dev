@@ -144,16 +144,10 @@ Section mut_ref.
     iApply (lc_fupd_add_later with "Hcred"). iNext. iMod "Hu" as "(Hb & Htoka)".
 
     (* gain knowledge about the refinement *)
+    iMod (place_rfn_interp_mut_share with "LFT [Hobs] Hauth Htoka") as "(#rfn & _ & _ & Htoka)"; first done.
+    { iApply bor_shorten; last done. iApply lft_intersect_incl_r. }
     iDestruct "Htoka" as "(Htoka & Htoka2)".
     rewrite -{1}lft_tok_sep. iDestruct "Htoka" as "(Htok_κ & Htok_κ')".
-    iMod (bor_acc with "LFT Hobs Htok_κ'") as "(Hobs & Hcl_obs)"; first solve_ndisj.
-    iMod (bor_acc with "LFT Hauth Htoka2") as "(>Hauth & Hcl_auth)"; first solve_ndisj.
-    iAssert (|={E}=> ⌜match r with PlaceIn r'' => r' = r'' | _ => True end⌝ ∗ gvar_auth γ r' ∗ ▷ place_rfn_interp_mut r γ)%I with "[Hauth Hobs]" as ">(%Hrfn & Hauth & Hobs)".
-    { destruct r; last by eauto with iFrame.
-      iDestruct "Hobs" as ">Hobs". iPoseProof (gvar_agree with "Hauth Hobs") as "#->".
-      eauto with iFrame. }
-    iMod ("Hcl_obs" with "[$Hobs]") as "(_ & Htok_κ')".
-    iMod ("Hcl_auth" with "[$Hauth]") as "(_ & Htoka2)".
 
     (* get a loc_in_bounds fact from the pointsto *)
     iMod (bor_acc with "LFT Hl Htok_κ'") as "(>Hl & Hcl_l)"; first solve_ndisj.
@@ -182,7 +176,7 @@ Section mut_ref.
     iCombine "Htok Htok2" as "Htok". rewrite {2}lft_intersect_comm lft_intersect_assoc. iFrame "Htok".
     iExists l0, ly0, r'. iFrame "Hl".
     inversion Hst; subst ly.
-    iSplitR; first done. iSplitR. { destruct r; simpl; eauto. }
+    iR. iSplitR. { destruct r; simpl; eauto. }
     iSplitR; first done. iSplitR; first done.
     iSplitR; first done.
     iSplitR; first done. iSplitR; first done.
@@ -202,7 +196,7 @@ Section mut_ref.
     iApply fupd_logical_step. destruct r as [ r | γ'].
     - iMod (gvar_obs_persist with "Hrfn") as "?".
       iApply logical_step_intro. by iFrame.
-    - iDestruct "Hrfn" as "(? & ?)". by iApply logical_step_intro.
+    - by iApply logical_step_intro.
   Qed.
   Next Obligation.
     iIntros (? ot mt st ? [r γ] ? Hot).
@@ -1132,8 +1126,8 @@ Section rules.
     iMod ("HT" with "[//]") as "HT". iDestruct "HT" as "[(%r & Hobs & HT) | (-> & HT)]".
     - rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
       iDestruct "Hb" as "(%ly & %Hst & %Hly & ? & ? & %γ0 & %r'& Hrfn & ?)".
-      simpl. iDestruct "Hrfn" as "(Hrfn & Hcred)".
-      iPoseProof (gvar_pobs_agree with "Hrfn Hobs") as "%Heq". subst r.
+      simpl.
+      iPoseProof (gvar_pobs_agree_2 with "Hrfn Hobs") as "%Heq". subst r.
       iModIntro. iExists _, _, _, _. iFrame. iApply maybe_logical_step_intro.
       iL. rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
       iExists _. iFrame. do 2 iR. iExists _, _. iR. iFrame.
@@ -1155,9 +1149,9 @@ Section rules.
     iMod ("HT" with "[//]") as "HT". iDestruct "HT" as "[(%r & Hobs & HT) | (-> & HT)]".
     - rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
       iDestruct "Hb" as "(%ly & %Hst & %Hly & ? & ? & ? & Hrfn & ?)".
-      simpl. iDestruct "Hrfn" as "(Hcred & Hrfn)".
+      simpl.
       iDestruct "Hrfn" as "(%r0 & %r1 & Ha1 & Ha2 & %Heq)".
-      iPoseProof (gvar_pobs_agree with "Ha1 Hobs") as "%". subst.
+      iPoseProof (gvar_pobs_agree_2 with "Ha1 Hobs") as "%". subst.
       iModIntro. iExists _, _, _,_. iFrame. iApply maybe_logical_step_intro.
       iL. rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
       iExists _. iFrame. done.

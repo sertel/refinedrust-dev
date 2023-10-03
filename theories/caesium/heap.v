@@ -508,7 +508,7 @@ Proof.
     move => /fmap_Some[?[/fmap_Some[?[??]]?]]; simplify_eq.
     move => /fmap_Some[?[/lookup_zip_with_Some[?[?[?[Hs?]]]]?]].
     move: Hs => /pad_struct_lookup_Some[|n[?[? Hor]]]. { by rewrite fmap_length. }
-    unfold field_list, var_name in *. simplify_eq/=.
+    unfold field_list in *. simplify_eq/=.
     destruct Hor as [[? Hl] | [??]]; simplify_eq/=. 2: by rewrite replicate_length.
     move: Hl. rewrite list_lookup_fmap. move => /fmap_Some[?[??]]. simplify_eq.
     destruct n as [n|] => //. rewrite mem_cast_length. by erewrite Hly.
