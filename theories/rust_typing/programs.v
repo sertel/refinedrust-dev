@@ -1217,9 +1217,14 @@ Section judgments.
     Definition typed_place_cond_rfn (b : bor_kind) (r : place_rfn rt) (r2 : place_rfn rt2) : iProp Σ :=
       match b with
       | Shared _ =>
-          ∃ (Heq: rt = rt2), ⌜rew <- [place_rfn] Heq in r2 = r⌝
+          True
+          (*∃ (Heq: rt = rt2), ⌜rew <- [place_rfn] Heq in r2 = r⌝*)
       | _ => True
       end%I.
+
+    Global Instance  typed_place_cond_rfn_pers (r1 : place_rfn rt) (r2 : place_rfn rt2) k :
+      Persistent (typed_place_cond_rfn k r1 r2 : iProp Σ).
+    Proof. destruct k; apply _. Qed.
 
     (** Combined condition *)
     Definition typed_place_cond (b : bor_kind) (lt : ltype rt) (lt2 : ltype rt2) (r : place_rfn rt) (r2 : place_rfn rt2) : iProp Σ :=
@@ -1232,28 +1237,39 @@ Section judgments.
       Persistent (typed_place_cond b lt1 lt2 r1 r2).
     Proof. destruct b; apply _. Qed.
 
+    Lemma typed_place_cond_ty_incl b1 b2 lt1 lt2 :
+      b1 ⊑ₖ b2 -∗ typed_place_cond_ty b1 lt1 lt2 -∗ typed_place_cond_ty b2 lt1 lt2.
+    Proof using Type*.
+      iIntros "? Hcond//".
+      destruct b1, b2; simpl; try done.
+      - iDestruct "Hcond" as (<-) "(Ha & _)".
+        iDestruct ("Ha" $! inhabitant inhabitant) as "((#$ & _) & _)".
+      - iDestruct "Hcond" as (<-) "(Heq & Hub)"; cbn in *.
+        iExists eq_refl. cbn. iFrame.
+        iApply (imp_unblockable_shorten' with "[$] Hub").
+      - iDestruct "Hcond" as (<-) "Heq"; cbn in *.
+        iDestruct "Heq" as "(Heq & Hub)". iExists eq_refl.
+        iSplitL "Heq".
+        * iIntros (b r). iApply ltype_eq_core. done.
+        * iApply (imp_unblockable_shorten' with "[$] Hub").
+      - iDestruct "Hcond" as (<-) "(Ha & _)".
+        iDestruct ("Ha" $! inhabitant inhabitant) as "(( #Hly & _) & _)".
+        rewrite !ltype_core_syn_type_eq. done.
+      - iDestruct "Hcond" as (<-) "(Heq & Hub)"; cbn in *.
+        iExists eq_refl. cbn. iFrame.
+        iApply (imp_unblockable_shorten' with "[$] Hub").
+    Qed.
+    Lemma typed_place_cond_rfn_incl b1 b2 r1 r2 :
+     b1 ⊑ₖ b2 -∗ typed_place_cond_rfn b1 r1 r2 -∗ typed_place_cond_rfn b2 r1 r2.
+    Proof using Type*.
+      iIntros "? Hrfn//". destruct b1, b2; done.
+    Qed.
     Lemma typed_place_cond_incl b1 b2 r1 r2 lt1 lt2 :
      b1 ⊑ₖ b2 -∗ typed_place_cond b1 lt1 lt2 r1 r2 -∗ typed_place_cond b2 lt1 lt2 r1 r2.
     Proof using Type*.
-      iIntros "? [Hcond Hrfn]//". iSplit.
-      + destruct b1, b2; simpl; try done.
-        - iDestruct "Hcond" as (<-) "(Ha & _)".
-          iDestruct ("Ha" $! inhabitant inhabitant) as "((#$ & _) & _)".
-        - iDestruct "Hcond" as (<-) "(Heq & Hub)"; cbn in *.
-          iExists eq_refl. cbn. iFrame.
-          iApply (imp_unblockable_shorten' with "[$] Hub").
-        - iDestruct "Hcond" as (<-) "Heq"; cbn in *.
-          iDestruct "Heq" as "(Heq & Hub)". iExists eq_refl.
-          iSplitL "Heq".
-          * iIntros (b r). iApply ltype_eq_core. done.
-          * iApply (imp_unblockable_shorten' with "[$] Hub").
-        - iDestruct "Hcond" as (<-) "(Ha & _)".
-          iDestruct ("Ha" $! inhabitant inhabitant) as "(( #Hly & _) & _)".
-          rewrite !ltype_core_syn_type_eq. done.
-        - iDestruct "Hcond" as (<-) "(Heq & Hub)"; cbn in *.
-          iExists eq_refl. cbn. iFrame.
-          iApply (imp_unblockable_shorten' with "[$] Hub").
-      + destruct b1, b2; done.
+      iIntros "#Hincl [Hcond Hrfn]//". iSplit.
+      - by iApply typed_place_cond_ty_incl.
+      - by iApply typed_place_cond_rfn_incl.
     Qed.
   End fix_inner.
 
@@ -1261,9 +1277,10 @@ Section judgments.
     typed_place_cond_rfn bmin r1 r2 -∗ typed_place_cond_rfn bmin r2 r3 -∗ typed_place_cond_rfn bmin r1 r3 : iProp Σ.
   Proof.
     iIntros "H1 H2". destruct bmin; simpl; [done | | done].
-    iDestruct "H1" as "(%Heq1 & %Ha)".
-    iDestruct "H2" as "(%Heq2 & %Hb)".
-    subst. iExists eq_refl. done.
+    (*iDestruct "H1" as "(%Heq1 & %Ha)".*)
+    (*iDestruct "H2" as "(%Heq2 & %Hb)".*)
+    (*subst. iExists eq_refl. done.*)
+    done.
   Qed.
   Lemma typed_place_cond_ty_trans {rt1 rt2 rt3} (lt1 : ltype rt1) (lt2 : ltype rt2) (lt3 : ltype rt3) b :
     typed_place_cond_ty b lt1 lt2 -∗
@@ -1323,7 +1340,8 @@ Section judgments.
   Proof.
     iIntros "Huniq". iSplit.
     + by iApply typed_place_cond_ty_refl.
-    + destruct b => //. iExists eq_refl. done.
+    + destruct b => //. 
+      (*iExists eq_refl. done.*)
   Qed.
 
   Lemma typed_place_cond_ty_refl_ofty {rt} b (ty : type rt) :
@@ -1364,14 +1382,16 @@ Section judgments.
     typed_place_cond_rfn b r1 r2 -∗
     typed_place_cond_rfn b (f r1) (f r2).
   Proof.
-    destruct b; try by auto. iIntros "(%Hrefl & Ha)".
-    rewrite (UIP_refl _ _ Hrefl). cbn.
-    iDestruct "Ha" as "->". iExists eq_refl. done.
+    destruct b; try by auto.
+    (*iIntros "(%Hrefl & Ha)".*)
+    (*rewrite (UIP_refl _ _ Hrefl). cbn.*)
+    (*iDestruct "Ha" as "->". iExists eq_refl. done.*)
   Qed.
   Lemma typed_place_cond_rfn_refl b {rt} (r : place_rfn rt) :
     ⊢ typed_place_cond_rfn b r r.
   Proof.
-    destruct b => //. iExists eq_refl. done.
+    destruct b => //. 
+    (*iExists eq_refl. done.*)
   Qed.
 
   Lemma place_cond_ty_Uniq_rt_eq {rt1 rt2} (lt1 : ltype rt1) (lt2 : ltype rt2) k κ γ :
@@ -2547,7 +2567,8 @@ Section judgments.
     ⌜r1 = r2⌝ ∗ T ⊢ prove_place_rfn_cond true (Shared κ) r1 r2 T.
   Proof.
     iIntros "(-> & HT)". iSplitR; last done.
-    iExists eq_refl. done.
+    done.
+    (*iExists eq_refl. done.*)
   Qed.
   Global Instance prove_place_rfn_cond_shared_inst {rt} κ (r1 r2 : place_rfn rt) :
     ProvePlaceRfnCond true (Shared κ) r1 r2 := λ T, i2p (prove_place_rfn_cond_shared κ r1 r2 T).

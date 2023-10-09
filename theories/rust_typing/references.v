@@ -787,12 +787,96 @@ Section rules.
   Proof.
     iIntros (?) "#[LFT TIME] Hκ HR HP".
     rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
-    iDestruct "HP" as "(%ly & %Halg & %Hly & #Hlb & ? & ? & Hrfn & Hb)".
+    iDestruct "HP" as "(%ly & %Halg & %Hly & #Hlb & Hcred & Hat & Hrfn & Hb)".
     injection Halg as <-. iFrame "Hlb". iSplitR; first done.
-    iMod (fupd_mask_mono with "Hb") as "Hb"; first done.
-    (* NOTE: we are currently throwing away the existing "coring" viewshift *)
-    iMod (pinned_bor_acc_strong with "LFT Hb Hκ") as (κ'') "(#Hincl0 & Hb & _ & Hcl)"; first done.
-  Admitted.
+
+    iMod (fupd_mask_subseteq lftE) as "Hcl_F"; first done.
+    iMod "Hb".
+    (* NOTE: we are currently throwing away the existing "coring"-viewshift that we get *)
+    iMod (pinned_bor_acc_strong lftE with "LFT Hb Hκ") as "(%κ'' & #Hincl & Hb & _ & Hb_cl)"; first done.
+    iMod "Hcl_F" as "_".
+    iDestruct "Hcred" as "(Hcred1 & Hcred)".
+    iApply (lc_fupd_add_later with "Hcred1"). iNext.
+    iDestruct "Hb" as "(%r' &  Hauth & Hb)".
+    iPoseProof (gvar_agree with "Hauth Hrfn") as "#->".
+    iMod (fupd_mask_mono with "Hb") as "(%l' & Hl & Hb)"; first done.
+    iModIntro. iExists l'. iFrame.
+    iApply (logical_step_intro_atime with "Hat").
+    iIntros "Hcred' Hat".
+    iModIntro.
+    iSplit.
+    - (* close *)
+      iIntros (bmin lt2 r2) "Hl Hb #Hincl_k #Hcond".
+      (* extract the necessary info from the place_cond *)
+      iPoseProof (typed_place_cond_incl _ (Uniq κ γ) with "Hincl_k Hcond") as "Hcond'".
+      iDestruct "Hcond'" as "(Hcond' & _)".
+      iDestruct "Hcond'" as "(%Heq & Heq & (#Hub & _))".
+      rewrite (UIP_refl _ _ Heq). cbn.
+      iPoseProof (typed_place_cond_syn_type_eq with "Hcond") as "%Hst_eq".
+      (* close the borrow *)
+      iMod (gvar_update (r2, γ') with "Hauth Hrfn") as "(Hauth & Hrfn)".
+      set (V := (∃ r', gvar_auth γ r' ∗ (|={lftE}=> ∃ (l' : loc), l ↦ l' ∗ ltype_own lt2 (Uniq κ' r'.2) π r'.1 l'))%I).
+      iMod (fupd_mask_subseteq lftE) as "Hcl_F"; first done.
+      iDestruct "Hcred" as "(Hcred1 & Hcred)".
+      iMod ("Hb_cl" $! V with "[] Hcred1 [Hauth Hl Hb]") as "(Hb & Htok)".
+      { iNext. iIntros "(%r' & Hauth & Hb) Hdead".
+        iModIntro. iNext. iExists r'. iFrame "Hauth".
+        clear. iMod "Hb" as "(%l' & ? & Ha)".
+        iMod (lft_incl_dead with "Hincl Hdead") as "Hdead"; first done.
+        (* unblock *)
+        iMod ("Hub" with "[$Hdead //] Ha") as "Ha".
+        (* use that the cores are equal *)
+        iDestruct ("Heq" $! (Uniq _ _) _) as "(_ & (%Hst & #Hi & _))".
+        rewrite ltype_own_core_equiv. iPoseProof ("Hi" with "Ha") as "Ha".
+        rewrite -ltype_own_core_equiv. eauto with iFrame. }
+      { iModIntro. rewrite /V. eauto 8 with iFrame. }
+      iMod ("HR" with "Htok") as "$".
+      iMod "Hcl_F" as "_".
+      iModIntro.
+      (* TODO maybe donate the leftover credits *)
+      iSplitL.
+      { rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
+        iExists void*. iFrame. do 3 iR.
+        iPoseProof (pinned_bor_shorten with "Hincl Hb") as "Hb".
+        iModIntro. subst V.
+        (* need to adapt the pinned part, too *)
+        iApply (pinned_bor_iff with "[] [] Hb").
+        { iNext. iModIntro. eauto. }
+        clear -Hst_eq.
+        iNext. iModIntro. iSplit.
+        - iIntros "(%r' & Hauth & Hb)". iExists r'. iFrame.
+          iMod "Hb" as "(%l' & Hl & Hb)".
+          iDestruct ("Heq" $! (Uniq _ _) _) as "((_ & #Heq1 & _) & (_ & #Heq2 & _))".
+          rewrite ltype_own_core_equiv. iPoseProof ("Heq1" with "Hb") as "Hb". rewrite -ltype_own_core_equiv.
+          eauto with iFrame.
+        - iIntros "(%r' & Hauth & Hb)". iExists r'. iFrame.
+          iMod "Hb" as "(%l' & Hl & Hb)".
+          iDestruct ("Heq" $! (Uniq _ _) _) as "((_ & #Heq1 & _) & (_ & #Heq2 & _))".
+          rewrite ltype_own_core_equiv. iPoseProof ("Heq2" with "Hb") as "Hb". rewrite -ltype_own_core_equiv.
+          eauto with iFrame.
+      }
+      iDestruct "Hcond" as "(Hcond_ty & Hcond_rfn)".
+      iSplit.
+      + iApply mut_ltype_place_cond_ty; done.
+      + iApply (typed_place_cond_rfn_lift _ _ _ (λ a, #(a, γ'))). done.
+    - (* shift to OpenedLtype *)
+      iIntros (rt2 lt2 r2) "Hl %Hst' Hb". iModIntro.
+      iDestruct "Hcred" as "(Hcred1 & Hcred)".
+      iApply (opened_ltype_create_uniq_simple with "Hrfn Hauth Hcred1 Hat Hincl HR Hb_cl [] [Hcred']"); first done.
+      { iModIntro. iIntros (?) "Hauth Hc". simp_ltypes.
+        rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
+        iExists _. iFrame. iDestruct "Hc" as ">(% & _ & _ & _ & _ & %r' & % & -> & >(%l0 & Hl & Hb))".
+        iModIntro. setoid_rewrite ltype_own_core_equiv.
+        iExists _. eauto with iFrame. }
+      { iIntros (?) "Hobs Hat Hcred Hp". simp_ltypes.
+        rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
+        setoid_rewrite ltype_own_core_equiv. rewrite ltype_core_idemp.
+        iModIntro. eauto 8 with iFrame. }
+      { rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
+        iExists void*. do 4 iR.
+        iExists _, r2. iR. iNext. iModIntro. eauto with iFrame. }
+  Qed.
+
   (* TODO : shared *)
 
 

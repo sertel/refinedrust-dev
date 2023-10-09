@@ -1052,12 +1052,15 @@ Section lemmas.
     { iApply array_ltype_place_cond_ty; [done | done | done]. }
     destruct bmin; simpl; [done | | done].
     simpl in Hrt. subst rt'.
+    done.
+    (*
     iExists eq_refl. iClear "Hlb Hcred". clear.
     iInduction rs as [ | r1 rs IH] "IH" forall (rs'); destruct rs' as [ | r2 rs']; simpl; [done.. | ].
     iDestruct "Hcond_rfn" as "(Hh & Hcond_rfn)".
     iDestruct ("IH" with "Hcond_rfn") as "%Heq". injection Heq as <-.
     iDestruct "Hh" as "(%Heq & %Heq2)".
     rewrite -Heq2. rewrite (UIP_refl _ _ Heq). done.
+     *)
   Qed.
 
   (* TODO: uniq access *)
@@ -1068,20 +1071,19 @@ Section lemmas.
     ∃ ly, ⌜syn_type_has_layout def.(ty_syn_type) ly⌝ ∗
       ⌜l `has_layout_loc` (mk_array_layout ly len)⌝ ∗
       ⌜(ly_size ly * len ≤ max_int isize_t)%Z⌝ ∗
-      (*⌜Forall (λ '(i, _), i < len) lts⌝ ∗*)
       loc_in_bounds l 0 (ly.(ly_size) * len) ∗ |={F}=>
       ([∗ list] i↦lt;r0 ∈ interpret_iml (◁ def) len lts;rs, ⌜ltype_st lt = ty_syn_type def⌝ ∗ (l offset{ly}ₗ i) ◁ₗ[π, Shared κ] r0 @ lt) ∗
-      (∀ (def' : type rt) (lts' : list (nat * ltype rt)),
+      (∀ (def' : type rt) (lts' : list (nat * ltype rt)) rs',
         ⌜ty_syn_type def = ty_syn_type def'⌝ -∗
-        (*⌜Forall (λ '(i, _), i < len) lts'⌝ -∗*)
+        ⌜length rs = length rs'⌝ -∗
         (* new ownership *)
-        ([∗ list] i↦lt;r0 ∈ interpret_iml (◁ def') len lts';rs, ⌜ltype_st lt = ty_syn_type def'⌝ ∗ (l offset{ly}ₗ i) ◁ₗ[π, Shared κ] r0 @ lt)
+        ([∗ list] i↦lt;r0 ∈ interpret_iml (◁ def') len lts';rs', ⌜ltype_st lt = ty_syn_type def'⌝ ∗ (l offset{ly}ₗ i) ◁ₗ[π, Shared κ] r0 @ lt)
          ={F}=∗
-        l ◁ₗ[π, Shared κ] #rs @ ArrayLtype def' len lts' ∗
+        l ◁ₗ[π, Shared κ] #rs' @ ArrayLtype def' len lts' ∗
         (* place condition, if required *)
         (∀ bmin,
          ([∗ list] lt1; lt2 ∈ interpret_iml (◁ def) len lts; interpret_iml (◁ def') len lts', typed_place_cond_ty bmin lt1 lt2) -∗
-         typed_place_cond bmin (ArrayLtype def len lts) (ArrayLtype def' len lts') (#rs) (#rs))
+         typed_place_cond bmin (ArrayLtype def len lts) (ArrayLtype def' len lts') (#rs) (#rs'))
       ).
   Proof.
     iIntros (?) "Hb". rewrite ltype_own_array_unfold /array_ltype_own.
@@ -1089,7 +1091,7 @@ Section lemmas.
     iExists ly. iR. iR. iR. iR.
     iMod (fupd_mask_mono with "Hb") as "#Hb'"; first done.
     iModIntro. iFrame "Hb'".
-    iIntros (def' lts') "%Hst' #Hb''".
+    iIntros (def' lts' rs') "%Hst' %Hlen #Hb''".
     rewrite ltype_own_array_unfold /array_ltype_own.
     iModIntro.
     iSplitL.
@@ -1097,7 +1099,9 @@ Section lemmas.
       iExists _. iR. iR. iModIntro. by iFrame "Hb''".
     }
     iIntros (bmin) "Hcond".
-    iSplitL; last iApply typed_place_cond_rfn_refl.
+    iSplitL; first last. 
+    { destruct bmin;done. } 
+    (*last iApply typed_place_cond_rfn_refl.*)
     iApply array_ltype_place_cond_ty.
     - apply place_access_rt_rel_refl.
     - done.
@@ -1206,7 +1210,8 @@ Section rules.
       iSplitL; first done.
       iApply big_sepL2_intro; first done. iModIntro.
       iIntros (? r1 r2 ??). case_decide; first done.
-      assert (r1 = r2) as -> by congruence. iApply typed_place_cond_rfn_refl.
+      assert (r1 = r2) as -> by congruence. destruct bmin; done.
+      (*iApply typed_place_cond_rfn_refl.*)
     - iPureIntro. apply place_access_rt_rel_refl.
   Qed.
   Global Instance typed_place_array_owned_inst π E L {rt rtv} (def : type rt) (lts : list (nat * ltype rt)) (len : nat) (rs : list (place_rfn rt)) wl bmin ly l it v (tyv : type rtv) (i : rtv) P :
@@ -2361,7 +2366,7 @@ Section offset_rules.
     specialize (lookup_lt_is_Some_2 (interpret_iml (◁ ty)%I len iml) off) as (lt & Hlt).
     { rewrite interpret_iml_length. lia. }
     iPoseProof (big_sepL2_lookup _ _ _ off with "Hb") as "(%Hst' & Hel)"; [done.. | ].
-    iMod ("Hcl" $! ty iml with "[//] Hb") as "(Ha & _)".
+    iMod ("Hcl" $! ty iml with "[//] [//] Hb") as "(Ha & _)".
     iPoseProof ("HT" with "[//] [//]") as "HT".
     iModIntro. iExists _, _, _, _, _, _, _. iExists _, _. iFrame.
     rewrite /OffsetLocSt /use_layout_alg' Hst Halg//.

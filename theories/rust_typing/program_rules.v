@@ -1508,8 +1508,9 @@ Section typing.
       iIntros (ltyi2 ri2 bmin') "Hincl Hl2 Hcond".
       iMod ("Hs" with "Hincl Hl2 Hcond") as "(Hl & Hcond & Htoks & HR)".
       iFrame. iModIntro.
-      iDestruct "Hcond" as "(Ht & Hr)". iSplit; first done.
-      destruct bmin0; done.
+      done.
+      (*iDestruct "Hcond" as "(Ht & Hr)". iSplit; first done.*)
+      (*destruct bmin0; done.*)
   Qed.
   (* this needs to have a lower priority than place_blocked_unblock *)
   Global Instance typed_place_resolve_ghost_inst {rt} π E L l (lt : ltype rt) bmin0 b γ P :

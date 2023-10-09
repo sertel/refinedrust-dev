@@ -1025,6 +1025,19 @@ Section hzipl2.
     (*eexists _, _; split_and!.*)
   Abort.
 
+
+  Lemma hzipl2_fmap_l {X} {F F2 G} (Xs : list X) (l1 : hlist F Xs) (l2 : hlist G Xs) (f : ∀ x : X, F x → F2 x) :
+    hzipl2 Xs (f +<$> l1) l2 = (λ '(existT x (a, b)), existT x (f _ a, b)) <$> hzipl2 Xs l1 l2.
+  Proof.
+    induction Xs as [ | x Xs IH] in l1, l2 |-*; inv_hlist l1; inv_hlist l2; first done.
+    intros x1 xl1 x2 xl2. cbn. f_equiv. done.
+  Qed.
+  Lemma hzipl2_fmap_r {X} {F G G2} (Xs : list X) (l1 : hlist F Xs) (l2 : hlist G Xs) (g : ∀ x : X, G x → G2 x) :
+    hzipl2 Xs l1 (g +<$> l2) = (λ '(existT x (a, b)), existT x (a, g _ b)) <$> hzipl2 Xs l1 l2.
+  Proof.
+    induction Xs as [ | x Xs IH] in l1, l2 |-*; inv_hlist l1; inv_hlist l2; first done.
+    intros x1 xl1 x2 xl2. cbn. f_equiv. done.
+  Qed.
   Lemma hzipl2_fmap {X} {F F2 G G2} (Xs : list X) (l1 : hlist F Xs) (l2 : hlist G Xs) (f : ∀ x : X, F x → F2 x) (g : ∀ x : X, G x → G2 x) :
     hzipl2 Xs (f +<$> l1) (g +<$> l2) = (λ '(existT x (a, b)), existT x (f _ a, g _ b)) <$> hzipl2 Xs l1 l2.
   Proof.
@@ -1047,6 +1060,15 @@ Section hzipl2.
     intros y' hl2 x' hl1. destruct k as [ | k].
     - simpl. intros [= -> ->%existT_inj] [= ->%existT_inj]. done.
     - rewrite hzipl2_cons. simpl. apply IH.
+  Qed.
+
+  Lemma zip_hzipl_hzipl2 {X} {F : X → Type} (Xs : list X) (xs : hlist F Xs) (ys : hlist F Xs) :
+    zip (hzipl Xs xs) (hzipl Xs ys) = (λ '(existT x (a, b)), (existT x a, existT x b)) <$> hzipl2 Xs xs ys.
+  Proof.
+    induction Xs as [ | X1 Xs IH] in xs, ys |-*; simpl.
+    { inv_hlist xs. inv_hlist ys. done. }
+    inv_hlist xs => x1 xs. inv_hlist ys => y1 ys. simpl.
+    f_equiv. apply IH.
   Qed.
 End hzipl2.
 

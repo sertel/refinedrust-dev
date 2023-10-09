@@ -581,7 +581,7 @@ Section ltype_def.
 
   (** lemmas for unblocking *)
   Lemma place_rfn_interp_owned_blocked_unblock {rt} (r : place_rfn rt) (r' : rt) :
-    place_rfn_interp_owned_blocked r r' ==∗ place_rfn_interp_owned r r'. 
+    place_rfn_interp_owned_blocked r r' ==∗ place_rfn_interp_owned r r'.
   Proof.
     destruct r as [ r'' | γ]; simpl; first by eauto.
     iApply gvar_auth_persist.
@@ -2765,6 +2765,9 @@ Section ltype_def.
           ▷ rec _ lt (Shared (κ⊓κ')) π r' li)%I
       end)%I.
 
+  Definition struct_make_uninit_ltype (ly : layout) : sigT (λ rt : Type, (ltype rt * place_rfn rt)%type) :=
+    existT (unit : Type) (UninitLtype (UntypedSynType ly), PlaceIn ()).
+
   Definition struct_ltype_own
     (rec : ltype_own_type)
     (rec_core : ltype_own_type)
@@ -2780,7 +2783,7 @@ Section ltype_def.
     | Owned wl =>
         maybe_creds wl ∗
         ∃ r' : plist place_rfn rts, place_rfn_interp_owned r r' ∗ ▷?wl |={lftE}=>
-          [∗ list] i ↦ ty ∈ pad_struct sl.(sl_members) (hpzipl rts lts r') (λ ly, existT (unit : Type) (UninitLtype (UntypedSynType ly), PlaceIn tt))%type,
+          [∗ list] i ↦ ty ∈ pad_struct sl.(sl_members) (hpzipl rts lts r') struct_make_uninit_ltype,
             ∃ ly, ⌜snd <$> sl.(sl_members) !! i = Some ly⌝ ∗ ⌜syn_type_has_layout (ltype_st (projT2 ty).1) ly⌝ ∗
             rec _ (projT2 ty).1 (Owned false) π (projT2 ty).2 (l +ₗ Z.of_nat (offset_of_idx sl.(sl_members) i))
     | Uniq κ γ =>
@@ -2792,13 +2795,13 @@ Section ltype_def.
         |={lftE}=> &pin{κ}
           [∃ (r' : plist place_rfn rts),
             gvar_auth γ r' ∗ |={lftE}=>
-            [∗ list] i ↦ ty ∈ pad_struct sl.(sl_members) (hpzipl rts lts r') (λ ly, existT (unit : Type) (UninitLtype (UntypedSynType ly), PlaceIn tt)),
+            [∗ list] i ↦ ty ∈ pad_struct sl.(sl_members) (hpzipl rts lts r') struct_make_uninit_ltype,
               ∃ ly, ⌜snd <$> sl.(sl_members) !! i = Some ly⌝ ∗ ⌜syn_type_has_layout (ltype_st (projT2 ty).1) ly⌝ ∗
               rec_core _ (projT2 ty).1 (Owned false) π (projT2 ty).2 (l +ₗ Z.of_nat (offset_of_idx sl.(sl_members) i))
           ]
           (∃ (r' : plist place_rfn rts),
             gvar_auth γ r' ∗ |={lftE}=>
-            [∗ list] i ↦ ty ∈ pad_struct sl.(sl_members) (hpzipl rts lts r') (λ ly, existT (unit : Type) (UninitLtype (UntypedSynType ly), PlaceIn tt)),
+            [∗ list] i ↦ ty ∈ pad_struct sl.(sl_members) (hpzipl rts lts r') struct_make_uninit_ltype,
               ∃ ly, ⌜snd <$> sl.(sl_members) !! i = Some ly⌝ ∗ ⌜syn_type_has_layout (ltype_st (projT2 ty).1) ly⌝ ∗
               rec _ (projT2 ty).1 (Owned false) π (projT2 ty).2 (l +ₗ Z.of_nat (offset_of_idx sl.(sl_members) i))
           )
@@ -2806,7 +2809,7 @@ Section ltype_def.
         (∃ r', place_rfn_interp_shared r r' ∗
           (* update needed to make the unfolding equation work *)
           □ |={lftE}=>
-            [∗ list] i ↦ ty ∈ pad_struct sl.(sl_members) (hpzipl rts lts r') (λ ly, existT (unit : Type) (UninitLtype (UntypedSynType ly), PlaceIn tt)),
+            [∗ list] i ↦ ty ∈ pad_struct sl.(sl_members) (hpzipl rts lts r') struct_make_uninit_ltype,
               ∃ ly, ⌜snd <$> sl.(sl_members) !! i = Some ly⌝ ∗ ⌜syn_type_has_layout (ltype_st (projT2 ty).1) ly⌝ ∗
               rec _ (projT2 ty).1 (Shared κ) π (projT2 ty).2 (l +ₗ Z.of_nat (offset_of_idx sl.(sl_members) i)))%I
     end.
@@ -3734,6 +3737,11 @@ Section ltype_def.
     f_equiv.
     - apply UIP_t.
     - apply proof_irrelevance.
+  Qed.
+  Lemma ltype_core_uninit st :
+    ltype_core (UninitLtype st) = UninitLtype st.
+  Proof.
+    rewrite /ltype_core. simpl. apply mk_ltype_irrel.
   Qed.
 
   (** Rules for ltype_st *)

@@ -474,8 +474,9 @@ Section rules.
     iSplit.
     + iApply box_ltype_place_cond_ty; done.
     + destruct bmin; simpl; [done | | done].
-      iDestruct "Hcondr" as "(%Heq1 & <-)". subst rt2.
-      iExists eq_refl. done.
+      done.
+      (*iDestruct "Hcondr" as "(%Heq1 & <-)". subst rt2.*)
+      (*iExists eq_refl. done.*)
   Qed.
 
 
@@ -484,7 +485,7 @@ Section rules.
     rrust_ctx -∗
     q.[κ] -∗
     (q.[κ] ={lftE}=∗ R) -∗
-    l ◁ₗ[π, Uniq κ γ] PlaceIn r @ BoxLtype lt -∗
+    l ◁ₗ[π, Uniq κ γ] #r @ BoxLtype lt -∗
     ⌜l `has_layout_loc` void*⌝ ∗ loc_in_bounds l 0 (ly_size void*) ∗ |={F}=>
       ∃ l' : loc, l ↦ l' ∗ l' ◁ₗ[π, Owned true] r @ lt ∗
       logical_step F
@@ -597,23 +598,29 @@ Section rules.
         iExists r2. iR. iNext. iModIntro. rewrite Hst'. eauto with iFrame. }
   Qed.
 
-  Lemma box_ltype_acc_shared {rt} F π (lt : ltype rt) (r : place_rfn rt) l q κ :
+  Lemma box_ltype_acc_shared {rt} F π (lt : ltype rt) r l q κ :
     lftE ⊆ F →
     rrust_ctx -∗
     q.[κ] -∗
-    l ◁ₗ[π, Shared κ] PlaceIn r @ BoxLtype lt -∗
+    l ◁ₗ[π, Shared κ] r @ BoxLtype lt -∗
     ⌜l `has_layout_loc` void*⌝ ∗ loc_in_bounds l 0 (ly_size void*) ∗ |={F}=>
-      ∃ (l' : loc) q, l ↦{q} l' ∗ (|={F}▷=> l' ◁ₗ[π, Shared κ] r @ lt) ∗
-        (∀ bmin,
-          l ↦{q} l' -∗
-          l' ◁ₗ[π, Shared κ] r @ lt  -∗
-          bmin ⊑ₖ Shared κ -∗
-          typed_place_cond bmin lt lt r r ={F}=∗
-          l ◁ₗ[π, Shared κ] PlaceIn r @ BoxLtype lt ∗
-          q.[κ] ∗
-          typed_place_cond bmin (BoxLtype lt) (BoxLtype lt) (PlaceIn r) (PlaceIn r)).
+      ∃ (l' : loc) r' q, place_rfn_interp_shared r r' ∗  l ↦{q} l' ∗ (|={F}▷=> l' ◁ₗ[π, Shared κ] r' @ lt) ∗
+    (∀ lt',
+      l ↦{q} l' -∗
+      l' ◁ₗ[π, Shared κ] r @ lt'  -∗
+      l ◁ₗ[π, Shared κ] PlaceIn r' @ BoxLtype lt ∗
+      q.[κ] ∗
+      (∀ bmin, 
+      bmin ⊑ₖ Shared κ -∗
+      typed_place_cond bmin lt lt r' r' ={F}=∗
+      typed_place_cond bmin (BoxLtype lt) (BoxLtype lt) (#r') (#r'))).
   Proof.
     iIntros (?) "#CTX Hκ Hb". rewrite {1}ltype_own_box_unfold /box_ltype_own.
+    iDestruct "Hb" as "(%ly & %Hst & %Hly & #Hlb & %r' & Hrfn & #Hb)".
+    apply syn_type_has_layout_ptr_inv in Hst. subst ly.
+    iR. iR.
+    iMod (fupd_mask_mono with "Hb") as "(%li & Hf & Hl)"; first done.
+
     (* TODO *)
   Abort.
 
