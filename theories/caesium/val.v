@@ -376,6 +376,13 @@ Lemma i2v_bool_Some b it:
   val_to_Z (i2v (bool_to_Z b) it) it = Some (bool_to_Z b).
 Proof. apply: val_to_of_Z. apply val_of_Z_bool. Qed.
 
+Lemma val_of_bool_i2v b :
+  val_of_bool b = i2v (bool_to_Z b) u8.
+Proof.
+  apply val_of_bool_iff_val_of_Z.
+  apply val_of_Z_bool.
+Qed.
+
 
 Definition val_to_Z_ot (v : val) (ot : op_type) : option Z :=
   match ot with

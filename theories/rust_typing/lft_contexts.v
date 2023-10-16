@@ -529,6 +529,18 @@ Section lft_contexts.
     by iApply "Hincl".
   Qed.
 
+  Lemma big_sepL_lft_incl_incl κs κ :
+    elctx_interp E -∗ llctx_interp L -∗
+    ([∗ list] κ' ∈ κs, ⌜lctx_lft_incl κ' κ⌝) -∗
+    ([∗ list] κ' ∈ κs, κ' ⊑ κ).
+  Proof.
+    iIntros "#HE HL #Hincl".
+    iInduction κs as [ | κ' κs] "IH"; first done.
+    simpl. iDestruct "Hincl" as "(%Hincl & Hincl)".
+    iPoseProof (lctx_lft_incl_incl with "HL HE") as "#$"; first apply Hincl.
+    iApply ("IH" with "Hincl HL").
+  Qed.
+
   (* Lifetime aliveness *)
   Definition lctx_lft_alive (κ : lft) : Prop :=
     (* the proof must not use any information about the counts *)
@@ -1253,6 +1265,20 @@ Section lft_contexts.
     κ ∈ κs → lft_dead_list κs -∗ [† κ].
   Proof.
     iIntros (Hel) "Hall". iApply (big_sepL_elem_of with "Hall"). done.
+  Qed.
+
+  Lemma lft_dead_list_nil :
+    lft_dead_list [] ⊣⊢ True.
+  Proof. done. Qed.
+  Lemma lft_dead_list_cons κ κs :
+    lft_dead_list (κ :: κs) ⊣⊢ [†κ] ∗ lft_dead_list κs.
+  Proof. done. Qed.
+  Lemma lft_dead_list_app κs1 κs2 :
+    lft_dead_list (κs1 ++ κs2) ⊣⊢ lft_dead_list κs1 ∗ lft_dead_list κs2.
+  Proof.
+    induction κs1 as [ | κ κs1 IH]; simpl.
+    { rewrite lft_dead_list_nil left_id. eauto. }
+    rewrite lft_dead_list_cons IH. rewrite bi.sep_assoc //.
   Qed.
 End lft_contexts.
 

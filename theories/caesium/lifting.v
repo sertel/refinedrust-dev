@@ -364,6 +364,23 @@ Section logical_steps.
     iIntros "HP". rewrite /maybe_logical_step.
     destruct b; first iApply logical_step_intro; eauto.
   Qed.
+
+  Lemma maybe_logical_step_fupd step F P :
+    maybe_logical_step step F (|={F}=> P) -∗
+    maybe_logical_step step F P.
+  Proof.
+    destruct step; simpl.
+    - iApply logical_step_fupd.
+    - rewrite fupd_trans; auto.
+  Qed.
+
+  Lemma maybe_logical_step_compose (E : coPset) step (P Q : iProp Σ) :
+    maybe_logical_step step E P -∗ maybe_logical_step step E (P -∗ Q) -∗ maybe_logical_step step E Q.
+  Proof.
+    iIntros "Ha Hb". destruct step; simpl.
+    - iApply (logical_step_compose with "Ha Hb").
+    - iMod "Ha". iMod "Hb". by iApply "Hb".
+  Qed.
 End logical_steps.
 
 (*** General lifting lemmas *)

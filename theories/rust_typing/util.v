@@ -145,6 +145,13 @@ Proof.
     rewrite drop_length. lia.
 Qed.
 
+Lemma reshape_replicate_0 {A} (xs : list A) n :
+  reshape (replicate n 0) xs = replicate n [].
+Proof.
+  induction n as [ | n IH]; simpl; first done.
+  rewrite take_0 drop_0. f_equiv. apply IH.
+Qed.
+
 Section Forall.
   (** Recursive version of Forall, to make it computational and eligible for recursive definitions. *)
   Context {X} (P : X → Prop).
@@ -187,6 +194,15 @@ Proof.
   split.
   - intros ? ? (i & Hel)%elem_of_list_lookup_1. eauto.
   - intros Hel i x Hlook%elem_of_list_lookup_2. eauto.
+Qed.
+
+Lemma Forall2_eq {A} (l1 l2 : list A) :
+  Forall2 eq l1 l2 → l1 = l2.
+Proof.
+  induction l1 as [ | x1 l1 IH] in l2 |-*; simpl.
+  { intros ->%Forall2_nil_inv_l. done. }
+  intros (y1 & l2' & -> & Hf & ->)%Forall2_cons_inv_l.
+  f_equiv. by apply IH.
 Qed.
 
 Lemma and_proper (A B C : Prop) :
@@ -546,6 +562,14 @@ Lemma big_sepL2_to_zip {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ → 
 Proof.
   rewrite big_sepL2_alt. iIntros "(_ & $)".
 Qed.
+(* goal-directed version *)
+Lemma big_sepL2_to_zip' {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ → iProp Σ) :
+  ([∗ list] i ↦ x; y ∈ l1; l2, Φ i (x, y)) ⊢
+  [∗ list] i ↦ x ∈ zip l1 l2, Φ i x.
+Proof.
+  rewrite big_sepL2_alt. iIntros "(_ & Ha)".
+  setoid_rewrite <-surjective_pairing. done.
+Qed.
 
 Local Lemma big_sepL2_later' {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ → _ → iProp Σ) n :
   length l1 = length l2 →
@@ -582,6 +606,35 @@ Proof.
   iApply (big_sepL_impl with "Ha").
   iModIntro. iIntros (? [? [? ?]] ?); simpl. eauto.
 Qed.
+
+Lemma big_sepL_extend_l {Σ} {A B} (l' : list B) (l : list A) Φ :
+  length l' = length l →
+  ([∗ list] i ↦ x ∈ l, Φ i x) ⊢@{iProp Σ} ([∗ list] i ↦ y; x ∈ l'; l, Φ i x).
+Proof.
+  iIntros (?) "Ha". iApply big_sepL2_const_sepL_r. iFrame. done.
+Qed.
+Lemma big_sepL_extend_r {Σ} {A B} (l' : list B) (l : list A) Φ :
+  length l' = length l →
+  ([∗ list] i ↦ x ∈ l, Φ i x) ⊢@{iProp Σ} ([∗ list] i ↦ x; y ∈ l; l', Φ i x).
+Proof.
+  iIntros (?) "Ha". iApply big_sepL2_const_sepL_l. iFrame. done.
+Qed.
+Lemma big_sepL2_elim_l {Σ} {A B} (l' : list B) (l : list A) Φ :
+  ([∗ list] i ↦ y; x ∈ l'; l, Φ i x) ⊢@{iProp Σ} ([∗ list] i ↦ x ∈ l, Φ i x).
+Proof.
+  iIntros "Ha". rewrite big_sepL2_const_sepL_r. iDestruct "Ha" as "(_ & $)".
+Qed.
+Lemma big_sepL2_elim_r {Σ} {A B} (l' : list B) (l : list A) Φ :
+  ([∗ list] i ↦ x; y ∈ l; l', Φ i x) ⊢@{iProp Σ} ([∗ list] i ↦ x ∈ l, Φ i x).
+Proof.
+  iIntros "Ha". rewrite big_sepL2_const_sepL_l. iDestruct "Ha" as "(_ & $)".
+Qed.
+Lemma big_sepL2_sep_1 {Σ} {A B} (l1 : list A) (l2 : list B) Φ Ψ :
+  ⊢@{iProp Σ}
+  ([∗ list] k↦y1;y2 ∈ l1;l2, Φ k y1 y2) -∗
+  ([∗ list] k↦y1;y2 ∈ l1;l2, Ψ k y1 y2) -∗
+  ([∗ list] k↦y1;y2 ∈ l1;l2, Φ k y1 y2 ∗ Ψ k y1 y2).
+Proof. iIntros "Ha Hb". iApply big_sepL2_sep. iFrame. Qed.
 
 (** ** General Iris/BI things *)
 Lemma sep_ne_proper {Σ} (A : Prop) (B C : iProp Σ) n :
@@ -744,6 +797,15 @@ Proof.
     iApply (lc_fupd_add_later with "Hcred1"). iNext. iFrame.
     iApply (fupd_mask_mono with "HP"); done.
   - rewrite !left_id. iApply (fupd_mask_mono with "HP"); done.
+Qed.
+
+Lemma lc_split_le (m n : nat) :
+  m ≤ n →
+  £ n -∗ £ m ∗ £ (n - m).
+Proof.
+  intros ?. replace n with (m + (n - m))%nat by lia.
+  replace (m + (n - m) - m)%nat with (n - m)%nat by lia.
+  rewrite lc_split. auto.
 Qed.
 
 Lemma maybe_later_mono (P : iProp Σ) b : ▷?b P -∗ ▷ P.

@@ -4,20 +4,6 @@ From refinedrust Require Import ltype_rules.
 From caesium Require Import lang proofmode derived lifting.
 Set Default Proof Using "Type".
 
-  (* TODO move *)
-  Lemma big_sepL_lft_incl_incl `{!typeGS Σ} E L κs κ :
-    elctx_interp E -∗ llctx_interp L -∗
-    ([∗ list] κ' ∈ κs, ⌜lctx_lft_incl E L κ' κ⌝) -∗
-    ([∗ list] κ' ∈ κs, κ' ⊑ κ).
-  Proof.
-    iIntros "#HE HL #Hincl".
-    iInduction κs as [ | κ' κs] "IH"; first done.
-    simpl. iDestruct "Hincl" as "(%Hincl & Hincl)".
-    iPoseProof (lctx_lft_incl_incl with "HL HE") as "#$"; first apply Hincl.
-    iApply ("IH" with "Hincl HL").
-  Qed.
-
-
 Section typing.
   Context `{typeGS Σ}.
   (* NOTE: find_in_context instances should always have a sep conj in their premise, even if the LHS is just [True].
@@ -949,7 +935,7 @@ Section typing.
     iIntros "HT". iIntros (F ??) "#CTX #HE HL Hl".
     iMod ("HT" with "[//]") as "HT". iDestruct "HT" as "[(%r & Hobs & HT) | (-> & HT)]".
     - rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-      iDestruct "Hl" as "(%ly & ? & ? & ? & ? & ? & ? & Hrfn & Hb)".
+      iDestruct "Hl" as "(%ly & ? & ? & ? & ? & ? & Hrfn & Hb)".
       iDestruct "Hrfn" as "(%v1 & %v2 & Hauth & Hobs' & %HR)".
       iPoseProof (gvar_pobs_agree_2 with "Hauth Hobs") as "->".
       simpl. subst.

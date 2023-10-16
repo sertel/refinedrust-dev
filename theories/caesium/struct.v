@@ -222,6 +222,31 @@ Proof.
       eapply IH; done.
 Qed.
 
+Lemma pad_struct_lookup_Some_Some {A} s l f k (x : A) n ly : 
+  length l = length (field_names s) →
+  pad_struct s l f !! k = Some x →
+  s !! k = Some (Some n, ly) →
+  l !! field_idx_of_idx s k = Some x.
+Proof.
+  intros Hlen Hlook1 Hlook2.
+  apply pad_struct_lookup_Some in Hlook1; last done.
+  destruct Hlook1 as (n' & ly' & Hlooka & Hlook1).
+  rewrite Hlook2 in Hlooka. injection Hlooka as [= <- <-].
+  destruct Hlook1 as [(_ & ?) | (? & _)]; naive_solver.
+Qed.
+Lemma pad_struct_lookup_Some_None {A} s l f k (x : A) ly : 
+  length l = length (field_names s) →
+  pad_struct s l f !! k = Some x →
+  s !! k = Some (None, ly) →
+  x = f ly.
+Proof.
+  intros Hlen Hlook1 Hlook2.
+  apply pad_struct_lookup_Some in Hlook1; last done.
+  destruct Hlook1 as (n' & ly' & Hlooka & Hlook1).
+  rewrite Hlook2 in Hlooka. injection Hlooka as [= <- <-].
+  destruct Hlook1 as [(? & ?) | (? & ?)]; naive_solver.
+Qed.
+
 Lemma pad_struct_insert_field {A} s (l : list A) f i j n x :
   index_of s n = Some j →
   field_index_of s n = Some i →

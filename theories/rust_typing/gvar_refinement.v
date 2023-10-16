@@ -155,7 +155,7 @@ End sigma.
     Potentially, that even works as a general abstraction in the gvar interface.
   *)
 Section ghost_variables.
-  Context `{ghost_varG Σ RT} {T : Type}.
+  Context `{!ghost_varG Σ RT} {T : Type}.
   Implicit Types (γ : gname) (t : T).
 
   Definition gvar_auth γ t := ghost_var γ (DfracOwn (1/2)) (RT_into t).
@@ -235,6 +235,8 @@ Section ghost_variables.
 
   Global Instance Rel2_timeless γ1 γ2 R : Timeless (Rel2 γ1 γ2 R).
   Proof. apply _. Qed.
-
-  (* TODO: define Rel, etc. *)
 End ghost_variables.
+
+Lemma gvar_update_strong `{!ghost_varG Σ RT} {T1 T2 : Type} {γ} {t1 t2 : T1} (t : T2) :
+  gvar_auth γ t1 -∗ gvar_obs γ t2 ==∗ gvar_auth γ t ∗ gvar_obs γ t.
+Proof. iApply ghost_var_update_halves. Qed.

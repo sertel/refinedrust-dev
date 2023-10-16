@@ -22,7 +22,7 @@ Section mut_ref.
       loc_in_bounds l 0 ly.(ly_size) ∗
       inner.(ty_sidecond) ∗
       place_rfn_interp_mut r γ ∗
-      £ num_cred ∗ atime 1 ∗
+      have_creds ∗
       |={lftE}=> &pin{κ} (∃ r' : rt, gvar_auth γ r' ∗ |={lftE}=> l ↦: inner.(ty_own_val) π r'))%I;
 
     ty_has_op_type ot mt := is_ptr_ot ot;
@@ -120,7 +120,6 @@ Section mut_ref.
     iMod (bor_sep with "LFT Hb") as "(Ha & Hb)"; first solve_ndisj.
     iMod (bor_persistent with "LFT Ha Htok_κ'") as "(>#Hsc & Htok_κ')"; first solve_ndisj.
     iMod (bor_sep with "LFT Hb") as "(Hobs & Hb)"; first solve_ndisj.
-    rewrite bi.sep_assoc.
     iMod (bor_sep with "LFT Hb") as "(Hcred & Hb)"; first solve_ndisj.
     iDestruct "Htok_κ'" as "(Htok_κ' & Htokc)".
     iMod (bor_acc with "LFT Hcred Htokc") as "(>(Hcred & Hat) & Hclos_c)"; first solve_ndisj.
@@ -192,7 +191,7 @@ Section mut_ref.
     iApply lft_intersect_mono; last done. iApply lft_incl_refl.
   Qed.
   Next Obligation.
-    iIntros (??[r γ]???) "(%l & %ly & -> & _ & _ & _ & _ & Hrfn & Hcred & Hat & _)".
+    iIntros (??[r γ]???) "(%l & %ly & -> & _ & _ & _ & _ & Hrfn & Hcred &  _)".
     iApply fupd_logical_step. destruct r as [ r | γ'].
     - iMod (gvar_obs_persist with "Hrfn") as "?".
       iApply logical_step_intro. by iFrame.
@@ -221,7 +220,7 @@ Section subtype.
     v ◁ᵥ{π} r @ mut_ref ty2 κ1.
   Proof.
     destruct r as [r γ].
-    iIntros "#Hincl #Ht12 #Ht21 (%l & %ly & -> & ? & Hly & Hlb & Hsc & Hobs & ? & ? & Hb)".
+    iIntros "#Hincl #Ht12 #Ht21 (%l & %ly & -> & ? & Hly & Hlb & Hsc & Hobs & ? & Hb)".
     iDestruct ("Ht12" $! inhabitant) as "(%Hst & #Hsceq & _)".
     (*iDestruct "Ht21" as "(_ & _ & #Hv21 & #Hs21)".*)
     iExists l, ly. iFrame. iSplitR; first done.
@@ -435,7 +434,7 @@ Section subltype.
   Proof.
     iIntros "#Heq #Hincl1 #Hincl2". iModIntro.
     iIntros (π l). rewrite !ltype_own_mut_ref_unfold /mut_ltype_own /=.
-    iIntros "(%ly & ? & ? & ? & ? & ? & ? & Hb)".
+    iIntros "(%ly & ? & ? & ? & ? & ? & Hb)".
     iExists ly. iFrame.
     iMod "Hb". iModIntro. iApply (pinned_bor_iff with "[] [] Hb").
     + iNext. iModIntro. iSplit.
@@ -539,7 +538,7 @@ Section ltype_agree.
     iMod "Hb" as "(%l' & Hl & Hb)".
     iExists l'. iFrame.
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-    iDestruct "Hb" as "(%ly' & ? & ?  & Hsc & Hlb' & ? & ? & Hrfn'  & Hb)".
+    iDestruct "Hb" as "(%ly' & ? & ? & Hsc & Hlb' & ? & Hrfn'  & Hb)".
     iExists l'. iFrame. iExists ly'. iSplitR; first done. iFrame "∗". done.
   Qed.
   Lemma mut_ref_unfold_1_uniq κ κ' γ r :
@@ -547,17 +546,17 @@ Section ltype_agree.
   Proof.
     iModIntro.
     iIntros (π l). rewrite ltype_own_mut_ref_unfold /mut_ltype_own ltype_own_ofty_unfold /lty_of_ty_own.
-    iIntros "(%ly & ? & %Hly & ? & ? & ? & ? & Hb)". iExists ly. iFrame "∗". iSplitR; first done.
+    iIntros "(%ly & ? & %Hly & ? & ? & ? & Hb)". iExists ly. iFrame "∗". iSplitR; first done.
     iMod "Hb". iModIntro.
     setoid_rewrite ltype_own_core_equiv. simp_ltypes.
     iApply (pinned_bor_iff' with "[] Hb").
     iNext. iModIntro. iSplit.
     * iIntros "(%r' & Hauth & Hb)". iExists _. iFrame. iMod "Hb" as "(%l' & Hl & Hb)".
       iExists l'. iFrame. rewrite ltype_own_ofty_unfold /lty_of_ty_own. destruct r' as [r' γ'].
-      iDestruct "Hb" as "(%ly' & Hst' & Hly' & Hsc & Hlb & ? & ? & Hrfn & >Hb)".
+      iDestruct "Hb" as "(%ly' & Hst' & Hly' & Hsc & Hlb & ? & Hrfn & >Hb)".
       iModIntro. iExists l', ly'. iFrame "∗". iSplitR; first done. by iFrame.
     * iIntros "(%r' & Hauth & Hb)". iExists _. iFrame. iMod "Hb" as "(%v & Hl & Hb)". destruct r' as [r' γ'].
-      iDestruct "Hb" as "(%l' & %ly' & -> & ? & ? & Hlb & Hsc & Hrfn & ? & ? & >Hb)".
+      iDestruct "Hb" as "(%l' & %ly' & -> & ? & ? & Hlb & Hsc & Hrfn & ? & >Hb)".
       iExists _. iFrame. rewrite ltype_own_ofty_unfold /lty_of_ty_own.
       iModIntro. iExists ly'. iFrame. done.
   Qed.
@@ -598,7 +597,7 @@ Section ltype_agree.
     iIntros "(%ly & ? & ? & _ & #Hlb & ? & %r' & Hrfn & Hb)". destruct r' as [r' γ'].
     (*iApply except_0_if_intro.*)
     iModIntro. iExists ly. iFrame "∗ #". iExists γ', r'. iFrame. iNext.
-    iMod "Hb" as "(%v & Hl & %l' & %ly' & -> & ? & ? & #Hlb' & Hsc & ? & ? & Hrfn' & >Hb)".
+    iMod "Hb" as "(%v & Hl & %l' & %ly' & -> & ? & ? & #Hlb' & Hsc & ? &  Hrfn' & >Hb)".
     iExists _. iFrame. rewrite ltype_own_ofty_unfold /lty_of_ty_own. iExists ly'. iFrame "∗ #". done.
   Qed.
   Lemma mut_ref_unfold_2_uniq κ κ' γ r :
@@ -606,18 +605,18 @@ Section ltype_agree.
   Proof.
     iModIntro.
     iIntros (π l). rewrite ltype_own_mut_ref_unfold /mut_ltype_own ltype_own_ofty_unfold /lty_of_ty_own.
-    iIntros "(%ly & ? & ? &  _ & Hlb & ? & ? & Hrfn & Hb)". iExists ly. iFrame "∗". iMod "Hb".
+    iIntros "(%ly & ? & ? &  _ & Hlb & ? &  Hrfn & Hb)". iExists ly. iFrame "∗". iMod "Hb".
     iModIntro.
     setoid_rewrite ltype_own_core_equiv. simp_ltypes.
     iApply (pinned_bor_iff' with "[] Hb").
     iNext. iModIntro. iSplit.
     * iIntros "(%r' & Hauth & Hb)". iExists _. iFrame. iMod "Hb" as "(%v & Hl & Hb)". destruct r' as [r' γ'].
-      iDestruct "Hb" as "(%l' & %ly' & -> & ? & ? & Hlb & Hsc & Hrfn & ? & ? & >Hb)".
+      iDestruct "Hb" as "(%l' & %ly' & -> & ? & ? & Hlb & Hsc & Hrfn & ? & >Hb)".
       iExists _. iFrame. rewrite ltype_own_ofty_unfold /lty_of_ty_own.
       iModIntro. iExists ly'. iFrame. done.
     * iIntros "(%r' & Hauth & Hb)". iExists _. iFrame. iMod "Hb" as "(%l' & Hl & Hb)".
       iExists l'. iFrame. rewrite ltype_own_ofty_unfold /lty_of_ty_own. destruct r' as [r' γ'].
-      iDestruct "Hb" as "(%ly' & Hst' & Hly' & Hsc & Hlb & ? & ? & Hrfn & >Hb)".
+      iDestruct "Hb" as "(%ly' & Hst' & Hly' & Hsc & Hlb & ? &  Hrfn & >Hb)".
       iModIntro. iExists l', ly'. iFrame "∗". iSplitR; first done. by iFrame.
   Qed.
   Lemma mut_ref_unfold_2_shared κ κ' r :
@@ -690,12 +689,12 @@ Section rules.
     iMod (maybe_use_credit with "Hcreds Hb") as "(Hcreds & Hat & Hb)"; first done.
     iDestruct "Hb" as "(%v & Hl & Hb)".
     rewrite /ty_own_val/=.
-    iDestruct "Hb" as "(% & % & -> & ? & ? & ? & ? & Hb & Hcred' & Hat' & ?)".
+    iDestruct "Hb" as "(% & % & -> & ? & ? & ? & ? & Hb & Hcred' & ?)".
     iFrame.
     iSplitR. { simp_ltypes. done. }
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iExists _. simpl. iFrame. iR. iR.
-    iSplitL "Hcred' Hat'". { destruct wl; last done. by iFrame. }
+    iSplitL "Hcred'". { destruct wl; last done. by iFrame. }
     iExists _. iR. iModIntro. iModIntro. iModIntro.
     iExists _. iFrame. rewrite uninit_own_spec. iExists _. iR.
     iPureIntro. eapply syn_type_has_layout_ptr_inv in Hst. subst.
@@ -726,17 +725,17 @@ Section rules.
   Lemma mut_ltype_acc_owned {rt} F π (lt : ltype rt) (r : place_rfn rt) l κ' γ' wl :
     lftE ⊆ F →
     rrust_ctx -∗
-    l ◁ₗ[π, Owned wl] PlaceIn (r, γ') @ MutLtype lt κ' -∗
+    l ◁ₗ[π, Owned wl] #(r, γ') @ MutLtype lt κ' -∗
     ⌜l `has_layout_loc` void*⌝ ∗ loc_in_bounds l 0 (ly_size void*) ∗ |={F}=>
       ∃ l' : loc, l ↦ l' ∗ l' ◁ₗ[π, Uniq κ' γ'] r @ lt ∗
       logical_step F
       (∀ bmin rt' (lt2 : ltype rt') r2,
         l ↦ l' -∗
         l' ◁ₗ[π, Uniq κ' γ'] r2 @ lt2 ={F}=∗
-        l ◁ₗ[π, Owned wl] PlaceIn (r2, γ') @ MutLtype lt2 κ' ∗
+        l ◁ₗ[π, Owned wl] #(r2, γ') @ MutLtype lt2 κ' ∗
         (typed_place_cond bmin lt lt2 r r2 -∗
          ⌜place_access_rt_rel bmin rt rt'⌝ -∗
-         typed_place_cond bmin (MutLtype lt κ') (MutLtype lt2 κ') (PlaceIn (r, γ')) (PlaceIn (r2, γ')))).
+         typed_place_cond bmin (MutLtype lt κ') (MutLtype lt2 κ') (#(r, γ')) (#(r2, γ')))).
   Proof.
     iIntros (?) "#[LFT TIME] HP".
     rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
@@ -764,7 +763,7 @@ Section rules.
     rrust_ctx -∗
     q.[κ] -∗
     (q.[κ] ={lftE}=∗ R) -∗
-    l ◁ₗ[π, Uniq κ γ] PlaceIn (r, γ') @ MutLtype lt κ' -∗
+    l ◁ₗ[π, Uniq κ γ] #(r, γ') @ MutLtype lt κ' -∗
     ⌜l `has_layout_loc` void*⌝ ∗ loc_in_bounds l 0 (ly_size void*) ∗ |={F}=>
       ∃ l' : loc, l ↦ l' ∗ (l' ◁ₗ[π, Uniq κ' γ'] r @ lt) ∗
       logical_step F
@@ -787,7 +786,7 @@ Section rules.
   Proof.
     iIntros (?) "#[LFT TIME] Hκ HR HP".
     rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
-    iDestruct "HP" as "(%ly & %Halg & %Hly & #Hlb & Hcred & Hat & Hrfn & Hb)".
+    iDestruct "HP" as "(%ly & %Halg & %Hly & #Hlb & (Hcred & Hat) & Hrfn & Hb)".
     injection Halg as <-. iFrame "Hlb". iSplitR; first done.
 
     iMod (fupd_mask_subseteq lftE) as "Hcl_F"; first done.
@@ -877,13 +876,48 @@ Section rules.
         iExists _, r2. iR. iNext. iModIntro. eauto with iFrame. }
   Qed.
 
-  (* TODO : shared *)
-
+  Lemma mut_ltype_acc_shared {rt} F π (lt : ltype rt) r l q κ κ' γ :
+    lftE ⊆ F →
+    rrust_ctx -∗
+    q.[κ] -∗
+    l ◁ₗ[π, Shared κ] #(r, γ) @ MutLtype lt κ' -∗
+    ⌜l `has_layout_loc` void*⌝ ∗ loc_in_bounds l 0 (ly_size void*) ∗ |={F}=>
+      ∃ (l' : loc) q', l ↦{q'} l' ∗ (|={F}▷=> l' ◁ₗ[π, Shared (κ' ⊓ κ)] r @ lt) ∗
+    (∀ (lt' : ltype rt) r',
+      l ↦{q'} l' -∗
+      l' ◁ₗ[π, Shared (κ' ⊓ κ)] r' @ lt' -∗ |={F}=>
+      l ◁ₗ[π, Shared κ] #(r', γ) @ MutLtype lt' κ' ∗
+      q.[κ] ∗
+      (∀ bmin,
+      bmin ⊑ₖ Shared κ -∗
+      typed_place_cond bmin lt lt' r r' ={F}=∗
+      typed_place_cond bmin (MutLtype lt κ') (MutLtype lt' κ') #(r, γ) #(r', γ))).
+  Proof.
+    iIntros (?) "#(LFT & TIME & LLCTX) Hκ Hb". rewrite {1}ltype_own_mut_ref_unfold /mut_ltype_own.
+    iDestruct "Hb" as "(%ly & %Hst & %Hly & #Hlb & %r' & %γ' & %Ha & #Hb)".
+    injection Ha as <- <-.
+    apply syn_type_has_layout_ptr_inv in Hst. subst ly.
+    iR. iR.
+    iMod (fupd_mask_mono with "Hb") as "(%li & #Hf & #Hl)"; first done.
+    iMod (frac_bor_acc with "LFT Hf Hκ") as "(%q' & >Hpts & Hclf)"; first done.
+    iModIntro. iExists _, _. iFrame.
+    iSplitR. { iApply step_fupd_intro; first done. auto. }
+    iIntros (lt' r'') "Hpts #Hl'".
+    iMod ("Hclf" with "Hpts") as "Htok".
+    iFrame. iSplitL.
+    { iModIntro. rewrite ltype_own_mut_ref_unfold /mut_ltype_own. iExists void*. iFrame "% #".
+      iR. iExists _, _. iR. iModIntro. iModIntro. iExists _. iFrame "#". }
+    iModIntro. iIntros (bmin) "Hincl Hcond".
+    iDestruct "Hcond" as "(Hcond_ty & Hcond_rfn)".
+    iModIntro. iSplit.
+    + iApply mut_ltype_place_cond_ty; done.
+    + destruct bmin; simpl; done.
+  Qed.
 
 
   (** Place *)
   (* This needs to have a lower priority than the id instances, because we do not want to unfold when P = []. *)
-  Lemma place_ofty_mut {rt} `{Inhabited rt} π E L l (ty : type rt) κ (r : place_rfn (place_rfn rt * gname)) bmin0 b P T :
+  Lemma typed_place_ofty_mut {rt} `{Inhabited rt} π E L l (ty : type rt) κ (r : place_rfn (place_rfn rt * gname)) bmin0 b P T :
     typed_place π E L l (MutLtype (◁ ty) κ) r bmin0 b P T
     ⊢ typed_place π E L l (◁ (mut_ref ty κ)) r bmin0 b P T.
   Proof.
@@ -892,7 +926,7 @@ Section rules.
     iApply ltype_eq_sym. iApply mut_ref_unfold.
   Qed.
   Global Instance typed_place_ofty_mut_inst {rt} `{Inhabited rt} π E L l (ty : type rt) κ (r : place_rfn (place_rfn rt * gname)) bmin0 b P :
-    TypedPlace E L π l (◁ (mut_ref ty κ))%I r bmin0 b P | 30 := λ T, i2p (place_ofty_mut π E L l ty κ r bmin0 b P T).
+    TypedPlace E L π l (◁ (mut_ref ty κ))%I r bmin0 b P | 30 := λ T, i2p (typed_place_ofty_mut π E L l ty κ r bmin0 b P T).
 
   Lemma typed_place_mut_owned {rto} π κ (lt2 : ltype rto) P E L γ l r wl bmin0
     (T : place_cont_t ((place_rfn rto) * gname)) :
@@ -1008,23 +1042,60 @@ Section rules.
   Global Instance typed_place_mut_uniq_inst {rto} E L π κ κ' γ γ' (lt2 : ltype rto) bmin0 r l P :
     TypedPlace E L π l (MutLtype lt2 κ) (#(r, γ)) bmin0 (Uniq κ' γ') (DerefPCtx Na1Ord PtrOp true :: P) | 30 := λ T, i2p (typed_place_mut_uniq π E L lt2 P l r κ γ κ' γ' bmin0 T).
 
-  (* TODO: shared. can also do strong updates due to ShadowedLtype
-  Lemma place_mut_shared {rto} π E L κ κ' (lt2 : ltype rto) P γ l bmin0 r
-    (T : llctx → list lft → loc → bor_kind → bor_kind → ∀ rti, ltype rti → place_rfn rti → (ltype rti → ltype (place_rfn rto * gname)) → (place_rfn rti → place_rfn ((place_rfn rto) * gname)) → (ltype rti → place_rfn rti → iProp Σ) → iProp Σ) :
-    (* get lifetime token *)
+  Lemma typed_place_mut_shared {rto} π E L (lt2 : ltype rto) P l r κ γ κ' bmin0 (T : place_cont_t (place_rfn rto * gname)) :
     li_tactic (lctx_lft_alive_count_goal E L κ') (λ '(κs, L'),
-      (* recursively check the place *)
-      (∀ l', typed_place π E L' l' lt2 r (Uniq κ γ ⊓ₖ bmin0) (Uniq κ γ) P
-        (λ L'' κs' l2 b2 bmin rti tyli ri (tylp : ltype rti → ltype rto) (rctx : place_rfn rti → place_rfn rto) R,
-          T L'' (κs ++ κs') l2 b2 (Shared κ' ⊓ₖ bmin) rti tyli ri ((λ lt, MutLtype lt κ) ∘ tylp) (λ (r : place_rfn rti), PlaceIn (rctx r, γ)) R))) -∗
-    typed_place π E L l (MutLtype lt2 κ) (#(r, γ)) bmin0 (Shared κ') (DerefPCtx Na1Ord PtrOp :: P) T.
+      (∀ l', typed_place π E L' l' lt2 r (Shared (κ ⊓ κ') ⊓ₖ bmin0) (Shared (κ ⊓ κ')) P
+        (λ L'' κs' l2 b2 bmin rti tyli ri strong weak,
+          T L'' (κs ++ κs') l2 b2 (Shared κ' ⊓ₖ bmin) rti tyli ri
+            (* strong branch: fold to ShadowedLtype *)
+              None (* TODO *)
+            (*(fmap (λ strong, mk_strong (λ rti, (place_rfn (strong.(strong_rt) rti) * gname)%type)*)
+              (*(λ rti2 ltyi2 ri2,*)
+                (*OpenedLtype (MutLtype (strong.(strong_lt) _ ltyi2 ri2) κ) (MutLtype lt2 κ) (MutLtype lt2 κ) (λ r1 r1', ⌜r1 = r1'⌝) (λ _ _, llft_elt_toks κs))*)
+              (*(λ rti2 ri2, #((strong.(strong_rfn) _ ri2), γ))*)
+              (*strong.(strong_R)) strong)*)
+            (* weak branch: just keep the MutLtype *)
+            (fmap (λ weak, mk_weak (λ lti' ri', MutLtype (weak.(weak_lt) lti' ri') κ) (λ (r : place_rfn rti), #(weak.(weak_rfn) r, γ)) weak.(weak_R)) weak))))
+    ⊢ typed_place π E L l (MutLtype lt2 κ) #(r, γ) bmin0 (Shared κ') (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
-    (* TODO *)
-  Admitted.
+    rewrite /lctx_lft_alive_count_goal.
+    iIntros "(%κs & %L2 & %Hal & HT)".
+    iIntros (Φ F ??). iIntros "#(LFT & TIME & LLCTX) #HE HL #Hincl0 HP HΦ/=".
+    (* get a token *)
+    iApply fupd_wp. iMod (fupd_mask_subseteq lftE) as "HclF"; first done.
+    iMod (lctx_lft_alive_count_tok lftE with "HE HL") as (q) "(Hκ' & Hclκ' & HL)"; [done.. | ].
+    iMod "HclF" as "_". iMod (fupd_mask_subseteq F) as "HclF"; first done.
+    iPoseProof (mut_ltype_acc_shared F with "[$LFT $TIME $LLCTX] Hκ' HP") as "(%Hly & Hlb & Hb)"; [done.. | ].
+    iMod "Hb" as "(%l' & %q' & Hl & >Hb & Hcl)". iMod "HclF" as "_".
+    iModIntro. iApply wp_fupd. iApply (wp_deref with "Hl") => //; [solve_ndisj | by apply val_to_of_loc | ].
+    iNext.
+    iIntros (st) "Hl Hcred". iMod (fupd_mask_mono with "Hb") as "#Hb"; first done.
+    iExists l'.
+    iSplitR. { iPureIntro. unfold mem_cast. rewrite val_to_of_loc. done. }
+    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hb"). { iApply bor_kind_min_incl_l. }
+    iModIntro. iIntros (L'' κs' l2 b2 bmin rti tyli ri strong weak) "#Hincl1 Hb' Hs".
+    iApply ("HΦ" $! _ _ _ _ (Shared κ' ⊓ₖ bmin) _ _ _ _ _ with "[Hincl1] Hb'").
+    { iApply bor_kind_incl_trans; last iApply "Hincl1". iApply bor_kind_min_incl_r. }
+    simpl. iSplit.
+    - (* strong update *)
+      done.
+    - (* weak update *)
+      destruct weak as [ weak | ]; last done.
+      iDestruct "Hs" as "(_ & Hs)".
+      iIntros (ltyi2 ri2 bmin') "#Hincl2 Hl2 Hcond".
+      iMod ("Hs" with "[Hincl2] Hl2 Hcond") as "(Hb' & Hcond & ? & HR)".
+      { iApply bor_kind_incl_trans; first iApply "Hincl2". iApply bor_kind_min_incl_r. }
+      simpl.
+      iMod ("Hcl" with "Hl Hb'") as "(Hb' & Hκ' & Hcond')".
+      iFrame. rewrite llft_elt_toks_app.
+      iMod (fupd_mask_mono with "(Hclκ' Hκ')") as "?"; first done.
+      iFrame. iApply "Hcond'".
+      + done.
+      + iApply typed_place_cond_incl; last done.
+        iApply bor_kind_min_incl_r.
+  Qed.
   Global Instance typed_place_mut_shared_inst {rto} E L π κ κ' γ (lt2 : ltype rto) bmin0 r l P :
-    TypedPlace E L π l (MutLtype lt2 κ) (PlaceIn (r, γ)) bmin0 (Shared κ') (DerefPCtx Na1Ord PtrOp :: P) | 30 := λ T, i2p (place_mut_shared π E L κ κ' lt2 P γ l bmin0 r T).
-   *)
-
+    TypedPlace E L π l (MutLtype lt2 κ) (#(r, γ)) bmin0 (Shared κ') (DerefPCtx Na1Ord PtrOp true :: P) | 30 := λ T, i2p (typed_place_mut_shared π E L lt2 P l r κ γ κ' bmin0 T).
 
   (** Stratification *)
   Lemma stratify_ltype_mut_owned {rt} π E L mu mdu ma {M} (ml : M) l (lt : ltype rt) κ (r : (place_rfn rt)) wl γ
@@ -1201,7 +1272,7 @@ Section rules.
     find_observation (place_rfn rt * gname) γ FindObsModeDirect (λ or,
         match or with
         | None => ⌜rm = ResolveTry⌝ ∗ T L (PlaceGhost γ) True false
-        | Some r => T L (PlaceIn $ r) True true
+        | Some r => T L #r True true
         end)
     ⊢ resolve_ghost π E L rm lb l (MutLtype lt κ) (Owned wl) (PlaceGhost γ) T.
   Proof.
@@ -1224,7 +1295,7 @@ Section rules.
     find_observation (place_rfn rt * gname) γ FindObsModeDirect (λ or,
         match or with
         | None => ⌜rm = ResolveTry⌝ ∗ T L (PlaceGhost γ) True false
-        | Some r => T L (PlaceIn $ r) True true
+        | Some r => T L #r True true
         end)
     ⊢ resolve_ghost π E L rm lb l (MutLtype lt κ) (Uniq κ' γ') (PlaceGhost γ) T.
   Proof.
@@ -1232,10 +1303,9 @@ Section rules.
     iIntros "HT". iIntros (F ??) "#CTX #HE HL Hb".
     iMod ("HT" with "[//]") as "HT". iDestruct "HT" as "[(%r & Hobs & HT) | (-> & HT)]".
     - rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
-      iDestruct "Hb" as "(%ly & %Hst & %Hly & ? & ? & ? & Hrfn & ?)".
+      iDestruct "Hb" as "(%ly & %Hst & %Hly & ? & ? & Hrfn & ?)".
       simpl.
-      iDestruct "Hrfn" as "(%r0 & %r1 & Ha1 & Ha2 & %Heq)".
-      iPoseProof (gvar_pobs_agree_2 with "Ha1 Hobs") as "%". subst.
+      iPoseProof (Rel2_use_pobs with "Hobs Hrfn") as "(%r2 & Hobs & ->)".
       iModIntro. iExists _, _, _,_. iFrame. iApply maybe_logical_step_intro.
       iL. rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
       iExists _. iFrame. done.
@@ -1243,6 +1313,29 @@ Section rules.
   Qed.
   Global Instance resolve_ghost_mut_uniq_inst {rt} π E L l (lt : ltype rt) κ γ κ' γ' rm lb :
     ResolveGhost π E L rm lb l (MutLtype lt κ) (Uniq κ' γ') (PlaceGhost γ) | 7 := λ T, i2p (resolve_ghost_mut_Uniq π E L l lt γ rm lb κ κ' γ' T).
+
+  Lemma resolve_ghost_mut_shared {rt} π E L l (lt : ltype rt) γ rm lb κ κ' T :
+    find_observation (place_rfn rt * gname) γ FindObsModeDirect (λ or,
+        match or with
+        | None => ⌜rm = ResolveTry⌝ ∗ T L (PlaceGhost γ) True false
+        | Some r => T L #r True true
+        end)
+    ⊢ resolve_ghost π E L rm lb l (MutLtype lt κ) (Shared κ') (PlaceGhost γ) T.
+  Proof.
+    rewrite /FindOptGvarPobs /=.
+    iIntros "HT". iIntros (F ??) "#CTX #HE HL Hb".
+    iMod ("HT" with "[//]") as "HT". iDestruct "HT" as "[(%r & Hobs & HT) | (-> & HT)]".
+    - rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
+      iDestruct "Hb" as "(%ly & %Hst & %Hly & ? & %γ0 & %r'& Hrfn & ?)".
+      simpl.
+      iPoseProof (gvar_pobs_agree_2 with "Hrfn Hobs") as "%Heq". subst r.
+      iModIntro. iExists _, _, _, _. iFrame. iApply maybe_logical_step_intro.
+      iL. rewrite ltype_own_mut_ref_unfold /mut_ltype_own.
+      iExists _. iFrame. do 2 iR. iExists _, _. iR. iFrame.
+    - iExists _, _, _, _. iFrame. iApply maybe_logical_step_intro. by iFrame.
+  Qed.
+  Global Instance resolve_ghost_mut_shared_inst {rt} π E L l (lt : ltype rt) κ γ κ' rm lb :
+    ResolveGhost π E L rm lb l (MutLtype lt κ) (Shared κ') (PlaceGhost γ) | 7 := λ T, i2p (resolve_ghost_mut_shared π E L l lt γ rm lb κ κ' T).
 
   (** cast_ltype *)
   Lemma cast_ltype_to_type_mut E L {rt} `{Inhabited rt} (lt : ltype rt) κ T  :
@@ -1866,7 +1959,7 @@ Section subltype.
   Proof.
     iIntros "#Heq #Hincl1 #Hincl2". iModIntro.
     iIntros (π l). rewrite !ltype_own_shr_ref_unfold /shr_ltype_own.
-    iIntros "(%ly & ? & ? & Hlb & ? & ? & Hrfn & Hb)".
+    iIntros "(%ly & ? & ? & Hlb & ? &  Hrfn & Hb)".
     iExists ly. iFrame. rewrite -?Hly_eq. iFrame.
     iMod "Hb". iModIntro. iApply (pinned_bor_iff with "[] [] Hb").
     + iNext. iModIntro. iSplit.
@@ -1986,7 +2079,7 @@ Section ltype_agree.
     ⊢ ltype_incl' (Uniq κ' γ) r r (ShrLtype (◁ ty) κ) (◁ (shr_ref ty κ)).
   Proof.
     iModIntro. iIntros (π l). rewrite ltype_own_shr_ref_unfold /shr_ltype_own ltype_own_ofty_unfold /lty_of_ty_own.
-    iIntros "(%ly & ? & ? & ? & ? & ? & ? & Hb)". iExists ly. iFrame. iMod "Hb". iModIntro.
+    iIntros "(%ly & ? & ? & ? & ? & ?  & Hb)". iExists ly. iFrame. iMod "Hb". iModIntro.
     iApply (pinned_bor_iff' with "[] Hb").
     iNext. iModIntro. iSplit.
     * iIntros "(%r' & Hauth & Hb)". iExists _. iFrame.
@@ -2046,7 +2139,7 @@ Section ltype_agree.
   Proof.
     iModIntro. iIntros (π l). rewrite ltype_own_shr_ref_unfold /shr_ltype_own ltype_own_ofty_unfold /lty_of_ty_own.
     (* same proof as above essentially *)
-    iIntros "(%ly & ? & ? & Hsc & ? & ? & ? & ? & Hb)". iExists ly. iFrame. iMod "Hb". iModIntro.
+    iIntros "(%ly & ? & ? & Hsc & ? & ? & ? & Hb)". iExists ly. iFrame. iMod "Hb". iModIntro.
     iApply (pinned_bor_iff' with "[] Hb").
     iNext. iModIntro. iSplit.
     * iIntros "(%r' & Hauth & Hb)". iExists _. iFrame.

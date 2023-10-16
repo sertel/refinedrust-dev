@@ -4,340 +4,6 @@ From caesium Require Import lang proofmode derived lifting.
 Set Default Proof Using "Type".
 
 
-
-
-  (* TODO move *)
-  Definition option_combine {A B} (a : option A) (b : option B) : option (A * B) :=
-    match a, b with
-    | Some a, Some b => Some (a, b)
-    | _, _ => None
-    end.
-  Lemma option_combine_Some {A B} (a : option A) (b : option B) c :
-    option_combine a b = Some c →
-    ∃ a' b', a = Some a' ∧ b = Some b' ∧ c = (a', b').
-  Proof.
-    rewrite /option_combine. destruct a, b; naive_solver.
-  Qed.
-  Lemma option_combine_None {A B} (a : option A) (b : option B) :
-    option_combine a b = None →
-    a = None ∨ b = None.
-  Proof.
-    rewrite /option_combine. destruct a, b; naive_solver.
-  Qed.
-
-
-
-(* TODO move *)
-Lemma val_of_bool_i2v b :
-  val_of_bool b = i2v (bool_to_Z b) u8.
-Proof.
-  apply val_of_bool_iff_val_of_Z.
-  apply val_of_Z_bool.
-Qed.
-
-(* TODO: move *)
-Lemma lctx_bor_kind_incl_use `{!typeGS Σ} E L b1 b2 :
-  lctx_bor_kind_incl E L b1 b2 →
-  elctx_interp E -∗
-  llctx_interp L -∗
-  b1 ⊑ₖ b2.
-Proof.
-  iIntros (Hincl) "HE HL".
-  iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
-  by iPoseProof (Hincl with "HL HE") as "Ha".
-Qed.
-
-Lemma lctx_bor_kind_direct_incl_use `{!typeGS Σ} E L b1 b2 :
-  lctx_bor_kind_direct_incl E L b1 b2 →
-  elctx_interp E -∗
-  llctx_interp L -∗
-  b1 ⊑ₛₖ b2.
-Proof.
-  iIntros (Hincl) "HE HL".
-  iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
-  by iPoseProof (Hincl with "HL HE") as "Ha".
-Qed.
-
-(* TODO move *)
-Lemma subtype_acc `{!typeGS Σ} E L {rt1 rt2} r1 r2 (ty1 : type rt1) (ty2 : type rt2) :
-  subtype E L r1 r2 ty1 ty2 →
-  elctx_interp E -∗
-  llctx_interp L -∗
-  type_incl r1 r2 ty1 ty2.
-Proof.
-  iIntros (Hsub) "HE HL".
-  iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & Hcl_L)".
-  iPoseProof (Hsub with "HL HE") as "#Hincl". done.
-Qed.
-Lemma full_subtype_acc `{!typeGS Σ} E L {rt} (ty1 : type rt) (ty2 : type rt) :
-  full_subtype E L ty1 ty2 →
-  elctx_interp E -∗
-  llctx_interp L -∗
-  ∀ r, type_incl r r ty1 ty2.
-Proof.
-  iIntros (Hsub) "HE HL".
-  iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & Hcl_L)".
-  iIntros (?). iPoseProof (Hsub with "HL HE") as "#Hincl". done.
-Qed.
-Lemma full_subtype_acc_noend `{!typeGS Σ} E L {rt} (ty1 : type rt) (ty2 : type rt) qL :
-  full_subtype E L ty1 ty2 →
-  elctx_interp E -∗
-  llctx_interp_noend L qL -∗
-  ∀ r, type_incl r r ty1 ty2.
-Proof.
-  iIntros (Hsub) "HE HL".
-  iIntros (?). iPoseProof (Hsub with "HL HE") as "#Hincl". done.
-Qed.
-
-Lemma eqtype_acc `{!typeGS Σ} E L {rt1 rt2} r1 r2 (ty1 : type rt1) (ty2 : type rt2) :
-  eqtype E L r1 r2 ty1 ty2 →
-  elctx_interp E -∗
-  llctx_interp L -∗
-  type_incl r1 r2 ty1 ty2 ∗ type_incl r2 r1 ty2 ty1.
-Proof.
-  iIntros ([Hsub1 Hsub2]) "HE HL".
-  iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & Hcl_L)".
-  iPoseProof (Hsub1 with "HL HE") as "#Hincl1".
-  iPoseProof (Hsub2 with "HL HE") as "#Hincl2".
-  iFrame "#".
-Qed.
-Lemma eqtype_acc_noend `{!typeGS Σ} E L {rt1 rt2} r1 r2 (ty1 : type rt1) (ty2 : type rt2) qL :
-  eqtype E L r1 r2 ty1 ty2 →
-  elctx_interp E -∗
-  llctx_interp_noend L qL -∗
-  type_incl r1 r2 ty1 ty2 ∗ type_incl r2 r1 ty2 ty1.
-Proof.
-  iIntros ([Hsub1 Hsub2]) "HE HL".
-  iPoseProof (Hsub1 with "HL HE") as "#Hincl1".
-  iPoseProof (Hsub2 with "HL HE") as "#Hincl2".
-  iFrame "#".
-Qed.
-Lemma full_eqtype_acc `{!typeGS Σ} E L {rt} (ty1 : type rt) (ty2 : type rt) :
-  full_eqtype E L ty1 ty2 →
-  elctx_interp E -∗
-  llctx_interp L -∗
-  ∀ r, type_incl r r ty1 ty2 ∗ type_incl r r ty2 ty1.
-Proof.
-  iIntros (Heq) "HE HL".
-  iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & Hcl_L)".
-  iIntros (r). destruct (Heq r) as [Hsub1 Hsub2].
-  iPoseProof (Hsub1 with "HL HE") as "#$".
-  iPoseProof (Hsub2 with "HL HE") as "#$".
-Qed.
-Lemma full_eqtype_acc_noend `{!typeGS Σ} E L {rt} (ty1 : type rt) (ty2 : type rt) qL :
-  full_eqtype E L ty1 ty2 →
-  elctx_interp E -∗
-  llctx_interp_noend L qL -∗
-  ∀ r, type_incl r r ty1 ty2 ∗ type_incl r r ty2 ty1.
-Proof.
-  iIntros (Heq) "HE HL".
-  iIntros (r). destruct (Heq r) as [Hsub1 Hsub2].
-  iPoseProof (Hsub1 with "HL HE") as "#$".
-  iPoseProof (Hsub2 with "HL HE") as "#$".
-Qed.
-
-(* TODO move *)
-Lemma ltype_incl'_use `{!typeGS Σ} {rt1 rt2} F (lt1 : ltype rt1) (lt2 : ltype rt2) l π b r1 r2 :
-  lftE ⊆ F →
-  ltype_incl' b r1 r2 lt1 lt2 -∗
-  l ◁ₗ[π, b] r1 @ lt1 ={F}=∗
-  l ◁ₗ[π, b] r2 @ lt2.
-Proof.
-  iIntros (?) "#Hincl Hl".
-  iMod (fupd_mask_subseteq lftE) as "Hcl"; first done.
-  destruct b.
-  - iMod ("Hincl" with "Hl") as "$". by iMod "Hcl".
-  - iMod "Hcl". iModIntro. by iApply "Hincl".
-  - iMod "Hcl". iModIntro. by iApply "Hincl".
-Qed.
-Lemma ltype_incl_use `{!typeGS Σ} {rt1 rt2} π F b r1 r2 l (lt1 : ltype rt1) (lt2 : ltype rt2) :
-  lftE ⊆ F →
-  ltype_incl b r1 r2 lt1 lt2 -∗
-  l ◁ₗ[π, b] r1 @ lt1 ={F}=∗ l ◁ₗ[π, b] r2 @ lt2.
-Proof.
-  iIntros (?) "Hincl Ha".
-  iDestruct "Hincl" as "(_ & #Hincl & _)".
-  destruct b.
-  - iApply (fupd_mask_mono with "(Hincl Ha)"); done.
-  - by iApply "Hincl".
-  - by iApply "Hincl".
-Qed.
-Lemma ltype_incl_use_core `{!typeGS Σ} {rt1 rt2} π F b r1 r2 l (lt1 : ltype rt1) (lt2 : ltype rt2) :
-  lftE ⊆ F →
-  ltype_incl b r1 r2 lt1 lt2 -∗
-  l ◁ₗ[π, b] r1 @ ltype_core lt1 ={F}=∗ l ◁ₗ[π, b] r2 @ ltype_core lt2.
-Proof.
-  iIntros (?) "Hincl Ha".
-  iDestruct "Hincl" as "(_ & _ & #Hincl)".
-  destruct b.
-  - iApply (fupd_mask_mono with "(Hincl Ha)"); done.
-  - by iApply "Hincl".
-  - by iApply "Hincl".
-Qed.
-
-
-(* TODO move *)
-Section subltype.
-  Context `{!typeGS Σ}.
-  Lemma subltype_use {rt1 rt2} F E L b r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) :
-    lftE ⊆ F →
-    subltype E L b r1 r2 lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp L -∗
-    □ ∀ π l, l ◁ₗ[π, b] r1 @ lt1 ={F}=∗ l ◁ₗ[π, b] r2 @ lt2.
-  Proof.
-    iIntros (? Hsubt) "#CTX #HE HL".
-    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & _)".
-    iPoseProof (Hsubt with "HL CTX HE") as "#Hincl".
-    iModIntro. iIntros (π l). iApply ltype_incl_use; done.
-  Qed.
-  Lemma subltype_use_core {rt1 rt2} F E L b r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) :
-    lftE ⊆ F →
-    subltype E L b r1 r2 lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp L -∗
-    □ ∀ π l, l ◁ₗ[π, b] r1 @ ltype_core lt1 ={F}=∗ l ◁ₗ[π, b] r2 @ ltype_core lt2.
-  Proof.
-    iIntros (? Hsubt) "#CTX #HE HL".
-    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & _)".
-    iPoseProof (Hsubt with "HL CTX HE") as "#Hincl".
-    iModIntro. iIntros (π l). iApply ltype_incl_use_core; done.
-  Qed.
-
-  Lemma subltype_acc {rt1 rt2} E L b r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) :
-    subltype E L b r1 r2 lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp L -∗
-    ltype_incl b r1 r2 lt1 lt2.
-  Proof.
-    iIntros (Hsubt) "#CTX #HE HL".
-    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & _)".
-    iPoseProof (Hsubt with "HL CTX HE") as "#Hincl". done.
-  Qed.
-  Lemma full_subltype_acc E L {rt} (lt1 lt2 : ltype rt) :
-    full_subltype E L lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp L -∗
-    ∀ b r, ltype_incl b r r lt1 lt2.
-  Proof.
-    iIntros (Hsubt) "#CTX #HE HL".
-    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & _)".
-    iPoseProof (Hsubt with "HL CTX HE") as "#Hincl".
-    iIntros (b r). iApply "Hincl".
-  Qed.
-End subltype.
-
-
-(* TODO move *)
-Section eqltype.
-  Context `{!typeGS Σ}.
-  Lemma eqltype_use_noend F E L {rt1 rt2} b r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) qL l π :
-    lftE ⊆ F →
-    eqltype E L b r1 r2 lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp_noend L qL -∗
-    (l ◁ₗ[π, b] r1 @ lt1 ={F}=∗ l ◁ₗ[π, b] r2 @ lt2) ∗
-    llctx_interp_noend L qL.
-  Proof.
-    iIntros (? Hunfold) "#CTX #HE HL".
-    iPoseProof (Hunfold with "HL CTX HE") as "#Hll". iFrame.
-    iIntros "Hl".
-    iDestruct "Hll" as "((_ & #Ha & _) & _)".
-    destruct b.
-    - iMod (fupd_mask_subseteq lftE) as "Hcl"; first solve_ndisj.
-      iMod ("Ha" with "Hl") as "$". by iMod "Hcl" as "_".
-    - by iApply "Ha".
-    - by iApply "Ha".
-  Qed.
-  Lemma eqltype_use F E L {rt1 rt2} b r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) l π :
-    lftE ⊆ F →
-    eqltype E L b r1 r2 lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp L -∗
-    (l ◁ₗ[π, b] r1 @ lt1 ={F}=∗ l ◁ₗ[π, b] r2 @ lt2) ∗
-    llctx_interp L.
-  Proof.
-    iIntros (? Hunfold) "#CTX #HE HL".
-    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
-    iPoseProof (eqltype_use_noend with "CTX HE HL") as "($ & HL)"; [done.. | ].
-    by iApply "HL_cl".
-  Qed.
-  Lemma eqltype_acc E L {rt1 rt2} b r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) :
-    eqltype E L b r1 r2 lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp L -∗
-    ltype_eq b r1 r2 lt1 lt2.
-  Proof.
-    iIntros (Heq) "CTX HE HL".
-    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
-    iApply (Heq with "HL CTX HE").
-  Qed.
-  Lemma full_eqltype_acc E L {rt} (lt1 lt2 : ltype rt) :
-    full_eqltype E L lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp L -∗
-    ∀ b r, ltype_eq b r r lt1 lt2.
-  Proof.
-    iIntros (Heq) "CTX HE HL".
-    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
-    iApply (Heq with "HL CTX HE").
-  Qed.
-
-  Lemma all_ltype_eq_alt {rt} b (lt1 lt2 : ltype rt) :
-    (∀ r, ltype_eq b r r lt1 lt2) ⊣⊢ (∀ r, ltype_incl b r r lt1 lt2) ∧ (∀ r, ltype_incl b r r lt2 lt1).
-  Proof.
-    iSplit.
-    - iIntros "#Ha". iSplit; iIntros (r); iSpecialize ("Ha" $! r); iDestruct "Ha" as "[Ha Hb]"; done.
-    - iIntros "#[Ha Hb]". iIntros (r). iSplit; done.
-  Qed.
-  Lemma full_eqltype_use F π E L {rt} b r (lt1 lt2 : ltype rt) l :
-    lftE ⊆ F →
-    full_eqltype E L lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp L -∗
-    (l ◁ₗ[ π, b] r @ lt1 ={F}=∗ l ◁ₗ[ π, b] r @ lt2) ∗
-    llctx_interp L.
-  Proof.
-    iIntros (? Heq) "#CTX #HE HL".
-    iPoseProof (full_eqltype_acc with "CTX HE HL") as "#Heq"; [done | ].
-    iFrame. iIntros "Hl". iDestruct ("Heq" $! _ _) as "[Hincl _]".
-    by iApply (ltype_incl_use with "Hincl Hl").
-  Qed.
-
-  Lemma eqltype_syn_type_eq_noend E L {rt1 rt2} b r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) qL :
-    eqltype E L b r1 r2 lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp_noend L qL -∗
-    ⌜ltype_st lt1 = ltype_st lt2⌝.
-  Proof.
-    iIntros (Hunfold) "#CTX #HE HL".
-    iPoseProof (Hunfold with "HL CTX HE") as "#Hll".
-    iDestruct "Hll" as "((#$ & _) & _)".
-  Qed.
-  Lemma eqltype_syn_type_eq E L {rt1 rt2} b r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) :
-    eqltype E L b r1 r2 lt1 lt2 →
-    rrust_ctx -∗
-    elctx_interp E -∗
-    llctx_interp L -∗
-    ⌜ltype_st lt1 = ltype_st lt2⌝.
-  Proof.
-    iIntros (Hunfold) "#CTX #HE HL".
-    iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
-    iPoseProof (eqltype_syn_type_eq_noend with "CTX HE HL") as "#$".
-    done.
-  Qed.
-End eqltype.
-
 Section named_lfts.
   Context `{typeGS Σ}.
   (** [named_lfts] is a construct used by the automation to map annotated lifetime names to concrete Coq names.
@@ -438,12 +104,6 @@ Section credits.
     iApply ("Hcl" $! 1%nat).
   Qed.
 
-
-  (* TODO move *)
-  Lemma additive_time_receipt_succ n :
-    atime (S n) ⊣⊢ atime 1 ∗ atime n.
-  Proof. by rewrite -additive_time_receipt_sep. Qed.
-
   Lemma credit_store_borrow_receipt (n m : nat) :
     credit_store n m -∗
     atime 1 ∗ (atime 1 -∗ credit_store n m).
@@ -499,19 +159,28 @@ Section credits.
     rewrite -Nat.add_succ_r. rewrite additive_time_receipt_sep. iFrame.
   Qed.
 
-  (* TODO move *)
-  Lemma lc_split_le (m n : nat) :
-    m ≤ n →
-    £ n -∗ £ m ∗ £ (n - m).
-  Proof.
-    intros ?. replace n with (m + (n - m))%nat by lia.
-    replace (m + (n - m) - m)%nat with (n - m)%nat by lia.
-    rewrite lc_split. auto.
-  Qed.
 End credits.
 
 Section option_map.
   Context `{!typeGS Σ}.
+
+  Definition option_combine {A B} (a : option A) (b : option B) : option (A * B) :=
+    match a, b with
+    | Some a, Some b => Some (a, b)
+    | _, _ => None
+    end.
+  Lemma option_combine_Some {A B} (a : option A) (b : option B) c :
+    option_combine a b = Some c →
+    ∃ a' b', a = Some a' ∧ b = Some b' ∧ c = (a', b').
+  Proof.
+    rewrite /option_combine. destruct a, b; naive_solver.
+  Qed.
+  Lemma option_combine_None {A B} (a : option A) (b : option B) :
+    option_combine a b = None →
+    a = None ∨ b = None.
+  Proof.
+    rewrite /option_combine. destruct a, b; naive_solver.
+  Qed.
 
   Definition typed_option_map {A R} (o : option A) (Φ : A → (R → iProp Σ) → iProp Σ) (d : R) (T : R → iProp Σ) :=
     match o with
@@ -1340,7 +1009,7 @@ Section judgments.
   Proof.
     iIntros "Huniq". iSplit.
     + by iApply typed_place_cond_ty_refl.
-    + destruct b => //. 
+    + destruct b => //.
       (*iExists eq_refl. done.*)
   Qed.
 
@@ -1369,6 +1038,17 @@ Section judgments.
     iIntros "(Ha & _)". by iApply typed_place_cond_ty_syn_type_eq.
   Qed.
 
+  Lemma typed_place_cond_ty_uniq_core_eq {rt} (lt1 lt2 : ltype rt) κ γ :
+    typed_place_cond_ty (Uniq κ γ) lt1 lt2 -∗ ∀ b r, ltype_eq b r r (ltype_core lt1) (ltype_core lt2).
+  Proof.
+    iIntros "(%Heq & Ha & _)". rewrite (UIP_refl _ _ Heq). done.
+  Qed.
+  Lemma typed_place_cond_ty_uniq_unblockable {rt1 rt2} (lt1 : ltype rt1) (lt2 : ltype rt2) κ γ :
+    typed_place_cond_ty (Uniq κ γ) lt1 lt2 -∗ imp_unblockable [κ] lt2.
+  Proof.
+    iIntros "(%Heq & _ & Ha)". done.
+  Qed.
+
   (* controls conditions on refinement type changes *)
   Definition place_access_rt_rel (bmin : bor_kind) (rt1 rt2 : Type) :=
     match bmin with
@@ -1390,7 +1070,7 @@ Section judgments.
   Lemma typed_place_cond_rfn_refl b {rt} (r : place_rfn rt) :
     ⊢ typed_place_cond_rfn b r r.
   Proof.
-    destruct b => //. 
+    destruct b => //.
     (*iExists eq_refl. done.*)
   Qed.
 
@@ -2232,15 +1912,6 @@ Section judgments.
   Class ProveWithSubtype (E : elctx) (L : llctx) (step : bool) (pm : ProofMode) (P : iProp Σ) : Type :=
     prove_with_subtype_proof T : iProp_to_Prop (prove_with_subtype E L step pm P T).
 
-  (* TODO: move *)
-  Lemma maybe_logical_step_compose (E : coPset) step (P Q : iProp Σ) :
-    maybe_logical_step step E P -∗ maybe_logical_step step E (P -∗ Q) -∗ maybe_logical_step step E Q.
-  Proof.
-    iIntros "Ha Hb". destruct step; simpl.
-    - iApply (logical_step_compose with "Ha Hb").
-    - iMod "Ha". iMod "Hb". by iApply "Hb".
-  Qed.
-
   Lemma prove_with_subtype_sep E L step pm P1 P2 T :
     prove_with_subtype E L step pm P1 (λ L' κs R1, prove_with_subtype E L' step pm P2 (λ L'' κs2 R2, T L'' (κs ++ κs2) (R1 ∗ R2)))
     ⊢ prove_with_subtype E L step pm (P1 ∗ P2) T.
@@ -2274,21 +1945,6 @@ Section judgments.
   Global Instance prove_with_subtype_exists_inst {X} E L step pm (Φ : X → iProp Σ) : ProveWithSubtype E L step pm (∃ x, Φ x) :=
     λ T, i2p (prove_with_subtype_exists E L step pm Φ T).
 
-  (* TODO move *)
-  Lemma imp_unblockable_use π F κs {rt} (lt : ltype rt) (r : place_rfn rt) l bk :
-    lftE ⊆ F →
-    imp_unblockable κs lt -∗
-    lft_dead_list κs -∗
-    l ◁ₗ[π, bk] r @ lt ={F}=∗ l ◁ₗ[π, bk] r @ ltype_core lt.
-  Proof.
-    iIntros (?) "(#Hub_uniq & #Hub_owned) Hdead Hl".
-    destruct bk.
-    - iMod (fupd_mask_mono with "(Hub_owned Hdead Hl)") as "Hl"; first done.
-      rewrite ltype_own_core_equiv. done.
-    - iApply (ltype_own_shared_to_core with "Hl").
-    - iMod (fupd_mask_mono with "(Hub_uniq Hdead Hl)") as "Hl"; first done.
-      rewrite ltype_own_core_equiv. done.
-  Qed.
 
   (** For ofty location ownership, we have special handling to stratify first, if possible.
       This only happens in the [ProveWithStratify] proof mode though, because we sometimes directly want to get into [Subsume]. *)
@@ -2702,23 +2358,6 @@ Section judgments.
     - destruct strong as [ strong | ]; last done. iRight. iExists _. iR.
       iSplitR; last done. by iRight.
   Qed.
-
-  (*
-    match option_combine upd weak with
-    | Some (Heq, weak) =>
-        l ◁ₗ[π, b] (weak.(weak_rfn) (rew <- Heq in r2)) @ (weak.(weak_lt) (rew <- Heq in lt2)) -∗
-        weak.(weak_R) (rew <- Heq in lt2) (rew <- Heq in r2) -∗
-        introduce_with_hooks E L (R_weak ∗ R) T
-    | None =>
-        match strong with
-        | Some strong =>
-          l ◁ₗ[π, b] (strong.(strong_rfn) rti2 r2) @ (strong.(strong_lt) rti2 lt2) -∗
-          strong.(strong_R) rti2 lt2 r2 -∗
-          introduce_with_hooks E L R T
-        | _ => False
-        end
-    end.
-  *)
 
   (** ** Read judgments *)
   (* In a given lifetime context, we can read from [e], in the process determining that [e] reads from a location [l] and getting a value typed at a type [ty] with a layout compatible with [ot], and afterwards, the remaining [T L' v ty' r'] needs to be proved, where [ty'] is the new type of the read value and [v] is the read value.

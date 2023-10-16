@@ -169,6 +169,22 @@ Proof.
   rewrite /has_layout_val mem_cast_length //.
 Qed.
 
+Lemma is_memcast_val_has_layout_val v v' ot ly : 
+  is_memcast_val v ot v' →
+  v `has_layout_val` ly →
+  v' `has_layout_val` ly.
+Proof.
+  intros [-> | (st & ->)] Hb; first done.
+  by apply has_layout_val_mem_cast.
+Qed.
+Lemma is_memcast_val_length v v' ot : 
+  is_memcast_val v ot v' →
+  length v = length v'.
+Proof.
+  intros [-> | (st & ->)]; first done.
+  rewrite mem_cast_length//.
+Qed.
+
 
 (* Q:
     does the syntactical type alone determine the memcast_compat_type?

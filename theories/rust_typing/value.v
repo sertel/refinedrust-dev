@@ -446,28 +446,29 @@ Section value.
     - rewrite /layout_wf/ly_align/u8/=. apply Z.divide_1_l.
     - done.
   Qed.
-  Lemma value_t_untyped_length π v v1 ly :
-    v ◁ᵥ{π} v1 @ value_t (UntypedSynType ly) -∗
+
+  Lemma value_t_has_length π v v1 st ly :
+    syn_type_has_layout st ly →
+    v ◁ᵥ{π} v1 @ value_t st -∗
     ⌜length v1 = ly_size ly⌝ ∗ ⌜length v = ly_size ly⌝.
   Proof.
     rewrite /ty_own_val/=.
     iDestruct 1 as "(%ot & %Hot & %Hmc & %Hly & %Hst)".
-    apply use_op_alg_untyped_inv in Hot as ->.
-    apply syn_type_has_layout_untyped_inv in Hst as (<- & ? & ?).
-    apply is_memcast_val_untyped_inv in Hmc as ->.
-    rewrite /has_layout_val in Hly. simpl in *.
-    done.
+    assert (ly = ot_layout ot) as -> by by eapply syn_type_has_layout_inj.
+    iL. iPureIntro. apply is_memcast_val_length in Hmc as ->; done.
   Qed.
-  Lemma ofty_value_t_untyped_length F π l ly v1 :
+  Lemma ofty_value_t_has_length F π l st ly v1 :
     lftE ⊆ F →
-    l ◁ₗ[π, Owned false] #v1 @ (◁ value_t (UntypedSynType ly)) ={F}=∗
-    ⌜length v1 = ly_size ly⌝ ∗ l ◁ₗ[π, Owned false] #v1 @ (◁ value_t (UntypedSynType ly)).
+    syn_type_has_layout st ly →
+    l ◁ₗ[π, Owned false] #v1 @ (◁ value_t st) ={F}=∗
+    ⌜length v1 = ly_size ly⌝ ∗ l ◁ₗ[π, Owned false] #v1 @ (◁ value_t st).
   Proof.
-    iIntros (?) "Hl".
+    iIntros (??) "Hl".
     rewrite ltype_own_ofty_unfold/lty_of_ty_own.
     iDestruct "Hl" as "(%ly' & % & % & ? & ? & ? & %r' & <- & Hb)".
     iMod (fupd_mask_mono with "Hb") as "(%v & Hl & Hv)"; first done.
-    iPoseProof (value_t_untyped_length with "Hv") as "(% & %)".
+    iPoseProof (value_t_has_length with "Hv") as "(% & %)"; first done.
+    assert (ly' = ly) as -> by by eapply syn_type_has_layout_inj.
     iR. iModIntro. iExists _. iFrame. iR. iR. iExists _. iR.
     iModIntro. eauto with iFrame.
   Qed.
@@ -482,22 +483,32 @@ Section value.
   Proof.
     iIntros (? Hn ?).
     rewrite /offset_loc.
-    assert (ly_size (mk_array_layout ly k) = ly_size ly * k)%nat as Heq. {
-      rewrite /mk_array_layout/ly_mult{1}/ly_size. lia. }
-    rewrite -Nat2Z.inj_mul. rewrite -{3}Heq.
-    iIntros "Hl". iMod (ofty_value_t_untyped_length with "Hl") as "(%Hlen & Hl)"; first done.
+    rewrite -Nat2Z.inj_mul -{3}(ly_size_mk_array_layout k ly).
+    iIntros "Hl".
+    iPoseProof (ltype_own_has_layout with "Hl") as "(%lyv & %Hstly & %Hlyl)".
+    simp_ltypes in Hstly. simpl in Hstly.
+    iMod (ofty_value_t_has_length with "Hl") as "(%Hlen & Hl)"; [done.. | ].
     simpl in *.
     iApply (ofty_value_t_split_adjacent with "Hl").
     - done.
     - simpl. lia.
     - simpl. lia.
-    - simpl. rewrite /mk_array_layout/ly_mult/ly_size/=. lia.
+    - simpl. rewrite !ly_size_mk_array_layout. lia.
     - rewrite take_drop//.
     - rewrite take_length. simpl.
-      rewrite Heq. rewrite Hlen.
-      rewrite /mk_array_layout/ly_mult{2}/ly_size. lia.
+      apply syn_type_has_layout_untyped_inv in Hstly as (-> & ? & ? & ?).
+      rewrite Hlen !ly_size_mk_array_layout. lia.
     - by apply array_layout_wf.
     - by apply array_layout_wf.
+  Qed.
+
+  Lemma value_t_has_layout π st v vs :
+    v ◁ᵥ{π} vs @ value_t st -∗
+    ∃ ly, ⌜syn_type_has_layout st ly⌝ ∗ ⌜v `has_layout_val` ly⌝.
+  Proof.
+    rewrite /ty_own_val.
+    iDestruct 1 as "(%ot & %Hot & %Hmv & %Hv & %Hst)".
+    iExists (ot_layout ot). iR. done.
   Qed.
 End value.
 
@@ -508,15 +519,6 @@ Global Typeclasses Opaque value_t.
 Section rules.
   Context `{!typeGS Σ}.
 
-  (* TODO move *)
-  Lemma maybe_logical_step_fupd step F P :
-    maybe_logical_step step F (|={F}=> P) -∗
-    maybe_logical_step step F P.
-  Proof.
-    destruct step; simpl.
-    - iApply logical_step_fupd.
-    - rewrite fupd_trans; auto.
-  Qed.
 
   (** *** instances for types that are not value -- these have lower priority than the the value-specific versions below *)
   (** by default, we go to UntypedSynType, and can later on specialize if needed by subsumption (we cannot go the other way around due to memcast compatibility) *)

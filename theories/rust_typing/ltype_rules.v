@@ -20,7 +20,7 @@ Proof.
     by iApply ty_shr_mono.
   + rewrite /lty_of_ty_own.
     iDestruct "Hincl" as "(Hincl & ->)".
-    iIntros "(%ly & Hst & Hly & Hsc & Hlb & Hcred & Hat & Hrfn & Hb)". iExists ly. iFrame.
+    iIntros "(%ly & Hst & Hly & Hsc & Hlb & Hcred & Hrfn & Hb)". iExists ly. iFrame.
     iMod "Hb". iModIntro. iApply pinned_bor_shorten; done.
 Qed.
 Local Lemma alias_mono `{!typeGS Σ} rt st p b1 b2 π r l :
@@ -49,7 +49,7 @@ Proof.
     iApply lft_intersect_mono; last done. iApply lft_incl_refl.
   + iDestruct "Hincl" as "(Hincl & ->)".
     rewrite !ltype_own_mut_ref_unfold /mut_ltype_own.
-    iIntros "(%ly & ? & ? & ? & ? & ? & ? & Hb)".
+    iIntros "(%ly & ? & ? & ? & ? & ? & Hb)".
     iExists ly. iFrame. iMod "Hb". by iApply pinned_bor_shorten.
 Qed.
 Local Lemma shrltype_mono `{!typeGS Σ} {rt} (lt : ltype rt) π κ :
@@ -68,7 +68,7 @@ Proof.
     done.
   + iDestruct "Hincl" as "(Hincl & ->)".
     rewrite !ltype_own_shr_ref_unfold /shr_ltype_own.
-    iIntros "(%ly & ? & ? & ? & ? & ? & ? & Hb)".
+    iIntros "(%ly & ? & ? & ? & ? & ? & Hb)".
     iExists ly. iFrame. iMod "Hb". by iApply pinned_bor_shorten.
 Qed.
 Local Lemma box_ltype_mono `{!typeGS Σ} {rt} (lt : ltype rt) π :
@@ -87,7 +87,7 @@ Proof.
     iNext. iApply IH; last done. done.
   + iDestruct "Hincl" as "(Hincl & ->)".
     rewrite !ltype_own_box_unfold /box_ltype_own.
-    iIntros "(%ly & ? & ? & ? & ? & ? & ? & Hb)".
+    iIntros "(%ly & ? & ? & ? & ? & ? & Hb)".
     iExists ly. iFrame. iMod "Hb". by iApply pinned_bor_shorten.
 Qed.
 Local Lemma owned_ptr_ltype_mono `{!typeGS Σ} {rt} (lt : ltype rt) (ls : bool) π :
@@ -106,7 +106,7 @@ Proof.
     iNext. iApply IH; last done. done.
   + iDestruct "Hincl" as "(Hincl & ->)".
     rewrite !ltype_own_owned_ptr_unfold /owned_ptr_ltype_own.
-    iIntros "(%ly & ? & ? & ? & ? & ? & ? & Hb)".
+    iIntros "(%ly & ? & ? & ? & ? & ? & Hb)".
     iExists ly. iFrame. iMod "Hb". by iApply pinned_bor_shorten.
 Qed.
 Local Lemma struct_ltype_mono `{!typeGS Σ} {rts} (lts : hlist ltype rts) sls π :
@@ -134,7 +134,7 @@ Proof.
       rewrite /UninitLtype !ltype_own_ofty_unfold. by iApply (lty_of_ty_mono with "[] Hb").
   + iDestruct "Hincl" as "(Hincl & ->)".
     rewrite !ltype_own_struct_unfold /struct_ltype_own.
-    iIntros "(%sl & ? & ? & ? & ? & ? & ? & ? & Hb)".
+    iIntros "(%sl & ? & ? & ? & ? & ? & ? & Hb)".
     iExists sl. iFrame. iMod "Hb".
     by iApply pinned_bor_shorten.
 Qed.
@@ -155,7 +155,7 @@ Proof.
     by eapply elem_of_list_lookup_2.
   + rewrite !ltype_own_array_unfold /array_ltype_own.
     iDestruct "Hincl" as "(Hincl & ->)".
-    iIntros "(%ly &  ? & ? & ? & ? & ? & ? & ? & Hb)".
+    iIntros "(%ly &  ? & ? & ? & ? & ? & ? & Hb)".
     iExists ly. iFrame.
     iMod "Hb". iModIntro. iApply pinned_bor_shorten; done.
 Qed.
@@ -478,7 +478,7 @@ Section subtype.
   Proof.
     iIntros "#Heq". iModIntro.
     iIntros (π l). rewrite !ltype_own_owned_ptr_unfold /owned_ptr_ltype_own.
-      iIntros "(%ly & ? & ? & ? & ? & ? & Hobs & Hb)".
+      iIntros "(%ly & ? & ? & ? & ? & Hobs & Hb)".
       iExists ly. iFrame.
       iMod "Hb". iModIntro.
       iApply (pinned_bor_iff with "[] [] Hb").
@@ -774,13 +774,13 @@ Section accessors.
         l ◁ₗ[π, Uniq κ γ] #(r2) @ OpenedLtype (◁ty2) (◁ty) (◁ty) (λ r1 r1', ⌜r1 = r1'⌝) (λ _ _, R))).
   Proof.
     iIntros (?) "#(LFT & TIME & LLCTX) Htok HclR Hb". rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-    iDestruct "Hb" as "(%ly & %Halg & %Hly & #Hsc & #Hlb & Hcred & Hat & Hobs & Hb)".
+    iDestruct "Hb" as "(%ly & %Halg & %Hly & #Hsc & #Hlb & Hcred & Hobs & Hb)".
     iExists ly. iFrame "%#".
     iMod (fupd_mask_subseteq lftE) as "HF_cl"; first done.
     iMod "Hb" as "Hb".
     iMod (pinned_bor_acc_strong lftE with "LFT Hb Htok") as "(%κ' & #Hinclκ & Hb & Hvcl & Hcl)"; first done.
     iMod "HF_cl" as "_".
-    iDestruct "Hcred" as "[Hcred1 Hcred]".
+    iDestruct "Hcred" as "([Hcred1 Hcred] & Hat)".
     iApply (lc_fupd_add_later with "Hcred1"); iNext.
     iDestruct "Hb" as "(%r' & Hauth & Hb)".
     iMod (fupd_mask_mono lftE with "Hb") as "(%v & Hl & Hv)"; first done.
@@ -918,7 +918,7 @@ Section open.
   Proof.
     iIntros (? κ γ π r l q κs ?) "#(LFT & TIME & LLCTX) Htok Hcl_tok Hb".
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-    iDestruct "Hb" as "(%ly & % & % & #? & #? & (Hcred1 & Hcred) & Hat & Hrfn & Hb)".
+    iDestruct "Hb" as "(%ly & % & % & #? & #? & ((Hcred1 & Hcred) & Hat) & Hrfn & Hb)".
     iMod (fupd_mask_subseteq lftE) as "Hcl_F"; first done.
     iMod "Hb".
     iMod (pinned_bor_acc_strong lftE with "LFT Hb Htok") as "(%κ' & #Hincl & Hb & ? & Hcl_b)"; first done.

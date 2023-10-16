@@ -281,7 +281,7 @@ Section open.
         Can we generalize? *)
     iIntros (?) "#(LFT & TIME & LLCTX) Htok Hcl_tok Hb".
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-    iDestruct "Hb" as "(%ly & %Halg & %Hly & #Hsc & #Hlb & Hcred & Hat & Hrfn & Hb)".
+    iDestruct "Hb" as "(%ly & %Halg & %Hly & #Hsc & #Hlb & (Hcred & Hat) & Hrfn & Hb)".
     iMod (fupd_mask_mono with "Hb") as "Hb"; first done.
     iDestruct "Hcred" as "(Hcred1 & Hcred)".
     iMod (fupd_mask_subseteq lftE) as "Hcl_F"; first done.

@@ -105,6 +105,10 @@ Section time.
   Global Instance additive_time_receipt_into_sep n m : IntoSep atime (n + m) atime n atime m.
   Proof. rewrite /IntoSep. by rewrite additive_time_receipt_sep. Qed.
 
+  Lemma additive_time_receipt_succ n :
+    atime (S n) ⊣⊢ atime 1 ∗ atime n.
+  Proof. by rewrite -additive_time_receipt_sep. Qed.
+
   Lemma persistent_time_receipt_0 : ⊢ |==> ptime 0.
   Proof. rewrite /persistent_time_receipt. apply own_unit. Qed.
   Lemma additive_time_receipt_0 : ⊢ |==> atime 0.

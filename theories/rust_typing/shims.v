@@ -255,7 +255,9 @@ Proof.
 
   (* turn it into arrays *)
   iPoseProof (ofty_value_t_untyped_to_array with "Hs") as "Hs".
+  { by eapply syn_type_has_layout_make_untyped. }
   iPoseProof (ofty_value_t_untyped_to_array with "Ht") as "Ht".
+  { by eapply syn_type_has_layout_make_untyped. }
   iModIntro.
 
   set (loop_inv := (λ (E : elctx) (L : llctx),
@@ -280,7 +282,9 @@ Proof.
   assert (take i (reshape (replicate len (ly_size T_st_ly)) v_s) ++ drop i (reshape (replicate len (ly_size T_st_ly)) v_t) = (reshape (replicate len (ly_size T_st_ly)) (take (i * ly_size T_st_ly) v_s ++ drop (i * ly_size T_st_ly) v_t))) as ->.
   { shelve. }
   iPoseProof (ofty_value_t_untyped_from_array with "Hs") as "Hs".
+  { rewrite Hlen_s ly_size_mk_array_layout. lia. }
   iPoseProof (ofty_value_t_untyped_from_array with "Ht") as "Ht".
+  { rewrite app_length take_length drop_length. rewrite Hlen_t Hlen_s !ly_size_mk_array_layout. lia. }
 
   iApply typed_stmt_annot_skip.
   repeat liRStep; liShow.

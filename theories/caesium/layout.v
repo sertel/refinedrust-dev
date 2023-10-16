@@ -113,6 +113,10 @@ Lemma ly_size_mk_array_layout (n : nat) ly :
 Proof.
   rewrite /mk_array_layout /ly_mult /ly_size //.
 Qed.
+Lemma ly_align_mk_array_layout ly n : 
+  ly_align (mk_array_layout ly n) = ly_align ly.
+Proof. done. Qed.
+
 
 
 (*** Lemmas about [layout] *)
