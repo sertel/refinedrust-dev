@@ -857,6 +857,54 @@ Section accessors.
 
 End accessors.
 
+Section ofty.
+  Context `{!typeGS Σ}.
+
+  Lemma ofty_mono_ly_strong_in π {rt1 rt2} l wl (ty1 : type rt1) (ty2 : type rt2) (r1 : rt1) (r2 : rt2) ly1 ly2 :
+    syn_type_has_layout (ty1.(ty_syn_type)) ly1 →
+    syn_type_has_layout (ty2.(ty_syn_type)) ly2 →
+    (l `has_layout_loc` ly1 → l `has_layout_loc` ly2) →
+    ly_size ly2 = ly_size ly1 →
+    (∀ v, ty1.(ty_own_val) π r1 v -∗ ty2.(ty_own_val) π r2 v) -∗
+    (ty_sidecond ty1 -∗ ty_sidecond ty2) -∗
+    l ◁ₗ[π, Owned wl] #r1 @ (◁ ty1) -∗
+    l ◁ₗ[π, Owned wl] #r2 @ (◁ ty2).
+  Proof.
+    intros Halg1 Halg2 Halign Hsz. iIntros "Hvs Hscvs Hl".
+    rewrite !ltype_own_ofty_unfold /lty_of_ty_own.
+    iDestruct "Hl" as "(%ly1' & %Halg1' & %Hly & Hsc & Hlb & Hcred & %r' & <- & Hb)".
+    assert (ly1' = ly1) as -> by by eapply syn_type_has_layout_inj.
+    iExists ly2. iSplitR; first done.
+    iSplitR. { iPureIntro. by apply Halign. }
+    iPoseProof ("Hscvs" with "Hsc") as "$".
+    rewrite Hsz. iFrame "Hlb Hcred".
+    iExists r2. iSplitR; first done.
+    iNext. iMod "Hb" as "(%v & Hl & Hv)".
+    iModIntro. iExists v. iFrame. by iApply "Hvs".
+  Qed.
+  Lemma ofty_mono_ly_strong π {rt1} l wl (ty1 : type rt1) (ty2 : type rt1) (r1 : place_rfn rt1) ly1 ly2 :
+    syn_type_has_layout (ty1.(ty_syn_type)) ly1 →
+    syn_type_has_layout (ty2.(ty_syn_type)) ly2 →
+    (l `has_layout_loc` ly1 → l `has_layout_loc` ly2) →
+    ly_size ly2 = ly_size ly1 →
+    (∀ v r, ty1.(ty_own_val) π r v -∗ ty2.(ty_own_val) π r v) -∗
+    (ty_sidecond ty1 -∗ ty_sidecond ty2) -∗
+    l ◁ₗ[π, Owned wl] r1 @ (◁ ty1) -∗
+    l ◁ₗ[π, Owned wl] r1 @ (◁ ty2).
+  Proof.
+    intros Halg1 Halg2 Halign Hsz. iIntros "Hvs Hscvs Hl".
+    rewrite !ltype_own_ofty_unfold /lty_of_ty_own.
+    iDestruct "Hl" as "(%ly1' & %Halg1' & %Hly & Hsc & Hlb & Hcred & %r' & ? & Hb)".
+    assert (ly1' = ly1) as -> by by eapply syn_type_has_layout_inj.
+    iExists ly2. iSplitR; first done.
+    iSplitR. { iPureIntro. by apply Halign. }
+    iPoseProof ("Hscvs" with "Hsc") as "$".
+    rewrite Hsz. iFrame "Hlb Hcred".
+    iExists _. iFrame.
+    iNext. iMod "Hb" as "(%v & Hl & Hv)".
+    iModIntro. iExists v. iFrame. by iApply "Hvs".
+  Qed.
+End ofty.
 
 Section open.
   Context `{!typeGS Σ}.

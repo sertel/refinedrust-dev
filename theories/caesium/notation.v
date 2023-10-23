@@ -308,7 +308,7 @@ Arguments EnumData : simpl never.
 (** Shift a location by [z] times the size of [ly]. *)
 Definition OffsetLocSt `{!LayoutAlg} (l : loc) (st : syn_type) (z : Z) : loc := (l +ₗ (use_layout_alg' st).(ly_size) * z).
 Notation "l 'offsetst{' st '}ₗ' z" := (OffsetLocSt l%L st z%Z)
-  (at level 50, format "l  'offsetst{' st '}ₗ'  z", left associativity) : loc_scope.
+  (at level 39, format "l  'offsetst{' st '}ₗ'  z", left associativity) : loc_scope.
 Global Typeclasses Opaque OffsetLocSt.
 Arguments OffsetLocSt : simpl never.
 

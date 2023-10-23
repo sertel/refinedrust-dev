@@ -1739,9 +1739,7 @@ Section unfold.
     eapply use_layout_alg_struct_Some_inv in Halg as (sl & Halg & ->).
     (*assert (ly = sl) as ->. { eapply syn_type_has_layout_inj; first done.*)
       (*eapply use_struct_layout_alg_Some_inv. done. }*)
-    iExists sl. iSplitR; first done.
-    iSplitR; first done. iSplitR; first done.
-    iSplitR; first done.
+    iExists sl. do 4 iR.
     iFrame. iExists r'. iFrame.
     iModIntro. iNext. iMod "Hv" as "(%v & Hl & Hv)".
     iDestruct "Hv" as "(%sl' & %Halg' & _ & %Hly' & Hb)".
@@ -1754,9 +1752,7 @@ Section unfold.
     iDestruct "Hl" as "(_ & Hl)".
     iPoseProof (big_sepL2_sep_sepL_l with "[$Hl $Hb]") as "Ha".
 
-    iAssert ([∗ list] k↦ _;y ∈ reshape (ly_size <$> (sl_members sl).*2) v; pad_struct (sl_members sl) (hpzipl rts tys r') struct_make_uninit_type, |={lftE}=> ∃ ly : layout, ⌜snd <$> sl_members sl !! k = Some ly⌝ ∗ ⌜syn_type_has_layout (ltype_st (projT2 (f y)).1) ly⌝ ∗ ltype_own (projT2 (f y)).1 (Owned false) π (projT2 (f y)).2 (l +ₗ offset_of_idx (sl_members sl) k))%I with "[-]" as "Hs"; first last.
-    { rewrite big_sepL2_const_sepL_r. rewrite big_sepL_fupd. iDestruct "Hs" as "[_ $]". }
-
+    iApply (big_sepL2_elim_l). iApply big_sepL2_fupd.
     iApply (big_sepL2_wand with "Ha").
     iApply big_sepL2_intro.
     { rewrite reshape_length pad_struct_length fmap_length fmap_length //. }
@@ -1804,6 +1800,7 @@ Section unfold.
   Qed.
 
   (* The lemma stating the main unfolding condition for the Uniq case *)
+  (* TODO: maybe we can refactor this a bit *)
   Local Lemma unfold_case_uniq {rts} π (tys : hlist type rts) sls sl l γ wl (b : bool) :
     wl = false →
     use_struct_layout_alg sls = Some sl →

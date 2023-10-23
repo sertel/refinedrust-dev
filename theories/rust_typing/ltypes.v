@@ -1480,18 +1480,18 @@ Section ltype_def.
         have_creds ∗
         place_rfn_interp_mut r γ ∗
         |={lftE}=> &pin{κ}
-          [∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ ⌜length r' = len⌝ ∗ |={lftE}=>
+          [∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ 
               big_sepL_P (zip (interpret_iml (OfTyLty def) len lts) r')
               (λ i ty HP,
                 ∃ (Heq : lty_rt ty.1 = rt),
                   ⌜lty_st ty.1 = ty_syn_type def⌝ ∗
-                  lty_own_pre true ty.1 (Owned false) π (rew <-Heq in ty.2) (offset_loc l ly i))]
-          (∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ ⌜length r' = len⌝ ∗ |={lftE}=>
+                  lty_own_pre true ty.1 (Owned false) π (rew <-Heq in ty.2) (offset_loc l ly i)))]
+          (∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ 
               big_sepL_P (zip (interpret_iml (OfTyLty def) len lts) r')
               (λ i ty HP,
                 ∃ (Heq : lty_rt ty.1 = rt),
                   ⌜lty_st ty.1 = ty_syn_type def⌝ ∗
-                  lty_own_pre core ty.1 (Owned false) π (rew <-Heq in ty.2) (offset_loc l ly i)))
+                  lty_own_pre core ty.1 (Owned false) π (rew <-Heq in ty.2) (offset_loc l ly i))))
 
       | Shared κ =>
           ∃ r', place_rfn_interp_shared r r' ∗ ⌜length r' = len⌝ ∗
@@ -2627,6 +2627,7 @@ Section ltype_def.
 
   Definition UninitLtype st := OfTy (uninit st).
 
+  (** Note: Parameterized over [rec] and [rec_core] instead of using [ltype_own] and [ltype_own_core] because [rec] might be [ltype_own_core] if we go into the core *)
   Definition box_ltype_own
     (rec : ltype_own_type)
     (rec_core : ltype_own_type)
@@ -2852,21 +2853,21 @@ Section ltype_def.
       match k with
       | Owned wl =>
           maybe_creds wl ∗
-        ∃ r' : list (place_rfn rt), place_rfn_interp_owned r r' ∗
-        ⌜length r' = len⌝ ∗
-        ▷?wl |={lftE}=>
-        [∗ list] i ↦ lt; r0 ∈ (interpret_iml (OfTy def) len lts); r',
-            ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Owned false) π r0 (offset_loc l ly i)
+          ∃ r' : list (place_rfn rt), place_rfn_interp_owned r r' ∗
+          ⌜length r' = len⌝ ∗
+          ▷?wl |={lftE}=>
+          [∗ list] i ↦ lt; r0 ∈ (interpret_iml (OfTy def) len lts); r',
+              ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Owned false) π r0 (offset_loc l ly i)
       | Uniq κ γ =>
         have_creds ∗
         place_rfn_interp_mut r γ ∗
         |={lftE}=> &pin{κ}
-          [∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ ⌜length r' = len⌝ ∗ |={lftE}=>
+          [∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ 
               [∗ list] i ↦ lt; r0 ∈ interpret_iml (OfTy def) len lts; r',
-                ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec_core _ lt (Owned false) π r0 (offset_loc l ly i)]
-          (∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ ⌜length r' = len⌝ ∗ |={lftE}=>
+                ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec_core _ lt (Owned false) π r0 (offset_loc l ly i))]
+          (∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ 
               [∗ list] i ↦ lt; r0 ∈ interpret_iml (OfTy def) len lts; r',
-                ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Owned false) π r0 (offset_loc l ly i))
+                ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Owned false) π r0 (offset_loc l ly i)))
       | Shared κ =>
           ∃ r', place_rfn_interp_shared r r' ∗ ⌜length r' = len⌝ ∗
             □ |={lftE}=> [∗ list] i ↦ lt; r0 ∈ interpret_iml (OfTy def) len lts; r',
@@ -3375,6 +3376,7 @@ Section ltype_def.
       rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
       rewrite interpret_iml_length//.
     - do 6 f_equiv. all: f_equiv; first done.
+      all: f_equiv. 
       all: apply sep_equiv_proper => Hlen.
       all: repeat f_equiv; rewrite big_sepL_P_eq.
       all: rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap//.

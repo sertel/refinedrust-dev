@@ -556,6 +556,14 @@ Lemma big_sepL2_from_zip {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ �
 Proof.
   iIntros (?) "Ha". iApply big_sepL2_alt. iR. done.
 Qed.
+(* hypothesis-directed version *)
+Lemma big_sepL2_from_zip' {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ → iProp Σ) :
+  length l1 = length l2 →
+  ([∗ list] i ↦ x ∈ zip l1 l2, Φ i x) ⊢
+  [∗ list] i ↦ x; y ∈ l1; l2, Φ i (x, y).
+Proof.
+  iIntros (?) "Ha". iApply big_sepL2_alt. iR. setoid_rewrite <-surjective_pairing. done.
+Qed.
 Lemma big_sepL2_to_zip {Σ} {A B} (l1 : list A) (l2 : list B) (Φ : _ → _ → _ → iProp Σ) :
   ([∗ list] i ↦ x; y ∈ l1; l2, Φ i x y) ⊢
   [∗ list] i ↦ x ∈ zip l1 l2, Φ i x.1 x.2.

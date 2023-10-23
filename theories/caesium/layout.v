@@ -113,7 +113,7 @@ Lemma ly_size_mk_array_layout (n : nat) ly :
 Proof.
   rewrite /mk_array_layout /ly_mult /ly_size //.
 Qed.
-Lemma ly_align_mk_array_layout ly n : 
+Lemma ly_align_mk_array_layout ly n :
   ly_align (mk_array_layout ly n) = ly_align ly.
 Proof. done. Qed.
 
@@ -161,3 +161,17 @@ Proof.
   apply Z.divide_1_l.
 Qed.
 
+Lemma ly_size_ly_offset ly n :
+  ly_size (ly_offset ly n) = (ly_size ly - n)%nat.
+Proof.
+  rewrite /ly_size /ly_offset. destruct ly; done.
+Qed.
+Lemma layout_wf_mono ly1 ly2 :
+  (ly_align_log ly2 ≤ ly_align_log ly1)%nat →
+  ly_size ly1 = ly_size ly2 →
+  layout_wf ly1 → layout_wf ly2.
+Proof.
+  rewrite /layout_wf /ly_align. intros Hle Hsz Hdiv.
+  rewrite -Hsz. eapply Z.divide_trans; last apply Hdiv.
+  eapply Zdivide_nat_pow. lia.
+Qed.

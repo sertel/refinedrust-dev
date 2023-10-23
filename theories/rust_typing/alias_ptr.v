@@ -3,7 +3,7 @@ From refinedrust Require Import memcasts ltype_rules value.
 From iris Require Import options.
 
 
-(** A specialized version for pointers.
+(** A specialized version of values [value_t] for pointers.
   This is mainly useful if we want to specify ownership of allocations in an ADT separately (e.g. in RawVec) from the field of the struct actually containing the pointer.
   Disadvantage: this does not have any useful interaction laws with the AliasLtype, and we need to duplicate the place typing lemma for both of these. *)
 Section alias.
@@ -87,112 +87,74 @@ Section rules.
     λ T, i2p (alias_ptr_simplify_goal_unsafe2 π l ty r T).
    *)
 
-  (* Place typing accesses to alias_ptr:
-     - in RefinedC's setup: essentially just exploit the equality and then start a new search in the context for the location; independent of any actual operation
-     - for us: that would entail making alias_ptr an ltype.
-        does that make sense? maybe not so much.
-        Or maybe it dose?
+  Lemma typed_place_ofty_alias_ptr_owned π E L l l2 bmin0 wl P T :
+    find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
+      typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
+        T L' [] li b3 bmin rti ltyi ri
+          (match strong with
+           | Some strong => Some $ mk_strong (λ _, _) (λ _ _ _, ◁ alias_ptr_t) (λ _ _, #l2) (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)
+           | None => None
+           end)
+          (match weak with
+           | Some weak => Some $ mk_weak (λ _ _, ◁ alias_ptr_t) (λ _, #l2) (λ ltyi2 ri2, llft_elt_toks κs ∗ l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)
+           | None =>
+               match strong with
+                | Some strong => Some $ mk_weak (λ _ _, ◁ alias_ptr_t) (λ _, #l2) (λ ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)
+                | None => None
+                end
+            end)
+          ))
+    ⊢ typed_place π E L l (◁ alias_ptr_t) (#l2) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) T.
+  Proof.
+    iDestruct 1 as ((rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
+    iApply typed_place_ofty_access_val_owned; first done.
+    iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame "Hl2 HP". done.
+  Qed.
+  Global Instance typed_place_ofty_alias_ptr_owned_inst π E L l l2 bmin0 wl P :
+    TypedPlace E L π l (◁ alias_ptr_t)%I (#l2) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) |30 :=
+    λ T, i2p (typed_place_ofty_alias_ptr_owned π E L l l2 bmin0 wl P T).
 
-     Does the fact that we need to do a dereference affect us much?
-     - difference is that we always have some actual ownership involved when stating place ownership of alias_ptr, because we wrap it in ofty.
-     - I can't really do chains of alias_ptr that way.
+  Lemma typed_place_ofty_alias_ptr_uniq π E L l l2 bmin0 κ γ P T :
+    ⌜lctx_lft_alive E L κ⌝ ∗
+    find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
+      typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
+        T L' κs li b3 bmin rti ltyi ri
+          (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, ◁ alias_ptr_t) (λ _ _, #l2)
+            (* give back ownership through R *)
+            (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
+          (fmap (λ weak, mk_weak (λ _ _, ◁ alias_ptr_t) (λ _, PlaceIn l2)
+            (λ ltyi2 ri2, l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)) weak)
+          ))
+    ⊢ typed_place π E L l (◁ alias_ptr_t) (#l2) bmin0 (Uniq κ γ) (DerefPCtx Na1Ord PtrOp true :: P) T.
+  Proof.
+    iDestruct 1 as (Hal (rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
+    iApply typed_place_ofty_access_val_uniq; first done. iSplitR; first done.
+    iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame. done.
+  Qed.
+  Global Instance typed_place_ofty_alias_ptr_uniq_inst π E L l l2 bmin0 κ γ P :
+    TypedPlace E L π l (◁ alias_ptr_t)%I (#l2) bmin0 (Uniq κ γ) (DerefPCtx Na1Ord PtrOp true :: P) |30 :=
+    λ T, i2p (typed_place_ofty_alias_ptr_uniq π E L l l2 bmin0 κ γ P T).
 
-     One idea: have a simplification thing for ofty and then simplify value ownership of the type. That way, we could basically chase chains of alias_ptr. (by always simplifyign below the ◁)
-      - does this make much sense apart from simplifying alias_ptr? In all other cases, I don't have precise enough information about what value to simplify.
-      - but: this requires then having a proper owned_ptr for the Vec spec. (?)
-      -
-
-     How about having an alias_ptr_lt?
-     - We do not get a direct unfoldign equation in terms of ofty.
-       Rather, this is another ltype we can "leave" in case we take the ownership of an ofty and instead want to leave an alias.
-     - we can easily formulate the place lemma
-     - this makes a lot of sense for taking raw address-of
-  *)
-
-
-    (* unnatural about this: ofty contains an owned pointer.
-       why can't we just strip it? because we don't have a location ownership predicate for the contained type in general -- ofty is precisely providing that.
-
-       the tension here: the corresponding location predicate for alias_ptr does not actually assert any ownership.
-       why do we need the value version at all?
-        concretely for us: for rawvec.
-        in refinedc, one would probably use an owned pointer instead.
-        in our case, we could also use owned_ptr instead, if our array type was less ugly.
-     *)
-
-   (* way to make this generic: have a lemma for ofty that says
-        "I give you value ownership of the contained thing, then you give me some new ltype and then I can continue"
-    *)
-
-
-    Lemma typed_place_ofty_alias_ptr_owned π E L l l2 bmin0 wl P T :
-      find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
-        typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
-          T L' [] li b3 bmin rti ltyi ri
-            (match strong with
-             | Some strong => Some $ mk_strong (λ _, _) (λ _ _ _, ◁ alias_ptr_t) (λ _ _, PlaceIn l2) (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)
-             | None => None
-             end)
-            (match weak with
-             | Some weak => Some $ mk_weak (λ _ _, ◁ alias_ptr_t) (λ _, #l2) (λ ltyi2 ri2, llft_elt_toks κs ∗ l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)
-             | None =>
-                 match strong with
-                  | Some strong => Some $ mk_weak (λ _ _, ◁ alias_ptr_t) (λ _, #l2) (λ ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)
-                  | None => None
-                  end
-              end)
-            ))
-      ⊢ typed_place π E L l (◁ alias_ptr_t) (PlaceIn l2) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) T.
-    Proof.
-      iDestruct 1 as ((rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
-      iApply typed_place_ofty_access_val_owned; first done.
-      iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame "Hl2 HP". done.
-    Qed.
-    Global Instance typed_place_ofty_alias_ptr_owned_inst π E L l l2 bmin0 wl P :
-      TypedPlace E L π l (◁ alias_ptr_t)%I (PlaceIn l2) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) |30 :=
-      λ T, i2p (typed_place_ofty_alias_ptr_owned π E L l l2 bmin0 wl P T).
-
-    Lemma typed_place_ofty_alias_ptr_uniq π E L l l2 bmin0 κ γ P T :
-      ⌜lctx_lft_alive E L κ⌝ ∗
-      find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
-        typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
-          T L' κs li b3 bmin rti ltyi ri
-            (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, ◁ alias_ptr_t) (λ _ _, PlaceIn l2)
-              (* give back ownership through R *)
-              (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
-            (fmap (λ weak, mk_weak (λ _ _, ◁ alias_ptr_t) (λ _, PlaceIn l2)
-              (λ ltyi2 ri2, l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)) weak)
-            ))
-      ⊢ typed_place π E L l (◁ alias_ptr_t) (PlaceIn l2) bmin0 (Uniq κ γ) (DerefPCtx Na1Ord PtrOp true :: P) T.
-    Proof.
-      iDestruct 1 as (Hal (rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
-      iApply typed_place_ofty_access_val_uniq; first done. iSplitR; first done.
-      iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame. done.
-    Qed.
-    Global Instance typed_place_ofty_alias_ptr_uniq_inst π E L l l2 bmin0 κ γ P :
-      TypedPlace E L π l (◁ alias_ptr_t)%I (PlaceIn l2) bmin0 (Uniq κ γ) (DerefPCtx Na1Ord PtrOp true :: P) |30 :=
-      λ T, i2p (typed_place_ofty_alias_ptr_uniq π E L l l2 bmin0 κ γ P T).
-
-    Lemma typed_place_ofty_alias_ptr_shared π E L l l2 bmin0 κ P T :
-      ⌜lctx_lft_alive E L κ⌝ ∗
-      find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
-        typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
-          T L' κs li b3 bmin rti ltyi ri
-            (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, ◁ alias_ptr_t) (λ _ _, PlaceIn l2)
-              (* give back ownership through R *)
-              (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
-            (option_map (λ weak, mk_weak (λ _ _, ◁ alias_ptr_t) (λ _, PlaceIn l2)
-              (λ ltyi2 ri2, l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)) weak)
-            ))
-      ⊢ typed_place π E L l (◁ alias_ptr_t) (PlaceIn l2) bmin0 (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) T.
-    Proof.
-      iDestruct 1 as (Hal (rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
-      iApply typed_place_ofty_access_val_shared; first done. iSplitR; first done.
-      iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame. done.
-    Qed.
-    Global Instance typed_place_ofty_alias_ptr_shared_inst π E L l l2 bmin0 κ P :
-      TypedPlace E L π l (◁ alias_ptr_t)%I (PlaceIn l2) bmin0 (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) |30 :=
-      λ T, i2p (typed_place_ofty_alias_ptr_shared π E L l l2 bmin0 κ P T).
+  Lemma typed_place_ofty_alias_ptr_shared π E L l l2 bmin0 κ P T :
+    ⌜lctx_lft_alive E L κ⌝ ∗
+    find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
+      typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
+        T L' κs li b3 bmin rti ltyi ri
+          (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, ◁ alias_ptr_t) (λ _ _, #l2)
+            (* give back ownership through R *)
+            (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
+          (option_map (λ weak, mk_weak (λ _ _, ◁ alias_ptr_t) (λ _, PlaceIn l2)
+            (λ ltyi2 ri2, l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)) weak)
+          ))
+    ⊢ typed_place π E L l (◁ alias_ptr_t) (#l2) bmin0 (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) T.
+  Proof.
+    iDestruct 1 as (Hal (rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
+    iApply typed_place_ofty_access_val_shared; first done. iSplitR; first done.
+    iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame. done.
+  Qed.
+  Global Instance typed_place_ofty_alias_ptr_shared_inst π E L l l2 bmin0 κ P :
+    TypedPlace E L π l (◁ alias_ptr_t)%I (PlaceIn l2) bmin0 (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) |30 :=
+    λ T, i2p (typed_place_ofty_alias_ptr_shared π E L l l2 bmin0 κ P T).
 
   (* TODO is there a better design that does not require us to essentially duplicate this?
      we have alias_ltype in the first place only because of the interaction with OpenedLtype, when we do a raw-pointer-addrof below references.
@@ -216,6 +178,7 @@ Section alias_ltype.
     SimplifyHyp (l ◁ₗ[π, Owned wl] r @ AliasLtype rt st l2) (Some 0%N) :=
     λ T, i2p (alias_ltype_owned_simplify_hyp π rt st wl l l2 r T).
 
+  (** [AliasLtype] is always owned *)
   Lemma alias_ltype_unowned_simplify_hyp π rt st b (l l2 : loc) (r : place_rfn rt) T :
     (if b is Owned _ then False else True) →
     (False -∗ T)
@@ -232,7 +195,8 @@ Section alias_ltype.
     SimplifyHyp (l ◁ₗ[π, Shared κ] r @ AliasLtype rt st l2) (Some 0%N) :=
     λ T, i2p (alias_ltype_unowned_simplify_hyp π rt st (Shared κ) l l2 r T I).
 
-  (* At the core this is really similar to the place lemma for alias_ptr_t - just without the deref *)
+  (** Place typing for [AliasLtype].
+    At the core this is really similar to the place lemma for alias_ptr_t - just without the deref *)
   Lemma typed_place_alias_owned π E L l l2 rt (r : place_rfn rt) st bmin0 wl P T :
     find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
       typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
@@ -307,17 +271,7 @@ Section alias_ltype.
     StratifyLtype π E L mu mdu ma m l (AliasLtype rt st l2) r (Owned wl) :=
     λ T, i2p (stratify_ltype_alias_owned π E L mu mdu ma m l l2 rt st r wl T).
 
-  (* TODO move; doesn't hold anymore because of credits.. *)
-  (*
-  Global Instance ltype_own_alias_pers π l b rt r st l2 :
-    Persistent (l ◁ₗ[π, b] r @ AliasLtype rt st l2).
-  Proof.
-    rewrite ltype_own_alias_unfold /alias_lty_own.
-    destruct b; apply _.
-  Qed.
-  *)
-
-  (* Instance for &raw mut, in the case that the place type is AliasLtype. This case is fairly trivial. *)
+  (** Addr-Of Instance for &raw mut, in the case that the place type is AliasLtype. This case is fairly trivial. *)
   Lemma typed_addr_of_mut_end_alias π E L l l2 st rt r b2 bmin (T : typed_addr_of_mut_end_cont_t) :
     (⌜l2 = l⌝ -∗ T L _ (alias_ptr_t) l2 _ (AliasLtype rt st l2) r)
     ⊢ typed_addr_of_mut_end π E L l (AliasLtype rt st l2) r b2 bmin T.
@@ -338,28 +292,10 @@ Section alias_ltype.
     λ T, i2p (typed_addr_of_mut_end_alias π E L l l2 st rt r b2 bmin T).
 
 
-  (* Instance for ofty *)
-  (* TODO maybe remove the bmin part *)
-
-  (* TODO: is there a good way to streamline all of these instances in a nice way?
-      I have roughly the same duplication/problems for typed_write and typed_read and possibly typed_borrow_shr, too.
-      Especially if we get more ltypes, that is really annoying.
-
-     Maybe there is a nice notion of "simple ltypes" that admits generic lemmas for stuff like this, because it doesn't exploit the different ownership kinds in an interesting way?
-     In that case, there should be a core of the definition that is the same in all these cases.
-
-     if b ≠ Shared:
-     l ◁ₗ[π, b] r @ lt -∗
-     logical_step (l ◁ₗ[π, b] OpenedLtype lt lt lt .. ..)
-
-     l ◁ₗ[π, Owned true] r @ lt -∗
-     logical_step (l ◁ₗ[π, Owned false] r @ lt)
-
-    *)
-
   (* TODO: should make typed_addr_of_mut_end available in cases where no strong updates are allowed.
       AliasLtype does now support that case. *)
 
+  (** Cases for other ltypes *)
   Lemma typed_addr_of_mut_end_owned π E L l {rt} (lt : ltype rt) r wl bmin (T : typed_addr_of_mut_end_cont_t) :
     ltype_owned_openable lt →
     T L _ (alias_ptr_t) l _ (AliasLtype rt (ltype_st lt) l) (#r)
@@ -380,7 +316,7 @@ Section alias_ltype.
     TypedAddrOfMutEnd π E L l (◁ ty)%I #r (Owned wl) bmin :=
     λ T, i2p (typed_addr_of_mut_end_owned π E L l (◁ ty)%I r wl bmin T _).
   Next Obligation. intros.  apply ltype_owned_openable_ofty. Qed.
-  (* TODO more instances *)
+  (* TODO more instances for other ltypes *)
 
   Lemma typed_addr_of_mut_end_uniq π E L l {rt} (lt : ltype rt) r κ γ bmin (T : typed_addr_of_mut_end_cont_t) :
     ltype_uniq_openable lt →
@@ -412,10 +348,10 @@ Section alias_ltype.
     TypedAddrOfMutEnd π E L l (◁ ty)%I #r (Uniq κ γ) bmin :=
     λ T, i2p (typed_addr_of_mut_end_uniq π E L l (◁ ty)%I r κ γ bmin T _).
   Next Obligation. intros. apply ltype_uniq_openable_ofty. Qed.
-  (* TODO more instances *)
+  (* TODO more instances for other ltypes *)
 
 
-  (** ExtractValueAnnot *)
+  (** ExtractValueAnnot for splitting into a value assignment [◁ᵥ] and a [value_t] location *)
   Lemma type_extract_value_annot_alias π E L n v l (T : typed_annot_expr_cont_t) :
     find_in_context (FindLoc l π) (λ '(existT rt (lt, r, bk)),
       ∃ wl ty r', ⌜bk = Owned wl⌝ ∗ ⌜lt = ◁ty⌝ ∗ ⌜r = #r'⌝ ∗
@@ -436,7 +372,7 @@ Section alias_ltype.
     iPoseProof (bi.laterN_le _ n with "Hb") as "Hb"; first done.
     iNext.
     iMod (fupd_mask_mono with "Hb") as "(%v3 & Hl & Hv)"; first done.
-    iPoseProof (value_split _ _ _ _ (UntypedSynType _) with "Hv") as "(Hv' & Hv)".
+    iPoseProof (own_val_split_value _ _ _ _ (UntypedSynType _) with "Hv") as "(Hv' & Hv)".
     { split; first done. eapply syn_type_has_layout_make_untyped; done. }
     iDestruct ("HT" with "Hv [Hl Hv' Hlb Hcreds]") as "HT".
     { rewrite ltype_own_ofty_unfold /lty_of_ty_own.

@@ -340,6 +340,19 @@ Proof.
   split; unfold_common_caesium_defs; simpl in *; lia.
 Qed.
 
+Lemma ly_align_in_bounds_mono ly1 ly2 :
+  (ly_align_log ly2 ≤ ly_align_log ly1)%nat →
+  ly_align_in_bounds ly1 →
+  ly_align_in_bounds ly2.
+Proof.
+  rewrite /ly_align_in_bounds.
+  intros Hle. rewrite /ly_align/min_alloc_start. intros Ha.
+  split.
+  - specialize (Nat_pow_ge_1 (ly_align_log ly2)). lia.
+  - etrans; last apply Ha.
+    apply inj_le. apply Nat.pow_le_mono_r; last lia. done.
+Qed.
+
 (** Use a layout algorithm recursively on a layout spec. *)
 (* NOTE on size limits from https://doc.rust-lang.org/stable/reference/types/numeric.html#machine-dependent-integer-types:
     "The isize type is a signed integer type with the same number of bits as the platform's pointer type. The theoretical upper bound on object and array size is the maximum isize value. This ensures that isize can be used to calculate differences between pointers into an object or array and can address every byte within an object along with one byte past the end." *)
@@ -1369,6 +1382,12 @@ Lemma use_op_alg_union `{!LayoutAlg} name variants ly ot :
 Proof.
   intros Halg ->.
   rewrite /use_op_alg Halg//.
+Qed.
+
+Lemma use_op_alg_untyped_inv `{!LayoutAlg} ly ot :
+  use_op_alg (UntypedSynType ly) = Some ot → ot = (UntypedOp ly).
+Proof.
+  rewrite /use_op_alg. intros [= <-]; done.
 Qed.
 
 

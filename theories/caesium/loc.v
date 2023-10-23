@@ -156,6 +156,23 @@ Proof.
   rewrite /has_layout_loc/aligned_to => ->. case_match => //. by apply Z.divide_1_l.
 Qed.
 
+Lemma has_layout_loc_shift_loc l ly i :
+  l `has_layout_loc` ly →
+  (ly_align ly | i)%Z →
+  (l +ₗ i) `has_layout_loc` ly.
+Proof.
+  rewrite /has_layout_loc /aligned_to.
+  case_match => //.
+  simpl. apply Z.divide_add_r.
+Qed.
+Lemma has_layout_loc_shift_loc_nat l ly i :
+  l `has_layout_loc` ly →
+  (ly_align ly | i)%nat →
+  (l +ₗ i) `has_layout_loc` ly.
+Proof.
+  rewrite -Nat2Z.divide. apply has_layout_loc_shift_loc.
+Qed.
+
 Lemma has_layout_ly_offset l (n : nat) ly:
   l `has_layout_loc` ly →
   (l +ₗ n) `has_layout_loc` ly_offset ly n.

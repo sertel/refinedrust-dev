@@ -185,6 +185,20 @@ Proof.
   rewrite mem_cast_length//.
 Qed.
 
+Lemma mem_cast_UntypedOp v ly st :
+  mem_cast v (UntypedOp ly) st = v.
+Proof. done. Qed.
+Lemma is_memcast_val_untyped_app ly1 ly2 ly3 v1 v2 v1' v2' :
+  ly_size ly3 = ly_size ly1 + ly_size ly2 →
+  is_memcast_val v1 (UntypedOp ly1) v1' →
+  is_memcast_val v2 (UntypedOp ly2) v2' →
+  is_memcast_val (v1 ++ v2) (UntypedOp ly3) (v1' ++ v2').
+Proof.
+  intros Hsz H1 H2.
+  destruct H1 as [->  | (st1 & ->)]; destruct H2 as [-> | (st2 & ->)]; simpl;
+      try rewrite !mem_cast_UntypedOp; by left.
+Qed.
+
 
 (* Q:
     does the syntactical type alone determine the memcast_compat_type?

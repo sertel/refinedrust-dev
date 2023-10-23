@@ -245,18 +245,18 @@ Proof.
   iSelect (l_s ◁ₗ[_, _] _ @ _)%I (fun H => iRename H into "Hs").
   iSelect (l_t ◁ₗ[_, _] _ @ _)%I (fun H => iRename H into "Ht").
   iApply fupd_typed_stmt.
-  iMod (ofty_uninit_to_value_t with "Ht") as "(%v_t & Ht)"; first done.
-  iMod (ofty_value_t_has_length with "Hs") as "(%Hlen_s & Hs)"; first done.
+  iMod (ofty_uninit_to_value with "Ht") as "(%v_t & Ht)"; first done.
+  iMod (ofty_value_has_length with "Hs") as "(%Hlen_s & Hs)"; first done.
   { sidecond_hook. revert select (ly_size (mk_array_layout _ _) ≤ _).
     rewrite /mk_array_layout/=. lia. }
-  iMod (ofty_value_t_has_length with "Ht") as "(%Hlen_t & Ht)"; first done.
+  iMod (ofty_value_has_length with "Ht") as "(%Hlen_t & Ht)"; first done.
   { sidecond_hook. revert select (ly_size (mk_array_layout _ _) ≤ _).
     rewrite /mk_array_layout/=. lia. }
 
   (* turn it into arrays *)
-  iPoseProof (ofty_value_t_untyped_to_array with "Hs") as "Hs".
+  iPoseProof (ofty_value_untyped_to_array with "Hs") as "Hs".
   { by eapply syn_type_has_layout_make_untyped. }
-  iPoseProof (ofty_value_t_untyped_to_array with "Ht") as "Ht".
+  iPoseProof (ofty_value_untyped_to_array with "Ht") as "Ht".
   { by eapply syn_type_has_layout_make_untyped. }
   iModIntro.
 
@@ -281,9 +281,9 @@ Proof.
    (*return: go back to values *)
   assert (take i (reshape (replicate len (ly_size T_st_ly)) v_s) ++ drop i (reshape (replicate len (ly_size T_st_ly)) v_t) = (reshape (replicate len (ly_size T_st_ly)) (take (i * ly_size T_st_ly) v_s ++ drop (i * ly_size T_st_ly) v_t))) as ->.
   { shelve. }
-  iPoseProof (ofty_value_t_untyped_from_array with "Hs") as "Hs".
+  iPoseProof (ofty_value_untyped_from_array with "Hs") as "Hs".
   { rewrite Hlen_s ly_size_mk_array_layout. lia. }
-  iPoseProof (ofty_value_t_untyped_from_array with "Ht") as "Ht".
+  iPoseProof (ofty_value_untyped_from_array with "Ht") as "Ht".
   { rewrite app_length take_length drop_length. rewrite Hlen_t Hlen_s !ly_size_mk_array_layout. lia. }
 
   iApply typed_stmt_annot_skip.
@@ -898,11 +898,11 @@ Proof.
 
   (* The copy_nonoverlapping does a bytewise copy, so we need to convert it into an "array" of bytes *)
   iApply fupd_typed_call.
-  iMod (ofty_uninit_to_value_t with "Hnew") as "(%vn & Hnew)"; first done.
-  iMod (ofty_value_t_has_length with "Hnew") as "(%Hlen & Hnew)"; [done | | ].
+  iMod (ofty_uninit_to_value with "Hnew") as "(%vn & Hnew)"; first done.
+  iMod (ofty_value_has_length with "Hnew") as "(%Hlen & Hnew)"; [done | | ].
   { eapply syn_type_has_layout_untyped; [done.. | | done]. rewrite /ly_size/=. lia. }
-  iPoseProof (ofty_value_t_untyped_to_bytes with "Hnew") as "Hnew".
-  iMod (ofty_value_t_untyped_split_adjacent_array _ _ _ _ (ly_size new_ly - ly_size old_ly) (ly_size old_ly)  with "Hnew") as "(Hnew1 & Hnew2)"; first done.
+  iPoseProof (ofty_value_untyped_to_bytes with "Hnew") as "Hnew".
+  iMod (ofty_value_untyped_split_app_array _ _ _ _ (ly_size new_ly - ly_size old_ly) (ly_size old_ly)  with "Hnew") as "(Hnew1 & Hnew2)"; first done.
   { simpl. lia. }
   { rewrite /layout_wf/ly_align/it_layout. simpl. apply Z.divide_1_l. }
   simpl. rewrite !Nat.add_0_r.
