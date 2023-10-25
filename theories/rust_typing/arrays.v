@@ -92,7 +92,7 @@ Section array.
   Definition array_own_el_shr (π : thread_id) (κ : lft) (i : nat) (ly : layout) (ty : type rt) (r : place_rfn rt) (l : loc) : iProp Σ :=
     ∃ r', place_rfn_interp_shared r r' ∗ ty.(ty_shr) κ π r' (offset_loc l ly i).
 
-  Lemma array_own_val_join_mapsto (π : thread_id) (q : Qp) vs ly (ty : type rt) rs l len  : 
+  Lemma array_own_val_join_mapsto (π : thread_id) (q : Qp) vs ly (ty : type rt) rs l len  :
     len = length rs →
     vs `has_layout_val` mk_array_layout ly len →
     l ↦{q} vs -∗
@@ -119,7 +119,7 @@ Section array.
     iExists _, _; iFrame. rewrite /offset_loc. done.
   Qed.
 
-  Lemma array_own_val_extract_mapsto π q ly ty rs l len : 
+  Lemma array_own_val_extract_mapsto π q ly ty rs l len :
     len = length rs →
     syn_type_has_layout (ty_syn_type ty) ly →
     loc_in_bounds l 0 (ly_size ly * len) -∗
@@ -162,6 +162,20 @@ Section array.
     rewrite Heq1. constructor. rewrite Ha; first last. { eapply elem_of_list_lookup_2. eauto. }
     done.
   Qed.
+  Lemma array_own_val_extract_mapsto_fupd F π q ly ty rs l len :
+    len = length rs →
+    syn_type_has_layout (ty_syn_type ty) ly →
+    loc_in_bounds l 0 (ly_size ly * len) -∗
+    ([∗ list] i↦r ∈ rs, |={F}=> ∃ v : val, array_own_el_loc π q v i ly ty r l) ={F}=∗
+    ∃ vs, l ↦{q} vs ∗ ⌜vs `has_layout_val` (mk_array_layout ly len)⌝ ∗
+      ([∗ list] r;v ∈ rs;reshape (replicate len (ly_size ly)) vs, array_own_el_val π ty r v).
+  Proof.
+    iIntros (-> ?) "#Hlb Ha".
+    iMod (big_sepL_fupd with "Ha") as "Ha".
+    by iApply array_own_val_extract_mapsto.
+  Qed.
+
+
 
   Program Definition array_t (ty : type rt) (len : nat) : type (list (place_rfn rt)) := {|
     ty_own_val π r v :=
@@ -205,6 +219,9 @@ Section array.
   Qed.
   Next Obligation.
     iIntros (ty len π r v) "_". done.
+  Qed.
+  Next Obligation.
+    iIntros (ty len ? π r v) "_". done.
   Qed.
   Next Obligation.
     iIntros (ty len κ π l r) "(%ly & %Hst & %Hsz & %Hlen & %Hly & Hv)".
@@ -425,17 +442,17 @@ Section subtype.
     ([∗ list] r1; r2 ∈ rs1; rs2, array_t_incl_precond_elem ty1 ty2 r1 r2)%I.
 
   Local Instance array_t_incl_precond_elem_pers {rt1 rt2} (ty1 : type rt1) (ty2 : type rt2) r1 r2 :
-    Persistent (array_t_incl_precond_elem ty1 ty2 r1 r2). 
+    Persistent (array_t_incl_precond_elem ty1 ty2 r1 r2).
   Proof. destruct r1, r2; simpl; apply _. Qed.
   Local Instance array_t_incl_precond_pers {rt1 rt2} (ty1 : type rt1) (ty2 : type rt2) rs1 rs2 :
     Persistent (array_t_incl_precond ty1 ty2 rs1 rs2).
   Proof. apply big_sepL2_persistent. intros ? [] []; simpl; apply _. Qed.
 
   (* TODO move *)
-  Lemma type_incl_use_val π {rt1 rt2} (r1 : rt1) (r2 : rt2) ty1 ty2 v : 
+  Lemma type_incl_use_val π {rt1 rt2} (r1 : rt1) (r2 : rt2) ty1 ty2 v :
     type_incl r1 r2 ty1 ty2 -∗ v ◁ᵥ{π} r1 @ ty1 -∗ v ◁ᵥ{π} r2 @ ty2.
   Proof. iIntros "#(_ & _ & Hval & _) Hv". by iApply "Hval". Qed.
-  Lemma type_incl_use_shr π κ {rt1 rt2} (r1 : rt1) (r2 : rt2) ty1 ty2 l : 
+  Lemma type_incl_use_shr π κ {rt1 rt2} (r1 : rt1) (r2 : rt2) ty1 ty2 l :
     type_incl r1 r2 ty1 ty2 -∗ l ◁ₗ{π, κ} r1 @ ty1 -∗ l ◁ₗ{π, κ} r2 @ ty2.
   Proof. iIntros "#(_ & _ & _ & Hshr) Hl". by iApply "Hshr". Qed.
 
@@ -469,11 +486,11 @@ Section subtype.
     { iPoseProof (big_sepL2_sep_1 with "Ha Hincl") as "Ha".
       iApply (big_sepL2_impl with "Ha"). iModIntro.
       iIntros (k [r1 r2] v' Hlook1 Hlook2) "((%r'' & Hrfn & Hown) & Hincl)"=>/=.
-      rewrite /array_own_el_val. destruct r1, r2; simpl. 
+      rewrite /array_own_el_val. destruct r1, r2; simpl.
       - iDestruct "Hrfn" as "->". iPoseProof (type_incl_use_val with "Hincl Hown") as "?". eauto with iFrame.
       - iDestruct "Hrfn" as "->". iDestruct "Hincl" as "(%Heq & %Heq' & Hincl)". subst. done.
       - iDestruct "Hincl" as "(%Heq & %Heq' & Hincl)". subst. done.
-      - iDestruct "Hincl" as "(%Heq & %Heq' & Hincl)". subst. injection Heq' as <-. 
+      - iDestruct "Hincl" as "(%Heq & %Heq' & Hincl)". subst. injection Heq' as <-.
         iPoseProof (type_incl_use_val with "Hincl Hown") as "?". eauto with iFrame.
     }
     rewrite zip_length. lia.
@@ -510,11 +527,11 @@ Section subtype.
     iPoseProof (big_sepL2_sep_1 with "Ha Hincl") as "Ha".
     iApply (big_sepL2_impl with "Ha"). iModIntro.
     iIntros (k r1 r2 Hlook1 Hlook2) "((%r'' & Hrfn & Hown) & Hincl)"=>/=.
-    rewrite /array_own_el_shr. destruct r1, r2; simpl. 
+    rewrite /array_own_el_shr. destruct r1, r2; simpl.
     - iDestruct "Hrfn" as "->". iPoseProof (type_incl_use_shr with "Hincl Hown") as "?". eauto with iFrame.
     - iDestruct "Hrfn" as "->". iDestruct "Hincl" as "(%Heq & %Heq' & Hincl)". subst. done.
     - iDestruct "Hincl" as "(%Heq & %Heq' & Hincl)". subst. done.
-    - iDestruct "Hincl" as "(%Heq & %Heq' & Hincl)". subst. injection Heq' as <-. 
+    - iDestruct "Hincl" as "(%Heq & %Heq' & Hincl)". subst. injection Heq' as <-.
       iPoseProof (type_incl_use_shr with "Hincl Hown") as "?". eauto with iFrame.
   Qed.
   Lemma array_t_shr_mono {rt} π (ty1 ty2 : type rt) len v rs κ :
@@ -537,11 +554,11 @@ Section subtype.
     type_incl rs1 rs2 (array_t ty1 len) (array_t ty2 len).
   Proof.
     iIntros (Hst) "#Ha".
-    iSplit; last iSplit; last iSplit. 
-    - simpl. rewrite Hst. done.  
+    iSplit; last iSplit; last iSplit.
+    - simpl. rewrite Hst. done.
     - simpl. eauto.
     - iModIntro. iIntros (π v) "Hv".
-      iApply array_t_own_val_mono'; done. 
+      iApply array_t_own_val_mono'; done.
     - iModIntro. iIntros (κ π l) "Hl".
       by iApply array_t_shr_mono'.
   Qed.
@@ -551,11 +568,11 @@ Section subtype.
     type_incl rs rs (array_t ty1 len) (array_t ty2 len).
   Proof.
     iIntros (Hst) "#Ha".
-    iSplit; last iSplit; last iSplit. 
-    - simpl. rewrite Hst. done.  
+    iSplit; last iSplit; last iSplit.
+    - simpl. rewrite Hst. done.
     - simpl. eauto.
     - iModIntro. iIntros (π v) "Hv".
-      iApply array_t_own_val_mono; done. 
+      iApply array_t_own_val_mono; done.
     - iModIntro. iIntros (κ π l) "Hl".
       by iApply array_t_shr_mono.
   Qed.
@@ -652,7 +669,7 @@ Section subltype.
     - apply Hlen.
     - apply Hstdef.
     - iEval (rewrite -(ltype_core_ofty def1)). iEval (rewrite -(ltype_core_ofty def2)).
-      rewrite !interpret_iml_fmap big_sepL2_fmap_l big_sepL2_fmap_r. 
+      rewrite !interpret_iml_fmap big_sepL2_fmap_l big_sepL2_fmap_r.
       iApply (big_sepL2_impl with "Hincl").
       iModIntro. iIntros (??? Hlook1 Hlook2) "Ha".
       iIntros (?). by iApply ltype_incl_core.
@@ -671,12 +688,12 @@ Section subltype.
     iIntros (Hst) "#Hel".
     iModIntro. iIntros (π l) "Ha".
     rewrite !ltype_own_array_unfold /array_ltype_own.
-    iDestruct "Ha" as "(%ly & %Halg & %Hsz & %Hly & Hlb & %r' & <- & %Hlen & #Ha)".
+    iDestruct "Ha" as "(%ly & %Halg & %Hsz & %Hly & Hlb & %r' & <- & #Ha)".
     iExists ly. iSplitR. { rewrite -Hst. done. }
     iR. iR. iFrame. iExists rs2. iR.
+    iModIntro. iMod "Ha" as "(%Hlen & Ha)".
     iPoseProof ("Hel" with "[//]") as "Hc".
     iDestruct "Hc" as "(%Hb & Hc)". iR.
-    iModIntro. iMod "Ha".
     iMod (array_ltype_incl_big_wand_in 0 with "Hc Ha") as "Ha"; [done.. | ].
     done.
   Qed.
@@ -709,12 +726,11 @@ Section subltype.
     iIntros (Hst) "#Hel".
     iModIntro. iIntros (π l) "Ha".
     rewrite !ltype_own_array_unfold /array_ltype_own.
-    iDestruct "Ha" as "(%ly & %Halg & %Hsz & %Hly & Hlb & %r' & Hrfn & %Hlen & #Ha)".
+    iDestruct "Ha" as "(%ly & %Halg & %Hsz & %Hly & Hlb & %r' & Hrfn & #Ha)".
     iExists ly. iSplitR. { rewrite -Hst. done. }
-    iR. iR. iFrame. iExists r'. iFrame. iR.
-    iPoseProof ("Hel" with "") as "Hc".
-    iModIntro. iMod "Ha".
-    iMod (array_ltype_incl_big_wand 0 with "Hc Ha") as "Ha"; [done.. | ].
+    iR. iR. iFrame. iExists r'. iFrame.
+    iModIntro. iMod "Ha" as "(%Hlen & Ha)". iR.
+    iMod (array_ltype_incl_big_wand 0 with "Hel Ha") as "Ha"; [done.. | ].
     done.
   Qed.
   Lemma array_ltype_incl_shared {rt} (def1 : type rt) (def2 : type rt) len (lts1 : list (nat * ltype rt)) (lts2 : list (nat * ltype rt)) κ' rs :
@@ -744,12 +760,12 @@ Section subltype.
     iIntros (Hst) "#Hel".
     iModIntro. iIntros (π l) "Ha".
     rewrite !ltype_own_array_unfold /array_ltype_own.
-    iDestruct "Ha" as "(%ly & %Halg & %Hsz & %Hly & Hlb & Hcred & %r' & <- & %Hlen & Ha)".
+    iDestruct "Ha" as "(%ly & %Halg & %Hsz & %Hly & Hlb & Hcred & %r' & <- & Ha)".
     iExists ly. iSplitR. { rewrite -Hst. done. }
     iR. iR. iFrame. iExists rs2. iR.
+    iModIntro. iNext. iMod "Ha" as "(%Hlen & Ha)".
     iPoseProof ("Hel" with "[//]") as "Hc".
     iDestruct "Hc" as "(%Hb & Hc)". iR.
-    iModIntro. iNext. iMod "Ha".
     iMod (array_ltype_incl_big_wand_in 0 with "Hc Ha") as "Ha"; [done.. | ].
     done.
   Qed.
@@ -782,11 +798,11 @@ Section subltype.
     iIntros (Hst) "#Hel".
     iModIntro. iIntros (π l) "Ha".
     rewrite !ltype_own_array_unfold /array_ltype_own.
-    iDestruct "Ha" as "(%ly & %Halg & %Hsz & %Hly & Hlb & Hcred & %r' & Hrfn & %Hlen & Ha)".
+    iDestruct "Ha" as "(%ly & %Halg & %Hsz & %Hly & Hlb & Hcred & %r' & Hrfn & Ha)".
     iExists ly. iSplitR. { rewrite -Hst. done. }
-    iR. iR. iFrame. iExists r'. iFrame. iR.
+    iR. iR. iFrame. iExists r'. iFrame.
+    iModIntro. iNext. iMod "Ha" as "(%Hlen & Ha)". iR.
     iPoseProof ("Hel" with "") as "Hc".
-    iModIntro. iNext. iMod "Ha".
     iMod (array_ltype_incl_big_wand 0 with "Hc Ha") as "Ha"; [done.. | ].
     done.
   Qed.
@@ -926,51 +942,68 @@ End subltype.
 Section unfold.
   Context `{!typeGS Σ}.
 
-  (*array_own_val_extract_mapsto*)
-  Lemma array_ofty_owned_extract_mapsto π F {rt} (ty : type rt) ly len l rs : 
+  Local Lemma ofty_owned_array_extract_mapsto π F {rt} (ty : type rt) ly len l rs :
     lftE ⊆ F →
     length rs = len →
+    syn_type_has_layout ty.(ty_syn_type) ly →
     loc_in_bounds l 0 (ly_size ly * len) -∗
     ([∗ list] k ↦ r ∈ rs, (l offset{ly}ₗ k) ◁ₗ[ π, Owned false] r @ (◁ ty)) -∗
-    |={F}=> ∃ v, l ↦ v ∗ 
+    |={F}=> ∃ v, l ↦ v ∗
       ⌜v `has_layout_val` mk_array_layout ly len⌝ ∗
       [∗ list] k ↦ r; v' ∈ rs; reshape (replicate len (ly_size ly)) v, array_own_el_val π ty r v'.
   Proof.
-    iIntros (? ?) "Hlb Hown".
+    iIntros (? ? ?) "Hlb Hown".
     setoid_rewrite ltype_own_ofty_unfold. rewrite /lty_of_ty_own.
     simpl. iEval (rewrite /ty_own_val/=).
-    iPoseProof (array_own_val_extract_mapsto with "Hlb [Hown]") as "Ha".
-    3: { 
-      iApply (big_sepL_wand with "Hown").
+    iPoseProof (array_own_val_extract_mapsto_fupd with "Hlb [Hown]") as "Ha"; [done.. | | ].
+    { iApply (big_sepL_wand with "Hown").
       iApply big_sepL_intro. iModIntro. iIntros (k r Hlook).
+      rewrite /array_own_el_loc.
       iIntros "(%ly' & %Hst & %Hly & Hsc & Hlb & _ & %r' & Hrfn & Ha)".
-  Admitted.
+      iMod "Ha" as "(%v & ? & ?)".
+      iModIntro. iExists _. eauto with iFrame. }
+    iApply (fupd_mask_mono with "Ha"); done.
+  Qed.
 
-  Lemma array_ofty_owned_join_mapsto π {rt} (ty : type rt) ly len l rs v : 
+  Local Lemma ofty_owned_array_join_mapsto π {rt} (ty : type rt) ly len l rs v :
     length rs = len →
     v `has_layout_val` mk_array_layout ly len →
-    l ↦ v -∗ 
+    syn_type_has_layout ty.(ty_syn_type) ly →
+    l `has_layout_loc` ly →
+    l ↦ v -∗
     ([∗ list] k ↦ r; v' ∈ rs; reshape (replicate len (ly_size ly)) v, array_own_el_val π ty r v') -∗
     ([∗ list] k ↦ r ∈ rs, (l offset{ly}ₗ k) ◁ₗ[ π, Owned false] r @ (◁ ty)).
   Proof.
-  Admitted.
+    iIntros (? ? ? ?) "Hl Ha".
+    iPoseProof (array_own_val_join_mapsto with "Hl Ha") as "Ha"; [done.. | ].
+    iApply (big_sepL_wand with "Ha").
+    iApply big_sepL_intro. iModIntro.
+    rewrite /array_own_el_loc.
+    iIntros (k r ?) "(%v' & %r' & Hl & Hrfn & Hv)".
+    rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+    iExists _. iR.
+    iSplitR. { iPureIntro. apply has_layout_loc_offset_loc; last done. by eapply use_layout_alg_wf. }
+    iPoseProof (ty_own_val_sidecond with "Hv") as "#$".
+    iPoseProof (heap_mapsto_loc_in_bounds with "Hl") as "#Hlb".
+    iPoseProof (ty_own_val_has_layout with "Hv") as "%Hv"; first done.
+    rewrite Hv. iR. iR. iExists _. iFrame. iNext. iModIntro. eauto with iFrame.
+  Qed.
 
   Lemma array_t_unfold_1_owned {rt} wl (ty : type rt) (len : nat) rs :
     ⊢ ltype_incl' (Owned wl) rs rs (ArrayLtype ty len []) (◁ (array_t ty len)).
   Proof.
     iModIntro. iIntros (π l) "Hl".
     rewrite ltype_own_array_unfold /array_ltype_own/=.
-    iDestruct "Hl" as "(%ly & %Hst & % & % & #Hlb & Hcreds & %r' & Hrfn & %Hlen & Hb)".
-    iModIntro. rewrite ltype_own_ofty_unfold /lty_of_ty_own. 
+    iDestruct "Hl" as "(%ly & %Hst & % & % & #Hlb & Hcreds & %r' & Hrfn & Hb)".
+    iModIntro. rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iExists (mk_array_layout ly len). iFrame "% ∗".
     simpl. iSplitR. { iPureIntro. eapply syn_type_has_layout_array; done. }
-    iR. iR. iExists _. iFrame. 
-    iNext. iMod "Hb".
+    iR. iR. iExists _. iFrame.
+    iNext. iMod "Hb" as "(%Hlen & Hb)".
     rewrite big_sepL2_replicate_l; last done.
-    iMod (array_ofty_owned_extract_mapsto with "Hlb [Hb]") as "(%v & Hl & % & Ha)"; first done.
-    { done. } 
+    iMod (ofty_owned_array_extract_mapsto with "Hlb [Hb]") as "(%v & Hl & % & Ha)"; [done.. | | ].
     { iApply (big_sepL_impl with "Hb"). iModIntro. iIntros (k r Hlook). iIntros "(_ & $)". }
-    iModIntro. iExists v. iFrame. 
+    iModIntro. iExists v. iFrame.
     iEval (rewrite /ty_own_val/=).
     iExists _. iR. iR. iR. iR. done.
   Qed.
@@ -980,31 +1013,21 @@ Section unfold.
   Proof.
     iModIntro. iIntros (π l) "Hl".
     rewrite ltype_own_array_unfold /array_ltype_own/=.
-    iDestruct "Hl" as "(%ly & %Hst & % & % & #Hlb & %r' & Hrfn & %Hlen & #Hb)".
-    rewrite ltype_own_ofty_unfold /lty_of_ty_own. 
-    iExists (mk_array_layout ly len). simpl. 
+    iDestruct "Hl" as "(%ly & %Hst & % & % & #Hlb & %r' & Hrfn & #Hb)".
+    rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+    iExists (mk_array_layout ly len). simpl.
     iSplitR. { iPureIntro. eapply syn_type_has_layout_array; done. }
-    iR. iR. iR. iExists _. iFrame. 
-    iModIntro. iMod "Hb".
+    iR. iR. iR. iExists _. iFrame.
+    iModIntro. iMod "Hb" as "(%Hlen & Hb)".
     rewrite big_sepL2_replicate_l; last done.
     rewrite /ty_shr/=.
-    iExists ly. iR. iR. iR. iR. 
+    iExists ly. iR. iR. iR. iR.
     iApply big_sepL_fupd.
     iApply (big_sepL_impl with "Hb").
     iModIntro. iIntros (k r'' Hlook) "(_ & Hl)".
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iDestruct "Hl" as "(%ly' & %Hst' & %Hloc & Hst & Hlb' & %r2 & Hrfn & #>Ha)".
-    iModIntro. rewrite /array_own_el_shr. eauto with iFrame. 
-  Qed.
-
-  Lemma pinned_bor_iff_to_current R P Q κ  : 
-    ▷ □((P → R) ∧ (R → P)) -∗
-    ▷ □((Q → R) ∧ (R → Q)) -∗
-    &pin{κ} [Q] P -∗
-    &pin{κ} R.
-  Proof.
-    iIntros "#Ha #Hb Hp".
-    iApply (pinned_bor_iff with "[] [] Hp"); done.
+    iModIntro. rewrite /array_own_el_shr. eauto with iFrame.
   Qed.
 
   Lemma array_t_unfold_1_uniq {rt} κ γ (ty : type rt) (len : nat) rs :
@@ -1013,13 +1036,13 @@ Section unfold.
     iModIntro. iIntros (π l) "Hl".
     rewrite ltype_own_array_unfold /array_ltype_own/=.
     iDestruct "Hl" as "(%ly & %Hst & % & % & #Hlb & Hcreds & Hrfn & Hb)".
-    rewrite ltype_own_ofty_unfold /lty_of_ty_own. 
+    rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iExists (mk_array_layout ly len). iFrame "% ∗".
     simpl. iSplitR. { iPureIntro. eapply syn_type_has_layout_array; done. }
-    iR. iR. 
+    iR. iR.
     iMod "Hb".
     (* TODO refactor *)
-    set (R := (∃ r', gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ [∗ list] i↦r'' ∈ r', (l offset{ly}ₗ i) ◁ₗ[ π, Owned false] r'' @ ◁ ty))%I). 
+    set (R := (∃ r', gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ [∗ list] i↦r'' ∈ r', (l offset{ly}ₗ i) ◁ₗ[ π, Owned false] r'' @ ◁ ty))%I).
     iPoseProof (pinned_bor_iff _ _ R _ R with "[] [] Hb") as "Hb".
     { subst R. iNext. iModIntro. iSplit.
       + iIntros "(%r'' & Hauth & Ha)".
@@ -1033,7 +1056,7 @@ Section unfold.
         iApply (big_sepL_impl with "Ha").
         iModIntro. iModIntro. iIntros (k r Hlook). iIntros "$".
         simp_ltypes. done.
-    } 
+    }
     { subst R. iNext. iModIntro. iSplit.
       + iIntros "(%r'' & Hauth & Ha)".
         iExists _. iFrame. iMod "Ha" as "(% & Ha)". iR.
@@ -1045,27 +1068,27 @@ Section unfold.
         iExists _. iFrame. iMod "Ha" as "(% & Ha)". iR.
         rewrite big_sepL2_replicate_l; last done.
         iApply (big_sepL_impl with "Ha").
-        iModIntro. iModIntro. iIntros (k r Hlook). 
+        iModIntro. iModIntro. iIntros (k r Hlook).
         rewrite ltype_own_core_equiv ltype_core_ofty.
         iIntros "$". simp_ltypes. done.
-    } 
+    }
     iApply (pinned_bor_iff' with "[] Hb").
-    iModIntro. iModIntro. 
+    iModIntro. iModIntro.
     iSplit.
-    { iIntros "(%rs' & Hauth & Ha)". 
+    { iIntros "(%rs' & Hauth & Ha)".
       iExists _. iFrame. iMod "Ha" as "(%Hlen & Ha)".
-      iMod (array_ofty_owned_extract_mapsto with "Hlb Ha") as "(%v & Hl & % & Ha)"; [done.. | ].
-      iModIntro. iExists v. iFrame. 
+      iMod (ofty_owned_array_extract_mapsto with "Hlb Ha") as "(%v & Hl & % & Ha)"; [done.. | ].
+      iModIntro. iExists v. iFrame.
       rewrite /ty_own_val/=.
       iExists _. iR. iR. iR. iR. done.
-    } 
+    }
     { iIntros "(%rs' & Hauth & Ha)".
       iExists _. iFrame.
       iMod "Ha" as "(%v & Hl & Hv)".
-      rewrite /ty_own_val/=. 
+      rewrite /ty_own_val/=.
       iDestruct "Hv" as "(%ly' & %Hst' & _ & %Hlen & %Hvly & Ha)".
       assert (ly' = ly) as -> by by eapply syn_type_has_layout_inj.
-      iR. iApply (array_ofty_owned_join_mapsto with "Hl Ha"); done.
+      iR. iApply (ofty_owned_array_join_mapsto with "Hl Ha"); done.
     }
   Qed.
 
@@ -1091,17 +1114,118 @@ Section unfold.
   Lemma array_t_unfold_2_owned {rt} wl (ty : type rt) (len : nat) rs :
     ⊢ ltype_incl' (Owned wl) rs rs (◁ (array_t ty len)) (ArrayLtype ty len []).
   Proof.
-  Admitted.
+    iModIntro. iIntros (π l) "Hl".
+    rewrite ltype_own_array_unfold /array_ltype_own/=.
+    rewrite ltype_own_ofty_unfold /lty_of_ty_own/=.
+    iDestruct "Hl" as "(%ly & %Hst & %Hl & _ & Hlb & Hcreds & %rs' & Hrfn & Ha)".
+    apply syn_type_has_layout_array_inv in Hst as (ly' & Hst & -> & Hsz).
+    iModIntro. iExists _. iR.
+    iSplitR. { iPureIntro. move: Hsz. rewrite ly_size_mk_array_layout. lia. }
+    iR. rewrite ly_size_mk_array_layout. iFrame.
+    iExists rs'. iFrame. iNext. iMod "Ha" as "(%v & Hl & Hv)".
+    rewrite /ty_own_val /=.
+    iDestruct "Hv" as "(%ly & %Hst' & % & %Hlen & %Hvly & Ha)".
+    assert (ly' = ly) as -> by by eapply syn_type_has_layout_inj.
+    iR.
+    rewrite big_sepL2_replicate_l; last done.
+    iPoseProof (ofty_owned_array_join_mapsto with "Hl Ha") as "Ha"; [done.. | ].
+    iApply (big_sepL_wand with "Ha"). iApply big_sepL_intro.
+    iModIntro. iModIntro. iIntros (k r Hlook) "$".
+    simp_ltypes. done.
+  Qed.
 
   Lemma array_t_unfold_2_shared {rt} κ (ty : type rt) (len : nat) rs :
     ⊢ ltype_incl' (Shared κ) rs rs (◁ (array_t ty len)) (ArrayLtype ty len []).
   Proof.
-  Admitted.
+    iModIntro. iIntros (π l) "Hl".
+    rewrite ltype_own_array_unfold /array_ltype_own/=.
+    rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+    iDestruct "Hl" as "(%ly & %Hst & % & Hsc & #Hlb & %r' & Hrfn & #Hb)".
+    apply syn_type_has_layout_array_inv in Hst as (ly' & Hst & -> & Hsz).
+    iExists ly'. iR.
+    iSplitR. { iPureIntro. move: Hsz. rewrite ly_size_mk_array_layout. lia. }
+    iR. rewrite ly_size_mk_array_layout. iR.
+    iExists _. iFrame.
+    iModIntro. iMod "Hb" as "Hb". iModIntro.
+    rewrite /ty_shr/=.
+    iDestruct "Hb" as "(%ly & %Hst' & % & % & % & Hb)".
+    iR.
+    rewrite big_sepL2_replicate_l; last done.
+    assert (ly' = ly) as -> by by eapply syn_type_has_layout_inj.
+    iApply (big_sepL_wand with "Hb"). iApply big_sepL_intro.
+    iModIntro. iIntros (k r'' Hlook) "Hl".
+    simp_ltypes. iR.
+    rewrite /array_own_el_shr.
+    iDestruct "Hl" as "(%r1 & ? & #Hl)".
+    rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+    iExists _. iR.
+    iSplitR. { iPureIntro. apply has_layout_loc_offset_loc; last done. by eapply use_layout_alg_wf. }
+    iPoseProof (ty_shr_sidecond with "Hl") as "#Hsc".
+    iR. iSplitR. { iApply loc_in_bounds_array_offset; last done. apply lookup_lt_Some in Hlook. lia. }
+    iExists _. iFrame. eauto.
+  Qed.
 
   Lemma array_t_unfold_2_uniq {rt} κ γ (ty : type rt) (len : nat) rs :
     ⊢ ltype_incl' (Uniq κ γ) rs rs (◁ (array_t ty len)) (ArrayLtype ty len []).
   Proof.
-  Admitted.
+    iModIntro. iIntros (π l) "Hl".
+    rewrite ltype_own_array_unfold /array_ltype_own/=.
+    rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+    iDestruct "Hl" as "(%ly & %Hst & % & % & #Hlb & Hcreds & Hrfn & Hb)".
+    apply syn_type_has_layout_array_inv in Hst as (ly' & Hst & -> & Hsz).
+    iExists ly'. iFrame "% ∗".
+    rewrite ly_size_mk_array_layout in Hsz.
+    iSplitR. { iPureIntro. lia. }
+    iR. iR. iMod "Hb".
+    set (R := (∃ r', gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ [∗ list] i↦r'' ∈ r', (l offset{ly'}ₗ i) ◁ₗ[ π, Owned false] r'' @ ◁ ty))%I).
+    iApply (pinned_bor_iff _ R _ R with "[] []").
+    { subst R. iNext. iModIntro. iSplit.
+      + iIntros "(%r'' & Hauth & Ha)".
+        iExists _. iFrame. iMod "Ha" as "(% & Ha)". iR.
+        rewrite big_sepL2_replicate_l; last done.
+        iApply (big_sepL_impl with "Ha").
+        iModIntro. iModIntro. iIntros (k r Hlook). iIntros "$".
+        simp_ltypes. done.
+      + iIntros "(%r'' & Hauth & Ha)".
+        iExists _. iFrame. iMod "Ha" as "(% & Ha)". iR.
+        rewrite big_sepL2_replicate_l; last done.
+        iApply (big_sepL_impl with "Ha").
+        iModIntro. iModIntro. iIntros (k r Hlook). iIntros "(_ & $)".
+    }
+    { subst R. iNext. iModIntro. iSplit.
+      + iIntros "(%r'' & Hauth & Ha)".
+        iExists _. iFrame. iMod "Ha" as "(% & Ha)". iR.
+        rewrite big_sepL2_replicate_l; last done.
+        iApply (big_sepL_impl with "Ha").
+        iModIntro. iModIntro. iIntros (k r Hlook).
+        rewrite ltype_own_core_equiv ltype_core_ofty.
+        iIntros "$". simp_ltypes. done.
+      + iIntros "(%r'' & Hauth & Ha)".
+        iExists _. iFrame. iMod "Ha" as "(% & Ha)". iR.
+        rewrite big_sepL2_replicate_l; last done.
+        iApply (big_sepL_impl with "Ha").
+        iModIntro. iModIntro. iIntros (k r Hlook).
+        rewrite ltype_own_core_equiv ltype_core_ofty. iIntros "(_ & $)".
+    }
+    iApply (pinned_bor_iff' with "[] Hb").
+    iModIntro. iModIntro.
+    iSplit.
+    { iIntros "(%rs' & Hauth & Ha)".
+      iExists _. iFrame.
+      iMod "Ha" as "(%v & Hl & Hv)".
+      rewrite /ty_own_val/=.
+      iDestruct "Hv" as "(%ly'' & %Hst' & _ & %Hlen & %Hvly & Ha)".
+      assert (ly'' = ly') as -> by by eapply syn_type_has_layout_inj.
+      iR. iApply (ofty_owned_array_join_mapsto with "Hl Ha"); done.
+    }
+    { iIntros "(%rs' & Hauth & Ha)".
+      iExists _. iFrame. iMod "Ha" as "(%Hlen & Ha)".
+      iMod (ofty_owned_array_extract_mapsto with "Hlb Ha") as "(%v & Hl & % & Ha)"; [done.. | ].
+      iModIntro. iExists v. iFrame.
+      rewrite /ty_own_val/=.
+      iExists _. iR. iSplitR. { iPureIntro. lia. } iR. iR. done.
+    }
+  Qed.
 
   Local Lemma array_t_unfold_2' {rt} k (ty : type rt) (len : nat) rs :
     ⊢ ltype_incl' k rs rs (◁ (array_t ty len)) (ArrayLtype ty len []).
@@ -1165,24 +1289,81 @@ Section lemmas.
     end.
 
   Lemma array_ltype_make_default {rt} (def : type rt) len lts i lt1 b r1 r2 :
-    (∀ b r, ltype_incl b r r lt1 (◁ def)) -∗
+    (∀ b r, ltype_eq b r r lt1 (◁ def)) -∗
     ltype_incl b r1 r2 (ArrayLtype def len ((i, lt1) :: lts)) (ArrayLtype def len (delete_iml i lts)).
   Proof.
 
   Abort.
 
-  Lemma array_ltype_make_defaults {rt} (def : type rt) b r len lts :
-    ([∗ list] lt ∈ interpret_iml (◁ def)%I len lts, ∀ b r, ltype_incl b r r lt (◁ def)) -∗
+  (* can I get this just with ltype_incl?
+      If the core of arrays was just ofty def, I could get it with some reasoning.
+      Because I would just show that it collapses to the core.
+
+    Now, I can't, because we need the core of all of these things.
+      Should I change the definition?
+    I guess then, when I write, I need to show that the core of the new thing is ◁ def.
+     *)
+  (*
+  Lemma array_ltype_transform_iml {rt} (def : type rt) b r len lts :
+    (∀ i,
+      interpret_iml (◁ def)%I len lts1 !! i = Some lt1 →
+      interpret_iml (◁ def)%I len lts2 !! i = Some lt2 →
+      lt1 = lt2
+    ([∗ list] lt ∈ interpret_iml (◁ def)%I len lts, ∀ b r, ltype_eq b r r lt (◁ def)) -∗
     ltype_incl b r r (ArrayLtype def len lts) (ArrayLtype def len []).
+   *)
+
+  Definition full_iml {A} (def : A) start len := (λ i, (i, def)%I) <$> seq start len.
+  Lemma interpret_inserts_full_iml {A} iml' i def len (l : list A) :
+    interpret_inserts (full_iml def i len ++ iml') l =
+    take i (interpret_inserts iml' l) ++ replicate (min len (length l - i)) def ++ drop (i + len) (interpret_inserts iml' l).
   Proof.
-    iInduction lts as [ | [i lt] lts] "IH"; simpl.
-    { iIntros "_". iApply ltype_incl_refl. }
-    destruct i as [ | i]; simpl.
-    - destruct len; simpl.
-      + rewrite interpret_iml_0; simpl.
-        iIntros "_".
-        (* TODO *)
-  Admitted.
+    induction len as [ | len IH] in i, l |-*; simpl.
+    { rewrite Nat.add_0_r. rewrite take_drop. done. }
+    rewrite IH. simpl.
+    destruct (decide (i < length l)) as [Hlt | Hnlt].
+    - rewrite insert_app_l. 2: { rewrite take_length interpret_inserts_length. lia. }
+      rewrite insert_take_drop. 2: { rewrite take_length interpret_inserts_length.  lia. }
+      rewrite take_take. rewrite Nat.min_l; last lia.
+      rewrite drop_ge; first last. { rewrite take_length. lia. }
+      rewrite Nat.add_succ_r.
+      rewrite -app_assoc.
+      assert (length l - i = S (length l - S i)) as -> by lia.
+      rewrite -Nat.succ_min_distr. done.
+    - rewrite !Nat.min_r; [ | lia..].
+      assert (length l - i = 0) as -> by lia.
+      assert (length l - S i = 0) as -> by lia.
+      simpl.
+      rewrite drop_ge; first last. { rewrite interpret_inserts_length. lia. }
+      rewrite drop_ge; first last. { rewrite interpret_inserts_length. lia. }
+      rewrite !app_nil_r.
+      rewrite !take_ge; [ | rewrite interpret_inserts_length; lia.. ].
+      rewrite list_insert_id'; first done.
+      rewrite interpret_inserts_length. lia.
+  Qed.
+  Lemma interpret_full_iml {A} (def : A) len iml' :
+    interpret_iml def len (full_iml def 0 len ++ iml') = interpret_iml def len [].
+  Proof.
+    rewrite /interpret_iml. simpl.
+    rewrite interpret_inserts_full_iml.
+    rewrite take_0 replicate_length Nat.min_l; last lia.
+    rewrite drop_ge; first by rewrite app_nil_r.
+    rewrite interpret_inserts_length replicate_length. lia.
+  Qed.
+
+  Lemma array_ltype_make_defaults {rt} (def : type rt) b r len lts :
+    ([∗ list] lt ∈ interpret_iml (◁ def)%I len lts, ∀ b r, ltype_eq b r r lt (◁ def)) -∗
+    ltype_eq b r r (ArrayLtype def len lts) (ArrayLtype def len []).
+  Proof.
+    iIntros "#Hincl".
+    iApply (array_ltype_eq with "[]"); first done.
+    rewrite -(interpret_full_iml _ _ lts).
+    iIntros (k). rewrite interpret_full_iml/=.
+    rewrite big_sepL2_replicate_r; first last.
+    { rewrite interpret_iml_length//. }
+    iApply (big_sepL_impl with "Hincl").
+    iModIntro. iIntros (?? Hlook) "Ha". iIntros (?). iApply "Ha".
+  Qed.
 
   Lemma array_ltype_make_defaults_full_eqltype E L {rt} (def : type rt) len lts :
     Forall (λ lt, full_eqltype E L lt (◁ def)%I) (interpret_iml (◁ def)%I len lts) →
@@ -1192,11 +1373,9 @@ Section lemmas.
     iPoseProof (Forall_big_sepL with "HL []") as "(Ha & HL)"; first apply Ha.
     { iModIntro. iIntros (lt) "HL %Heqt". iPoseProof (Heqt with "HL CTX HE") as "#Heq".
       iFrame "HL". iApply "Heq". }
-    iSplit.
-    - iApply array_ltype_make_defaults.
-    simpl.
-    (* TODO *)
-  Admitted.
+    iApply array_ltype_make_defaults.
+    done.
+  Qed.
 
   Import EqNotations.
   Lemma array_ltype_place_cond_ty b {rt rt'} (def : type rt) (def' : type rt') (len : nat) (lts : list (nat * ltype rt)) (lts' : list (nat * ltype rt')) :
@@ -1264,9 +1443,9 @@ Section lemmas.
         l ◁ₗ[π, Owned wl] #rs' @ ArrayLtype def' len lts').
   Proof.
     iIntros (?) "Hb". rewrite ltype_own_array_unfold /array_ltype_own.
-    iDestruct "Hb" as "(%ly & %Hst & % & %Hly & #Hlb & Hcred & %r' & <- & <- & Hb)".
+    iDestruct "Hb" as "(%ly & %Hst & % & %Hly & #Hlb & Hcred & %r' & <- & Hb)".
     iExists ly. iR. iR. iR. iR.
-    iMod (maybe_use_credit with "Hcred Hb") as "(Hcred & Hat & Hb)"; first done.
+    iMod (maybe_use_credit with "Hcred Hb") as "(Hcred & Hat & (<- & Hb))"; first done.
     iModIntro. iFrame.
     iIntros (rt' def' lts' rs') "Hcred' %Hst' Hb".
     rewrite ltype_own_array_unfold /array_ltype_own.
@@ -1305,9 +1484,9 @@ Section lemmas.
          typed_place_cond bmin (ArrayLtype def len lts) (ArrayLtype def' len lts') (#rs) (#rs'))).
   Proof.
     iIntros (?) "Hb". rewrite ltype_own_array_unfold /array_ltype_own.
-    iDestruct "Hb" as "(%ly & %Hst & % & %Hly & #Hlb & Hcred & %r' & <- & <- & Hb)".
+    iDestruct "Hb" as "(%ly & %Hst & % & %Hly & #Hlb & Hcred & %r' & <- & Hb)".
     iExists ly. iR. iR. iR. iR.
-    iMod (maybe_use_credit with "Hcred Hb") as "(Hcred & Hat & Hb)"; first done.
+    iMod (maybe_use_credit with "Hcred Hb") as "(Hcred & Hat & (<- & Hb))"; first done.
     iModIntro. iFrame.
     iApply (logical_step_intro_maybe with "Hat"). iIntros "Hcred' !>".
     iIntros (rt' def' lts' rs') "%Hst' Hb".
@@ -1535,9 +1714,9 @@ Section lemmas.
       ).
   Proof.
     iIntros (?) "Hb". rewrite ltype_own_array_unfold /array_ltype_own.
-    iDestruct "Hb" as "(%ly & %Hst & % & %Hly & #Hlb & %r' & <- & <- & #Hb)".
+    iDestruct "Hb" as "(%ly & %Hst & % & %Hly & #Hlb & %r' & <- & #Hb)".
     iExists ly. iR. iR. iR. iR.
-    iMod (fupd_mask_mono with "Hb") as "#Hb'"; first done.
+    iMod (fupd_mask_mono with "Hb") as "(<- & #Hb')"; first done.
     iModIntro. iFrame "Hb'".
     iIntros (def' lts' rs') "%Hst' %Hlen #Hb''".
     rewrite ltype_own_array_unfold /array_ltype_own.
@@ -1556,7 +1735,7 @@ Section lemmas.
     - done.
   Qed.
 
-  Lemma array_val_from_uninit π v st1 st2 ly1 ly2 len : 
+  Lemma array_val_from_uninit π v st1 st2 ly1 ly2 len :
     syn_type_has_layout st1 ly1 →
     syn_type_has_layout st2 ly2 →
     ly_size ly1 = ly_size ly2 * len →
@@ -2129,7 +2308,7 @@ Section rules.
     SubLtype E L k rs1 rs2 (ArrayLtype def1 len1 lts1) (ArrayLtype def2 len2 lts2) | 9 :=
     λ T, i2p (weak_subltype_array_evar_lts E L def1 def2 len1 len2 lts1 lts2 rs1 rs2 k T).
 
-  Local Lemma weak_subltype_array_helper {rt1 rt2} (def1 : type rt1) (def2 : type rt2) len1 (lts1 : list (nat * ltype rt1)) (lts2 : list (nat * ltype rt2)) rs1 rs2 b1 : 
+  Local Lemma weak_subltype_array_helper {rt1 rt2} (def1 : type rt1) (def2 : type rt2) len1 (lts1 : list (nat * ltype rt1)) (lts2 : list (nat * ltype rt2)) rs1 rs2 b1 :
     length rs2 = len1 → length rs1 = len1 →
     ([∗ list] i↦a;b ∈ interpret_iml (◁ def1) len1 lts1; interpret_iml (◁ def2) len1 lts2, ∃ (r1 : place_rfn rt1) (r2 : place_rfn rt2), ⌜rs1 !! i = Some r1⌝ ∗ ⌜rs2 !! i = Some r2⌝ ∗ ltype_incl b1 r1 r2 a b) -∗
     [∗ list] lt1;lt2 ∈ zip (interpret_iml (◁ def1) len1 lts1) rs1; zip (interpret_iml (◁ def2) len1 lts2) rs2, ltype_incl b1 lt1.2 lt2.2 lt1.1 lt2.1.
@@ -2164,8 +2343,8 @@ Section rules.
     iApply array_ltype_incl_owned_in; first done.
     simpl. iIntros (?). rewrite interpret_iml_length.
     iSpecialize ("Ha" with "[] []"). { iPureIntro. lia. } {iPureIntro. lia. }
-    iR. setoid_rewrite Nat.add_0_r. 
-    iApply weak_subltype_array_helper; done. 
+    iR. setoid_rewrite Nat.add_0_r.
+    iApply weak_subltype_array_helper; done.
   Qed.
   Global Instance weak_subltype_array_owned_in_inst E L {rt1 rt2} (def1 : type rt1) (def2 : type rt2) len1 len2 (lts1 : list (nat * ltype rt1)) (lts2 : list (nat * ltype rt2)) rs1 rs2 wl :
     SubLtype E L (Owned wl) #rs1 rs2 (ArrayLtype def1 len1 lts1) (ArrayLtype def2 len2 lts2) |10 :=
@@ -2202,8 +2381,8 @@ Section rules.
     iApply array_ltype_incl_shared_in; first done.
     simpl. iIntros (?). rewrite interpret_iml_length.
     iSpecialize ("Ha" with "[] []"). { iPureIntro. lia. } {iPureIntro. lia. }
-    iR. setoid_rewrite Nat.add_0_r. 
-    iApply weak_subltype_array_helper; done. 
+    iR. setoid_rewrite Nat.add_0_r.
+    iApply weak_subltype_array_helper; done.
   Qed.
   Global Instance weak_subltype_array_shared_in_inst E L {rt1 rt2} (def1 : type rt1) (def2 : type rt2) len1 len2 (lts1 : list (nat * ltype rt1)) (lts2 : list (nat * ltype rt2)) rs1 rs2 κ :
     SubLtype E L (Shared κ) #rs1 rs2 (ArrayLtype def1 len1 lts1) (ArrayLtype def2 len2 lts2) |10 :=
@@ -2281,24 +2460,27 @@ Section rules.
 
   Lemma weak_subltype_array_ofty_r E L {rt1} (def1 : type rt1) ty len1 (lts1 : list (nat * ltype rt1)) rs1 rs2 k T :
     ⌜rs1 = rs2⌝ ∗ mut_eqtype E L (array_t def1 len1) ty
-      (fold_list E L [] (interpret_iml (◁ def1) len1 lts1) 0 (fold_overrides_list_interp def1 len1 true) T)
+      (fold_list E L [] (interpret_iml (◁ def1) len1 lts1) 0 (fold_overrides_list_interp def1 len1 false) T)
     ⊢ weak_subltype E L k rs1 rs2 (ArrayLtype def1 len1 lts1) (◁ ty) T.
   Proof.
     iIntros "(-> & %Hsubt & Hf)".
     iIntros (??) "#CTX #HE HL".
-    iMod ("Hf" with "[//] CTX HE HL") as "(Ha & HL & $)".
-    simpl. iSpecialize ("Ha" with "[] []").
+    (*iMod ("Hf" with "[//] CTX HE HL") as "(Ha & HL & $)".*)
+    rewrite /fold_list/=. iDestruct "Hf" as "(Hf & $)".
+    simpl. iSpecialize ("Hf" with "[] []").
     { simpl. rewrite interpret_iml_length. iPureIntro. lia. }
     { simpl. done. }
-    iDestruct "Ha" as "#Ha".
-    specialize (full_eqtype_subltype _ _ _ _ Hsubt) as Hs.
-    iPoseProof (full_subltype_acc with "CTX HE HL") as "#Hb"; first apply Hs.
-    iFrame. simpl.
-    iModIntro. iApply ltype_incl_trans.
-    { iApply (array_ltype_make_defaults). done. }
-    iApply ltype_incl_trans.
-    { iApply array_t_unfold_1. }
-    iApply "Hb".
+    specialize (full_eqtype_eqltype _ _ _ _ Hsubt) as Hs.
+    iPoseProof (full_eqltype_acc with "CTX HE HL") as "#Hb"; first apply Hs.
+    iPoseProof (big_sepL_Forall with "Hf") as "%Ha".
+    apply array_ltype_make_defaults_full_eqltype in Ha.
+    iPoseProof (full_eqltype_acc with "CTX HE HL") as "#Hc"; first apply Ha.
+    iFrame. iModIntro. iApply (ltype_incl_trans with "[Hf]"); first last.
+    { iApply ltype_incl_trans.
+      { iApply array_t_unfold_1. }
+      iApply ltype_eq_ltype_incl_l.
+      iApply "Hb". }
+    iApply ltype_eq_ltype_incl_l. iApply "Hc".
   Qed.
   Global Instance weak_subltype_array_ofty_r_inst E L {rt1} (def1 : type rt1) ty len1 (lts1 : list (nat * ltype rt1)) rs1 rs2 k :
     SubLtype E L k rs1 rs2 (ArrayLtype def1 len1 lts1) (◁ ty)%I | 14 :=
@@ -2471,10 +2653,10 @@ Section rules.
       done.
     - simpl; done.
     - iIntros (v) "Hun".
-      iApply "Hv". iApply array_val_from_uninit; last done. 
-      + done. 
-      + done. 
-      + lia. 
+      iApply "Hv". iApply array_val_from_uninit; last done.
+      + done.
+      + done.
+      + lia.
   Qed.
   Global Instance owned_subtype_uninit_array_inst π E L pers {rt} (ty : type rt) st len r2 :
     OwnedSubtype π E L pers () r2 (uninit st) (array_t ty len) :=
@@ -2712,8 +2894,8 @@ Section rules.
   Proof.
     iIntros "HT". iIntros (???) "#CTX #HE HL Hl".
     rewrite ltype_own_array_unfold /array_ltype_own.
-    iDestruct "Hl" as "(%ly & %Halg & %Hsz & %Hly & Hlb & Hcreds & %r' & <- & %Hlen & Hl)". subst len.
-    iMod (maybe_use_credit with "Hcreds Hl") as "(Hcred & Hat & Hl)"; first done.
+    iDestruct "Hl" as "(%ly & %Halg & %Hsz & %Hly & Hlb & Hcreds & %r' & <- & Hl)".
+    iMod (maybe_use_credit with "Hcreds Hl") as "(Hcred & Hat & (%Hlen & Hl))"; first done. subst len.
     iMod ("HT" with "[//] [//] CTX HE HL [Hl]") as "(%L2 & %R2 & %iml2 & %rs2 & %Hleneq & Hstep & HL & HT)".
     { iApply (big_sepL2_mono with "Hl"). intros ? ? ? HLook1 Hlook2.
       rewrite /OffsetLocSt /use_layout_alg' Halg/=. done. }
@@ -2844,10 +3026,10 @@ Section value.
     iIntros (Hsz ?) "Hv". rewrite /ty_own_val/=.
     iDestruct "Hv" as "(%ot & %Hot & %Hmv & %Hv & %Hst)".
     apply use_op_alg_untyped_inv in Hot as ->.
-    simpl in *. 
+    simpl in *.
     apply is_memcast_val_untyped_inv in Hmv as <-.
     apply (syn_type_has_layout_untyped_inv) in Hst as (_ & Hwf & Hsz' & Hal).
-    iExists ly. 
+    iExists ly.
     iSplitR. { done. }
     iSplitR. { iPureIntro. rewrite Hsz in Hsz'. lia. }
     iSplitR. { rewrite fmap_length reshape_length replicate_length //. }
@@ -2855,33 +3037,33 @@ Section value.
     iApply big_sepL2_intro.
     { rewrite fmap_length reshape_length !replicate_length//. }
     iModIntro. iIntros (k ?? Hlook1 Hlook2).
-    rewrite list_lookup_fmap in Hlook1. 
+    rewrite list_lookup_fmap in Hlook1.
     rewrite Hlook2 in Hlook1.  simpl in Hlook1. injection Hlook1 as [= <-].
-    iExists _. iR. 
+    iExists _. iR.
     iExists (UntypedOp ly).
-    simpl. 
+    simpl.
     iSplitR. { iPureIntro. apply use_op_alg_untyped; done. }
     iSplitR. { iPureIntro. by left. }
-    iSplitR. { 
+    iSplitR. {
       destruct (decide (ly_size ly = 0)) as [Hzero | ].
       - (* size is 0 *)
-        rewrite Hzero reshape_replicate_0 in Hlook2. 
+        rewrite Hzero reshape_replicate_0 in Hlook2.
         apply lookup_replicate_1 in Hlook2 as (-> & ?).
         rewrite /has_layout_val Hzero //.
       - rewrite sublist_lookup_reshape in Hlook2.
-        { rewrite sublist_lookup_Some' in Hlook2. destruct Hlook2 as (-> & ?). 
+        { rewrite sublist_lookup_Some' in Hlook2. destruct Hlook2 as (-> & ?).
           iPureIntro. rewrite /has_layout_val take_length drop_length. lia. }
         { lia. }
         { rewrite Hv. lia. }
-    } 
-    iPureIntro. done. 
+    }
+    iPureIntro. done.
   Qed.
   Lemma value_t_untyped_to_array  π v vs n ly :
     syn_type_has_layout (UntypedSynType ly) ly →
     v ◁ᵥ{π} vs @ value_t (UntypedSynType (mk_array_layout ly n)) -∗
     v ◁ᵥ{π} (fmap (M:=list) PlaceIn $ reshape (replicate n (ly_size ly)) vs) @ (array_t (value_t (UntypedSynType ly)) n).
   Proof.
-    iIntros (?) "Hv". 
+    iIntros (?) "Hv".
     iApply (value_t_untyped_to_array' with "Hv").
     - done.
     - done.
@@ -2898,17 +3080,17 @@ Section value.
     rewrite /ty_own_val/=.
     iDestruct "Hv" as "(%ly'' & %Hst & %Hsz & <- & %Hv & Hl)".
     apply syn_type_has_layout_untyped_inv in Hst as (-> & Hwf & Hsz' & Hal).
-    rewrite fmap_length. rewrite fmap_length in Hv. 
+    rewrite fmap_length. rewrite fmap_length in Hv.
     iExists (UntypedOp (mk_array_layout ly (length vs'))).
     iSplitR. { iPureIntro. apply use_op_alg_untyped; done. }
 
     rewrite big_sepL2_fmap_l.
     (* have: agreement between the values *)
-    iSplitL. { 
+    iSplitL. {
       iAssert ([∗ list] x1; x2 ∈ vs'; (reshape (replicate (length vs') (ly_size ly)) v), ⌜x1 = x2⌝ ∗ ⌜x1 `has_layout_val` ly⌝)%I with "[Hl]" as "Hl".
-      { iApply (big_sepL2_impl with "Hl"). iModIntro. 
-        iIntros (? v1 v2 _ _) "(%v3 & -> & Ha)". 
-        rewrite {1}/ty_own_val/=. 
+      { iApply (big_sepL2_impl with "Hl"). iModIntro.
+        iIntros (? v1 v2 _ _) "(%v3 & -> & Ha)".
+        rewrite {1}/ty_own_val/=.
         iDestruct "Ha" as "(%ot & %Hot & %Hv1 & ? & ?)".
         apply use_op_alg_untyped_inv in Hot as ->.
         apply is_memcast_val_untyped_inv in Hv1 as ->.
@@ -2917,17 +3099,17 @@ Section value.
       iPoseProof (big_sepL2_Forall2 with "Hl1") as "%Hl1".
       apply Forall2_eq in Hl1 as ->.
       iClear "Hl1". rewrite big_sepL2_elim_r.
-      rewrite reshape_length replicate_length. 
+      rewrite reshape_length replicate_length.
       rewrite join_reshape.
       - iPureIntro. left. done.
-      - rewrite sum_list_replicate Hv ly_size_mk_array_layout. 
+      - rewrite sum_list_replicate Hv ly_size_mk_array_layout.
         lia. }
     iSplitR. { iPureIntro. rewrite /has_layout_val Hv /= //. }
     iPureIntro.
     apply syn_type_has_layout_untyped.
     - done.
     - by apply array_layout_wf.
-    - rewrite ly_size_mk_array_layout. 
+    - rewrite ly_size_mk_array_layout.
       move: Hsz. rewrite fmap_length. lia.
     - rewrite /ly_align_in_bounds ly_align_mk_array_layout //.
   Qed.
@@ -2938,7 +3120,7 @@ Section value.
   Proof.
     iIntros (?) "Hv". iApply value_t_untyped_from_array'; last done.
     - done.
-    - done. 
+    - done.
     - rewrite join_reshape; first done.
       rewrite sum_list_replicate. lia.
   Qed.
@@ -2950,11 +3132,11 @@ Section value.
   Proof.
     iIntros (?) "Ha".
     iPoseProof (ltype_own_has_layout with "Ha") as "(%ly' & %Hst & %Hly)".
-    simp_ltypes in Hst. simpl in Hst. 
+    simp_ltypes in Hst. simpl in Hst.
     apply syn_type_has_layout_untyped_inv in Hst as (-> & Hwf & Hsz & Hal).
     iApply (ofty_mono_ly_strong_in with "[] [] Ha").
     - simpl. apply syn_type_has_layout_untyped; done.
-    - simpl. apply (syn_type_has_layout_array _ _ ly); first done; first last. 
+    - simpl. apply (syn_type_has_layout_array _ _ ly); first done; first last.
       { move: Hsz. rewrite ly_size_mk_array_layout. lia. }
       done.
     - done.
@@ -2972,7 +3154,7 @@ Section value.
   Proof.
     iIntros (???) "Ha".
     iPoseProof (ltype_own_has_layout with "Ha") as "(%ly1 & %Hst & %Hly)".
-    simp_ltypes in Hst. simpl in Hst. 
+    simp_ltypes in Hst. simpl in Hst.
     specialize (syn_type_has_layout_array_inv _ _ _ Hst) as (ly2 & Hst' & -> & Hsz).
     specialize (syn_type_has_layout_untyped_inv _ _ Hst') as (-> & ? & ? & ?).
     iApply (ofty_mono_ly_strong_in with "[] [] Ha").
@@ -2992,7 +3174,7 @@ Section value.
   Proof.
     iIntros (?) "Hv". iApply ofty_value_untyped_from_array'; last done.
     - done.
-    - done. 
+    - done.
     - rewrite join_reshape; first done. rewrite sum_list_replicate. lia.
   Qed.
 

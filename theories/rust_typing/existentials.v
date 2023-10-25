@@ -139,6 +139,9 @@ Section ex.
     iIntros (ty π r v) "(%x & HP & Hv)". by iApply ty_own_val_sidecond.
   Qed.
   Next Obligation.
+    iIntros (ty ? π r v) "(%x & HP & Hs)". by iApply ty_shr_sidecond.
+  Qed.
+  Next Obligation.
     iIntros (ty κ π l r) "(%x & HP & Hv)". by iApply ty_shr_aligned.
   Qed.
   Next Obligation.

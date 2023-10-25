@@ -147,9 +147,10 @@ Proof.
   destruct b1, b2; try done; unfold bor_kind_direct_incl.
   + iDestruct "Hincl" as "->"; eauto.
   + rewrite !ltype_own_array_unfold /array_ltype_own.
-    iIntros "(%ly & Hst & Hly & Hlb & Ha & %r' &  Hrfn & %Hlen2 & #Hb)".
-    iExists ly. iFrame. iExists r'. iFrame. iSplitR; first done. iModIntro.
-    iMod "Hb". iModIntro. iApply (big_sepL2_wand with "Hb").
+    iIntros "(%ly & Hst & Hly & Hlb & Ha & %r' &  Hrfn & #Hb)".
+    iExists ly. iFrame. iExists r'. iFrame.
+    iModIntro. iMod "Hb" as "(%Hlen2 & Hb)". iModIntro. iR.
+    iApply (big_sepL2_wand with "Hb").
     iApply big_sepL2_intro. { rewrite interpret_iml_length //. }
     iIntros "!>" (?????) "($ & Hb)". iApply IH; last done; [ | done].
     by eapply elem_of_list_lookup_2.

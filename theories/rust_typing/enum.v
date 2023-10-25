@@ -47,6 +47,9 @@ Section union.
     eauto.
   Qed.
   Next Obligation.
+    eauto.
+  Qed.
+  Next Obligation.
     iIntros (????????) "(%ul & %ly & % & % & % & _)". iExists ul.
     iSplitR; first done. iPureIntro. by eapply use_union_layout_alg_Some_inv.
   Qed.
@@ -278,6 +281,9 @@ Section enum.
   Qed.
   Next Obligation.
   Admitted.
+  Next Obligation.
+    eauto.
+  Qed.
   Next Obligation.
     eauto.
   Qed.

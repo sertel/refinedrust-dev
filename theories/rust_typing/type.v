@@ -80,6 +80,7 @@ Record type `{!typeGS Σ} (rt : Type) := {
   (* if we specify a particular op_type, its layout needs to be compatible with the underlying syntactic type *)
   ty_op_type_stable ot mt : ty_has_op_type ot mt → syn_type_has_layout ty_syn_type (ot_layout ot);
   ty_own_val_sidecond π r v : ty_own_val π r v -∗ ty_sidecond;
+  ty_shr_sidecond κ π r l : ty_shr κ π r l -∗ ty_sidecond;
 
   ty_shr_persistent κ π l r : Persistent (ty_shr κ π r l);
   ty_shr_aligned κ π l r :
@@ -300,6 +301,9 @@ Next Obligation.
   iIntros (???????) "Hown". done.
 Qed.
 Next Obligation.
+  iIntros (????????) "Hown". done.
+Qed.
+Next Obligation.
   iIntros (??? st κ π l r). simpl.
   iIntros "(%vl & %ly & _ & _ & %Hst & %Hly)". eauto.
 Qed.
@@ -505,6 +509,8 @@ Section ofe.
     (∀ ot mt, x.1.1.1.1.2 ot mt → syn_type_has_layout x.1.1.1.1.1.2 (ot_layout ot)) ∧
     (* ty_own_val_sidecond *)
     (∀ π r v, x.1.1.1.1.1.1.1.2 π r v -∗ x.1.1.1.2) ∧
+    (* ty_shr_sidecond *)
+    (∀ κ π r l, x.1.1.1.1.1.1.2 κ π r l -∗ x.1.1.1.2) ∧
     (* ty_shr_persistent *)
     (∀ κ π r l, Persistent (x.1.1.1.1.1.1.2 κ π r l)) ∧
     (* ty_shr_aligned *)
@@ -559,7 +565,7 @@ Section ofe.
     |}.
   Solve Obligations with
     intros [[[[[[[[T_inh T_own_val] T_shr] T_syn_type] T_ot] T_sidecond] T_drop] T_lfts] T_wf_E];
-    intros (? & ? & ? & ? & ? & ? & ? & ? & ? & ? & ?);
+    intros (? & ? & ? & ? & ? & ? & ? & ? & ? & ? & ? & ?);
     intros ????????? Heq; injection Heq; intros -> -> -> -> -> -> -> ->;
     done.
 
@@ -615,6 +621,7 @@ Section ofe.
         { intros ty1 ty2; intro_T. intros ?. by apply T_ot. }
         { apply limit_preserving_discrete. intros ty1 ty2; intro_T. by rewrite T_syn_type. }
       + apply bi.limit_preserving_emp_valid => n ty1 ty2; intro_T; f_equiv; last done. apply T_own_val.
+      + apply bi.limit_preserving_emp_valid => n ty1 ty2; intro_T; f_equiv; last done. apply T_shr.
       + apply bi.limit_preserving_Persistent => n ty1 ty2; intro_T. apply T_shr.
       + apply bi.limit_preserving_emp_valid => n ty1 ty2; intro_T; f_equiv.
         { apply T_shr. }

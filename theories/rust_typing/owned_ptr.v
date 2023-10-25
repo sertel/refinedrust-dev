@@ -48,6 +48,9 @@ Section owned_ptr.
     iIntros (?[] ?) "(%ly & -> & _)". done.
   Qed.
   Next Obligation.
+    iIntros (??[] ?) "_". done.
+  Qed.
+  Next Obligation.
     intros ??? []. apply _.
   Qed.
   Next Obligation.

@@ -61,6 +61,9 @@ Section box.
     iIntros (???) "(%l & %ly & -> & _)". done.
   Qed.
   Next Obligation.
+    iIntros (????) "_". done.
+  Qed.
+  Next Obligation.
     iIntros (κ π l r) "(%li & %ly & %ri & Hr & ? & ? & ?  & _)".
     eauto with iFrame.
   Qed.

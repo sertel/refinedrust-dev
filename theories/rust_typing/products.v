@@ -327,6 +327,9 @@ Section structs.
     iIntros (rts sls tys π r v) "(%sl & ? & $ & _)".
   Qed.
   Next Obligation.
+    iIntros (rts sls tys ? π r v) "(%sl & ? & $ & _)".
+  Qed.
+  Next Obligation.
     iIntros (rts sls tys κ π l r) "(%sl & %Halg & %Hly & % & Hmem)".
     iExists sl. iSplitR; first done. iPureIntro.
     by apply use_struct_layout_alg_Some_inv.

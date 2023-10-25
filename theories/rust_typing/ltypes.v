@@ -1469,24 +1469,24 @@ Section ltype_def.
       | Owned wl =>
         maybe_creds wl ∗
         ∃ r' : list (place_rfn rt), place_rfn_interp_owned r r' ∗
-        ⌜length r' = len⌝ ∗
         ▷?wl |={lftE}=>
+        (⌜length r' = len⌝ ∗
         big_sepL_P (zip (interpret_iml (OfTyLty def) len lts) r')
           (λ i ty HP,
             ∃ (Heq : lty_rt ty.1 = rt),
               ⌜lty_st ty.1 = ty_syn_type def⌝ ∗
-              lty_own_pre core ty.1 (Owned false) π (rew <-Heq in ty.2) (offset_loc l ly i))
+              lty_own_pre core ty.1 (Owned false) π (rew <-Heq in ty.2) (offset_loc l ly i)))
       | Uniq κ γ =>
         have_creds ∗
         place_rfn_interp_mut r γ ∗
         |={lftE}=> &pin{κ}
-          [∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ 
+          [∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗
               big_sepL_P (zip (interpret_iml (OfTyLty def) len lts) r')
               (λ i ty HP,
                 ∃ (Heq : lty_rt ty.1 = rt),
                   ⌜lty_st ty.1 = ty_syn_type def⌝ ∗
                   lty_own_pre true ty.1 (Owned false) π (rew <-Heq in ty.2) (offset_loc l ly i)))]
-          (∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ 
+          (∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗
               big_sepL_P (zip (interpret_iml (OfTyLty def) len lts) r')
               (λ i ty HP,
                 ∃ (Heq : lty_rt ty.1 = rt),
@@ -1494,8 +1494,9 @@ Section ltype_def.
                   lty_own_pre core ty.1 (Owned false) π (rew <-Heq in ty.2) (offset_loc l ly i))))
 
       | Shared κ =>
-          ∃ r', place_rfn_interp_shared r r' ∗ ⌜length r' = len⌝ ∗
-            □ |={lftE}=> big_sepL_P (zip (interpret_iml (OfTyLty def) len lts) r')
+          ∃ r', place_rfn_interp_shared r r' ∗
+            □ |={lftE}=> ⌜length r' = len⌝ ∗
+            big_sepL_P (zip (interpret_iml (OfTyLty def) len lts) r')
               (λ i ty HP,
                 ∃ (Heq : lty_rt ty.1 = rt),
                   ⌜lty_st ty.1 = ty_syn_type def⌝ ∗
@@ -2244,14 +2245,14 @@ Section ltype_def.
       admit.
     - (* array *)
       simp lty_own_pre.
-      iIntros "(%ly & %Halg & %Hsz & %Hly & Hlb & %r' & Ha & %Hlen & #Hl)".
+      iIntros "(%ly & %Halg & %Hsz & %Hly & Hlb & %r' & Ha & #Hl)".
       rewrite big_sepL_P_eq.
       iExists ly. iR. iR. iR. iFrame.
       (*set (Heq' := lty_core_rt_eq ).*)
       iExists (rew [id]Heq in r').
       iSplitL "Ha". { by iApply place_rfn_interp_shared_transport_eq. }
+      iModIntro. iMod "Hl" as "(%Hlen & Hl)". iModIntro.
       iSplitR. { rewrite -Hlen. iPureIntro. clear. rewrite (UIP_refl _ _ Heq). done. }
-      iModIntro. iMod "Hl". iModIntro.
       rewrite big_sepL_P_eq.
       (* TODO *)
       admit.
@@ -2854,24 +2855,24 @@ Section ltype_def.
       | Owned wl =>
           maybe_creds wl ∗
           ∃ r' : list (place_rfn rt), place_rfn_interp_owned r r' ∗
-          ⌜length r' = len⌝ ∗
           ▷?wl |={lftE}=>
+          (⌜length r' = len⌝ ∗
           [∗ list] i ↦ lt; r0 ∈ (interpret_iml (OfTy def) len lts); r',
-              ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Owned false) π r0 (offset_loc l ly i)
+              ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Owned false) π r0 (offset_loc l ly i))
       | Uniq κ γ =>
         have_creds ∗
         place_rfn_interp_mut r γ ∗
         |={lftE}=> &pin{κ}
-          [∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ 
+          [∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗
               [∗ list] i ↦ lt; r0 ∈ interpret_iml (OfTy def) len lts; r',
                 ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec_core _ lt (Owned false) π r0 (offset_loc l ly i))]
-          (∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗ 
+          (∃ r' : list (place_rfn rt), gvar_auth γ r' ∗ (|={lftE}=> ⌜length r' = len⌝ ∗
               [∗ list] i ↦ lt; r0 ∈ interpret_iml (OfTy def) len lts; r',
                 ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Owned false) π r0 (offset_loc l ly i)))
       | Shared κ =>
-          ∃ r', place_rfn_interp_shared r r' ∗ ⌜length r' = len⌝ ∗
-            □ |={lftE}=> [∗ list] i ↦ lt; r0 ∈ interpret_iml (OfTy def) len lts; r',
-                  ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Shared κ) π r0 (offset_loc l ly i)
+          ∃ r', place_rfn_interp_shared r r' ∗
+            □ |={lftE}=> (⌜length r' = len⌝ ∗ [∗ list] i ↦ lt; r0 ∈ interpret_iml (OfTy def) len lts; r',
+                  ⌜ltype_st lt = ty_syn_type def⌝ ∗ rec _ lt (Shared κ) π r0 (offset_loc l ly i))
       end.
 
   (*
@@ -3365,18 +3366,20 @@ Section ltype_def.
     (*{ rewrite Forall_fmap. iPureIntro. apply Forall_iff. intros []; done. }*)
     f_equiv.
     - do 4 f_equiv; first done.
+      f_equiv. f_equiv.
       apply sep_equiv_proper => Hlen.
-      repeat f_equiv. rewrite big_sepL_P_eq.
+      rewrite big_sepL_P_eq.
       rewrite -OfTy_ltype_lty.
       rewrite interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
       rewrite interpret_iml_length //.
     - do 3 f_equiv; first done.
+      do 2 f_equiv.
       apply sep_equiv_proper => Hlen.
-      do 2 f_equiv. rewrite big_sepL_P_eq.
+      rewrite big_sepL_P_eq.
       rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
       rewrite interpret_iml_length//.
     - do 6 f_equiv. all: f_equiv; first done.
-      all: f_equiv. 
+      all: f_equiv.
       all: apply sep_equiv_proper => Hlen.
       all: repeat f_equiv; rewrite big_sepL_P_eq.
       all: rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap//.
@@ -4672,6 +4675,13 @@ Section eqltype.
       + iIntros (??) "Ha". iApply "Hc2". iApply "Hc1". done.
       + iIntros (??) "Ha". iApply "Hc2". iApply "Hc1". done.
   Qed.
+
+  Lemma ltype_eq_ltype_incl_l {rt1 rt2} k r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) :
+    ltype_eq k r1 r2 lt1 lt2 -∗ ltype_incl k r1 r2 lt1 lt2.
+  Proof. iIntros "($ & _)". Qed.
+  Lemma ltype_eq_ltype_incl_r {rt1 rt2} k r1 r2 (lt1 : ltype rt1) (lt2 : ltype rt2) :
+    ltype_eq k r1 r2 lt1 lt2 -∗ ltype_incl k r2 r1 lt2 lt1.
+  Proof. iIntros "(_ & $)". Qed.
 
   Lemma ltype_eq_refl {rt} b r (lt : ltype rt) : ⊢ ltype_eq b r r lt lt.
   Proof.

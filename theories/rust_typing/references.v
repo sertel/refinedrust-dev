@@ -64,6 +64,9 @@ Section mut_ref.
     iIntros (κ π r v) "_". done.
   Qed.
   Next Obligation.
+    iIntros (κ ? π r v) "_". done.
+  Qed.
+  Next Obligation.
     iIntros (κ κ' π l [r γ]). apply _.
   Qed.
   Next Obligation.
@@ -1655,6 +1658,7 @@ Section shr_ref.
     iIntros (? ot Hot) => /=. destruct ot => /=// -> //.
   Qed.
   Next Obligation. iIntros (????) "_". done. Qed.
+  Next Obligation. iIntros (?????) "_". done. Qed.
   Next Obligation.
     iIntros (?????). simpl. iIntros "(%l' & %ly & %r' & ? & ? & ? & _)". eauto.
   Qed.
