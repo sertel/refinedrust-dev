@@ -2332,7 +2332,7 @@ Section typing.
   Lemma type_write_ofty_weak E L {rt} π (T : typed_write_end_cont_t rt) b2 bmin ac l (ty ty2 : type rt) r1 r2 v ot :
     (∃ r3, owned_subtype π E L false r1 r3 ty ty2 (λ L2,
       ⌜ty_syn_type ty = ty_syn_type ty2⌝ ∗ (* TODO: would be nice to remove this requirement *)
-      ⌜ty.(ty_has_op_type) ot MCNone⌝ ∗ ⌜lctx_bor_kind_alive E L2 b2⌝ ∗ ⌜bor_kind_writeable bmin⌝ ∗ (ty2.(ty_ghost_drop) π r2 -∗ T L2 rt ty2 r3 (ResultWeak eq_refl))))
+      ⌜ty.(ty_has_op_type) ot MCNone⌝ ∗ ⌜lctx_bor_kind_alive E L2 b2⌝ ∗ ⌜bor_kind_writeable b2⌝ ∗ (ty2.(ty_ghost_drop) π r2 -∗ T L2 rt ty2 r3 (ResultWeak eq_refl))))
     ⊢ typed_write_end π E L ot v ty r1 b2 bmin ac l (◁ ty2) (#r2) T.
   Proof.
     iIntros "(%r3 & HT)".
@@ -2364,7 +2364,8 @@ Section typing.
         destruct bmin; simpl; done. }
       iApply ("HT" with "Hgdrop").
     - (* we know that bmin is also Shared, so it can't be writeable *)
-      destruct bmin; done.
+      (*destruct bmin; done.*)
+      done.
     - (* we know that bmin is also Uniq, since it can't be shared *)
       destruct bmin as [ | | κ' ?]; [done.. | ]. rewrite {1}/bor_kind_incl.
       simpl in Hal.
@@ -2642,17 +2643,26 @@ Section typing.
       iSplitR; done.
   Qed.
 
+  (* TODO move *)
+  Definition bor_kind_mut_borrowable (b : bor_kind) :=
+    match b with
+    | Shared _ => False
+    | _ => True
+    end.
+
   Lemma type_borrow_mut_end E L π κ l (rt : Type) (ty : type rt) (r : rt) b2 bmin T:
+    ⌜bor_kind_mut_borrowable b2⌝ ∗
     ⌜lctx_bor_kind_incl E L (Uniq κ inhabitant) bmin⌝ ∗
     (* require this for the mutable reference case, to be able to access [b2] *)
     ⌜lctx_lft_alive E L κ⌝ ∗
     (∀ γ, T γ (BlockedLtype ty κ) (PlaceGhost γ))
-    ⊢ typed_borrow_mut_end π E L κ l ty (PlaceIn r) b2 bmin T.
+    ⊢ typed_borrow_mut_end π E L κ l ty (#r) b2 bmin T.
   Proof.
-    simpl. iIntros "(%Hincl & %Hal & HT)".
+    simpl. iIntros "(%Hbor & %Hincl & %Hal & HT)".
     iIntros (F ???) "#CTX #HE HL Hna #Hincl0 Hl Hcred".
     iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & Hcl_L)".
-    iDestruct (Hincl with "HL HE") as "#Hincl". iPoseProof ("Hcl_L" with "HL") as "HL".
+    iDestruct (Hincl with "HL HE") as "#Hincl".
+    iPoseProof ("Hcl_L" with "HL") as "HL".
     destruct b2 eqn:Hmin.
     - (* owned *)
       iMod (gvar_alloc r) as (γ) "[Hauth Hobs]".

@@ -2581,20 +2581,7 @@ Section rules.
     - iIntros "_". done.
     - iIntros "Hrel".
       specialize (Forall2_place_access_rt_rel (Shared κ) _ _ I Hrel) as <-.
-      iExists eq_refl.
-      setoid_rewrite <-bi.sep_exist_r.
-      rewrite big_sepL2_sep_sepL_r. iDestruct "Hrel" as "(#Heq & #Hub)".
-      iSplitL.
-      + iIntros (k r). iApply (struct_ltype_eq lts).
-        rewrite (big_sepL2_hzipl_hzipl_sepL_hzipl2 _ _ _
-          (λ _ a b, ∃ Heq, ∀ k r, ltype_eq k r r (projT2 a) (rew <-[ltype] Heq in projT2 b))%I
-          (λ _ ltp, ∀ k r, ltype_eq k r r (projT2 ltp).1 (projT2 ltp).2)%I 0).
-        { iIntros (k'). iApply (big_sepL_impl with "Heq"). iModIntro.
-          iIntros (? [] ?) "Heq'". iIntros (?). iApply "Heq'". }
-        intros _ x a b. iSplit.
-        * iIntros "(%Heq & Heq)". rewrite (UIP_refl _ _ Heq). done.
-        * iIntros "Heq". iExists eq_refl. done.
-      + iApply struct_ltype_imp_unblockable. done.
+      simp_ltypes. done.
     - iIntros "Hrel".
       specialize (Forall2_place_access_rt_rel (Uniq κ γ) _ _ I Hrel) as <-.
       iExists eq_refl.

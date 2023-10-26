@@ -433,10 +433,7 @@ Section rules.
   Proof.
     destruct b; simpl.
     - iIntros "_". done.
-    - iIntros "(%Hrefl & Heq & Hub)". subst.
-      iExists eq_refl. cbn. iSplitR "Hub".
-      + iIntros (??). by iApply box_ltype_eq.
-      + by iApply box_ltype_imp_unblockable.
+    - iIntros "(-> & %)". simp_ltypes. done.
     - iIntros "(%Hrefl & Heq & Hub)". subst.
       iExists eq_refl. cbn.
       iSplitL "Heq".

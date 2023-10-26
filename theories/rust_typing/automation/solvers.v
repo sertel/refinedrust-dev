@@ -997,9 +997,9 @@ Section bor_kind_incl_tac.
     done.
   Qed.
 
-  Lemma tac_lctx_bor_kind_incl_shared_uniq E L κ κ' γ' :
+  Lemma tac_lctx_bor_kind_incl_uniq_shared E L κ γ κ' :
     lctx_lft_incl E L κ κ' →
-    lctx_bor_kind_incl E L (Shared κ) (Uniq κ' γ').
+    lctx_bor_kind_incl E L (Uniq κ γ) (Shared κ').
   Proof.
     iIntros (Hincl ?) "HL". iPoseProof (Hincl with "HL") as "#Hincl".
     iIntros "!> HE". iDestruct ("Hincl" with "HE") as "#Hincl'".
@@ -1032,8 +1032,8 @@ Ltac solve_bor_kind_incl :=
       refine (tac_lctx_bor_kind_incl_any_owned _ _ _ _); solve[fail]
   | |- lctx_bor_kind_incl ?E ?L (Uniq _ _) (Uniq _ _) =>
       refine (tac_lctx_bor_kind_incl_uniq_uniq _ _ _ _ _ _ _); [solve_lft_incl]
-  | |- lctx_bor_kind_incl ?E ?L (Shared _) (Uniq _ _) =>
-      refine (tac_lctx_bor_kind_incl_shared_uniq _ _ _ _ _ _); [solve_lft_incl]
+  | |- lctx_bor_kind_incl ?E ?L (Uniq _ _) (Shared _) =>
+      refine (tac_lctx_bor_kind_incl_uniq_shared _ _ _ _ _ _); [solve_lft_incl]
   | |- lctx_bor_kind_incl ?E ?L (Shared _) (Shared _) =>
       refine (tac_lctx_bor_kind_incl_shared_shared _ _ _ _ _); [solve_lft_incl]
   | |- lctx_bor_kind_incl ?E ?L ?b1 ?b2 =>

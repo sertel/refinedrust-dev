@@ -666,6 +666,12 @@ Section test.
     solve_lft_incl; solve[fail].
   Abort.
 
+  Lemma test4' E κ κ' c2 :
+    lctx_lft_incl E [κ ⊑ₗ{c2} [κ']] (κ ⊓ κ) (κ ⊓ κ').
+  Proof.
+    solve_lft_incl; solve[fail].
+  Abort.
+
   Lemma test5 ϝ0 ϝ ulft_a :
     lctx_lft_incl_list [ϝ0 ⊑ₑ ϝ; ϝ ⊑ₑ ulft_a] [ϝ ⊑ₗ{ 0} []] [ϝ0] [ulft_a].
   Proof.
@@ -924,7 +930,7 @@ Section test.
   Proof. solve[solve_bor_kind_incl]. Abort.
 
   Lemma test4 κ κ' γ' c1 :
-    lctx_bor_kind_incl [κ' ⊑ₑ static] [κ ⊑ₗ{c1} [κ']] (Shared κ ⊓ₖ Shared κ) (Shared κ ⊓ₖ Uniq κ' γ').
+    lctx_bor_kind_incl [κ' ⊑ₑ static] [κ' ⊑ₗ{c1} [κ]] (Shared κ ⊓ₖ Uniq κ' γ') (Shared κ ⊓ₖ Shared κ).
   Proof. solve[solve_bor_kind_incl]. Abort.
 
   Lemma test5 κ κ' c1 :
@@ -948,8 +954,8 @@ Section test.
     lctx_bor_kind_direct_incl [κ' ⊑ₑ static] [κ ⊑ₗ{c1} [κ']] (Owned false ⊓ₖ Uniq κ γ) (Uniq κ' γ).
   Proof. solve[solve_bor_kind_direct_incl]. Abort.
 
-  Lemma test4 κ κ' γ' c1 :
-    lctx_bor_kind_direct_incl [κ' ⊑ₑ static] [κ ⊑ₗ{c1} [κ']] (Shared κ ⊓ₖ Shared κ) (Shared κ ⊓ₖ Uniq κ' γ').
+  Lemma test4 κ γ κ' c1 :
+    lctx_bor_kind_direct_incl [κ' ⊑ₑ static] [κ ⊑ₗ{c1} [κ']] (Shared κ ⊓ₖ Uniq κ γ) (Shared κ ⊓ₖ Uniq κ' γ) .
   Proof. solve[solve_bor_kind_direct_incl]. Abort.
 
   Lemma test5 κ κ' c1 :

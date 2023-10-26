@@ -1388,15 +1388,7 @@ Section lemmas.
     - iIntros "_". iPureIntro. simp_ltypes. rewrite Hst. done.
     - iIntros "Hrel".
       simpl in Hrel. subst rt'.
-      iExists eq_refl.
-      setoid_rewrite <-bi.sep_exist_r.
-      rewrite big_sepL2_sep_sepL_r. iDestruct "Hrel" as "(#Heq & #Hub)".
-      iSplitL.
-      + iIntros (k r). cbn. iApply array_ltype_eq; first done. iIntros (b').
-        iApply (big_sepL2_mono with "Heq").
-        iIntros (? lt1 lt2 Hlook1 Hlook2). iIntros "(%Heq & Ha)".
-        rewrite (UIP_refl _ _ Heq). iIntros (?). iApply "Ha".
-      + iApply array_ltype_imp_unblockable. done.
+      simp_ltypes. rewrite Hst. done.
     - iIntros "Hrel".
       simpl in Hrel. subst rt'.
       iExists eq_refl.

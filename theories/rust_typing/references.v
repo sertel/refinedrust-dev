@@ -714,10 +714,7 @@ Section rules.
   Proof.
     destruct b; simpl.
     - iIntros "_". done.
-    - iIntros "(%Heq & Heq & Hub)". subst rt2.
-      cbn. iExists eq_refl. cbn. iSplitR "Hub".
-      + iIntros (??). iApply (mut_ltype_eq with "Heq"); iApply lft_incl_refl.
-      + by iApply mut_ltype_imp_unblockable.
+    - iIntros "(-> & %)". iR. simp_ltypes. done.
     - iIntros "(%Hrefl & Heq & Hub)".
       subst rt2. cbn.
       iExists eq_refl. cbn. iSplitR "Hub".
@@ -2208,10 +2205,7 @@ Section acc.
   Proof.
     destruct b; simpl.
     - iIntros "_". done.
-    - iIntros "(%Heq & Heq & Hub)". subst rt2.
-      cbn. iExists eq_refl. cbn. iSplitR "Hub".
-      + iIntros (??). iApply (shr_ltype_eq with "Heq"); iApply lft_incl_refl.
-      + by iApply shr_ltype_imp_unblockable.
+    - iIntros "(-> & %)". simp_ltypes. done.
     - iIntros "(%Hrefl & Heq & Hub)".
       subst rt2. cbn.
       iExists eq_refl. cbn. iSplitR "Hub".

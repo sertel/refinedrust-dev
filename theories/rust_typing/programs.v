@@ -878,8 +878,9 @@ Section judgments.
             Maybe change this to [ltype_incl lt2 lt]?
             OTOH, it's not really clear that that would be the right way to model shared reborrows...
           *)
-          ∃ (Heq: rt = rt2),
-            ( ∀ b r, ltype_eq b r r lt (rew <- [ltype] Heq in lt2)) ∗ imp_unblockable [κ] lt2
+          ⌜rt = rt2⌝ ∗ ⌜ltype_st lt = ltype_st lt2⌝
+          (*∃ (Heq: rt = rt2),*)
+            (*( ∀ b r, ltype_eq b r r lt (rew <- [ltype] Heq in lt2)) ∗ imp_unblockable [κ] lt2*)
       end%I.
 
     (** Condition on the refinement *)
@@ -911,19 +912,17 @@ Section judgments.
     Proof using Type*.
       iIntros "? Hcond//".
       destruct b1, b2; simpl; try done.
-      - iDestruct "Hcond" as (<-) "(Ha & _)".
-        iDestruct ("Ha" $! inhabitant inhabitant) as "((#$ & _) & _)".
-      - iDestruct "Hcond" as (<-) "(Heq & Hub)"; cbn in *.
-        iExists eq_refl. cbn. iFrame.
-        iApply (imp_unblockable_shorten' with "[$] Hub").
-      - iDestruct "Hcond" as (<-) "Heq"; cbn in *.
-        iDestruct "Heq" as "(Heq & Hub)". iExists eq_refl.
-        iSplitL "Heq".
-        * iIntros (b r). iApply ltype_eq_core. done.
-        * iApply (imp_unblockable_shorten' with "[$] Hub").
+      - iDestruct "Hcond" as "(_ & $)".
+      (*- iDestruct "Hcond" as (<-) "(Heq & Hub)"; cbn in *.*)
+        (*iExists eq_refl. cbn. iFrame.*)
+        (*iApply (imp_unblockable_shorten' with "[$] Hub").*)
       - iDestruct "Hcond" as (<-) "(Ha & _)".
         iDestruct ("Ha" $! inhabitant inhabitant) as "(( #Hly & _) & _)".
         rewrite !ltype_core_syn_type_eq. done.
+      - iDestruct "Hcond" as (<-) "(Heq & _)"; cbn in *.
+        iR.
+        iDestruct ("Heq" $! inhabitant inhabitant) as "(( #Hly & _) & _)".
+        rewrite !ltype_core_syn_type_eq//.
       - iDestruct "Hcond" as (<-) "(Heq & Hub)"; cbn in *.
         iExists eq_refl. cbn. iFrame.
         iApply (imp_unblockable_shorten' with "[$] Hub").
@@ -958,8 +957,8 @@ Section judgments.
   Proof.
     destruct b; simpl.
     - iIntros "% % !%". congruence.
-    - iIntros "(%Heq & Heq & Hub) (%Heq' & Heq' & Hub')". subst.
-      iExists eq_refl. iFrame. iIntros (b r). iApply (ltype_eq_trans with "Heq Heq'").
+    - iIntros "(-> & ->) (-> & ->)".
+      done.
     - iIntros "(%Heq & Heq & Hub) (%Heq' & Heq' & Hub')".
       subst.
       iExists eq_refl. iFrame. cbn.
@@ -996,9 +995,7 @@ Section judgments.
     iIntros "#Houtl".
     destruct b => /=.
     - by iPureIntro.
-    - iExists eq_refl. cbn. iSplitR.
-      { iIntros (??). iApply ltype_eq_refl. }
-      by iApply imp_unblockable_incl_blocked_lfts.
+    - done.
     - iExists eq_refl. cbn. iSplitR.
       { iIntros (??). iApply ltype_eq_refl. }
       by iApply imp_unblockable_incl_blocked_lfts.
@@ -1025,8 +1022,7 @@ Section judgments.
   Proof.
     iIntros "Hcond". destruct b; simpl.
     - done.
-    - iDestruct "Hcond" as "(%Heq & Heq & _)". subst. cbn.
-      iDestruct ("Heq" $! inhabitant inhabitant) as "((#$ & _) & _)".
+    - iDestruct "Hcond" as "(-> & $)".
     - iDestruct "Hcond" as "(%Heq & [Heq Hub])".
       iDestruct ("Heq" $! inhabitant inhabitant) as "((%Hly & _) & _)". subst; cbn in *.
       rewrite !ltype_core_syn_type_eq in Hly. iPureIntro. done.
@@ -1091,8 +1087,9 @@ Section judgments.
     ⌜rt1 = rt2⌝.
   Proof.
     iIntros "Hincl Hcond".
-    destruct k; simpl; [done | | done].
-    iDestruct "Hcond" as "(%Heq & Ha)"; iClear "Ha"; by done.
+    destruct k; simpl; [done | | ].
+    - iDestruct "Hcond" as "($ & _)".
+    - iDestruct "Hcond" as "(%Heq & Ha)"; iClear "Ha"; by done.
   Qed.
 
   (* NOTE: if put the ltype_eq disjunct for the Uniq case into typed_place_cond,
@@ -1104,9 +1101,10 @@ Section judgments.
   Proof.
     iIntros "Heq Hc".
     destruct b; simpl.
-    - iDestruct "Hc" as "<-". iDestruct ("Heq" $! inhabitant inhabitant) as "((#$ & _) & _)".
-    - iDestruct "Hc" as "(%Heq & Heq' & Hub')". subst. iExists eq_refl.
-      iFrame. iIntros (??). iApply (ltype_eq_trans with "Heq Heq'").
+    - iDestruct "Hc" as "<-".
+      iPoseProof (ltype_eq_syn_type inhabitant inhabitant with "Heq") as "->". done.
+    - iDestruct "Hc" as "(-> & <-)".
+      iR. iPoseProof (ltype_eq_syn_type inhabitant inhabitant with "Heq") as "->". done.
     - iDestruct "Hc" as "(%Heq & Heq' & $)". subst. iExists eq_refl.
       iIntros (??).
       iPoseProof (ltype_eq_core with "Heq") as "Heq".
@@ -1120,10 +1118,8 @@ Section judgments.
     iIntros "Hcond #Heq".
     destruct b; simpl.
     - iPoseProof (ltype_eq_syn_type inhabitant inhabitant with "Heq") as "->". done.
-    - iDestruct "Hcond" as "(%Heq & #Heq2 & Hub)". subst rt2.
-      iExists eq_refl.
-      iSplitR. { iIntros (??). iApply ltype_eq_trans; done. }
-      iApply ltype_eq_imp_unblockable; done.
+    - iDestruct "Hcond" as "(-> & ->)".
+      iPoseProof (ltype_eq_syn_type inhabitant inhabitant with "Heq") as "->". done.
     - iDestruct "Hcond" as "(%Heq & #Heq2 & Hub)". subst rt2.
       iExists eq_refl.
       iSplitR. { iIntros (??). iPoseProof (ltype_eq_core with "Heq") as "Heq'". iApply ltype_eq_trans; done. }
@@ -1145,11 +1141,10 @@ Section judgments.
   Proof.
     iIntros "[Hc Hr] Heq". iSplit; last done.
     destruct b; simpl.
-    - iDestruct "Hc" as "->". iDestruct ("Heq" $! inhabitant inhabitant) as "((#$ & _) & _)".
-    - iDestruct "Hc" as "(%Heq & Heq' & Hub)".
-      destruct Heq. iExists eq_refl. cbn. iSplitL.
-      { iIntros (??). iApply (ltype_eq_trans with "Heq' Heq"). }
-      iApply ofty_imp_unblockable.
+    - iDestruct "Hc" as "->".
+      iPoseProof (ltype_eq_syn_type inhabitant inhabitant with "Heq") as "->". done.
+    - iDestruct "Hc" as "(-> & ->)".
+      iR. iPoseProof (ltype_eq_syn_type inhabitant inhabitant with "Heq") as "->". done.
     - iDestruct "Hc" as "(%Heq & Heq' & Hub)". destruct Heq. iExists eq_refl. cbn.
       iSplitL. {
         iIntros (??).
@@ -1166,7 +1161,7 @@ Section judgments.
   Proof.
     destruct b; simpl.
     - iIntros "_". done.
-    - iIntros "Ha". iDestruct ("Ha" $! 1%positive) as "[]".
+    - iIntros "Ha". simp_ltypes. done.
     - iIntros "Hincl". iDestruct ("Hincl" $! 1%positive) as "Hincl".
       iExists eq_refl. cbn. iSplitR.
       + simp_ltypes. iIntros (??). iApply ltype_eq_refl.
@@ -1183,7 +1178,7 @@ Section judgments.
   Proof.
     destruct b; simpl.
     - iIntros "_". done.
-    - iIntros "Ha". iDestruct ("Ha" $! 1%positive) as "[]".
+    - iIntros "Ha". simp_ltypes. done.
     - iIntros "Hincl". iDestruct ("Hincl" $! 1%positive) as "Hincl".
       iExists eq_refl. cbn. iSplitR.
       + simp_ltypes. iIntros (??). iApply ltype_eq_refl.

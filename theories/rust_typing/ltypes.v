@@ -340,8 +340,8 @@ Definition bor_kind_min (b1 b2 : bor_kind) : bor_kind :=
   | Owned wl, _ => b2
   | _, Owned wl => b1
   | Uniq κ1 γ1, Uniq κ2 γ2 => Uniq (κ1 ⊓ κ2) γ1
-  | Shared κ1, Uniq κ2 γ2 => Shared (κ1 ⊓ κ2)
-  | Uniq κ1 γ1, Shared κ2 => Shared (κ1 ⊓ κ2)
+  | Shared κ1, Uniq κ2 γ2 => Uniq (κ1 ⊓ κ2) γ2
+  | Uniq κ1 γ1, Shared κ2 => Uniq (κ1 ⊓ κ2) γ1
   | Shared κ1, Shared κ2 => Shared (κ1 ⊓ κ2)
   end.
 Arguments bor_kind_min : simpl nomatch.
@@ -350,7 +350,7 @@ Definition bor_kind_incl (b1 b2 : bor_kind) : iProp Σ :=
   match b1, b2 with
   | _, Owned _ => True
   | Uniq κ1 γ1, Uniq κ2 γ2 => κ1 ⊑ κ2
-  | Shared κ1, Uniq κ2 γ2 => κ1 ⊑ κ2
+  | Uniq κ1 γ1, Shared κ2 => κ1 ⊑ κ2
   | Shared κ1, Shared κ2 => κ1 ⊑ κ2
   | _, _ => False
   end%I.
