@@ -587,6 +587,28 @@ Section stratify.
       simp_ltypes. done.
     - iDestruct "Hc" as "[_ Hc]".
       destruct weak; last done.
+
+      (*
+      iIntros (???) "Hincl Hl Hcond".
+      iMod ("Hc" with "Hincl Hl Hcond") as "(Ha & Hb & Htoks & Hc)".
+      iFrame. 
+      iDestruct "Hb" as "(Hcond_ty & _)".
+      typed_place_cond_incl
+      iSplitL.
+      + iApply (typed_place_cond_ty_trans with "[] Hcond_ty"). 
+
+
+
+        Search ltype_core_shadowed
+        destruct bmin. simpl.
+        Search imp_unblockable ShadowedLtype.
+        2: { iExists eq_refl. cbn. 
+
+
+          shadowed_ltype_own
+        Search typed_place_cond_ty ShadowedLtype.
+        *)
+
       (*
       iIntros (ltyi2 ri2  bmin') "Hincl Hl Hcond".
       iMod ("Hc" with "Hincl Hl Hcond") as "(Hl & Hcond & Htoks & HR)".
@@ -616,62 +638,84 @@ Section stratify.
 
 End stratify.
 Global Typeclasses Opaque ex_plain_t.
+(* How to reflect that into subtyping?
 
+   - It gives a clear proof principle for adding a later via subsume.
+   - We can eliminate to Owned false by using some of the creds.
+      In the next step, we can go back to Owned true, after one operation.
+     Note: We should find a clear spot where we actually do this regeneration.
+      existential folding/unfodlign?
+
+
+   We can also operate with Owned true in many places. Exception: array access that we use for decoupled physical operations.
+   potentially, we should also mark these as inlined eventually (ptr offset etc).
+
+   In principle, we could also just use credit from ptr::offset to use the Owned true case.
+   Then we can always leave the Owned true there.
+ *)
 
 (* TODO move *)
 (* ty_share *)
-Lemma ltype_own_ofty_share `{!typeGS Σ} π F κ q l {rt} (ty : type rt) wl r :
+Lemma ltype_own_ofty_share `{!typeGS Σ} π F κ q l {rt} (ty : type rt) r :
   lftE ⊆ F →
   rrust_ctx -∗
   let κ' := lft_intersect_list (ty_lfts ty) in
   q.[κ ⊓ κ'] -∗
-  (&{κ} (l ◁ₗ[π, Owned wl] r @ ◁ ty)) -∗
+  (&{κ} (l ◁ₗ[π, Owned true] r @ ◁ ty)) -∗
   logical_step F ((l ◁ₗ[π, Shared κ] r @ ◁ ty) ∗ q.[κ ⊓ κ']).
 Proof.
-  iIntros (?) "#CTX Htok Hl".
+  iIntros (?) "#(LFT & TIME & LLCTX) Htok Hl".
   iApply fupd_logical_step.
   iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
+  rewrite -lft_tok_sep.
+  iDestruct "Htok" as "(Htok & Htok2)".
+  iMod (bor_exists_tok with "LFT Hl Htok") as "(%ly & Hl & Htok)"; first done.
+  iMod (bor_sep with "LFT Hl") as "(Hst & Hl)"; first done.
+  iMod (bor_persistent with "LFT Hst Htok") as "(>%Hst & Htok)"; first done.
+  iMod (bor_sep with "LFT Hl") as "(Hly & Hl)"; first done.
+  iMod (bor_persistent with "LFT Hly Htok") as "(>%Hly & Htok)"; first done.
+  iMod (bor_sep with "LFT Hl") as "(Hsc & Hl)"; first done.
+  iMod (bor_persistent with "LFT Hsc Htok") as "(>#Hsc & Htok)"; first done.
+  iMod (bor_sep with "LFT Hl") as "(Hlb & Hl)"; first done.
+  iMod (bor_persistent with "LFT Hlb Htok") as "(>#Hlb & Htok)"; first done.
+  iMod (bor_sep with "LFT Hl") as "(Hcred & Hl)"; first done.
+  iMod (bor_exists_tok with "LFT Hl Htok") as "(%r' & Hl & Htok)"; first done.
+  iMod (bor_sep with "LFT Hl") as "(Hrfn & Hl)"; first done.
 
-  (* Point:
-     - I need to deal with the update here.
-     - I concluded at some earlier point that I need credits for that.
-        bor_fupd_later
-     - Can I just give more credits to the type and require ty_share to deal with that?
-        => I think this is the way to go.
-            Otherwise I don't really have any handle to do that.
-
-     - Otherwise, I'd need credits here.
-        One option: have Owned true, then I have credits.
-        Not a good option for now, see below.
-
-
-     TODO for getting the right contractiveness result for using vec in recursive types, we would anyways need Owned true.
-      But we don't handle that anyways currently, so it's fine.
-     (One Q: where do we get the credits from for initializing that?)
-     (would generally need better support for Owned true for that in subsumption rules.
-      Basically can go from Owned true to Owned false and get receipts in the process.
-      And go from Owned false to Owned true by getting receipts + credits.
-     )
-   *)
-
-
-  (*
-  ty_share
-  iMod (
-  iDestruct "Hl" as "(%ly & %Hst & %Hly & Hsc & Hlb & _ & %r' & Hrfn & Hb)".
-  iMod (fupd_mask_mono with "Hb") as "(%v & Hl & Hv)"
-   *)
-Admitted.
-
+  iMod (place_rfn_interp_owned_share with "LFT Hrfn Htok") as "(Hrfn & Htok)"; first done.
+  iDestruct "Htok" as "(Htok & Htok1)".
+  iMod (bor_acc with "LFT Hcred Htok1") as "(>Hcred & Hcl_cred)"; first done.
+  iDestruct "Hcred" as "(Hcred & Hat)".
+  iDestruct "Hcred" as "(Hcred1 & Hcred)".
+  iMod (bor_later with "LFT Hl") as "Hl"; first done.
+  iApply (lc_fupd_add_later with "Hcred1"). iNext. iMod "Hl" as "Hl".
+  iMod (bor_fupd_later with "LFT Hl Htok") as "Ha"; [done.. | ].
+  iDestruct "Hcred" as "(Hcred1 & Hcred)".
+  iApply (lc_fupd_add_later with "Hcred1"). iNext. iMod "Ha" as "(Hl & Htok)".
+  iDestruct "Htok2" as "(Htok2 & Htok2')".
+  iPoseProof (ty_share _ F with "[$LFT $TIME $LLCTX] [Htok Htok2] [//] [//] Hlb Hl") as "Hstep"; [done | ..].
+  { rewrite -lft_tok_sep. iFrame. }
+  iApply logical_step_fupd.
+  iApply (logical_step_compose with "Hstep").
+  iApply (logical_step_intro_atime with "Hat").
+  iModIntro. iIntros "Hcred' Hat".
+  iModIntro. iIntros "(#Hshr & Htok)".
+  iMod ("Hcl_cred" with "[$Hcred' $Hat]") as "(Hcred' & Htok1)".
+  iCombine "Htok1 Htok2'" as "Htok1".
+  rewrite !lft_tok_sep. iFrame "Htok Htok1".
+  iModIntro. rewrite ltype_own_ofty_unfold /lty_of_ty_own/=.
+  iExists _. iR. iR. iR. iR.
+  iExists _. iFrame. iModIntro. iModIntro. done.
+Qed.
 
 (* TODO : make lft_intersect_list simpl never in the lemmas using this. *)
-Lemma ltype_own_ofty_share' `{!typeGS Σ} π F κ κ' q l {rt} (ty : type rt) wl r :
+Lemma ltype_own_ofty_share' `{!typeGS Σ} π F κ κ' q l {rt} (ty : type rt) r :
   lftE ⊆ F →
   (ty_lfts ty) ⊆ κ' →
   rrust_ctx -∗
   q.[κ] -∗
   q.[lft_intersect_list κ'] -∗
-  (&{κ} (l ◁ₗ[π, Owned wl] r @ ◁ ty)) -∗
+  (&{κ} (l ◁ₗ[π, Owned true] r @ ◁ ty)) -∗
   logical_step F ((l ◁ₗ[π, Shared κ] r @ ◁ ty) ∗ q.[κ] ∗ q.[lft_intersect_list κ']).
 Proof.
   iIntros (? Hsub) "#CTX Htok1 Htok2 Hl".
@@ -693,13 +737,13 @@ Proof.
   iPoseProof ("Hcltok2'" with "Htok2") as "Htok2".
   iMod ("Hcltok2" with "Htok2") as "$". done.
 Qed.
-Lemma ltype_own_ofty_share_tac `{!typeGS Σ} π F κ κ' q l {rt} (ty : type rt) wl r P :
+Lemma ltype_own_ofty_share_tac `{!typeGS Σ} π F κ κ' q l {rt} (ty : type rt) r P :
   lftE ⊆ F →
   (ty_lfts ty) ⊆ κ' →
   rrust_ctx -∗
   q.[κ] -∗
   q.[lft_intersect_list κ'] -∗
-  (&{κ} (l ◁ₗ[π, Owned wl] r @ ◁ ty)) -∗
+  (&{κ} (l ◁ₗ[π, Owned true] r @ ◁ ty)) -∗
   ((q/2).[κ] -∗ (q/2).[lft_intersect_list κ'] -∗ logical_step F (((l ◁ₗ[π, Shared κ] r @ ◁ ty) ∗ (q/2).[κ] ∗ (q/2).[lft_intersect_list κ']) -∗ P)) -∗
   logical_step F P.
 Proof.
@@ -786,10 +830,12 @@ Ltac ex_t_destruct_bor :=
       | (⌜?ϕ⌝)%I =>
           iModStrict (bor_persistent with ("LFT __H0 Htok1")) as ("(>% & Htok1)");
           [done | ]
-      | (?l ◁ₗ[?π, Owned ?wl] ?r @ (◁ ?ty))%I =>
+      | (?l ◁ₗ[?π, Owned true] ?r @ (◁ ?ty))%I =>
           iApply (ltype_own_ofty_share_tac with "[$] Htok1 Htok __H0"); [done | set_solver | ];
           iIntros "!> Htok1 Htok";
           iApply fupd_logical_step
+      | (?l ◁ₗ[?π, Owned false] ?r @ (◁ ?ty))%I =>
+          idtac "solve_shr: cannot share [Owned false] ownership, consider using [Owned true] instead"
       | _ =>
         first
         [ let _ := constr:(_ : Persistent P) in
@@ -910,7 +956,7 @@ Module test.
   Next Obligation. ex_t_solve_timeless. Qed.
   Local Definition Pty := (∃; Pdef, int i32)%I.
 
-  Local Definition P_b := λ (π : thread_id) (x : Z) (y : Z), (∃ (z : Z) (l : loc), ⌜x = (y + z)%Z⌝ ∗ ⌜(0 < x)%Z⌝ ∗ l ◁ₗ[π, Owned false] #42%Z @ (◁ int i32))%I : iProp Σ.
+  Local Definition P_b := λ (π : thread_id) (x : Z) (y : Z), (∃ (z : Z) (l : loc), ⌜x = (y + z)%Z⌝ ∗ ⌜(0 < x)%Z⌝ ∗ l ◁ₗ[π, Owned true] #42%Z @ (◁ int i32))%I : iProp Σ.
   Local Definition S_b := λ (π : thread_id) (κ : lft) (x : Z) (y : Z), (∃ (z : Z) (l : loc), ⌜x = (y + z)%Z⌝ ∗ ⌜(0 < x)%Z⌝ ∗ l ◁ₗ[π, Shared κ] #42%Z @ (◁ int i32))%I : iProp Σ.
 
   Local Program Definition Adef := mk_ex_inv_def P_b S_b [] [] _ _ _.

@@ -3233,19 +3233,19 @@ Section offset_rules.
      Then I can use it for both typed_place and subsume_full. Look at RefinedC for that.
   *)
   (* TODO maybe we also generally want this to unblock/stratify first? *)
-  Definition typed_array_access_cont_t : Type := ∀ (rt' : Type), type rt' → nat → list (nat * ltype rt') → list (place_rfn rt') → bor_kind → ∀ rte, ltype rte → place_rfn rte → iProp Σ.
+  Definition typed_array_access_cont_t : Type := llctx → ∀ (rt' : Type), type rt' → nat → list (nat * ltype rt') → list (place_rfn rt') → bor_kind → ∀ rte, ltype rte → place_rfn rte → iProp Σ.
   Definition typed_array_access (π : thread_id) (E : elctx) (L : llctx) (base : loc) (off : nat) (st : syn_type) {rt} (lt : ltype rt) (r : place_rfn rt) (k : bor_kind) (T : typed_array_access_cont_t) : iProp Σ :=
-    ∀ F, ⌜lftE ⊆ F⌝ -∗
+    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
     rrust_ctx -∗
     elctx_interp E -∗
     llctx_interp L -∗
     base ◁ₗ[π, k] r @ lt ={F}=∗
-    ∃ k' rt' (ty' : type rt') (len : nat) (iml : list (nat * ltype rt')) rs' (rte : Type) re (lte : ltype rte),
+    ∃ L' k' rt' (ty' : type rt') (len : nat) (iml : list (nat * ltype rt')) rs' (rte : Type) re (lte : ltype rte),
       (* updated array assignment *)
       base ◁ₗ[π, k'] #rs' @ ArrayLtype ty' len iml ∗
       (base offsetst{st}ₗ off) ◁ₗ[π, k'] re @ lte ∗
-      llctx_interp L ∗
-      T _ ty' len iml rs' k' rte lte re.
+      llctx_interp L' ∗
+      T L' _ ty' len iml rs' k' rte lte re.
   Class TypedArrayAccess (π : thread_id) (E : elctx) (L : llctx) (base : loc) (off : nat) (st : syn_type) {rt} (lt : ltype rt) (r : place_rfn rt) (k : bor_kind) : Type :=
     typed_array_access_proof T : iProp_to_Prop (typed_array_access π E L base off st lt r k T).
 
@@ -3254,29 +3254,59 @@ Section offset_rules.
     typed_array_access π E L base off st (ArrayLtype ty len []) rs k T
     ⊢ typed_array_access π E L base off st (◁ array_t ty len) rs k T.
   Proof.
-    iIntros "HT". iIntros (??) "#CTX #HE HL Hl".
+    iIntros "HT". iIntros (???) "#CTX #HE HL Hl".
     iPoseProof (array_t_unfold k ty len rs) as "((_ & HIncl & _) & _)".
     iMod (ltype_incl'_use with "HIncl Hl") as "Hl"; first done.
-    iApply ("HT" with "[//] CTX HE HL Hl").
+    iApply ("HT" with "[//] [//] CTX HE HL Hl").
   Qed.
   Global Instance typed_array_access_unfold_inst π E L base off st {rt} (ty : type rt) len rs k :
     TypedArrayAccess π E L base off st (◁ array_t ty len)%I rs k :=
     λ T, i2p (typed_array_access_unfold π E L base off st ty len rs k T).
 
-  (* TODO make this. first have some theory for converting Owned true to Owned false with a credit *)
   Lemma typed_array_access_array_owned π E L base off st {rt} (ty : type rt) len iml rs (wl : bool) (T : typed_array_access_cont_t) :
-    (⌜off < len⌝ ∗ (if wl then £ 1 else True) ∗
+    (⌜off < len⌝ ∗ ⌜st = ty_syn_type ty⌝ ∗
+      prove_with_subtype E L false ProveDirect (if wl then £ 1 else True) (λ L2 κs Q, Q -∗
       ∀ lt r, ⌜interpret_iml (◁ ty)%I len iml !! off = Some lt⌝ -∗ ⌜rs !! off = Some r⌝ -∗
-      T _ ty len ((off, AliasLtype _ st (base offsetst{st}ₗ off)) :: iml) (rs) (Owned false) _ lt r)
+      introduce_with_hooks E L2 (maybe_creds wl) (λ L3,
+      T L3 _ ty len ((off, AliasLtype _ st (base offsetst{st}ₗ off)) :: iml) (rs) (Owned false) _ lt r)))
     ⊢ typed_array_access π E L base off st (ArrayLtype ty len iml) (#rs) (Owned wl) T.
   Proof.
-    iIntros "(%Hoff & Hcred & HT)".
-    iIntros (??) "#CTX #HE HL Hl".
-  Abort.
+    iIntros "(%Hoff & %Hst & HT)".
+    iIntros (???) "#CTX #HE HL Hl".
+    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L2 & %κs & %Q & >(HP & HQ) & HL & HT)".
+    iPoseProof ("HT" with "HQ") as "HT".
+    iAssert (|={F}=> base ◁ₗ[ π, Owned false] # rs @ ArrayLtype ty len iml ∗ maybe_creds wl)%I with "[Hl HP]" as "Ha".
+    { destruct wl; last eauto with iFrame.
+      iPoseProof (ltype_own_Owned_true_false with "Hl") as "($ & Hl)"; first done.
+      iApply (lc_fupd_add_later with "HP").
+      iNext. eauto with iFrame. }
+    iMod "Ha" as "(Hl & Hcred)".
+
+    iPoseProof (array_ltype_acc_owned' with "Hl") as "(%ly & %Halg & % & % & Hlb & >(Hb & Hcl))"; first done.
+    iPoseProof (big_sepL2_length with "Hb") as "%Hlen".
+    rewrite interpret_iml_length in Hlen.
+    specialize (lookup_lt_is_Some_2 rs off) as (r & Hr).
+    { lia. }
+    specialize (lookup_lt_is_Some_2 (interpret_iml (◁ ty)%I len iml) off) as (lt & Hlt).
+    { rewrite interpret_iml_length. lia. }
+    iPoseProof (big_sepL2_insert_acc _ _ _ off with "Hb") as "((%Hst' & Hel) & Hcl_b)"; [done.. | ].
+    iPoseProof (ltype_own_make_alias false _ _ r with "Hel [//]") as "(Hel & Halias)".
+    iPoseProof ("Hcl_b" $! (AliasLtype _ (ty_syn_type ty) (base offsetst{st}ₗ off)) r with "[Halias]") as "Ha".
+    { simp_ltypes. iR. rewrite /OffsetLocSt /use_layout_alg' Hst Halg /=. rewrite Hst'. done. }
+    iMod ("Hcl" $! _ ty ((off, AliasLtype rt st (base offsetst{st}ₗ off)) :: iml) rs with "[//] [//] [Ha]") as "Ha".
+    { simpl. rewrite (list_insert_id rs off r); last done. rewrite Hst.  done. }
+    iMod ("HT" with "[//] [//] [//] HE HL Hcred") as "(%L3 & HL & HT)".
+    iModIntro. iExists _, _, _, _, _, _, _, _. iExists _, _. iFrame.
+    rewrite /OffsetLocSt /use_layout_alg' Hst Halg//.
+  Qed.
+  Global Instance typed_array_access_owned_inst π E L base off st {rt} (ty : type rt) len iml rs wl :
+    TypedArrayAccess π E L base off st (ArrayLtype ty len iml) (#rs) (Owned wl) :=
+    λ T, i2p (typed_array_access_array_owned π E L base off st ty len iml rs wl T).
 
   (* NOTE: this will misbehave if we've moved the value out before already!
      But in that case, the subsumption for offset_ptr will not trigger, because we've got the location assignment in context which will be found with higher priority.
   *)
+  (*
   Lemma typed_array_access_array_owned_false π E L base off st {rt} (ty : type rt) len iml rs (T : typed_array_access_cont_t) :
     (⌜off < len⌝ ∗ ⌜st = ty_syn_type ty⌝ ∗ ∀ lt r, ⌜interpret_iml (◁ ty)%I len iml !! off = Some lt⌝ -∗ ⌜rs !! off = Some r⌝ -∗
       T _ ty len ((off, AliasLtype _ st (base offsetst{st}ₗ off)) :: iml) (rs) (Owned false) _ lt r)
@@ -3304,14 +3334,15 @@ Section offset_rules.
   Global Instance typed_array_access_owned_inst π E L base off st {rt} (ty : type rt) len iml rs :
     TypedArrayAccess π E L base off st (ArrayLtype ty len iml) (#rs) (Owned false) :=
     λ T, i2p (typed_array_access_array_owned_false π E L base off st ty len iml rs T).
+  *)
 
   Lemma typed_array_access_array_shared π E L base off st {rt} (ty : type rt) len iml rs κ (T : typed_array_access_cont_t) :
     (⌜off < len⌝ ∗ ⌜st = ty_syn_type ty⌝ ∗ ∀ lt r, ⌜interpret_iml (◁ ty)%I len iml !! off = Some lt⌝ -∗ ⌜rs !! off = Some r⌝ -∗
-      T _ ty len iml (rs) (Shared κ) _ lt r)
+      T L _ ty len iml (rs) (Shared κ) _ lt r)
     ⊢ typed_array_access π E L base off st (ArrayLtype ty len iml) (#rs) (Shared κ) T.
   Proof.
     iIntros "(%Hoff & %Hst & HT)".
-    iIntros (??) "#CTX #HE HL Hl".
+    iIntros (???) "#CTX #HE HL Hl".
     iPoseProof (array_ltype_acc_shared with "Hl") as "(%ly & %Halg & % & % & Hlb & >(#Hb & Hcl))"; first done.
     iPoseProof (big_sepL2_length with "Hb") as "%Hlen".
     rewrite interpret_iml_length in Hlen.
@@ -3322,7 +3353,7 @@ Section offset_rules.
     iPoseProof (big_sepL2_lookup _ _ _ off with "Hb") as "(%Hst' & Hel)"; [done.. | ].
     iMod ("Hcl" $! ty iml with "[//] [//] Hb") as "(Ha & _)".
     iPoseProof ("HT" with "[//] [//]") as "HT".
-    iModIntro. iExists _, _, _, _, _, _, _. iExists _, _. iFrame.
+    iModIntro. iExists _, _, _, _, _, _, _, _. iExists _, _. iFrame.
     rewrite /OffsetLocSt /use_layout_alg' Hst Halg//.
   Qed.
   Global Instance typed_array_access_shared_inst π E L base off st {rt} (ty : type rt) len iml rs κ :
@@ -3334,16 +3365,16 @@ Section offset_rules.
   *)
   Lemma subsume_from_offset_ptr_t π E L step l base off st k {rt} (ty : type rt) r T :
     find_in_context (FindLoc base π) (λ '(existT rt' (lt', r', k')),
-      typed_array_access π E L base off st lt' r' k' (λ rt2 ty2 len2 iml2 rs2 k2 rte lte re,
+      typed_array_access π E L base off st lt' r' k' (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         base ◁ₗ[π, k2] #rs2 @ ArrayLtype ty2 len2 iml2 -∗
         (* TODO maybe this should also stratify? *)
-        subsume_full E L step (l ◁ₗ[π, k2] re @ lte) (l ◁ₗ[π, k] r @ ◁ ty) T))
+        subsume_full E L2 step (l ◁ₗ[π, k2] re @ lte) (l ◁ₗ[π, k] r @ ◁ ty) T))
     ⊢ subsume_full E L step (l ◁ᵥ{π} (base, off) @ offset_ptr_t st) (l ◁ₗ[π, k] r @ ◁ ty) T.
   Proof.
     rewrite /find_in_context.
     iDestruct 1 as ([rt' [[lt' r'] k']]) "(Hl & Ha)". simpl.
     iIntros (???) "#CTX #HE HL Hoffset".
-    iMod ("Ha" with "[//] CTX HE HL Hl") as "(%k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hb & Hl & HL & HT)".
+    iMod ("Ha" with "[//] [//] CTX HE HL Hl") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hb & Hl & HL & HT)".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "%Heq".
     apply val_of_loc_inj in Heq. subst l.
     iApply ("HT" with "Hb [//] [//] CTX HE HL Hl").
@@ -3360,9 +3391,9 @@ Section offset_rules.
   *)
   Lemma typed_place_offset_ptr_owned π E L l st base offset bmin P wl T :
     find_in_context (FindLoc base π) (λ '(existT rt (lt, r, b)),
-      typed_array_access π E L base offset st lt r b (λ rt2 ty2 len2 iml2 rs2 k2 rte lte re,
+      typed_array_access π E L base offset st lt r b (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         base ◁ₗ[ π, k2] # rs2 @ ArrayLtype ty2 len2 iml2 -∗
-        typed_place π E L (base offsetst{st}ₗ offset) lte re k2 k2 P (λ L2 κs li bi bmin' rti lti ri strong weak,
+        typed_place π E L2 (base offsetst{st}ₗ offset) lte re k2 k2 P (λ L2 κs li bi bmin' rti lti ri strong weak,
           T L2 [] li bi bmin' rti lti ri
             (match strong with
              | Some strong => Some $ mk_strong (λ _, _) (λ _ _ _, (◁ offset_ptr_t st)) (λ _ _, #(base, offset)) (λ rti2 ltyi2 ri2, (base offsetst{st}ₗ offset) ◁ₗ[π, k2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)
@@ -3383,7 +3414,7 @@ Section offset_rules.
     iDestruct 1 as ([rt [[lt r] b]]) "(Hbase & HT)". simpl.
     iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
-    iMod ("HT" with "[] CTX HE HL Hbase") as "(%k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; first done.
+    iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iApply (typed_place_ofty_access_val_owned with "[Hbase Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
     { done. }
     iIntros (F' v ?) "Hoffset".
@@ -3399,10 +3430,10 @@ Section offset_rules.
 
   Lemma typed_place_offset_ptr_uniq π E L l st base offset bmin P κ γ T :
     find_in_context (FindLoc base π) (λ '(existT rt (lt, r, b)),
-      typed_array_access π E L base offset st lt r b (λ rt2 ty2 len2 iml2 rs2 k2 rte lte re,
+      typed_array_access π E L base offset st lt r b (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         base ◁ₗ[ π, k2] # rs2 @ ArrayLtype ty2 len2 iml2 -∗
-        ⌜lctx_lft_alive E L κ⌝ ∗
-        typed_place π E L (base offsetst{st}ₗ offset) lte re k2 k2 P (λ L2 κs li bi bmin' rti lti ri strong weak,
+        ⌜lctx_lft_alive E L2 κ⌝ ∗
+        typed_place π E L2 (base offsetst{st}ₗ offset) lte re k2 k2 P (λ L2 κs li bi bmin' rti lti ri strong weak,
           T L2 κs li bi bmin' rti lti ri
             (option_map (λ strong, mk_strong (λ _, _) (λ _ _ _, (◁ offset_ptr_t st)) (λ _ _, #(base, offset)) (λ rti2 ltyi2 ri2, (base offsetst{st}ₗ offset) ◁ₗ[π, k2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
             (option_map (λ weak, mk_weak (λ _ _, (◁ offset_ptr_t st)) (λ _, #(base, offset)) (λ ltyi2 ri2, (base offsetst{st}ₗ offset) ◁ₗ[π, k2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)) weak)
@@ -3413,7 +3444,7 @@ Section offset_rules.
     iDestruct 1 as ([rt [[lt r] b]]) "(Hbase & HT)". simpl.
     iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
-    iMod ("HT" with "[] CTX HE HL Hbase") as "(%k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; first done.
+    iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iPoseProof ("HT" with "Hbase") as "(%Hal & HT)".
     iApply (typed_place_ofty_access_val_uniq  _ _ _ _ (offset_ptr_t st) with "[Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
     { done. }
@@ -3429,10 +3460,10 @@ Section offset_rules.
 
   Lemma typed_place_offset_ptr_shared π E L l st base offset bmin P κ T :
     find_in_context (FindLoc base π) (λ '(existT rt (lt, r, b)),
-      typed_array_access π E L base offset st lt r b (λ rt2 ty2 len2 iml2 rs2 k2 rte lte re,
+      typed_array_access π E L base offset st lt r b (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         base ◁ₗ[ π, k2] # rs2 @ ArrayLtype ty2 len2 iml2 -∗
-        ⌜lctx_lft_alive E L κ⌝ ∗
-        typed_place π E L (base offsetst{st}ₗ offset) lte re k2 k2 P (λ L2 κs li bi bmin' rti lti ri strong weak,
+        ⌜lctx_lft_alive E L2 κ⌝ ∗
+        typed_place π E L2 (base offsetst{st}ₗ offset) lte re k2 k2 P (λ L2 κs li bi bmin' rti lti ri strong weak,
           T L2 κs li bi bmin' rti lti ri
             (option_map (λ strong, mk_strong (λ _, _) (λ _ _ _, (◁ offset_ptr_t st)) (λ _ _, #(base, offset)) (λ rti2 ltyi2 ri2, (base offsetst{st}ₗ offset) ◁ₗ[π, k2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
             (option_map (λ weak, mk_weak (λ _ _, (◁ offset_ptr_t st)) (λ _, #(base, offset)) (λ ltyi2 ri2, (base offsetst{st}ₗ offset) ◁ₗ[π, k2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)) weak)
@@ -3443,7 +3474,7 @@ Section offset_rules.
     iDestruct 1 as ([rt [[lt r] b]]) "(Hbase & HT)". simpl.
     iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
-    iMod ("HT" with "[] CTX HE HL Hbase") as "(%k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; first done.
+    iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iPoseProof ("HT" with "Hbase") as "(%Hal & HT)".
     iApply (typed_place_ofty_access_val_shared with "[Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
     { done. }

@@ -1626,12 +1626,9 @@ Section ltype_def.
 
   (** Basic laws of ltypes *)
 
-  (* NOTE: this does not hold true for [OpenedLtype]! *)
   Lemma lty_own_pre_shr_pers core (lt : lty) κ π r l :
-    (*match lt with OpenedLty _ _ _ _ _ => False | _ => True end →*)
     Persistent (lty_own_pre core lt (Shared κ) π r l).
   Proof.
-    (*intros ?;*)
     induction lt using lty_induction in κ, π, r, l, core |-*; simp lty_own_pre;
     destruct core; simpl; try done; apply _.
   Qed.
@@ -1736,6 +1733,56 @@ Section ltype_def.
     - iDestruct "Hown" as (->) "(%Hst & Ha & Hb)".
       simpl in Ha. rewrite -Hst in Ha.
       iApply "IH"; done.
+  Qed.
+
+  Lemma lty_own_Owned_true_false (lt : lty) π r l :
+    (match lt with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | _ => True end) →
+    lty_own lt (Owned true) π r l -∗
+    have_creds ∗ ▷ lty_own lt (Owned false) π r l.
+  Proof.
+    iIntros (?) "Hown". rewrite /lty_own.
+    destruct lt as [ | | | | | | | | | | | ? ??? | | ]; simp lty_own_pre.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & ? & Hcred)". eauto with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & % & ? & ? & ? & Hcred)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & Hcred & % & ? & Hl)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & Hcred)". eauto with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & Hcred & % & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? &? & ? & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(% & ? & ? & ? & ? & % & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(% & ? & ? & ? & ? & ? & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(% & ? & ? & ? & ? & ? & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(% & % & ? & ? & ? & ? & ? & ? & % & ? & ?)". eauto 8 with iFrame.
+    - done.
+    - done.
+    - (* this will definitely be a problem also for the other property, because we need two sets of credits
+        Maybe change the interpretation to have Owned false for the shadow, always? *)
+      done.
+  Qed.
+  Lemma lty_own_Owned_false_true (lt : lty) π r l :
+    (match lt with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | _ => True end) →
+    (lty_own lt (Owned false) π r l) -∗
+    have_creds -∗
+    lty_own lt (Owned true) π r l.
+  Proof.
+    iIntros (?) "Hown Hcred". rewrite /lty_own.
+    destruct lt as [ | | | | | | | | | | | ? ??? | | ]; simp lty_own_pre.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & ? & _)". iExists _. eauto with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & % & ? & ? & ? & _)". iExists _. eauto 8 with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & _ & % & ? & Hl)". iExists _. eauto 8 with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & _)". iExists _. eauto with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & _ & % & % & ? & ?)". iExists _. eauto 8 with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? & ? & ? & % & ? & ?)". iExists _. eauto 8 with iFrame.
+    - iDestruct "Hown" as "(%ly & ? & ? &? & ? & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(% & ? & ? & ? & ? & % & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(% & ? & ? & ? & ? & ? & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(% & ? & ? & ? & ? & ? & % & ? & ?)". eauto 8 with iFrame.
+    - iDestruct "Hown" as "(% & % & h1 & h2 & h3 & h4 & h5 & _ & % & Hrfn & ?)". eauto 8 with iFrame.
+    - done.
+    - done.
+    - (* this will definitely be a problem also for the other property, because we need two sets of credits
+        Maybe change the interpretation to have Owned false for the shadow, always? *)
+      done.
   Qed.
 
   Import EqNotations.
@@ -3605,6 +3652,26 @@ Section ltype_def.
     rewrite (UIP_refl _ _ Heq2).
     rewrite (UIP_refl _ _ Heq0).
     done.
+  Qed.
+
+  Lemma ltype_own_Owned_true_false {rt} (lt : ltype rt) π r l :
+    match ltype_lty lt with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | _ => True end →
+    ltype_own lt (Owned true) π r l -∗
+    have_creds ∗ ▷ ltype_own lt (Owned false) π r l.
+  Proof.
+    rewrite ltype_own_unseal/ltype_own_def/=.
+    rewrite /ltype_own_pre.
+    apply lty_own_Owned_true_false.
+  Qed.
+  Lemma ltype_own_Owned_false_true {rt} (lt : ltype rt) π r l :
+    match ltype_lty lt with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | _ => True end →
+    ltype_own lt (Owned false) π r l -∗
+    have_creds -∗
+    ltype_own lt (Owned true) π r l.
+  Proof.
+    rewrite ltype_own_unseal/ltype_own_def/=.
+    rewrite /ltype_own_pre.
+    apply lty_own_Owned_false_true.
   Qed.
 
   (** Rules for ltype_core *)
