@@ -12,6 +12,7 @@ Strategy expand [SHELVED_SIDECOND].
 
 Ltac shelve_sidecond :=
   idtac;
+  shelve_sidecond_hook;
   lazymatch goal with
   | |- ?G => change_no_check (SHELVED_SIDECOND G); shelve
   end.

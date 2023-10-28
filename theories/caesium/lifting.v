@@ -2216,15 +2216,16 @@ Lemma wp_call_credits vf vl f fn Φ n m :
       £(S (num_laters_per_step (n + m))) -∗ atime (S n) -∗ |={⊤}=> ∃ Ψ',
           WPs Goto fn.(f_init) {{ (subst_stmt (zip (fn.(f_args).*1 ++ fn.(f_local_vars).*1)
                             (val_of_loc <$> (lsa ++ lsv)))) <$> fn.(f_code), Ψ' }} ∗
-          (∀ v, Ψ' v -∗
+            (∀ v, Ψ' v -∗
+                  ∃ n' m', atime n' ∗ ptime m' ∗
                   ([∗ list] l; v ∈ lsa; fn.(f_args), l↦|v.2|) ∗
                   ([∗ list] l; v ∈ lsv; fn.(f_local_vars), l↦|v.2|) ∗
-                  (£1 -∗ Φ v))
+                  (£ (S (num_laters_per_step (n' + m'))) -∗ atime (S n') -∗ Φ v))
    ) -∗
    WP (Call (Val vf) (Val <$> vl)) {{ Φ }}.
 Proof.
   move => Hf Hly. move: (Hly) => /Forall2_length. rewrite fmap_length => Hlen_vs.
-  iIntros "TIME Hc Hp Hf HWP". iApply (wp_lift_expr_step_credits with "TIME Hc Hp"); [done.. | ].
+  iIntros "#TIME Hc Hp Hf HWP". iApply (wp_lift_expr_step_credits with "TIME Hc Hp"); [done.. | ].
   iIntros (σ1) "((%&Hhctx&Hbctx)&Hfctx)".
   iDestruct (fntbl_entry_lookup with "Hfctx Hf") as %[a [? Hfn]]; subst. iModIntro.
   iSplit; first by eauto 10 using CallFailS.
@@ -2249,8 +2250,9 @@ Proof.
   rewrite stmt_wp_eq. iApply "HQinit" => //.
 
   (** prove Return *)
-  iIntros (v) "Hv". iDestruct ("HΨ'" with "Hv") as "(Ha & Hv & Hs)".
-  iApply wp_lift_stmt_step => //.
+  iIntros (v) "Hv".
+  iDestruct ("HΨ'" with "Hv") as "(%n' & %m' & Hat & Hpt & Ha & Hv & Hs)".
+  iApply (wp_lift_stmt_step_credits with "TIME Hat Hpt") => //.
   iIntros (σ3) "(Hctx&?)".
   iMod (heap_free_blocks_upd (zip lsa (f_args fn).*2 ++ zip lsv (f_local_vars fn).*2) with "[Ha Hfree_a Hv Hfree_v] Hctx") as (σ2 Hfree) "Hctx". {
     rewrite big_sepL_app !big_sepL_sep !big_sepL2_alt.
@@ -2267,9 +2269,9 @@ Proof.
   }
   iModIntro.
   iSplit; first by eauto 8 using ReturnS.
-  iIntros (os ts3 σ2' ? Hst ?). inv_stmt_step. iIntros "!> Hcred". iSplitR => //.
+  iIntros (os ts3 σ2' ? Hst ?). inv_stmt_step. iIntros "!> Hcred Hat". iSplitR => //.
   have ->: (σ2 = hs) by apply: free_blocks_inj.
-  iFrame. iModIntro. iApply wp_value. iApply ("Hs" with "Hcred").
+  iFrame. iModIntro. iApply wp_value. iApply ("Hs" with "Hcred Hat").
 Qed.
 
 Lemma wp_call vf vl f fn Φ:

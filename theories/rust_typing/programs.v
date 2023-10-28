@@ -159,6 +159,14 @@ Section credits.
     rewrite -Nat.add_succ_r. rewrite additive_time_receipt_sep. iFrame.
   Qed.
 
+  Lemma credit_store_mono (n m n' m' : nat) :
+    n' ≤ n → m' ≤ m → credit_store n m -∗ credit_store n' m'.
+  Proof.
+    rewrite credit_store_eq/credit_store_def.
+    iIntros (??) "(Ha & Hb)".
+    iSplitL "Ha". { iApply lc_weaken; last done. lia. }
+    iApply additive_time_receipt_mono; last done. lia.
+  Qed.
 End credits.
 
 Section option_map.
@@ -615,6 +623,8 @@ Section judgments.
       llctx_interp [ϝ ⊑ₗ{0} κs] ∗
       (* return the non-atomic token *)
       na_own π shrE ∗
+      (* return the credit context *)
+      credit_store 0 0 ∗
       (* continuation *)
       R v)%I.
 
@@ -1043,6 +1053,20 @@ Section judgments.
     typed_place_cond_ty (Uniq κ γ) lt1 lt2 -∗ imp_unblockable [κ] lt2.
   Proof.
     iIntros "(%Heq & _ & Ha)". done.
+  Qed.
+  Lemma typed_place_cond_ty_shadowed_update_cur {rt_cur rt_full} (lt_cur lt_cur' : ltype rt_cur) r_cur r_cur' (lt_full : ltype rt_full) k :
+    ([∗ list] κ0 ∈ ltype_blocked_lfts lt_full, bor_kind_outlives k κ0) -∗
+    typed_place_cond_ty k (ShadowedLtype lt_cur r_cur lt_full) (ShadowedLtype lt_cur' r_cur' lt_full).
+  Proof.
+    iIntros "Hcond".
+    destruct k; simpl; simp_ltypes.
+    - done.
+    - done.
+    - iExists eq_refl. cbn. simp_ltypes.
+      iSplitR. { iIntros (??). iApply ltype_eq_refl. }
+      iApply shadowed_ltype_imp_unblockable.
+      iApply imp_unblockable_incl_blocked_lfts.
+      done.
   Qed.
 
   (* controls conditions on refinement type changes *)
@@ -1788,7 +1812,7 @@ Section judgments.
 
   (** Owned value subtyping (is NOT compatible with shared references). *)
   Definition owned_type_incl π {rt1 rt2} (r1 : rt1) (r2 : rt2) (ty1 : type rt1) (ty2 : type rt2) : iProp Σ :=
-    ⌜∀ ly1 ly2, syn_type_has_layout (ty_syn_type ty1) ly1 → syn_type_has_layout (ty_syn_type ty2) ly2 → ly_size ly1 = ly_size ly2⌝ ∗
+    ⌜syn_type_size_eq (ty_syn_type ty1) (ty_syn_type ty2)⌝ ∗
     (ty_sidecond ty1 -∗ ty_sidecond ty2) ∗
     (∀ (v : val), v ◁ᵥ{ π} r1 @ ty1 -∗ v ◁ᵥ{ π} r2 @ ty2).
 
@@ -1827,7 +1851,7 @@ Section judgments.
   Lemma owned_type_incl_refl π {rt} (ty : type rt) (r : rt) :
     ⊢ owned_type_incl π r r ty ty.
   Proof.
-    iSplitR. { iPureIntro. iIntros (ly1 ly2 Halg1 Halg2). f_equiv. by eapply syn_type_has_layout_inj. }
+    iSplitR. { iPureIntro. by eapply syn_type_size_eq_refl. }
     iSplitR. { eauto. }
     iIntros (v). eauto.
   Qed.
@@ -1842,8 +1866,8 @@ Section judgments.
     OwnedSubtype π E L step r1 r2 ty ty | 5 := λ T, i2p (owned_subtype_id π E L step r1 r2 ty T).
 
   (** Owned location subtyping with a logical step (used for extracting ghost observations) *)
-  Definition owned_subltype_step (π : thread_id) E L {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) (lt1 : ltype rt1) (lt2 : ltype rt2) (T : llctx → iProp Σ → iProp Σ) : iProp Σ :=
-    ∀ F l,
+  Definition owned_subltype_step (π : thread_id) E L (l : loc) {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) (lt1 : ltype rt1) (lt2 : ltype rt2) (T : llctx → iProp Σ → iProp Σ) : iProp Σ :=
+    ∀ F,
     ⌜lftE ⊆ F⌝ -∗
     rrust_ctx -∗
     elctx_interp E -∗
@@ -1851,25 +1875,25 @@ Section judgments.
     l ◁ₗ[π, Owned false] r1 @ lt1 -∗ |={F}=>
     ∃ L' R,
     (logical_step F (l ◁ₗ[π, Owned false] r2 @ lt2 ∗ R)) ∗
-    (⌜∀ ly1 ly2, syn_type_has_layout (ltype_st lt1) ly1 → syn_type_has_layout (ltype_st lt2) ly2 → ly1 = ly2⌝) ∗
+    (⌜syn_type_size_eq (ltype_st lt1) (ltype_st lt2)⌝) ∗
     llctx_interp L' ∗ T L' R.
-  Class OwnedSubltypeStep (π : thread_id) (E : elctx) (L : llctx) {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) (lt1 : ltype rt1) (lt2 : ltype rt2) : Type :=
-    owned_subltype_step_proof T : iProp_to_Prop (owned_subltype_step π E L r1 r2 lt1 lt2 T).
+  Class OwnedSubltypeStep (π : thread_id) (E : elctx) (L : llctx) (l : loc) {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) (lt1 : ltype rt1) (lt2 : ltype rt2) : Type :=
+    owned_subltype_step_proof T : iProp_to_Prop (owned_subltype_step π E L l r1 r2 lt1 lt2 T).
 
-  Lemma owned_subltype_step_weak_subltype π E L {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) lt1 lt2 T :
+  Lemma owned_subltype_step_weak_subltype π E L l {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) lt1 lt2 T :
     weak_subltype E L (Owned false) r1 r2 lt1 lt2 (T L True)
-    ⊢ owned_subltype_step π E L r1 r2 lt1 lt2 T.
+    ⊢ owned_subltype_step π E L l r1 r2 lt1 lt2 T.
   Proof.
-    iIntros "HT" (???) "CTX HE HL Hl".
+    iIntros "HT" (??) "CTX HE HL Hl".
     iExists L, True%I. iMod ("HT" with "[//] CTX HE HL") as "(Hincl & $ & $)".
     iModIntro. iDestruct "Hincl" as "(%Hst & #Hincl & _)".
     iSplitL; first last.
-    { iPureIntro. rewrite Hst. intros ly1 ly2 Hst1 Hst2. by eapply syn_type_has_layout_inj. }
+    { iPureIntro. rewrite Hst. eapply syn_type_size_eq_refl. }
     iApply fupd_logical_step. iMod (fupd_mask_mono with "(Hincl Hl)"); first done.
     iApply logical_step_intro. eauto.
   Qed.
-  Global Instance owned_subltype_step_weak_subltype_inst π E L {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) lt1 lt2 :
-    OwnedSubltypeStep π E L r1 r2 lt1 lt2 | 1000 := λ T, i2p (owned_subltype_step_weak_subltype π E L r1 r2 lt1 lt2 T).
+  Global Instance owned_subltype_step_weak_subltype_inst π E L l {rt1 rt2} (r1 : place_rfn rt1) (r2 : place_rfn rt2) lt1 lt2 :
+    OwnedSubltypeStep π E L l r1 r2 lt1 lt2 | 1000 := λ T, i2p (owned_subltype_step_weak_subltype π E L l r1 r2 lt1 lt2 T).
 
   (** Subtyping for compatibility with mutable references. Importantly, this is independent of the refinement. *)
   Definition mut_subtype E L {rt} (ty1 ty2 : type rt) (T : iProp Σ) : iProp Σ :=
@@ -3809,6 +3833,6 @@ Ltac generate_i2p_instance_to_tc_hook arg c ::=
   | owned_subtype ?π ?E ?L ?wl ?r1 ?r2 ?ty1 ?ty2 => constr:(OwnedSubtype π E L wl r1 r2 ty1 ty2)
   | weak_subltype ?E ?L ?k ?r1 ?r2 ?lt1 ?lt2 => constr:(SubLtype E L k r1 r2 lt1 lt2)
   | mut_subltype ?E ?L ?lt1 ?lt2 => constr:(MutSubLtype E L lt1 lt2)
-  | owned_subltype_step ?π ?E ?L ?r1 ?r2 ?lt1 ?lt2 => constr:(OwnedSubltypeStep π E L r1 r2 lt1 lt2)
+  | owned_subltype_step ?π ?E ?L ?l ?r1 ?r2 ?lt1 ?lt2 => constr:(OwnedSubltypeStep π E L l r1 r2 lt1 lt2)
   | _ => fail "unknown judgement" c
   end.

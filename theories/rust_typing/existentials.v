@@ -568,11 +568,23 @@ Section stratify.
     TypedPlace E L π l (◁ (∃; P, ty))%I #x bmin (Uniq κ γ) K | 15 :=
     λ T, i2p (typed_place_ex_plain_t_uniq π E L l ty x κ γ bmin K T).
 
+  Lemma typed_place_cond_ty_ex_shadowed (ty : type rt) r bmin :
+    ⊢ typed_place_cond_ty bmin (◁ (∃; P, ty))%I (ShadowedLtype (◁ ty) # r (◁ (∃; P, ty)))%I.
+  Proof.
+    iStartProof.
+    destruct bmin; simpl; simp_ltypes.
+    - done.
+    - done.
+    - iExists eq_refl. iSplit.
+      + iIntros (b r'). cbn. simp_ltype. iApply ltype_eq_refl.
+      + iApply shadowed_ltype_imp_unblockable.
+        iApply ofty_imp_unblockable.
+  Qed.
+
   Lemma typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
     (∀ r, introduce_with_hooks E L (P.(inv_P_shr) π κ r x) (λ L2, typed_place π E L2 l (ShadowedLtype (◁ ty) #r (◁ (∃; P, ty))) (#x) bmin (Shared κ) K
       (λ L3 κs li b2 bmin' rti ltyi ri strong weak,
-        (* TODO: maybe also allow weak access? *)
-        T L3 κs li b2 bmin' rti ltyi ri strong None)))
+        T L3 κs li b2 bmin' rti ltyi ri strong weak)))
     ⊢ typed_place π E L l (◁ (∃; P, ty))%I (#x) bmin (Shared κ) K T.
   Proof.
     iIntros "HT". iIntros (F ???) "#CTX #HE HL Hincl Hb Hcont".
@@ -587,50 +599,14 @@ Section stratify.
       simp_ltypes. done.
     - iDestruct "Hc" as "[_ Hc]".
       destruct weak; last done.
-
-      (*
       iIntros (???) "Hincl Hl Hcond".
       iMod ("Hc" with "Hincl Hl Hcond") as "(Ha & Hb & Htoks & Hc)".
-      iFrame. 
-      iDestruct "Hb" as "(Hcond_ty & _)".
-      typed_place_cond_incl
-      iSplitL.
-      + iApply (typed_place_cond_ty_trans with "[] Hcond_ty"). 
-
-
-
-        Search ltype_core_shadowed
-        destruct bmin. simpl.
-        Search imp_unblockable ShadowedLtype.
-        2: { iExists eq_refl. cbn. 
-
-
-          shadowed_ltype_own
-        Search typed_place_cond_ty ShadowedLtype.
-        *)
-
-      (*
-      iIntros (ltyi2 ri2  bmin') "Hincl Hl Hcond".
-      iMod ("Hc" with "Hincl Hl Hcond") as "(Hl & Hcond & Htoks & HR)".
       iFrame.
-      iApply (typed_place_cond_trans with "[] Hcond").
-
-      (* What do we actually want to allow on place access to Shared?
-         - we can not write, of course.
-            this is a property of the immediate borkind.
-          - But the interpretation of references itself should be fine with replacing types below.
-              i.e. the bmin should not be restricted much by Shared.
-              even the refinement should be allowed to change, because it is just passed through.
-        But in principle I dont' need it now, so just stay away from it.
-
-       *)
-
-      typed_place_cond_ty_mono
-      lty_core
-      typed_place_cond_ty.
-       *)
-
-      done.
+      iDestruct "Hb" as "(Hcond_ty & _)".
+      iSplitL.
+      + iApply (typed_place_cond_ty_trans with "[] Hcond_ty").
+        iApply typed_place_cond_ty_ex_shadowed.
+      + destruct bmin; done.
   Qed.
   Global Instance typed_place_ex_plain_t_shared_inst π E L l (ty : type rt) x κ bmin K `{!TCDone (K ≠ [])} :
     TypedPlace E L π l (◁ (∃; P, ty))%I #x bmin (Shared κ) K | 15 :=

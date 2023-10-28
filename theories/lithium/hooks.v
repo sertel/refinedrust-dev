@@ -46,6 +46,9 @@ Ltac solve_protected_eq_hook := idtac.
 (** [after_intro_hook] is executed after introducing a pure Coq assumption. *)
 Ltac after_intro_hook := idtac.
 
+(** [shelve_sidecond_hook] is executed before shelving a sidecondition *)
+Ltac shelve_sidecond_hook := idtac.
+
 (** [generate_i2p_instance_to_tc_hook] is used to infer the
 typeclasses from the lemmas for the [instance] notation for declaring
 typeclass instances. *)

@@ -472,17 +472,55 @@ Section typing.
     SubsumeFull E L step (l ◁ₗ[π, b1] r1 @ lt1) (l ◁ₗ[π, b2] r2 @ lt2) | 1000 :=
     λ T, i2p (subsume_full_own_loc_bk_evar π E L step l lt1 lt2 b1 b2 r1 r2 T).
 
-  Lemma subsume_full_own_loc_owned {rt1 rt2} π E L l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 T :
-    owned_subltype_step π E L r1 r2 lt1 lt2 T
+  Lemma subsume_full_own_loc_owned_false {rt1 rt2} π E L l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 T :
+    owned_subltype_step π E L l r1 r2 lt1 lt2 T
     ⊢ subsume_full E L true (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) T.
   Proof.
     iIntros "HT" (???) "#CTX #HE HL Hl".
     iMod ("HT" with "[//] CTX HE HL Hl") as "(%L' & %R & Hstep & %Hly & HL & HT)".
     iExists L', R. by iFrame.
   Qed.
-  Global Instance subsume_full_own_loc_owned_inst {rt1 rt2} π E L l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 :
+  Global Instance subsume_full_own_loc_owned_false_inst {rt1 rt2} π E L l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 :
     SubsumeFull E L true (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) | 1001 :=
-    λ T, i2p (subsume_full_own_loc_owned π E L l lt1 lt2 r1 r2 T).
+    λ T, i2p (subsume_full_own_loc_owned_false π E L l lt1 lt2 r1 r2 T).
+
+  Lemma subsume_full_own_loc_owned_false_true {rt1 rt2} π E L s l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 T
+    `{!TCDone (match ltype_lty _ lt2 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | _ => True end)} :
+    prove_with_subtype E L s ProveDirect (have_creds) (λ L2 κs R,
+      subsume_full E L2 s (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) (λ L3 R2, T L3 (R ∗ R2)))
+    ⊢ subsume_full E L s (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned true] r2 @ lt2) T.
+  Proof.
+    iIntros "HT" (???) "#CTX #HE HL Hl".
+    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L2 & %κs & %R & Hs & HL & HT)".
+    iMod ("HT" with "[//] [//] CTX HE HL Hl") as "(%L3 & %R2 & Hstep2 & HL & HT)".
+    iExists _, _. iFrame.
+    iApply (maybe_logical_step_compose with "Hs").
+    iApply (maybe_logical_step_compose with "Hstep2").
+    iApply maybe_logical_step_intro. iModIntro.
+    iIntros "(Hl & $) (Hcred & $)".
+    iApply (ltype_own_Owned_false_true with "Hl Hcred"); done.
+  Qed.
+  Global Instance subsume_full_own_loc_owned_false_true_inst {rt1 rt2} π E L s l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2
+    `{!TCDone (match ltype_lty _ lt2 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | _ => True end)} :
+    SubsumeFull E L s (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned true] r2 @ lt2) | 1001 :=
+    λ T, i2p (subsume_full_own_loc_owned_false_true π E L s l lt1 lt2 r1 r2 T).
+
+  Lemma subsume_full_own_loc_owned_true_false {rt1 rt2} π E L s l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 T
+    `{!TCDone (match ltype_lty _ lt1 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | _ => True end)} :
+      introduce_with_hooks E L (£ (num_cred - 1) ∗ atime 1) (λ L2,
+      subsume_full E L2 s (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) T)
+    ⊢ subsume_full E L s (l ◁ₗ[π, Owned true] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) T.
+  Proof.
+    iIntros "HT" (???) "#CTX #HE HL Hl".
+    iPoseProof (ltype_own_Owned_true_false with "Hl") as "(((Hcred1 & Hcred) & Hat) & Hl)"; first done.
+    iApply (lc_fupd_add_later with "Hcred1"). iNext.
+    iMod ("HT" with "[//] HE HL [$Hcred $Hat]") as "(%L2 & HL & HT)".
+    by iApply ("HT" with "[//] [//] CTX HE HL").
+  Qed.
+  Global Instance subsume_full_own_loc_owned_true_false_inst {rt1 rt2} π E L s l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2
+    `{!TCDone (match ltype_lty _ lt1 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | _ => True end)} :
+    SubsumeFull E L s (l ◁ₗ[π, Owned true] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) | 1001 :=
+    λ T, i2p (subsume_full_own_loc_owned_true_false π E L s l lt1 lt2 r1 r2 T).
 
   (* TODO should make compatible with location simplification *)
   Lemma subsume_full_own_loc {rt1 rt2} π E L step l (lt1 : ltype rt1) (lt2 : ltype rt2) b1 b2 r1 r2 T :
@@ -1752,30 +1790,41 @@ Section typing.
         λ T, i2p (typed_place_opened_uniq π E L lt_cur lt_inner lt_full Cpre Cpost r bmin0 l κ γ P T).
 
   Lemma typed_place_shadowed_shared π E L {rt_cur rt_full} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full) r_cur (r_full : place_rfn rt_full) bmin0 l κ P (T : place_cont_t rt_full) :
+    (* sidecondition needed for the weak update *)
+    ⌜Forall (lctx_bor_kind_outlives E L bmin0) (ltype_blocked_lfts lt_full)⌝ ∗
     typed_place π E L l lt_cur (#r_cur) bmin0 (Shared κ) P (λ L' κs l2 b2 bmin rti ltyi ri strong weak,
       T L' κs l2 b2 bmin rti ltyi ri
           (option_map (λ strong, mk_strong (λ _, rt_full) (λ rti ltyi ri, ShadowedLtype (strong.(strong_lt) _ ltyi ri) (strong.(strong_rfn) _ ri) lt_full) (λ _ _, r_full) strong.(strong_R)) strong)
-          (* no weak updates due to place cond *)
-          None
-          (*(option_map (λ weak, mk_weak (λ ltyi ri, ShadowedLtype (weak.(weak_lt) ltyi ri) (weak.(weak_rfn) ri) lt_full) (λ _, r_full) weak.(weak_R)) weak)*)
+          (option_map (λ weak, mk_weak (λ ltyi ri, ShadowedLtype (weak.(weak_lt) ltyi ri) (weak.(weak_rfn) ri) lt_full) (λ _, r_full) weak.(weak_R)) weak)
     )
     ⊢ typed_place π E L l (ShadowedLtype lt_cur (#r_cur) lt_full) r_full bmin0 (Shared κ) P T.
   Proof.
-    iIntros "HT".
+    iIntros "(Houtl & HT)".
     iIntros (????) "#CTX #HE HL Hincl Hl Hc".
+    iPoseProof (lctx_bor_kind_outlives_all_use with "Houtl HE HL") as "#Houtl'".
     iPoseProof (shadowed_ltype_acc_cur with "Hl") as "(Hcur & Hcl)".
     iApply ("HT" with "[//] [//] CTX HE HL Hincl Hcur").
     iIntros (L' κs l2 b2 bmin rti ltyi ri strong weak) "Hincl' Hl Hcc".
     iApply ("Hc" with "Hincl' Hl").
-    iSplit; last done. simpl.
-    destruct strong as [ strong | ]; simpl; last done.
-    iIntros (rti2 ltyi2 ri2) "Hl %Hst".
-    iDestruct "Hcc" as "[ Hcc _]".
-    iMod ("Hcc" with "Hl [//]") as "(Hl & %Hst' & $)".
-    iPoseProof ("Hcl" with "[] Hl") as "Hl".
-    { done. }
-    iFrame.
-    simp_ltypes. done.
+    iSplit; simpl.
+    - destruct strong as [ strong | ]; simpl; last done.
+      iIntros (rti2 ltyi2 ri2) "Hl %Hst".
+      iDestruct "Hcc" as "[ Hcc _]".
+      iMod ("Hcc" with "Hl [//]") as "(Hl & %Hst' & $)".
+      iPoseProof ("Hcl" with "[] Hl") as "Hl".
+      { done. }
+      iFrame.
+      simp_ltypes. done.
+    - destruct weak as [ weak | ]; simpl; last done.
+      iDestruct "Hcc" as "[_ Hcc]".
+      iIntros (lti2 ri2 bmin') "Hincl Hl Hcond".
+      iMod ("Hcc" with "Hincl Hl Hcond") as "(Hl & Hcond & Htoks & Hr)".
+      iFrame.
+      iDestruct "Hcond" as "(Hcond & _)".
+      iPoseProof (typed_place_cond_ty_syn_type_eq with "Hcond") as "%Hsteq".
+      iPoseProof ("Hcl" with "[//] Hl") as "Hl".
+      iFrame. iSplitL; first last. { destruct bmin0; done. }
+      iApply typed_place_cond_ty_shadowed_update_cur. done.
   Qed.
   Global Instance typed_place_shadowed_shr_inst π E L {rt_cur rt_full} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full) r_cur r_full bmin0 l κ P :
     TypedPlace E L π l (ShadowedLtype lt_cur #r_cur lt_full) r_full bmin0 (Shared κ) P | 5 :=
@@ -3465,7 +3514,8 @@ Section typing.
             prove_with_subtype E L4 false ProveDirect (R v) (λ L5 _ R3,
             introduce_with_hooks E L5 R3 (λ L6,
             (* we don't really kill it here, but just need to find it in the context *)
-            li_tactic (llctx_find_llft_goal L6 ϝ LlctxFindLftFull) (λ _, True))))))))
+            li_tactic (llctx_find_llft_goal L6 ϝ LlctxFindLftFull) (λ _,
+            find_in_context FindCreditStore (λ _, True)))))))))
     ⊢ typed_stmt π E L (return e) fn R ϝ.
   Proof.
     iIntros "He". iIntros "#CTX #HE HL Hna". wps_bind.
@@ -3486,22 +3536,26 @@ Section typing.
     iApply (wp_maybe_logical_step with "TIME HP"); [done.. | ].
     iModIntro. iApply wp_skip. iNext. iIntros "_ (Ha & HR2)".
     iApply wps_return.
-    rewrite /typed_stmt_post_cond.
     unfold li_tactic, llctx_find_llft_goal.
     iMod ("HT" with "[] HE HL HR2") as "(%L5 & HL & HT)"; first done.
     iMod ("HT" with "[] [] [$TIME $LFT $LLCTX] HE HL") as "(%L6 & % & %R4 & >(HP & HR) & HL & HT)"; [done.. | ].
     iMod ("HT" with "[] HE HL HR") as "(%L7 & HL & HT)"; first done.
-    iDestruct ("HT") as "(%L8 & %κs1 & %Hfind & _)".
+    iDestruct ("HT") as "(%L8 & %κs1 & %Hfind & Hstore)".
+    iDestruct "Hstore" as ([n m]) "(Hstore & _)"; simpl.
     destruct Hfind as (L9 & L10 & ? & -> & -> & Hoc).
     unfold llctx_find_lft_key_interp in Hoc. subst.
     iDestruct "HL" as "(_ & Hϝ & _)".
-    iExists _. iFrame.
-    generalize (rf_locs fn) as ls => ls.
 
+    rewrite /typed_stmt_post_cond.
+    iExists _. iFrame.
+    iSplitR "Hstore"; first last.
+    { simpl. iModIntro. iR. iApply credit_store_mono; last done. all: lia. }
+
+    generalize (rf_locs fn) as ls => ls.
     iInduction ls as [|[l ly] ls] "IH"; csimpl in*; simplify_eq.
     { by iFrame. }
     iDestruct "Ha" as "[Hl HR]".
-    iMod ("IH" with "HR") as "(? & ?)".
+    iMod ("IH" with "HR") as "?".
     iFrame.
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iDestruct "Hl" as "(%ly' & %Halg & % & _ & _ & _ & % & <- & Hv)".

@@ -2367,6 +2367,15 @@ Ltac postprocess_new_union_assum H Halg :=
     ]
   end.
 
+Ltac assert_is_atomic_st st :=
+  first [is_var st | match st with | ty_syn_type ?T => is_var T end].
+Ltac assert_is_atomic_sls sls :=
+  is_var sls.
+Ltac assert_is_atomic_els els :=
+  is_var els.
+Ltac assert_is_atomic_uls uls :=
+  is_var uls.
+
 Ltac simplify_layout_alg H ::=
   simpl in H;
   try match type of H with
@@ -2403,9 +2412,9 @@ Ltac simplify_layout_alg H ::=
       change_no_check spec with spec_eval in H
   end;
   match type of H with
+  (* Handle atomic alg applications *)
   | use_layout_alg ?st = Some _ =>
-      (* don't do anything *)
-      is_var st;
+      assert_is_atomic_st st;
       first [
         (* if this is a duplicate, remove it *)
         match goal with
@@ -2421,18 +2430,26 @@ Ltac simplify_layout_alg H ::=
       ]
   | use_struct_layout_alg ?sls = Some _ =>
       (* don't do anything *)
-      is_var sls;
+      assert_is_atomic_sls sls;
       specialize (use_struct_layout_alg_size _ _ H) as ?;
       specialize (use_struct_layout_alg_wf _ _ H) as ?;
       (* stop exploiting this further to prevent divergence *)
       rename_layouts in H with (fun H_n => apply dont_enrich in H_n)
   | use_enum_layout_alg ?els = Some _ =>
       (* don't do anything *)
-      is_var els;
+      assert_is_atomic_els els;
       specialize (use_enum_layout_alg_size _ _ H) as ?;
       specialize (use_enum_layout_alg_wf _ _ H) as ?;
       (* stop exploiting this further to prevent divergence *)
       rename_layouts in H with (fun H_n => apply dont_enrich in H_n)
+  | use_union_layout_alg ?uls = Some _ =>
+      (* don't do anything *)
+      assert_is_atomic_uls uls;
+      specialize (use_union_layout_alg_size _ _ H) as ?;
+      specialize (use_union_layout_alg_wf _ _ H) as ?;
+      (* stop exploiting this further to prevent divergence *)
+      rename_layouts in H with (fun H_n => apply dont_enrich in H_n)
+
   | use_layout_alg (IntSynType ?it) = Some _ =>
       apply syn_type_has_layout_int_inv in H as (? & ?)
   | use_layout_alg (BoolSynType) = Some _ =>
@@ -2448,6 +2465,7 @@ Ltac simplify_layout_alg H ::=
       specialize (syn_type_has_layout_struct_inv _ _ _  H) as (? & ? & ? & Halg & Hrec);
       simpl in Halg;
       inv_multi_fields Hrec;
+      simplify_eq;
       (* NOTE: this has a [try] in front because some of the [simplify_eq] in [inv_multi_fields] may already have taken the [Halg] away -- then this will fail and cause huge pain. *)
       try postprocess_new_struct_assum H Halg;
       clear H
@@ -2457,28 +2475,34 @@ Ltac simplify_layout_alg H ::=
       specialize (use_struct_layout_alg_inv _ _ H) as (? & Halg & Hrec);
       simpl in Halg;
       inv_multi_fields Hrec;
+      simplify_eq;
       try postprocess_new_struct_assum H Halg;
       clear H
 
   | use_layout_alg UnitSynType = Some _ =>
       apply syn_type_has_layout_unit_inv in H
+
   | use_layout_alg (ArraySynType ?st ?len) = Some _ =>
       let ly' := fresh "ly" in let H' := fresh "_ly_eq" in
       apply syn_type_has_layout_array_inv in H as (ly' & H' & ? & ?);
+      simplify_eq;
       simplify_layout_alg H'
+
   | use_layout_alg (UnsafeCell ?st) = Some _ =>
       apply syn_type_has_layout_unsafecell in H; simplify_layout_alg H
   | use_layout_alg (UntypedSynType ?ly) = Some _ =>
       apply syn_type_has_layout_untyped_inv in H as (? & ? & ? & ?)
 
-  | use_layout_alg (EnumSynType _ ?it ?variants) = Some _ =>
+  | use_layout_alg (EnumSynType _ ?it ?variants) = Some ?ly =>
       let Hrec := fresh "Hrec" in
       let Halg_ul := fresh "Halg" in
       let Halg_sl := fresh "Halg" in
       specialize (syn_type_has_layout_enum_inv _ _ _ _ H) as (? & ? & ? & Halg_ul & Halg_sl & ? & Hrec);
       simpl in Halg_ul, Halg_sl;
       inv_multi_fields Hrec;
+      simplify_eq;
       try postprocess_new_union_assum H Halg_ul;
+      simplify_eq;
       try postprocess_new_struct_assum H Halg_sl;
       clear H
   | use_enum_layout_alg ?els = Some _ =>
@@ -2488,7 +2512,9 @@ Ltac simplify_layout_alg H ::=
       specialize (use_enum_layout_alg_inv _ _ H) as (? & ? & Halg_ul & Halg_sl & Hrec);
       simpl in Halg_ul, Halg_sl;
       inv_multi_fields Hrec;
+      simplify_eq;
       try postprocess_new_union_assum H Halg_ul;
+      simplify_eq;
       try postprocess_new_struct_assum H Halg_sl;
       clear H
 
@@ -2498,6 +2524,7 @@ Ltac simplify_layout_alg H ::=
       specialize (syn_type_has_layout_union_inv _ _ _ H) as (? & ? & ? & Halg_ul & Hrec);
       simpl in Halg_ul;
       inv_multi_fields Hrec;
+      simplify_eq;
       try postprocess_new_union_assum H Halg_ul;
       clear H
   | use_union_layout_alg ?uls = Some _ =>
@@ -2506,6 +2533,7 @@ Ltac simplify_layout_alg H ::=
       specialize (use_union_layout_alg_inv _ _ H) as (? & Halg_ul & Hrec);
       simpl in Halg_ul;
       inv_multi_fields Hrec;
+      simplify_eq;
       try postprocess_new_union_assum H Halg_ul;
       clear H
   | use_layout_alg _ = Some _ =>

@@ -203,7 +203,8 @@ Section call.
       ⌜∀ ϝ, elctx_sat (((λ '(_, κ, _), ϝ ⊑ₑ κ) <$> L2) ++ E) L2 ((fp κs x).(fp_elctx) ϝ)⌝ ∗
       (* postcondition *)
       ∀ v x', (* v = retval, x' = post existential *)
-      introduce_with_hooks E L2 (R3 ∗ ((fp κs x).(fp_fr) x').(fr_R) π) (λ L3,
+      (* also donate some credits we are generating here *)
+      introduce_with_hooks E L2 (£ (S num_cred) ∗ atime 2 ∗ R3 ∗ ((fp κs x).(fp_fr) x').(fr_R) π) (λ L3,
       T L3 v ((fp κs x).(fp_fr) x').(fr_rt) ((fp κs x).(fp_fr) x').(fr_ty) ((fp κs x).(fp_fr) x').(fr_ref))))
     ) ⊢ typed_call π E L eκs v (v ◁ᵥ{π} l @ function_ptr sta fp) vl tys T.
   Proof.
@@ -254,19 +255,19 @@ Section call.
       iIntros (?? (rt & (ty & r)) ??) "Hv". eauto with iFrame. }
 
     iMod (persistent_time_receipt_0) as "Hp".
+    (* eliminate the logical step *)
     iEval (rewrite /logical_step) in "Hstep".
     iMod "Hstep" as "(%n & Hc & Hstep)".
     iApply wp_fupd. iModIntro. iModIntro.
-    (*iApply (wp_logical_step with "TIME Hstep"); [done.. | ].*)
     iApply (wp_call_credits with "TIME Hc Hp He") => //. { by apply val_to_of_loc. }
     iIntros "!>" (lsa lsv Hlya) "Ha Hv Hcred Hc".
     iDestruct (big_sepL2_length with "Ha") as %Hlen1.
     iDestruct (big_sepL2_length with "Hv") as %Hlen2.
     iDestruct (big_sepL2_length with "Hvl") as %Hlen3.
 
-    (* use the credits we got to get the precondition *)
-    rewrite lc_succ. iDestruct "Hcred" as "(Hcred & Hcred0)".
-    rewrite additive_time_receipt_succ. iDestruct "Hc" as "(Hc & Hc0)".
+    (* use the credits we got to get the precondition (for the logical step) *)
+    iEval (rewrite lc_succ) in "Hcred". iDestruct "Hcred" as "(Hcred & Hcred0)".
+    iEval (rewrite additive_time_receipt_succ) in "Hc". iDestruct "Hc" as "(Hc & Hc0)".
     rewrite !Nat.add_0_r. iMod ("Hstep" with "Hcred0 Hc0") as "(HP & HR)".
 
     apply list_map_option_alt in Halg. apply list_map_option_alt in Halgl.
@@ -284,6 +285,7 @@ Section call.
     iExists _. iSplitR "Hr HR HΦ HL HL_cl HL_cl' Hkill" => /=.
     - iMod (persistent_time_receipt_0) as "#Htime".
       iApply ("Hm" with "[-Hϝ Hna] [$LFT $TIME $LCTX] HE' [$Hϝ//] Hna"). iFrame.
+      (* we use the certificate + other credit to initialize the new functions credit store *)
       iSplitL "Hcred Hc". { rewrite credit_store_eq /credit_store_def. iFrame. }
       move: Hlen1 Hlya. move: (lsa' : list _) => lsa'' Hlen1 Hly. clear lsa' Hall.
       move: Hlen3 Halg. move: (fp_atys (fp aκs x)) => atys Hlen3 Hl.
@@ -332,19 +334,23 @@ Section call.
         iExists _. iSplitR; first done. iNext. eauto with iFrame. }
       iApply ("IH" with "[//] [//] [//] [//] [$] [$] [$]").
     - (* handle the postcondition at return *)
-      iIntros "!>" (v). iDestruct 1 as (κs1) "(Hls & Hϝ & Hna & HPr)".
+      iMod (persistent_time_receipt_0) as "Hpt".
+      iIntros "!>" (v). iDestruct 1 as (κs1) "(Hls & Hϝ & Hna & Hstore & HPr)".
+      rewrite credit_store_eq /credit_store_def.
+      iDestruct "Hstore" as "(Hcred1 & Hat)".
+      iExists 1, 0. iFrame.
       simpl. rewrite !big_sepL2_alt. iDestruct (big_sepL_app with "Hls") as "[? ?]".
       rewrite !zip_fmap_r !big_sepL_fmap. iFrame.
       iSplitR. { iPureIntro. apply Forall2_length in Halg.
         rewrite map_length in Halg. rewrite Hlen1 Hlen3 Halg fmap_length. done. }
       iSplitR; first done.
-      iIntros "Hcred". iDestruct "Hϝ" as "(Hϝ & _)".
+      iIntros "Hcred Hat". iDestruct "Hϝ" as "(Hϝ & _)".
       iPoseProof ("Hkill" with "Hϝ") as "(Htok & Hkill)".
       iMod ("HL_cl'" with "Htok HL") as "HL".
       iPoseProof ("HL_cl" with "HL") as "HL".
       (* we currently don't actually kill the lifetime, as we don't conceptually need that. *)
       iDestruct ("HPr") as (?) "(Hty & HR2 & _)".
-      iMod ("Hr" with "[] HE HL [HR2 HR]") as "(%L3 & HL & Hr)"; first done.
+      iMod ("Hr" with "[] HE HL [Hat Hcred HR2 HR]") as "(%L3 & HL & Hr)"; first done.
       { iFrame. }
       iApply ("HΦ" with "HL Hna Hty").
       by iApply ("Hr").

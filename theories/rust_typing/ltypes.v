@@ -3617,6 +3617,13 @@ Section ltype_def.
     iIntros "Hown". iPoseProof lty_own_has_layout as "Ha".
     by iApply "Ha".
   Qed.
+  Lemma ltype_own_has_layout' {rt} (lt : ltype rt) k π r l ly :
+    syn_type_has_layout (ltype_st lt) ly →
+    ltype_own lt k π r l -∗ ⌜l `has_layout_loc` ly⌝.
+  Proof.
+    iIntros (Hst) "Hown". iPoseProof (ltype_own_has_layout with "Hown") as "(%ly' & % & %)".
+    assert (ly' = ly) as -> by by eapply syn_type_has_layout_inj. done.
+  Qed.
 
   Lemma ltype_own_loc_in_bounds {rt} (lt : ltype rt) k π r l ly :
     syn_type_has_layout (ltype_st lt) ly →

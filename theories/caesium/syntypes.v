@@ -1522,4 +1522,11 @@ Proof.
   intros (-> & _)%syn_type_has_layout_untyped_inv. done.
 Qed.
 
+Definition syn_type_size_eq `{!LayoutAlg} st1 st2 := ∀ ly1 ly2, syn_type_has_layout st1 ly1 → syn_type_has_layout st2 ly2 → ly_size ly1 = ly_size ly2.
+Lemma syn_type_size_eq_refl `{!LayoutAlg} st :
+  syn_type_size_eq st st.
+Proof.
+  intros ly1 ly2 ? ?. assert (ly1 = ly2) as <- by by eapply syn_type_has_layout_inj. done.
+Qed.
+
 

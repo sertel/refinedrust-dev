@@ -55,6 +55,7 @@ Ltac can_solve_hook ::= first [
 Ltac liTrace_hook info ::=
   add_case_distinction_info info.
 
+
 Ltac liExtensible_to_i2p_hook P bind cont ::=
   lazymatch P with
   | subsume_full ?E ?L ?step ?P ?Q ?T =>
@@ -103,8 +104,8 @@ Ltac liExtensible_to_i2p_hook P bind cont ::=
       cont uconstr:(((_ : ProveWithSubtype E L step pm P) T))
   | owned_subtype ?π ?E ?L ?pers ?r1 ?r2 ?ty1 ?ty2 ?T =>
       cont uconstr:((_ : OwnedSubtype π E L pers r1 r2 ty1 ty2) T)
-  | owned_subltype_step ?π ?E ?L ?r1 ?r2 ?lt1 ?lt2 ?T =>
-      cont uconstr:((_ : OwnedSubltypeStep π E L r1 r2 lt1 lt2) T)
+  | owned_subltype_step ?π ?E ?L ?l ?r1 ?r2 ?lt1 ?lt2 ?T =>
+      cont uconstr:((_ : OwnedSubltypeStep π E L l r1 r2 lt1 lt2) T)
   | weak_subtype ?E ?L ?r1 ?r2 ?ty1 ?ty2 ?T =>
       cont uconstr:((_ : Subtype E L r1 r2 ty1 ty2) T)
   | weak_subltype ?E ?L ?k ?r1 ?r2 ?lt1 ?lt2 ?T =>
