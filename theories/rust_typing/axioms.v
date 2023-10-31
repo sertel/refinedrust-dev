@@ -56,4 +56,31 @@ Section eq.
   Proof.
     destruct Heq. done.
   Qed.
+
+  Lemma elim_id_cast_l {A} C a (Ha : a = a) (x : C a) :
+    @eq_rect A a C x _  Ha = x.
+  Proof.
+    rewrite (UIP_refl _ _ Ha).
+    done.
+  Qed.
+  Lemma elim_id_cast_r {A} C a (Ha : a = a) (x : C a) :
+    x = @eq_rect A a C x _  Ha.
+  Proof.
+    rewrite (UIP_refl _ _ Ha).
+    done.
+  Qed.
+  Lemma rew_swap' {A} (P : A → Type) (x1 x2 : A) (Hx : x1 = x2) y1 y2 :
+    y2 = rew [P] Hx in y1 →
+    rew <-[P] Hx in y2 = y1.
+  Proof.
+    subst. done.
+  Qed.
+
+  Lemma rew_UIP {X} (F : Type → Type) (Heq : X = X) (z : F X) :
+    rew [F] Heq in z = z.
+  Proof. rewrite (UIP_refl _ _ Heq). done. Qed.
+  Lemma rew_UIP' {X} (F : Type → Type) (Heq : X = X) (z : F X) :
+    rew <-[F] Heq in z = z.
+  Proof. rewrite (UIP_refl _ _ Heq). done. Qed.
+
 End eq.

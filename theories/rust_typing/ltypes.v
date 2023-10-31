@@ -1903,34 +1903,6 @@ Section ltype_def.
     lty_core (OfTyLty ty) = OfTyLty ty.
   Proof. done. Qed.
 
-  (* TODO move *)
-  Lemma elim_id_cast_l {A} C a (Ha : a = a) (x : C a) :
-    @eq_rect A a C x _  Ha = x.
-  Proof.
-    rewrite (UIP_refl _ _ Ha).
-    done.
-  Qed.
-  Lemma elim_id_cast_r {A} C a (Ha : a = a) (x : C a) :
-    x = @eq_rect A a C x _  Ha.
-  Proof.
-    rewrite (UIP_refl _ _ Ha).
-    done.
-  Qed.
-  Lemma rew_swap' {A} (P : A → Type) (x1 x2 : A) (Hx : x1 = x2) y1 y2 :
-    y2 = rew [P] Hx in y1 →
-    rew <-[P] Hx in y2 = y1.
-  Proof.
-    subst. done.
-  Qed.
-  (*
-  Lemma rew_swap' {A} (P : A → Type) (x1 x2 : A) (Hx : x1 = x2) y1 y2 :
-    rew <-[P] Hx in y1 = y2 →
-    y1 = rew [P] Hx in y2.
-  Proof.
-    subst. done.
-  Qed.
-   *)
-
   Lemma lty_own_core_core (lt : lty) k π r r' Heq l :
     r' = (transport_rfn Heq r) →
     lty_own_pre true (lty_core lt) k π r l ≡ lty_own_pre true lt k π r' l.
@@ -2284,14 +2256,6 @@ Section ltype_def.
   Proof.
     subst. auto.
   Qed.
-
-  (* TODO move *)
-  Lemma rew_UIP {X} (F : Type → Type) (Heq : X = X) (z : F X) :
-    rew [F] Heq in z = z.
-  Proof. rewrite (UIP_refl _ _ Heq). done. Qed.
-  Lemma rew_UIP' {X} (F : Type → Type) (Heq : X = X) (z : F X) :
-    rew <-[F] Heq in z = z.
-  Proof. rewrite (UIP_refl _ _ Heq). done. Qed.
 
   Local Lemma lty_own_to_core_ofty {rt} (def : type rt) (r1 : place_rfn rt) (lt1 : lty) k π Heq l (Heq2 : lty_rt lt1 = rt) :
     lt1 = OfTyLty def →
@@ -3896,11 +3860,6 @@ Section ltype_def.
     ltype_lty (ltype_core lt) = lty_core (ltype_lty lt).
   Proof. done. Qed.
 
-  (* TODO move *)
-  Lemma map_fmap {A B} (f : A → B) (l : list A) :
-    f <$> l = map f l.
-  Proof. done. Qed.
-
   Lemma ltype_core_array {rt} (def : type rt) (len : nat) (lts : list (nat * ltype rt)) :
     ltype_core (ArrayLtype def len lts) = ArrayLtype def len ((λ '(i, lt), (i, ltype_core lt)) <$> lts).
   Proof.
@@ -5446,25 +5405,6 @@ Section blocked.
       iMod "Hb" as "(%ly' & Hl & ? & ? & Hb)".
       iExists _. iFrame. rewrite ltype_core_syn_type_eq. iFrame.
       rewrite -ltype_own_core_equiv. iApply "Hub_own"; done.
-  Qed.
-
-  (* TODO move *)
-  Lemma pinned_bor_impl' κ (P Q Q' R : iProp Σ) :
-    ▷ □ ((P → R) ∧ (R → Q)) -∗
-    ▷ □ ((Q → Q') ∧ (Q' → Q)) -∗
-    &pin{ κ } [Q] P -∗ &pin{ κ } [Q'] R.
-  Proof.
-    iIntros "#Ha #Hb".
-    iIntros "Hx".
-    iPoseProof (pinned_bor_iff _ _ P _ Q' with "[] [] Hx") as "Hx".
-    { eauto 8. }
-    { done. }
-    iApply (pinned_bor_impl with "[] Hx").
-    iNext. iModIntro. iSplit.
-    - iDestruct "Ha" as "(Hc & _)". done.
-    - iDestruct "Ha" as "(_ & Hc)".
-      iDestruct "Hb" as "(Hb & _)".
-      iIntros "HR". iApply "Hb". iApply "Hc". done.
   Qed.
 
   Lemma struct_ltype_imp_unblockable {rts} κ (lts : hlist ltype rts) sls :

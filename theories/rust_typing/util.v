@@ -259,6 +259,10 @@ Proof.
   simpl. f_equiv. apply IH. simpl in *; lia.
 Qed.
 
+Lemma map_fmap {A B} (f : A → B) (l : list A) :
+  f <$> l = map f l.
+Proof. done. Qed.
+
 (** ** big_sepL *)
 Lemma big_sepL2_insert {Σ} {A B} (l1 : list A) (l2 : list B) (i : nat) (x1 : A) (x2 : B) (Φ : nat → A → B → iProp Σ) (m : nat) :
   i < length l1 →

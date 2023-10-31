@@ -409,6 +409,24 @@ Section pinned_borrows.
     iIntros "#Heq". iApply pinned_bor_iff; done.
   Qed.
 
+  Lemma pinned_bor_impl' κ (P Q Q' R : iProp Σ) :
+    ▷ □ ((P → R) ∧ (R → Q)) -∗
+    ▷ □ ((Q → Q') ∧ (Q' → Q)) -∗
+    pinned_bor κ Q P -∗ pinned_bor κ Q' R.
+  Proof.
+    iIntros "#Ha #Hb".
+    iIntros "Hx".
+    iPoseProof (pinned_bor_iff _ _ P _ Q' with "[] [] Hx") as "Hx".
+    { eauto 8. }
+    { done. }
+    iApply (pinned_bor_impl with "[] Hx").
+    iNext. iModIntro. iSplit.
+    - iDestruct "Ha" as "(Hc & _)". done.
+    - iDestruct "Ha" as "(_ & Hc)".
+      iDestruct "Hb" as "(Hb & _)".
+      iIntros "HR". iApply "Hb". iApply "Hc". done.
+  Qed.
+
   (* TODO maybe we can get the same thing without a token by using atomic accessors? *)
   Lemma pinned_bor_exists_freeze {X} `{Inhabited X} κ q E (Q : iProp Σ) (Φ : X → iProp Σ) :
     ↑lftN ⊆ E →
@@ -445,8 +463,8 @@ Section pinned_borrows.
       by iApply pinned_bor_shorten.
   Qed.
 
-  (* TODO can we have atomic accessors for pinned borrows like bor_acc_atomic? 
-     Problem/disadvantage: they will require later credits, which makes them much less useful for many things. 
+  (* TODO can we have atomic accessors for pinned borrows like bor_acc_atomic?
+     Problem/disadvantage: they will require later credits, which makes them much less useful for many things.
    *)
 End pinned_borrows.
 
