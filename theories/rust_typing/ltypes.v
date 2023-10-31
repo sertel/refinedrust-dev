@@ -77,7 +77,7 @@ Section enum.
     edestruct (enum_tag_compat _ en r) as (rte & lte & re & Ha & Hb); first done.
     rewrite /enum_tag_rt /enum_variant_rt /enum_tag_ty'.
     rewrite Ha Hb/=//.
-  Qed.
+  Defined.
 
   Lemma enum_tag_ty_Some {rt} (en : enum rt) r {rte : Type} (tye : type rte) (re : rte) :
     enum_ty en r = (existT rte (tye, re)) →
@@ -99,10 +99,14 @@ Section enum.
   Lemma enum_tag_type_variant_type_eq {rt} (en : enum rt) r:
     enum_tag_type en (enum_tag en r) = rew <-[type] (enum_tag_rt_variant_rt_eq en r _ eq_refl) in enum_variant_type en r.
   Proof.
+    (*destruct (enum_ty en r) as [rte [lte re]] eqn:Heq.*)
+    destruct (enum_tag_compat _ en r (enum_tag en r)) as (rte & lte & re & Ha & Hb); first done.
     rewrite /enum_tag_type/enum_variant_type/enum_tag_ty'.
-    simpl.
-  Admitted.
-
+    generalize (enum_tag_rt_variant_rt_eq en r (enum_tag en r) eq_refl) as Heq.
+    rewrite /enum_tag_rt /enum_tag_ty' /enum_variant_rt.
+    rewrite Ha Hb. simpl.
+    intros Heq. rewrite (UIP_refl _ _ Heq); done.
+  Qed.
 End enum.
 
 Section array.
@@ -1397,8 +1401,11 @@ Section ltype_def.
         | Uniq κ' γ' =>
             have_creds ∗
             place_rfn_interp_mut r γ' ∗
-            |={lftE}=> &pin{κ'}(∃ (r' : place_rfn (lty_rt lt)), gvar_auth γ' r' ∗
-              |={lftE}=>  ∃ (l' : loc), l ↦ l' ∗ lty_own_pre core lt (Shared κ) π r' l')
+            |={lftE}=> &pin{κ'}
+              [∃ (r' : place_rfn (lty_rt lt)), gvar_auth γ' r' ∗
+                |={lftE}=> ∃ (l' : loc), l ↦ l' ∗ lty_own_pre true lt (Shared κ) π r' l']
+              (∃ (r' : place_rfn (lty_rt lt)), gvar_auth γ' r' ∗
+                |={lftE}=> ∃ (l' : loc), l ↦ l' ∗ lty_own_pre core lt (Shared κ) π r' l')
         | Shared κ' =>
             ∃ (r' : place_rfn (lty_rt lt)),
             place_rfn_interp_shared r r' ∗
@@ -1896,6 +1903,34 @@ Section ltype_def.
     lty_core (OfTyLty ty) = OfTyLty ty.
   Proof. done. Qed.
 
+  (* TODO move *)
+  Lemma elim_id_cast_l {A} C a (Ha : a = a) (x : C a) :
+    @eq_rect A a C x _  Ha = x.
+  Proof.
+    rewrite (UIP_refl _ _ Ha).
+    done.
+  Qed.
+  Lemma elim_id_cast_r {A} C a (Ha : a = a) (x : C a) :
+    x = @eq_rect A a C x _  Ha.
+  Proof.
+    rewrite (UIP_refl _ _ Ha).
+    done.
+  Qed.
+  Lemma rew_swap' {A} (P : A → Type) (x1 x2 : A) (Hx : x1 = x2) y1 y2 :
+    y2 = rew [P] Hx in y1 →
+    rew <-[P] Hx in y2 = y1.
+  Proof.
+    subst. done.
+  Qed.
+  (*
+  Lemma rew_swap' {A} (P : A → Type) (x1 x2 : A) (Hx : x1 = x2) y1 y2 :
+    rew <-[P] Hx in y1 = y2 →
+    y1 = rew [P] Hx in y2.
+  Proof.
+    subst. done.
+  Qed.
+   *)
+
   Lemma lty_own_core_core (lt : lty) k π r r' Heq l :
     r' = (transport_rfn Heq r) →
     lty_own_pre true (lty_core lt) k π r l ≡ lty_own_pre true lt k π r' l.
@@ -2003,16 +2038,37 @@ Section ltype_def.
       rewrite (UIP_refl _ _ Heq). clear Heq.
       f_equiv.
       all: repeat f_equiv; try done.
-      admit.
-      (*all: rewrite -OfTyLty_core_id.*)
-      (*all: rewrite interpret_iml_fmap.*)
-      (*all: eapply ArrayLty_own_core_core_lift.*)
-      (*all: intros ? [-> | []]%elem_of_interpret_iml_inv; simpl.*)
-      (*all: intros ??? Heq; try rewrite (UIP_refl _ _ Heq); eauto.*)
+      rewrite lty_core_syn_type_eq.
+      iSplit.
+      + iIntros "(%Heq & Ha & Hb & ?)".
+        match goal with a : rt |- _ => rename a into r1 end.
+        assert (Heq' : lty_rt lt = enum_variant_rt en r1).
+        { rewrite -Heq -lty_core_rt_eq. done. }
+        iExists Heq'. iFrame.
+        unshelve rewrite IH. { apply lty_core_rt_eq. }
+        iApply (lty_own_pre_rfn_eq with "Hb").
+        (* TODO: I think we could develop a general tactic for these kinds of things by principled application of these lemmas *)
+        rewrite /transport_rfn.
+        rewrite rew_compose.
+        apply rew_swap.
+        rewrite rew_compose.
+        apply elim_id_cast_l.
+      + iIntros "(%Heq & Ha & Hb & ?)".
+        match goal with a : rt |- _ => rename a into r1 end.
+        assert (Heq' : lty_rt (lty_core lt) = enum_variant_rt en r1).
+        { rewrite -Heq. apply lty_core_rt_eq. }
+        iExists Heq'. iFrame.
+        unshelve rewrite IH. { apply lty_core_rt_eq. }
+        iApply (lty_own_pre_rfn_eq with "Hb").
+        rewrite /transport_rfn.
+        rewrite rew_compose.
+        apply rew_swap'.
+        rewrite rew_compose.
+        apply elim_id_cast_r.
     - simp lty_own_pre. rewrite (UIP_refl _ _ Heq). done.
     - simp lty_own_pre.
     - simp lty_own_pre.
-  Admitted.
+  Qed.
   Lemma lty_own_core_core' (lt : lty) k π r Heq l :
     lty_own_pre true (lty_core lt) k π r l ≡ lty_own_pre true lt k π (transport_rfn Heq r) l.
   Proof.
@@ -2113,6 +2169,7 @@ Section ltype_def.
       do 5 f_equiv.
       simpl. clear -IH Heq2.
       f_equiv.
+      3: unshelve setoid_rewrite (lty_own_core_core' lt); [ done | ].
       all: unshelve setoid_rewrite (IH core); [done.. | ].
       all: clear.
       all: move: r Heq Heq2.
@@ -2190,26 +2247,60 @@ Section ltype_def.
       rewrite (UIP_refl _ _ Heq). clear Heq. simpl.
       f_equiv.
       all: repeat f_equiv; try done.
-      (*all: rewrite !big_sepL_P_eq.*)
-      (*all: rewrite -OfTyLty_core_id.*)
-      (*all: rewrite interpret_iml_fmap ArrayLty_own_core_equiv_lift; first done.*)
-      (*all: intros ? [-> | []]%elem_of_interpret_iml_inv; simpl; intros ??? Heq ?.*)
-      (*all: try rewrite (UIP_refl _ _ Heq); simpl.*)
-      (*all: try by (eapply IH').*)
-      (*all: simp lty_own_pre; done.*)
-      admit.
-
+      rewrite lty_core_syn_type_eq.
+      iSplit.
+      + iIntros "(%Heq & Ha & Hb & ?)".
+        match goal with a : rt |- _ => rename a into r1 end.
+        assert (Heq' : lty_rt (lty_core lt) = enum_variant_rt en r1).
+        { rewrite -Heq. apply lty_core_rt_eq. }
+        iExists Heq'. iFrame.
+        unshelve rewrite (IH core). { symmetry. apply lty_core_rt_eq. }
+        iApply (lty_own_pre_rfn_eq with "Hb").
+        rewrite /transport_rfn.
+        rewrite rew_compose.
+        apply rew_swap.
+        rewrite rew_compose.
+        apply elim_id_cast_l.
+      + iIntros "(%Heq & Ha & Hb & ?)".
+        match goal with a : rt |- _ => rename a into r1 end.
+        assert (Heq' : lty_rt lt = enum_variant_rt en r1).
+        { rewrite -Heq -lty_core_rt_eq. done. }
+        iExists Heq'. iFrame.
+        unshelve rewrite (IH core). { symmetry. apply lty_core_rt_eq. }
+        iApply (lty_own_pre_rfn_eq with "Hb").
+        rewrite /transport_rfn.
+        rewrite rew_compose.
+        apply rew_swap'.
+        rewrite rew_compose.
+        apply elim_id_cast_r.
     - rewrite (UIP_refl _ _ Heq). simp lty_own_pre. done.
     - simp lty_own_pre.
     - simp lty_own_pre.
-  (*Qed.*)
-  Admitted.
+  Qed.
 
   Local Lemma place_rfn_interp_shared_transport_eq {rt rt'} (r : place_rfn rt) (r' : rt) (Heq : rt = rt') :
     place_rfn_interp_shared r r' -∗
     place_rfn_interp_shared (transport_rfn Heq r) (rew [id] Heq in r').
   Proof.
     subst. auto.
+  Qed.
+
+  (* TODO move *)
+  Lemma rew_UIP {X} (F : Type → Type) (Heq : X = X) (z : F X) :
+    rew [F] Heq in z = z.
+  Proof. rewrite (UIP_refl _ _ Heq). done. Qed.
+  Lemma rew_UIP' {X} (F : Type → Type) (Heq : X = X) (z : F X) :
+    rew <-[F] Heq in z = z.
+  Proof. rewrite (UIP_refl _ _ Heq). done. Qed.
+
+  Local Lemma lty_own_to_core_ofty {rt} (def : type rt) (r1 : place_rfn rt) (lt1 : lty) k π Heq l (Heq2 : lty_rt lt1 = rt) :
+    lt1 = OfTyLty def →
+    lty_own_pre false lt1 k π (rew <-Heq2 in r1) l -∗
+    lty_own_pre false (lty_core lt1) k π (rew <-[place_rfn] Heq in r1) l.
+  Proof.
+    intros Ha. subst lt1. simpl.
+    iApply lty_own_pre_rfn_eq. apply rew_swap.
+    rewrite rew_compose rew_UIP//.
   Qed.
 
   Lemma lty_own_shared_to_core lt κ0 π r l Heq :
@@ -2285,11 +2376,24 @@ Section ltype_def.
       { by iApply place_rfn_interp_shared_transport_eq. }
       iModIntro. iMod "Hl". iModIntro.
       rewrite big_sepL_P_eq.
-      clear.
       rewrite pzipl_core_map_eq; first done; intros ?.
-      (*rewrite pad_struct_fmap. *)
-      (* TODO *)
-      admit.
+      rewrite rew_compose rew_UIP.
+      rewrite (pad_struct_ext _ (_ <$> _) _ (λ ly, pzipl_core_map_fun (existT (UninitLty (UntypedSynType ly)) (PlaceIn ())))); first last.
+      { intros ly; rewrite /pzipl_core_map_fun. f_equiv. rewrite rew_UIP'//. }
+      rewrite pad_struct_fmap big_sepL_fmap.
+      iApply (big_sepL_wand with "Hl").
+      iApply big_sepL_intro. iModIntro.
+      iIntros (? [? ] Hlook) "(%ly & % & % & Ha)".
+      iExists ly. iR. simpl. rewrite lty_core_syn_type_eq. iR.
+      apply pad_struct_lookup_Some in Hlook; first last.
+      { rewrite pzipl_length. rewrite -Hlen.
+        erewrite struct_layout_spec_has_layout_fields_length; done. }
+      destruct Hlook as (n & ly' & Hlook & [(? & Hlook2) | (-> & Hlook2)]).
+      + apply pzipl_lookup_inv in Hlook2.
+        iApply (IH with "Ha"). by eapply elem_of_list_lookup_2.
+      + injection Hlook2. intros _ ->.
+        apply existT_inj in Hlook2 as ->.
+        simpl. rewrite rew_UIP'. done.
     - (* array *)
       simp lty_own_pre.
       iIntros "(%ly & %Halg & %Hsz & %Hly & Hlb & %r' & Ha & #Hl)".
@@ -2301,10 +2405,24 @@ Section ltype_def.
       iModIntro. iMod "Hl" as "(%Hlen & Hl)". iModIntro.
       iSplitR. { rewrite -Hlen. iPureIntro. clear. rewrite (UIP_refl _ _ Heq). done. }
       rewrite big_sepL_P_eq.
-      (* TODO *)
-      admit.
+      assert (OfTyLty def = lty_core $ OfTyLty def) as Hcore_eq. { done. }
+      iEval (rewrite Hcore_eq).
+      rewrite interpret_iml_fmap.
+      rewrite rew_UIP zip_fmap_l big_sepL_fmap.
+      iApply (big_sepL_wand with "Hl"). iApply big_sepL_intro.
+      iModIntro. iIntros (k [lt1 r1] Hlook) "(%Heq1 & %Hst & Hl)".
+      simpl in Heq1, Hst. subst rt. cbn.
+      unshelve iExists _. { apply lty_core_rt_eq. }
+      rewrite lty_core_syn_type_eq. iR.
+      apply lookup_zip in Hlook as (Hlook & _). apply lookup_interpret_iml_Some_inv in Hlook as [? [Ha | Ha]].
+      + unshelve iApply lty_own_to_core_ofty; [ | done | done | ]. done.
+      + unshelve iPoseProof (IH with "Hl") as "Hl"; [ | | done | ].
+        { by rewrite lty_core_rt_eq. }
+        iApply (lty_own_pre_rfn_eq with "Hl"). apply rew_swap. rewrite rew_compose rew_UIP//.
     - (* enum *)
-      admit.
+      simp lty_own_pre.
+      iIntros "(%el & %rt' & %Hel & %Hly & Hlb & %Htag & %Hrt & Hf)".
+      done.
     - simp lty_own_pre.
       iIntros "(%ly & % & % & ? & % & % & [])".
     - simp lty_own_pre.
@@ -2313,7 +2431,8 @@ Section ltype_def.
     - simp lty_own_pre.
       iIntros "(%Heq_cur & %Hst & Ha & Hb)".
       iApply (IH2 with "Hb").
-  Admitted.
+  Qed.
+  (* NOTE: The reverse does not hold because the core of [BlockedLty] is [OfTy], which has a sharing predicate, but [BlockedLty] doesn't *)
 
   (** ** We define derived versions on top that expose the refinement type as an index.
      This is the variant that will be actually used by the type system. *)
@@ -2650,14 +2769,17 @@ Section ltype_def.
         rewrite make_ltype_list_map_proj_eq.
         simpl. intros <- Hwf'. eapply P_irrel.
       - (* enum *)
-        (*assert (lty_rt lte *)
-        (*set (lte' := mk_ltype lte *)
         simpl in Hwf. destruct Hwf as (Hwf & Hrt).
         specialize (IH Hwf).
+        set (ltypee := mk_ltype _ _ Hrt Hwf).
+        specialize (Hen rt en variant ltypee).
+        eapply P_irrel.
+        apply Hen.
+        subst ltypee.
         move: IH.
-        (*specialize (Hen _ en variant _ (rew Hrt in IH Hwf)).*)
-        admit.
-
+        clear.
+        move: Hrt. generalize (enum_tag_rt en variant). intros ??. subst.
+        done.
       - destruct Hwf as (Heq1 & Heq2 & Hwf_cur & Hwf_inner & Hwf_full); subst.
         specialize (Hopened _ _ _ _ _ _ Cpre Cpost (IH_cur Hwf_cur) (IH_inner Hwf_inner) (IH_full Hwf_full)).
         eapply P_irrel. eapply Hopened.
@@ -2666,8 +2788,7 @@ Section ltype_def.
       - destruct Hwf as (Hwf_cur & Hwf_full & <-).
         specialize (Hshadow _ _ _ r_cur _ (IH_cur Hwf_cur) (IH_full Hwf_full)).
         eapply P_irrel. eapply Hshadow.
-    (*Qed.*)
-    Admitted.
+    Qed.
   End induction.
 
   (** Unfolding equations for [ltype] *)
@@ -2785,7 +2906,9 @@ Section ltype_def.
         | Uniq κ' γ' =>
             have_creds ∗
             place_rfn_interp_mut r γ' ∗
-            |={lftE}=> &pin{κ'}(∃ (r' : place_rfn rt), gvar_auth γ' r' ∗ |={lftE}=>  ∃ (l' : loc), l ↦ l' ∗ rec _ lt (Shared κ) π r' l')
+            |={lftE}=> &pin{κ'}
+              [∃ (r' : place_rfn rt), gvar_auth γ' r' ∗ |={lftE}=>  ∃ (l' : loc), l ↦ l' ∗ rec_core _ lt (Shared κ) π r' l']
+              (∃ (r' : place_rfn rt), gvar_auth γ' r' ∗ |={lftE}=>  ∃ (l' : loc), l ↦ l' ∗ rec _ lt (Shared κ) π r' l')
         | Shared κ' =>
             ∃ (r' : place_rfn rt),
             place_rfn_interp_shared r r' ∗
@@ -2952,12 +3075,14 @@ Section ltype_def.
       ⌜enum_layout_spec_has_layout en.(enum_els) el⌝ ∗
       ⌜l `has_layout_loc` el⌝ ∗
       loc_in_bounds l 0 el.(ly_size) ∗
+      ⌜is_Some (enum_tag_ty en tag)⌝ ∗
       match k with
       | Owned wl =>
         maybe_creds wl ∗
         ∃ r' : rt, place_rfn_interp_owned r r' ∗
         ▷?wl |={lftE}=>(
         ∃ (Heq : enum_variant_rt en r' = enum_tag_rt en tag),
+        ⌜enum_tag en r' = tag⌝ ∗
         (* ownership of the discriminant *)
         lty_of_ty_own (int en.(enum_els).(els_tag_it)) (Owned false) π (PlaceIn (enum_lookup_tag en r')) (l atst{sls_of_els en.(enum_els)}ₗ "discriminant") ∗
         (* ownership of the data *)
@@ -3450,29 +3575,37 @@ Section ltype_def.
     intros Heq1. rewrite (UIP_refl _ _ Heq1). cbn.
     do 1 f_equiv.
     f_equiv.
-    (*
-    (*f_equiv.*)
-    (*{ rewrite Forall_fmap. iPureIntro. apply Forall_iff. intros []; done. }*)
-    f_equiv.
-    - do 4 f_equiv; first done.
-      apply sep_equiv_proper => Hlen.
-      repeat f_equiv. rewrite big_sepL_P_eq.
-      rewrite -OfTy_ltype_lty.
-      rewrite interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
-      rewrite interpret_iml_length //.
-    - do 3 f_equiv; first done.
-      apply sep_equiv_proper => Hlen.
-      do 2 f_equiv. rewrite big_sepL_P_eq.
-      rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
-      rewrite interpret_iml_length//.
-    - do 7 f_equiv. all: f_equiv; first done.
-      all: apply sep_equiv_proper => Hlen.
-      all: repeat f_equiv; rewrite big_sepL_P_eq.
-      all: rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap//.
-      all: rewrite interpret_iml_length//.
+    iSplit.
+    - iIntros "(%rty & %Hels & %Hly & Hlb & %Htag & %Hrt & Hl)".
+      destruct rty as (rte & tye).
+      iR. iR. iFrame.
+      destruct k as [ wl | | ]; [ | done.. ].
+      iDestruct "Hl" as "(Hcred & %r' & Hrfn & Ha)".
+      iFrame. rewrite Htag. iR. iExists r'. iFrame. iNext.
+      iMod ("Ha") as "(<- & %Heq & Ha)".
+      iModIntro.
+      assert (Heq' : enum_variant_rt en r' = enum_tag_rt en (enum_tag en r')).
+      { rewrite -Heq. rewrite ltype_rt_agree. done. }
+      iExists Heq'. iR.
+      iDestruct "Ha" as "($ & Ha & $)".
+      iApply (lty_own_pre_rfn_eq with "Ha").
+      apply rew_swap'. rewrite !rew_compose rew_UIP//.
+    - iIntros "(%Hels & %Hly & Hlb & %Htag & Hl)".
+      destruct Htag as ([rte tye] & Htag).
+      iExists (existT rte tye). iR. iR. iFrame. iR.
+      specialize (ltype_lty_wf _ (EnumLtype en tag lte)); simpl; intros [_ Hrt].
+      iSplitR. { rewrite {1}Hrt /enum_tag_rt/enum_tag_ty' Htag//. }
+      destruct k as [ wl | | ]; [ | done.. ].
+      iDestruct "Hl" as "(Hcreds & %r' & Hrfn & Hl)".
+      iFrame. iExists r'. iFrame.
+      iNext. iMod "Hl" as "(%Heq & <- & ? & Hl & ?)".
+      iModIntro. iR.
+      assert (Heq' : lty_rt (ltype_lty lte) = enum_variant_rt en r').
+      { rewrite Hrt. by apply enum_tag_rt_variant_rt_eq. }
+      iExists Heq'. iFrame.
+      iApply (lty_own_pre_rfn_eq with "Hl").
+      apply rew_swap. rewrite !rew_compose rew_UIP//.
   Qed.
-     *)
-  Admitted.
 
   Lemma ltype_own_enum_unfold {rt : Type} (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) k π r l :
     ltype_own (EnumLtype en tag lte) k π r l ≡ enum_ltype_own (@ltype_own) (@ltype_own_core) rt en tag lte k π r l.
@@ -3763,6 +3896,11 @@ Section ltype_def.
     ltype_lty (ltype_core lt) = lty_core (ltype_lty lt).
   Proof. done. Qed.
 
+  (* TODO move *)
+  Lemma map_fmap {A B} (f : A → B) (l : list A) :
+    f <$> l = map f l.
+  Proof. done. Qed.
+
   Lemma ltype_core_array {rt} (def : type rt) (len : nat) (lts : list (nat * ltype rt)) :
     ltype_core (ArrayLtype def len lts) = ArrayLtype def len ((λ '(i, lt), (i, ltype_core lt)) <$> lts).
   Proof.
@@ -3774,35 +3912,15 @@ Section ltype_def.
     end; simpl.
     intros Hwf1 Hwf2 <-. simpl.
     move: Hwf1 Hwf2.
-    rewrite !map_map. simpl.
+    rewrite !map_fmap !map_map.
 
-    (*
-
-    (*fold @ltype_core.*)
-    simpl.
-    (*Search list_fmap map.*)
-    (*list_fmap*)
-    (*rewrite /map.*)
-    (*fmap*)
-    (*rewrite -(map_map (λ '(i,  lt), (i, ltype_core lt)) (λ '(i, lt), (i, ltype_lty lt)) lts).*)
-    rewrite -ltype_lty_core.
-    specialize (map_map (λ '(i,  lt), (i, ltype_lty lt)) (λ '(i, lt), (i, lty_core lt)) lts) as Ha.
-    simpl in Ha.
-    rewrite /fmap.
-    simpl.
-
-    rewrite -Ha.
-
-    intros Hwf1 Hwf2 Heq.
-    rewrite (UIP_refl _ _ Heq).
-    move: Hwf1 Hwf2 Heq.
-    rewrite map_map.
-    rewrite /fmap. simpl. f_equiv.
-
-    f_equiv. apply proof_irrelevance.
-     *)
-  (*Qed.*)
-  Admitted.
+    rewrite (map_ext _  ((λ x : nat * ltype rt, let '(i, lt) := let '(i, lt) := x in (i, ltype_lty lt) in (i, lty_core lt)))); first last.
+    { intros []. done. }
+    intros Hwf1 Hwf2 Heq1.
+    rewrite (UIP_refl _ _ Heq1).
+    specialize (proof_irrelevance _  Hwf1 Hwf2) as ?. subst.
+    done.
+  Qed.
   Lemma ltype_core_enum {rt} (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) :
     ltype_core (EnumLtype en tag lte) = EnumLtype en tag (ltype_core lte).
   Proof.
@@ -5251,29 +5369,24 @@ Section blocked.
       iDestruct "Hb" as "(%ly & ? & ? & ? & ? & ? & Hb)".
       iExists ly. iFrame.
       iMod "Hb". iModIntro. iModIntro.
-      (*rewrite ltype_core_syn_type_eq.*)
-      (*  TODO will require changing the def a bit to actually use the pinned field.
       setoid_rewrite ltype_own_core_core.
       iApply (pinned_bor_impl with "[] Hb").
       iNext. iModIntro. iSplit; first last.
       { setoid_rewrite ltype_own_core_equiv. eauto. }
       iIntros "(%r' & Hauth & Hb)". iExists _. iFrame "Hauth".
       iMod "Hb". iDestruct "Hb" as "(%l' & Hl & Hb)".
-      iMod (lft_incl_dead with "Hincl Hdead") as "Hdead'"; first done.
-      iMod ("Hub_mut" with "Hincl Hdead Hb") as "Hb"; first last.
-      { iModIntro. rewrite ltype_own_core_equiv. eauto with iFrame. }
+      iExists _. iFrame.
+      iApply (ltype_own_shared_to_core with "Hb").
     - iIntros (π r l wl) "#Hdead Hb".
       rewrite ltype_own_core_equiv /=. simp_ltypes.
-      rewrite !ltype_own_mut_ref_unfold /mut_ltype_own.
-      iDestruct "Hb" as "(%ly & ? & ? & ? & ? & %γ & %r' & Hrfn & Hb)".
+      rewrite !ltype_own_shr_ref_unfold /shr_ltype_own.
+      iDestruct "Hb" as "(%ly & ? & ? & ? & ? & %r' & Hrfn & Hb)".
       iExists ly. iFrame.
-      iModIntro. iExists _, _. iFrame "Hrfn". iNext.
+      iModIntro. iExists _. iFrame "Hrfn". iNext.
       iMod "Hb" as "(%l' & Hl & Hb)".
-      iExists _. iFrame. rewrite -ltype_own_core_equiv.
-      iApply ("Hub_mut" with "[] Hdead Hb").
-      iApply lft_incl_refl.
-       *)
-  Admitted.
+      iExists _. iFrame.
+      by iApply ltype_own_shared_to_core.
+  Qed.
 
   Lemma box_ltype_imp_unblockable {rt} κs (lt : ltype rt) :
     imp_unblockable κs lt -∗
@@ -5309,25 +5422,226 @@ Section blocked.
     imp_unblockable κs lt -∗
     imp_unblockable κs (OwnedPtrLtype lt ls).
   Proof.
-  Admitted.
+    iIntros "#(Hub_mut & Hub_own)". iModIntro. iSplitL.
+    - iIntros (κ' γ' π r l) "#Hdead Hb".
+      rewrite ltype_own_core_equiv /=. simp_ltypes.
+      rewrite !ltype_own_owned_ptr_unfold /box_ltype_own.
+      iDestruct "Hb" as "(%ly & ? & ? & ? & ? & ? & Hb)".
+      iExists ly. iFrame.
+      iMod "Hb". iModIntro. rewrite ltype_core_syn_type_eq.
+      setoid_rewrite ltype_own_core_core.
+      iApply (pinned_bor_impl with "[] Hb").
+      iNext. iModIntro. iSplit; first last.
+      { setoid_rewrite ltype_own_core_equiv. eauto. }
+      iIntros "(%r' & %l' & Hauth & Hb)". iExists _, _. iFrame "Hauth".
+      iMod "Hb". iDestruct "Hb" as "(%ly' & Hl & ? & Hf & Hb)".
+      iMod ("Hub_own" with "Hdead Hb") as "Hb".
+      iModIntro. rewrite ltype_own_core_equiv. eauto with iFrame.
+    - iIntros (π r l wl) "#Hdead Hb".
+      rewrite ltype_own_core_equiv /=. simp_ltypes.
+      rewrite !ltype_own_owned_ptr_unfold /owned_ptr_ltype_own.
+      iDestruct "Hb" as "(%ly & ? & ? & ? & ? & %r' & %l' & Hrfn & Hb)".
+      iExists ly. iFrame.
+      iModIntro. iExists _, _. iFrame "Hrfn". iNext.
+      iMod "Hb" as "(%ly' & Hl & ? & ? & Hb)".
+      iExists _. iFrame. rewrite ltype_core_syn_type_eq. iFrame.
+      rewrite -ltype_own_core_equiv. iApply "Hub_own"; done.
+  Qed.
+
+  (* TODO move *)
+  Lemma pinned_bor_impl' κ (P Q Q' R : iProp Σ) :
+    ▷ □ ((P → R) ∧ (R → Q)) -∗
+    ▷ □ ((Q → Q') ∧ (Q' → Q)) -∗
+    &pin{ κ } [Q] P -∗ &pin{ κ } [Q'] R.
+  Proof.
+    iIntros "#Ha #Hb".
+    iIntros "Hx".
+    iPoseProof (pinned_bor_iff _ _ P _ Q' with "[] [] Hx") as "Hx".
+    { eauto 8. }
+    { done. }
+    iApply (pinned_bor_impl with "[] Hx").
+    iNext. iModIntro. iSplit.
+    - iDestruct "Ha" as "(Hc & _)". done.
+    - iDestruct "Ha" as "(_ & Hc)".
+      iDestruct "Hb" as "(Hb & _)".
+      iIntros "HR". iApply "Hb". iApply "Hc". done.
+  Qed.
 
   Lemma struct_ltype_imp_unblockable {rts} κ (lts : hlist ltype rts) sls :
     ([∗ list] lt ∈ hzipl rts lts, imp_unblockable κ (projT2 lt)) ⊢
     imp_unblockable κ (StructLtype lts sls).
   Proof.
-  Admitted.
+    set (map_core := (λ '(existT x (a, b)), existT x (ltype_core a, b) : sigT (λ rt, ltype rt * place_rfn rt)%type)).
+    iIntros "#Hub". iModIntro. iSplitL.
+    - iIntros (κ' γ' π r l) "#Hdead Hb".
+      rewrite ltype_own_core_equiv /=. simp_ltypes.
+      rewrite !ltype_own_struct_unfold /struct_ltype_own.
+      iDestruct "Hb" as "(%sl & %Halg & %Hlen & ? & ? & ? & ? & Hb)".
+      iExists sl. iFrame. iR. iR.
+      iMod "Hb". iModIntro.
+      iApply (pinned_bor_impl' with "[] [] Hb").
+      + iNext. iModIntro. iSplit.
+        * iIntros "(%r' & ? & Ha)". iExists r'. iFrame.
+          rewrite hpzipl_hmap.
+          rewrite (pad_struct_ext _ (_ <$> _) _ (λ ly, map_core (struct_make_uninit_ltype ly))); first last.
+          { intros ?. rewrite /map_core /struct_make_uninit_ltype. rewrite ltype_core_uninit//. }
+          rewrite (pad_struct_fmap _ _ _ map_core) big_sepL_fmap.
+          iMod ("Ha").
+          iApply big_sepL_fupd.
+          iApply (big_sepL_impl with "Ha").
+          iModIntro. iIntros (k [rt [lt r'']] Hlook) "(%ly & ? & ? & Hl)". simpl.
+          apply pad_struct_lookup_Some in Hlook; first last.
+          { rewrite hpzipl_length -Hlen. erewrite struct_layout_spec_has_layout_fields_length;done. }
+          destruct Hlook as (n & ly' & Hlook & [(? & Hlook1) | (-> & Hlook1)]).
+          { apply hpzipl_lookup_inv_hzipl_pzipl in Hlook1 as (Hlook1 & _).
+            iPoseProof (big_sepL_lookup with "Hub") as "Hub'"; first done. simpl.
+            iDestruct "Hub'" as "(_ & #Hub_own)". iMod ("Hub_own" with "Hdead Hl") as "Hl".
+            rewrite ltype_own_core_equiv. rewrite ltype_core_syn_type_eq. eauto 8 with iFrame. }
+          { (* uninit *)
+            injection Hlook1 => _ _ ?. subst.
+            apply existT_inj in Hlook1. injection Hlook1 as -> ->.
+            rewrite ltype_core_uninit. eauto 8. }
+        * iIntros "(%r' & ? & Ha)". iExists r'. iFrame.
+          rewrite hpzipl_hmap.
+          rewrite (pad_struct_ext _ (_ <$> _) _ (λ ly, map_core (struct_make_uninit_ltype ly))); first last.
+          { intros ?. rewrite /map_core /struct_make_uninit_ltype. rewrite ltype_core_uninit//. }
+          rewrite (pad_struct_fmap _ _ _ map_core) big_sepL_fmap.
+          setoid_rewrite ltype_own_core_equiv.
+          iMod ("Ha").
+          iApply (big_sepL_impl with "Ha").
+          iModIntro. iModIntro.
+          iIntros (k [rt [lt r'']] Hlook) "(%ly & ? & ? & Hl)". simpl.
+          simp_ltypes. eauto 8 with iFrame.
+      + iNext. iModIntro. iSplit.
+        * iIntros "(%r' & ? & Ha)". iExists r'. iFrame.
+          rewrite hpzipl_hmap.
+          rewrite (pad_struct_ext _ (_ <$> _) _ (λ ly, map_core (struct_make_uninit_ltype ly))); first last.
+          { intros ?. rewrite /map_core /struct_make_uninit_ltype. rewrite ltype_core_uninit//. }
+          rewrite (pad_struct_fmap _ _ _ map_core) big_sepL_fmap.
+          setoid_rewrite ltype_own_core_equiv.
+          iMod ("Ha").
+          iApply (big_sepL_impl with "Ha").
+          iModIntro. iModIntro.
+          iIntros (k [rt [lt r'']] Hlook) "(%ly & ? & ? & Hl)". simpl.
+          simp_ltypes. eauto 8 with iFrame.
+        * iIntros "(%r' & ? & Ha)". iExists r'. iFrame.
+          rewrite hpzipl_hmap.
+          rewrite (pad_struct_ext _ (_ <$> _) _ (λ ly, map_core (struct_make_uninit_ltype ly))); first last.
+          { intros ?. rewrite /map_core /struct_make_uninit_ltype. rewrite ltype_core_uninit//. }
+          rewrite (pad_struct_fmap _ _ _ map_core) big_sepL_fmap.
+          setoid_rewrite ltype_own_core_equiv.
+          iMod ("Ha").
+          iApply (big_sepL_impl with "Ha").
+          iModIntro. iModIntro.
+          iIntros (k [rt [lt r'']] Hlook) "(%ly & ? & ? & Hl)". simpl.
+          simp_ltypes. eauto 8 with iFrame.
+    - iIntros (π r l wl) "#Hdead Hb".
+      rewrite ltype_own_core_equiv /=. simp_ltypes.
+      rewrite !ltype_own_struct_unfold /struct_ltype_own.
+      iDestruct "Hb" as "(%sl & %Halg & %Hlen & ? & ? & ? & %r' & ? & Hb)".
+      iExists sl. iFrame. iR. iR. iExists _. iFrame.
+      iModIntro. iNext. iMod "Hb".
+      rewrite hpzipl_hmap.
+      rewrite (pad_struct_ext _ (_ <$> _) _ (λ ly, map_core (struct_make_uninit_ltype ly))); first last.
+      { intros ?. rewrite /map_core /struct_make_uninit_ltype. rewrite ltype_core_uninit//. }
+      rewrite (pad_struct_fmap _ _ _ map_core) big_sepL_fmap.
+      iApply big_sepL_fupd.
+      iApply (big_sepL_impl with "Hb").
+      iModIntro. iIntros (k [rt [lt r'']] Hlook) "(%ly & ? & ? & Hl)". simpl.
+      apply pad_struct_lookup_Some in Hlook; first last.
+      { rewrite hpzipl_length -Hlen. erewrite struct_layout_spec_has_layout_fields_length;done. }
+      destruct Hlook as (n & ly' & Hlook & [(? & Hlook1) | (-> & Hlook1)]).
+      { apply hpzipl_lookup_inv_hzipl_pzipl in Hlook1 as (Hlook1 & _).
+        iPoseProof (big_sepL_lookup with "Hub") as "Hub'"; first done. simpl.
+        iDestruct "Hub'" as "(_ & #Hub_own)". iMod ("Hub_own" with "Hdead Hl") as "Hl".
+        rewrite ltype_own_core_equiv. rewrite ltype_core_syn_type_eq. eauto 8 with iFrame. }
+      { (* uninit *)
+        injection Hlook1 => _ _ ?. subst.
+        apply existT_inj in Hlook1. injection Hlook1 as -> ->.
+        rewrite ltype_core_uninit. eauto 8. }
+  Qed.
 
   Lemma array_ltype_imp_unblockable {rt} κs (def : type rt) len (lts : list (nat * ltype rt)) :
     ([∗ list] lt ∈ (interpret_iml (◁ def) len lts), imp_unblockable κs lt) -∗
     imp_unblockable κs (ArrayLtype def len lts).
   Proof.
-  Admitted.
+    iIntros "#Hub". iModIntro. iSplitL.
+    - iIntros (κ' γ' π r l) "#Hdead Hb".
+      rewrite ltype_own_core_equiv /=. simp_ltypes.
+      rewrite !ltype_own_array_unfold /array_ltype_own.
+      iDestruct "Hb" as "(%sl & %Halg & % & % & ? & ? & ? & Hb)".
+      iExists sl. iFrame. iR. iR. iR.
+      iMod "Hb". iModIntro.
+      iApply (pinned_bor_impl' with "[] [] Hb").
+      + iNext. iModIntro. iSplit.
+        * iIntros "(%r' & ? & Ha)". iExists r'. iFrame.
+          iEval (rewrite -(ltype_core_ofty def)).
+          rewrite interpret_iml_fmap big_sepL2_fmap_l.
+          iMod ("Ha") as "(%Hlen & Ha)". iR.
+          iApply big_sepL2_fupd.
+          iApply (big_sepL2_impl with "Ha").
+          iModIntro. iIntros (k lt r'' Hlook1 Hlook2) "(%Hst & Hl)".
+          simp_ltypes. iR.
+          iPoseProof (big_sepL_lookup with "Hub") as "Hub'"; first done. simpl.
+          iDestruct "Hub'" as "(_ & #Hub_own)". iMod ("Hub_own" with "Hdead Hl") as "Hl".
+          rewrite ltype_own_core_equiv. done.
+        * iIntros "(%r' & ? & Ha)". iExists r'. iFrame.
+          iEval (rewrite -(ltype_core_ofty def)) in "Ha".
+          rewrite interpret_iml_fmap big_sepL2_fmap_l.
+          setoid_rewrite ltype_core_syn_type_eq.
+          setoid_rewrite ltype_own_core_equiv. done.
+      + iNext. iModIntro. iSplit.
+        * iIntros "(%r' & ? & Ha)". iExists r'. iFrame.
+          iEval (rewrite -(ltype_core_ofty def)).
+          rewrite interpret_iml_fmap big_sepL2_fmap_l.
+          setoid_rewrite ltype_core_syn_type_eq.
+          setoid_rewrite ltype_own_core_equiv.
+          setoid_rewrite ltype_core_idemp. done.
+        * iIntros "(%r' & ? & Ha)". iExists r'. iFrame.
+          iEval (rewrite -(ltype_core_ofty def)) in "Ha".
+          rewrite interpret_iml_fmap big_sepL2_fmap_l.
+          setoid_rewrite ltype_core_syn_type_eq.
+          setoid_rewrite ltype_own_core_equiv.
+          setoid_rewrite ltype_core_idemp. done.
+    - iIntros (π r l wl) "#Hdead Hb".
+      rewrite ltype_own_core_equiv /=. simp_ltypes.
+      rewrite !ltype_own_array_unfold /array_ltype_own.
+      iDestruct "Hb" as "(%ly & %Halg & % & % & ? & ? & %r' & ? & Hb)".
+      iExists ly. iFrame. iR. iR. iR.
+      iModIntro. iExists r'. iFrame.
+      iEval (rewrite -(ltype_core_ofty def)).
+      rewrite interpret_iml_fmap big_sepL2_fmap_l.
+      iNext. iMod ("Hb") as "(%Hlen & Ha)". iR.
+      iApply big_sepL2_fupd.
+      iApply (big_sepL2_impl with "Ha").
+      iModIntro. iIntros (k lt r'' Hlook1 Hlook2) "(%Hst & Hl)".
+      simp_ltypes. iR.
+      iPoseProof (big_sepL_lookup with "Hub") as "Hub'"; first done. simpl.
+      iDestruct "Hub'" as "(_ & #Hub_own)". iMod ("Hub_own" with "Hdead Hl") as "Hl".
+      rewrite ltype_own_core_equiv. done.
+  Qed.
 
   Lemma enum_ltype_imp_unblockable {rt} κs (en : enum rt) (tag : string) (lte : ltype (enum_tag_rt en tag)) :
     imp_unblockable κs lte -∗
     imp_unblockable κs (EnumLtype en tag lte).
   Proof.
-  Admitted.
+    iIntros "#Hub". iModIntro. iSplitL.
+    - iIntros (κ' γ' π r l) "#Hdead Hb".
+      rewrite ltype_own_core_equiv /=. simp_ltypes.
+      rewrite !ltype_own_enum_unfold /enum_ltype_own.
+      iDestruct "Hb" as "(%el & %Halg & % & ? & % & Hb)".
+      done.
+    - iIntros (π r l wl) "#Hdead Hb".
+      rewrite ltype_own_core_equiv /=. simp_ltypes.
+      rewrite !ltype_own_enum_unfold /enum_ltype_own.
+      iDestruct "Hb" as "(%el & %Halg & % & ? & %Htag & ? & %r' & ? & Hb)".
+      iExists el. iFrame. iR. iR. iR.
+      iModIntro. iExists r'. iFrame.
+      iNext. iMod "Hb" as "(%Heq & %Htag' & ? & Hb & ? & ?)".
+      iExists Heq. iR. rewrite ltype_core_syn_type_eq. iFrame.
+      iDestruct "Hub" as "(_ & #Hub_own)". iMod ("Hub_own" with "Hdead Hb") as "Hl".
+      rewrite ltype_own_core_equiv. done.
+  Qed.
 
 
   (* Unblocking is trivial for OpenedLtype, since the core is trivial.

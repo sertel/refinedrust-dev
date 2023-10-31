@@ -1974,7 +1974,8 @@ Section judgments.
         (*owned_subltype_step E L false (l ◁ₗ[π, bk'] r' @ lt') (l ◁ₗ[π, bk] r @ ◁ ty) T*)
         match ltype_blocked_lfts lt2 with
         | [] =>
-            (* we could unblock everything, directly subsume *) ⌜bk = bk'⌝ ∗  weak_subltype E L2 bk r2 r lt2 (◁ ty) (T L2 [] R2)
+            (* we could unblock everything, directly subsume *)
+            ⌜bk = bk'⌝ ∗ weak_subltype E L2 bk r2 r lt2 (◁ ty) (T L2 [] R2)
         | κs =>
             ⌜bk = bk'⌝ ∗ weak_subltype E L2 bk r2 r (ltype_core lt2) (◁ ty) (T L2 κs R2)
         end))
@@ -2006,6 +2007,60 @@ Section judgments.
   Qed.
   Global Instance prove_with_subtype_ofty_step_inst π E L (l : loc) bk {rt} (ty : type rt) (r : place_rfn rt) : ProveWithSubtype E L true ProveWithStratify (l ◁ₗ[π, bk] r @ ◁ ty)%I | 500 :=
     λ T, i2p (prove_with_subtype_ofty_step π E L l bk ty r T).
+
+  (* TODO: this is a hack because we can't eliminate (stratify_ltype ... (subsume_full ...)) into prove_with_subtype, so we can't call into subsume to do the Owned false -> Owned true adjustment... *)
+  Lemma prove_with_subtype_ofty_step_owned_true π E L (l : loc) {rt} (ty : type rt) (r : place_rfn rt) T :
+    find_in_context (FindLoc l π) (λ '(existT rt' (lt', r', bk')),
+      stratify_ltype π E L StratMutNone StratNoUnfold StratRefoldFull StratifyUnblockOp l lt' r' bk' (λ L2 R2 rt2 lt2 r2,
+        (* can't take a step, because we already took one. *)
+        (*owned_subltype_step E L false (l ◁ₗ[π, bk'] r' @ lt') (l ◁ₗ[π, bk] r @ ◁ ty) T*)
+        match bk' with
+        | Owned wl =>
+          prove_with_subtype E L2 false ProveDirect (maybe_creds (negb wl) ∗ ⌜if negb wl then match ltype_lty rt2 lt2 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | _ => True end else True⌝) (λ L3 κs2 R3,
+            match ltype_blocked_lfts lt2 with
+            | [] =>
+                (* we could unblock everything, directly subsume *)
+                weak_subltype E L3 (Owned true) r2 r lt2 (◁ ty) (T L3 κs2 (R2 ∗ R3))
+            | κs =>
+                weak_subltype E L3 (Owned true) r2 r (ltype_core lt2) (◁ ty) (T L3 (κs ++ κs2) (R2 ∗ R3))
+            end)
+        | _ => False
+        end))
+    ⊢ prove_with_subtype E L true ProveWithStratify (l ◁ₗ[π, Owned true] r @ (◁ ty))%I T.
+  Proof.
+    rewrite /FindLoc.
+    iIntros "Ha". iDestruct "Ha" as ([rt' [[lt' r'] bk']]) "(Hl & Ha)". simpl.
+    iIntros (???) "#CTX #HE HL". iMod ("Ha" with "[//] [//] CTX HE HL Hl") as "(%L2 & %R2 & %rt2 & %lt2 & %r2 & HL & %Hsteq & Hstep & HT)".
+    destruct bk' as [ wl | | ]; [ | done..].
+    iMod ("HT" with "[] [] CTX HE HL") as "(%L3 & %κs2 & %R3 & Hs & HL & HT)"; [done.. | ].
+    simpl. iMod ("Hs") as "((Hcreds & %) & HR3)".
+    iAssert (logical_step F (l ◁ₗ[ π, Owned true] r2 @ lt2 ∗ R2)) with "[Hcreds Hstep]" as "Hstep".
+    { iApply logical_step_fupd. iApply (logical_step_wand with "Hstep").
+      iIntros "(Ha & $)". destruct wl; first done.
+      iPoseProof (ltype_own_Owned_false_true with "Ha Hcreds") as "$"; done. }
+    destruct (decide (ltype_blocked_lfts lt2 = [])) as [-> | Hneq].
+    - iMod ("HT" with "[//] CTX HE HL") as "(#Hincl & HL & HT)".
+      iExists _, κs2, _. iFrame.
+      simpl. iModIntro. iApply logical_step_fupd. iApply (logical_step_wand with "Hstep").
+      iIntros "(Hl & $)".
+      iDestruct "Hincl" as "(_ & Hincl & _)".
+      iMod (ltype_incl'_use with "Hincl Hl"); first done.
+      iModIntro. iFrame. by iIntros "_ !>".
+    - iAssert (weak_subltype E L3 (Owned true) r2 r (ltype_core lt2) (◁ ty) (T L3 (ltype_blocked_lfts lt2 ++ κs2) (R2 ∗ R3)))%I with "[HT]" as "HT".
+      { destruct (ltype_blocked_lfts lt2); simpl; first done. done. }
+      iMod ("HT" with "[//] CTX HE HL") as "(#Hincl & HL & HT)".
+      iModIntro. iExists _, _, _. iFrame.
+      iApply (logical_step_wand with "Hstep").
+      iIntros "(Hl & $)".
+      iFrame. iIntros "Hdead".
+      iPoseProof (imp_unblockable_blocked_dead lt2) as "Hunblock".
+      iDestruct "Hincl" as "(_ & Hincl & _)".
+      rewrite lft_dead_list_app. iDestruct "Hdead" as "(Hdead & _)".
+      iMod (imp_unblockable_use with "Hunblock Hdead Hl") as "Hl"; first done.
+      by iMod (ltype_incl'_use with "Hincl Hl") as "$".
+  Qed.
+  Global Instance prove_with_subtype_ofty_step_owned_true_inst π E L (l : loc) {rt} (ty : type rt) (r : place_rfn rt) : ProveWithSubtype E L true ProveWithStratify (l ◁ₗ[π, Owned true] r @ ◁ ty)%I | 499 :=
+    λ T, i2p (prove_with_subtype_ofty_step_owned_true π E L l ty r T).
 
   Lemma prove_with_subtype_pure E L step pm (P : Prop) T :
     ⌜P⌝ ∗ T L [] True ⊢ prove_with_subtype E L step pm (⌜P⌝) T.

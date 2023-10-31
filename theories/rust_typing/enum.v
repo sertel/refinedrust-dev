@@ -481,7 +481,9 @@ Section unfold.
     apply syn_type_has_layout_enum_inv in Hst as (el & ul & variant_lys & Hul & Hel & -> & Hvariants).
     iExists el.
     iSplitR. { iPureIntro. eapply use_enum_layout_alg_Some; eauto. }
-    iR. iFrame. iExists r'. iR.
+    iR. iFrame. 
+    iSplitR. { rewrite enum_tag_ty_Some'; done. }
+    iExists r'. iR.
     iNext. iMod "Ha" as "(%v & Hl & Hv)".
     rewrite /ty_own_val/=.
     iDestruct "Hv" as "(%rt' & %ty' & %r1 & %ly & %Hen & %Hly' & Hv)".

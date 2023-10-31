@@ -169,10 +169,10 @@ Proof.
   destruct b1, b2; try done; unfold bor_kind_direct_incl.
   + iDestruct "Hincl" as "->"; eauto.
   + rewrite !ltype_own_enum_unfold /enum_ltype_own.
-    iIntros "(%el & %Hen & %Hly & Hlb & [])".
+    iIntros "(%el & %Hen & %Hly & Hlb & ? & [])".
   + rewrite !ltype_own_enum_unfold /enum_ltype_own.
     iDestruct "Hincl" as "(Hincl & ->)".
-    iIntros "(%el & %Hen & %Hly & Hlb & [])".
+    iIntros "(%el & %Hen & %Hly & Hlb & ? & [])".
 Qed.
 
 
