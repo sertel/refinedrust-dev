@@ -1,5 +1,26 @@
 From caesium Require Import lang.
 
+(* TODO move *)
+Lemma Nat_pow_max x n1 n2 :
+  (1 ≤ x)%nat →
+  (x^(Nat.max n1 n2))%nat = Nat.max (x^n1) (x^n2).
+Proof.
+  intros ?.
+  destruct (Nat.max_spec n1 n2) as [[Hle ->] | [Hle ->]].
+  - rewrite Nat.max_r; first lia. apply Nat.pow_le_mono_r; lia.
+  - rewrite Nat.max_l; first lia. apply Nat.pow_le_mono_r; lia.
+Qed.
+(* TODO move *)
+Lemma Nat_Z_in_bounds_max (l h : Z) (n1 n2 : nat) :
+  (l ≤ n1 ≤ h) →
+  (l ≤ n2 ≤ h) →
+  (l ≤ (n1 `max` n2)%nat ≤ h).
+Proof.
+  intros Ha Hb. destruct (Nat.max_spec n1 n2) as [[Hle ->] | [Hle ->]]; lia.
+Qed.
+
+
+
 Lemma mjoin_has_struct_layout sl vs :
   Forall2 (λ v ly, v `has_layout_val` ly) vs sl.(sl_members).*2 →
   mjoin vs `has_layout_val` sl.
@@ -1031,14 +1052,7 @@ Proof.
 Qed.
 
 (** Alignment limits *)
-(* TODO move *)
-Lemma Nat_pow_max n1 n2 :
-  (2^(Nat.max n1 n2))%nat = Nat.max (2^n1) (2^n2).
-Proof.
-  destruct (Nat.max_spec n1 n2) as [[Hle ->] | [Hle ->]].
-  - rewrite Nat.max_r; first lia. apply Nat.pow_le_mono_r; lia.
-  - rewrite Nat.max_l; first lia. apply Nat.pow_le_mono_r; lia.
-Qed.
+
 
 Lemma sl_align_eq (sl : struct_layout) :
   ly_align sl = max 1 (max_list (ly_align <$> (sl_members sl).*2)).
@@ -1046,7 +1060,7 @@ Proof.
   rewrite /ly_align{1}/ly_align_log/=.
   generalize (sl_members sl).*2 => lys.
   clear sl. induction lys as [ | ly lys IH]; simpl; first done.
-  rewrite Nat_pow_max. rewrite IH.
+  rewrite Nat_pow_max; last lia. rewrite IH.
   unfold fmap. lia.
 Qed.
 Lemma ul_align_eq (ul : union_layout) :
@@ -1055,17 +1069,8 @@ Proof.
   rewrite /ly_align{1}/ly_align_log/=.
   generalize (ul_members ul).*2 => lys.
   clear ul. induction lys as [ | ly lys IH]; simpl; first done.
-  rewrite Nat_pow_max. rewrite IH.
+  rewrite Nat_pow_max; last lia. rewrite IH.
   unfold fmap. lia.
-Qed.
-
-(* TODO move *)
-Lemma Nat_Z_in_bounds_max (l h : Z) (n1 n2 : nat) :
-  (l ≤ n1 ≤ h) →
-  (l ≤ n2 ≤ h) →
-  (l ≤ (n1 `max` n2)%nat ≤ h).
-Proof.
-  intros Ha Hb. destruct (Nat.max_spec n1 n2) as [[Hle ->] | [Hle ->]]; lia.
 Qed.
 
 Lemma struct_layout_alg_align_in_bounds `{!LayoutAlg} sn fields sl :

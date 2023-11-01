@@ -905,7 +905,7 @@ Ltac unfold_common_caesium_defs :=
     ly_size, ly_with_align, ly_align_log, layout_wf,
   (* Integer bounds *)
     max_int, min_int, int_half_modulus, int_modulus,
-    bits_per_int, bytes_per_int,
+    bits_per_int, bytes_per_int, bytes_per_addr_log,
   (* Address bounds *)
     max_alloc_end, min_alloc_start, bytes_per_addr,
   (* Other byte-level definitions *)

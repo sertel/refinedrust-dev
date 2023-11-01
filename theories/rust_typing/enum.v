@@ -5,6 +5,85 @@ Set Default Proof Using "Type".
 
 Section union.
   Context `{!typeGS Σ}.
+
+  (* TODO move *)
+  Lemma ly_size_layout_of_union_member ul ly mem :
+    layout_of_union_member mem ul = Some ly →
+    ly_size ly ≤ ly_size ul.
+  Proof.
+    rewrite {2}/ly_size/ul_layout.
+    rewrite /layout_of_union_member.
+    intros (i & Hidx & Ha)%bind_Some.
+    eapply max_list_elem_of_le.
+    apply elem_of_list_fmap.
+    exists ly. split; first done.
+    rewrite -list_lookup_fmap in Ha.
+    by eapply elem_of_list_lookup_2.
+  Qed.
+
+  Lemma max_list_pow (n : nat) l :
+    1 ≤ n →
+    n ^ (max_list l) = max 1 (max_list ((λ x, n^x) <$> l)).
+  Proof.
+    intros ?.
+    induction l as [ | x l IH]; simpl; first done.
+    rewrite Nat_pow_max; last done.
+    rewrite IH.
+    rewrite Nat.max_assoc. rewrite [_ `max` 1]Nat.max_comm.
+    rewrite -Nat.max_assoc. done.
+  Qed.
+
+  Lemma ly_align_log_union_layout (ul : union_layout) :
+    ly_align_log ul = max_list (ly_align_log <$> (ul_members ul).*2).
+  Proof. rewrite /ly_align_log//. Qed.
+  Lemma ly_align_union_layout (ul : union_layout) :
+    ly_align ul = 1 `max` max_list (ly_align <$> (ul_members ul).*2).
+  Proof.
+    rewrite /ly_align. rewrite ly_align_log_union_layout.
+    rewrite max_list_pow; last lia.
+    f_equiv. f_equiv.
+    rewrite -list_fmap_compose list_fmap_compose//.
+  Qed.
+  Lemma aligned_to_max_list x l al :
+    x ∈ al →
+    l `aligned_to` 2^ max_list al →
+    l `aligned_to` 2^ x.
+  Proof.
+    induction al as [ | y al IH] in x |-*.
+    { intros ?%elem_of_nil. done. }
+    intros [ -> | Hel ]%elem_of_cons.
+    - simpl. intros ?%aligned_to_2_max_l; done.
+    - intros ?%aligned_to_2_max_r. by eapply IH.
+  Qed.
+
+  Lemma has_layout_loc_layout_of_union_member ul ly mem l :
+    layout_of_union_member mem ul = Some ly →
+    l `has_layout_loc` ul →
+    l `has_layout_loc` ly.
+  Proof.
+    rewrite /layout_of_union_member.
+    intros (i & Hidx & Ha)%bind_Some.
+    rewrite /has_layout_loc /ly_align.
+    rewrite ly_align_log_union_layout.
+    apply aligned_to_max_list.
+    apply elem_of_list_fmap.
+    exists ly. split; first done.
+    rewrite -list_lookup_fmap in Ha.
+    by eapply elem_of_list_lookup_2.
+  Qed.
+
+  Definition active_union_rest_ly (ul : union_layout) (ly : layout) := Layout (ly_size ul - ly.(ly_size)) 0.
+  Lemma has_layout_loc_active_union_rest_ly ul ly l :
+    l `has_layout_loc` (active_union_rest_ly ul ly).
+  Proof.
+    rewrite /has_layout_loc /aligned_to. destruct caesium_config.enforce_alignment; last done.
+    rewrite /active_union_rest_ly /ly_align /=.
+    apply Z.divide_1_l.
+  Qed.
+  Lemma ly_size_active_union_rest_ly ul ly :
+    ly_size (active_union_rest_ly ul ly) = ly_size ul - ly.(ly_size).
+  Proof. done. Qed.
+
   (** [active_union_t ty uls] basically wraps [ty] to lay it out in [uls], asserting that a union currently is in variant [variant].
       This is not capturing the allowed union layouting in Rust in full generality (Rust may freely choose the offsets of the variants),
       but we are anyways already not handling tags correctly, so who cares... *)
@@ -14,34 +93,41 @@ Section union.
     ty_own_val π r v :=
       (∃ ul ly, ⌜use_union_layout_alg uls = Some ul⌝ ∗
         ⌜layout_of_union_member variant ul = Some ly⌝ ∗
+        ⌜syn_type_has_layout (ty_syn_type ty) ly⌝ ∗
         take ly.(ly_size) v ◁ᵥ{π} r @ ty ∗
-        drop ly.(ly_size) v ◁ᵥ{π} () @ uninit (UntypedSynType (Layout (ly_size ul - ly.(ly_size)) 0)))%I;
+        drop ly.(ly_size) v ◁ᵥ{π} () @ uninit (UntypedSynType $ active_union_rest_ly ul ly))%I;
     ty_syn_type := uls;
     ty_has_op_type ot mt :=
-      (* we should not directly read from/write to this *)
-      (* TODO: really? *)
-      False;
+      (* only untyped reads are allowed *)
+      (* TODO maybe make this more precise. Typed ops would be allowed for the first segment *)
+      ∃ ul, use_union_layout_alg uls = Some ul ∧ ot = UntypedOp ul;
     ty_shr κ π r l :=
       (∃ ul ly, ⌜use_union_layout_alg uls = Some ul⌝ ∗
         ⌜layout_of_union_member variant ul = Some ly⌝ ∗
         ⌜l `has_layout_loc` ul⌝ ∗
         l ◁ₗ{π, κ} r @ ty ∗
-        (l +ₗ ly.(ly_size)) ◁ₗ{π, κ} () @ uninit (UntypedSynType (ly_offset (ul : layout) ly.(ly_size))))%I;
+        (l +ₗ ly.(ly_size)) ◁ₗ{π, κ} () @ uninit (UntypedSynType $ active_union_rest_ly ul ly))%I;
     ty_ghost_drop r := ty.(ty_ghost_drop) r;
     ty_lfts := ty_lfts ty;
     ty_wf_E := ty_wf_E ty;
     ty_sidecond := True;
   |}.
   Next Obligation.
-    iIntros (rt ty var uls π r v) "(%ul & %ly & % & % & Hv & Hvr)".
+    iIntros (rt ty var uls π r v) "(%ul & %ly & %Halg & %Hly & %Hst & Hv & Hvr)".
     iExists ul.
     iSplitR. { iPureIntro. by apply use_union_layout_alg_Some_inv. }
-    iPoseProof (ty_has_layout with "Hv") as "(%ly' & %Halg0 & %Hv0)".
+    iPoseProof (ty_own_val_has_layout with "Hv") as "%Hv0"; first done.
     rewrite uninit_own_spec. iDestruct "Hvr" as "(% & %Halg1 & %Hv1)".
     iPureIntro. apply syn_type_has_layout_untyped_inv in Halg1 as (-> & _ & _).
-  Admitted.
+    move: Hv0 Hv1. apply ly_size_layout_of_union_member in Hly.
+    rewrite /has_layout_val/active_union_rest_ly.
+    rewrite take_length drop_length.
+    rewrite {4}/ly_size.
+    lia.
+  Qed.
   Next Obligation.
-    done.
+    intros ??? uls ot mt (ul & Hul & ->).
+    simpl. by eapply use_union_layout_alg_Some_inv.
   Qed.
   Next Obligation.
     eauto.
@@ -55,17 +141,110 @@ Section union.
   Qed.
   Next Obligation.
     iIntros (rt ty variant uls E κ l ly π r q ?) "CTX Htok %Halg %Hly #Hlb Hb".
-  Admitted.
+    set (bor_contents :=
+      (∃ (ul : union_layout) ly',
+        ⌜use_union_layout_alg uls = Some ul⌝ ∗
+        ⌜layout_of_union_member variant ul = Some ly'⌝ ∗
+        ⌜syn_type_has_layout (ty_syn_type ty) ly'⌝ ∗
+        ∃ v : val, l ↦ v ∗ take (ly_size ly') v ◁ᵥ{ π} r @ ty ∗ drop (ly_size ly') v ◁ᵥ{ π} .@ uninit (UntypedSynType (active_union_rest_ly ul ly')))%I).
+    iPoseProof (bor_iff _ _ bor_contents with "[] Hb") as "Hb".
+    { iNext. iModIntro. rewrite /bor_contents. iSplit.
+      - iIntros "(%v & Hl & %ul & %ly' & ? & ? & ? & ? & ?)"; eauto with iFrame.
+      - iIntros "(%ul & %ly' & ? & ? & ? & %v & ? & ? & ?)"; eauto with iFrame. }
+    rewrite /bor_contents.
+    iDestruct "CTX" as "#(LFT & TIME & LLCTX)".
+    rewrite -lft_tok_sep. iDestruct "Htok" as "(Htok & Htok1)".
+    iApply fupd_logical_step.
+    iMod (bor_exists with "LFT Hb") as "(%ul & Hb)"; first done.
+    iMod (bor_exists with "LFT Hb") as "(%ly' & Hb)"; first done.
+    iMod (bor_sep with "LFT Hb") as "(Hul & Hb)"; first done.
+    iMod (bor_persistent with "LFT Hul Htok") as "(>%Hul & Htok)"; first done.
+    iMod (bor_sep with "LFT Hb") as "(Hly & Hb)"; first done.
+    iMod (bor_persistent with "LFT Hly Htok") as "(>%Hul_ly & Htok)"; first done.
+    iMod (bor_sep with "LFT Hb") as "(Hst & Hb)"; first done.
+    iMod (bor_persistent with "LFT Hst Htok") as "(>%Hst & Htok)"; first done.
+
+    specialize (ly_size_layout_of_union_member _ _ _ Hul_ly) as ?.
+    apply use_layout_alg_union_Some_inv in Halg as (ul' & Halg & ->).
+    assert (ul' = ul) as -> by naive_solver.
+
+    (* now split the values in the borrow *)
+    iPoseProof (bor_iff _ _ ((∃ v1 : val, l ↦ v1 ∗ v1 ◁ᵥ{ π} r @ ty) ∗ (∃ v2 : val, (l +ₗ ly_size ly') ↦ v2 ∗ v2 ◁ᵥ{ π} .@ uninit (UntypedSynType (active_union_rest_ly ul ly')))) with "[] Hb") as "Hb".
+    { iNext. iModIntro. iSplit.
+      - iIntros "(%v & Hl & Ha & Hb)".
+        rewrite -{1}(take_drop (ly_size ly') v).
+        rewrite heap_mapsto_app. iDestruct "Hl" as "(Hl1 & Hl2)".
+        iPoseProof (ty_own_val_has_layout with "Ha") as "%Hlyv"; first done.
+        rewrite /has_layout_val take_length in Hlyv.
+        iSplitL "Hl1 Ha". { iExists _. iFrame. }
+        iPoseProof (ty_has_layout with "Hb") as "(%ly2 & %Hst2 & %Hlyv2)".
+        apply syn_type_has_layout_untyped_inv in Hst2 as (-> & ? & ? & ?).
+        move: Hlyv2. rewrite /has_layout_val drop_length /active_union_rest_ly {2}/ly_size/= => Hlyv2.
+        rewrite take_length. rewrite Nat.min_l; last lia.
+        eauto with iFrame.
+      - iIntros "((%v1 & Hl1 & Hv1) & (%v2 & Hl2 & Hv2))".
+        iExists (v1 ++ v2).
+        iPoseProof (ty_own_val_has_layout with "Hv1") as "%Hlyv"; first done.
+        iPoseProof (ty_has_layout with "Hv2") as "(%ly2 & %Hst2 & %Hlyv2)".
+        apply syn_type_has_layout_untyped_inv in Hst2 as (-> & ? & ? & ?).
+        move: Hlyv2. rewrite /has_layout_val /active_union_rest_ly {1}/ly_size/= => Hlyv2.
+        rewrite /has_layout_val in Hlyv.
+        rewrite heap_mapsto_app. rewrite Hlyv. iFrame.
+        iSplitL "Hv1". { rewrite take_app'; first done. lia. }
+        rewrite drop_app'; last lia. done. }
+    iMod (bor_sep with "LFT Hb") as "(Hb1 & Hb2)"; first done.
+
+    (* now share both parts *)
+    iDestruct "Htok" as "(Htok11 & Htok12)".
+    iDestruct "Htok1" as "(Htok21 & Htok22)".
+
+    iPoseProof (ty_share _ E with "[$LFT $TIME $LLCTX] [Htok11 Htok21] [] [] [] Hb1") as "Hb1"; first done.
+    { rewrite -lft_tok_sep. iFrame. }
+    { done. }
+    { iPureIntro. by eapply has_layout_loc_layout_of_union_member. }
+    { iApply (loc_in_bounds_shorten_suf with "Hlb"). done. }
+
+    iPoseProof (ty_share _ E with "[$LFT $TIME $LLCTX] [Htok12] [] [] [] Hb2") as "Hb2"; first done.
+    { simpl. rewrite right_id. iFrame. }
+    { simpl. iPureIntro. apply syn_type_has_layout_untyped; first done.
+      - rewrite /active_union_rest_ly/layout_wf/ly_align/=. apply Z.divide_1_l.
+      - rewrite /active_union_rest_ly {1}/ly_size. apply use_union_layout_alg_size in Hul. lia.
+      - rewrite /ly_align_in_bounds/ly_align/active_union_rest_ly/ly_align_log/=.
+        unfold_common_caesium_defs. simpl. nia.
+    }
+    { iPureIntro. apply has_layout_loc_active_union_rest_ly. }
+    { iApply (loc_in_bounds_offset with "Hlb").
+      - done.
+      - simpl. lia.
+      - simpl. rewrite ly_size_active_union_rest_ly. lia. }
+
+    iApply (logical_step_compose with "Hb1").
+    iApply (logical_step_compose with "Hb2").
+    iApply logical_step_intro.
+    iModIntro.
+    iIntros "(Hun & Htok1) (Hty & Htok2)".
+    simpl. rewrite right_id.
+    rewrite -lft_tok_sep.
+    iDestruct "Htok2" as "(? & ?)". iFrame.
+    iExists ul, ly'. iR. iR. iR. done.
+  Qed.
   Next Obligation.
     iIntros (rt ty variant uls κ κ' π r l) "#Hincl Hb".
-  Admitted.
+    iDestruct "Hb" as "(%ul & %ly & ? & ? & ? & Ha & Hb)".
+    iExists ul, ly. iFrame.
+    iSplitL "Ha". { iApply ty_shr_mono; done. }
+    iApply ty_shr_mono; done.
+  Qed.
   Next Obligation.
     iIntros (?????????) "Hb".
-    iDestruct "Hb" as "(%ul & %ly & %Halg & %Hly & Hv & _)".
+    iDestruct "Hb" as "(%ul & %ly & %Halg & %Hly & ? & Hv & _)".
     iPoseProof (ty_own_ghost_drop with "Hv") as "Ha"; last iApply (logical_step_wand with "Ha"); eauto.
   Qed.
   Next Obligation.
-    done.
+    intros rt ty variant uls ot mt st π r v (ul & Hul & ->).
+    iIntros "Hv".
+    destruct mt; first done; last done.
+    by rewrite mem_cast_UntypedOp.
   Qed.
 End union.
 Global Typeclasses Opaque active_union_t.
@@ -83,8 +262,8 @@ Section type_incl.
     iSplitR. { simpl. eauto. }
     iSplitR; iModIntro.
     - iIntros (π v) "Hv". rewrite {3 4}/ty_own_val/=.
-      iDestruct "Hv" as "(%ul & %ly & %Huls & %Hly & Hv1 & Hv2)".
-      iExists ul, ly. iR. iR. iSplitL "Hv1".
+      iDestruct "Hv" as "(%ul & %ly & %Huls & %Hly & % & Hv1 & Hv2)".
+      rewrite -Hst. iExists ul, ly. iR. iR. iR. iSplitL "Hv1".
       + iApply "Hincl". done.
       + done.
     - iIntros (κ π l) "Hl". rewrite {3 4}/ty_shr/=.
@@ -280,7 +459,12 @@ Section enum.
     iExists sl. done.
   Qed.
   Next Obligation.
-  Admitted.
+    rewrite /is_enum_ot. simpl.
+    intros rt en ot mt Hot.
+    destruct ot as [ | | | | ly]; try done.
+    destruct Hot as (el & Halg & -> & Ha).
+    simpl. by apply use_enum_layout_alg_Some_inv.
+  Qed.
   Next Obligation.
     eauto.
   Qed.
@@ -345,10 +529,33 @@ Section enum.
     iApply logical_step_intro. done.
   Qed.
   Next Obligation.
-    iIntros (rt e ot mt st π r v ?) "Hl".
-    (*done.*)
-  (*Qed.*)
-  Admitted.
+    iIntros (rt en ot mt st π r v Hot) "Hl".
+    iDestruct "Hl" as "(%rt' & %ty' & %r' & %ly & %Hen & %Hst & Ha)".
+    destruct mt; first done; first last.
+    { destruct ot; done. }
+    iExists rt', ty', r', ly. iR. iR.
+
+    iApply (ty_memcast_compat _ _ _ MCCopy with "Ha").
+    simpl. rewrite /is_struct_ot/=. split; first done.
+    destruct ot as [ | | | | ly']; [done.. | ].
+    rewrite /is_enum_ot in Hot.
+    destruct Hot as (el & Hel & -> & Hels).
+    exists el. split; first done. split; first done.
+    split.
+    { exists (els_tag_it (enum_els en)). split_and!.
+      - eapply syn_type_has_layout_int; first done.
+        apply IntType_to_it_size_bounded.
+      - done.
+      - apply IntType_to_it_size_bounded. }
+    split; last done.
+    apply use_enum_layout_alg_inv in Hel as (ul & variants & Hul & Hel & Hvariants).
+    exists ul.
+    assert (syn_type_has_layout (uls_of_els (enum_els en)) ul) as Hul'.
+    { eapply syn_type_has_layout_union; last done. done. }
+    split; first done.
+    exists ul. split; last done.
+    eapply use_union_layout_alg_Some; done.
+  Qed.
 
   (* TODO non-expansiveness *)
 
@@ -481,7 +688,7 @@ Section unfold.
     apply syn_type_has_layout_enum_inv in Hst as (el & ul & variant_lys & Hul & Hel & -> & Hvariants).
     iExists el.
     iSplitR. { iPureIntro. eapply use_enum_layout_alg_Some; eauto. }
-    iR. iFrame. 
+    iR. iFrame.
     iSplitR. { rewrite enum_tag_ty_Some'; done. }
     iExists r'. iR.
     iNext. iMod "Ha" as "(%v & Hl & Hv)".
@@ -513,28 +720,28 @@ Section unfold.
   Lemma enum_unfold_1_shared {rt : Type} (en : enum rt) κ r :
     ⊢ ltype_incl' (Shared κ) (#r) (#r) (◁ (enum_t en))%I (EnumLtype en (enum_tag en r) (◁ enum_tag_type en (enum_tag en r))).
   Proof.
-  Admitted.
+  Abort.
   Lemma enum_unfold_1_uniq {rt : Type} (en : enum rt) κ γ r :
     ⊢ ltype_incl' (Uniq κ γ) (#r) (#r) (◁ (enum_t en))%I (EnumLtype en (enum_tag en r) (◁ enum_tag_type en (enum_tag en r))).
   Proof.
-  Admitted.
+  Abort.
 
   Local Lemma enum_unfold_1' {rt : Type} (en : enum rt) k r :
     ⊢ ltype_incl' k (#r) (#r) (◁ (enum_t en))%I (EnumLtype en (enum_tag en r) (◁ enum_tag_type en (enum_tag en r))).
   Proof.
     destruct k.
     - iApply enum_unfold_1_owned.
-    - iApply enum_unfold_1_shared.
-    - iApply enum_unfold_1_uniq.
-  Qed.
+    (*- iApply enum_unfold_1_shared.*)
+    (*- iApply enum_unfold_1_uniq.*)
+  Abort.
 
   Lemma enum_unfold_1 {rt : Type} (en : enum rt) k r :
     ⊢ ltype_incl k (#r) (#r) (◁ (enum_t en))%I (EnumLtype en (enum_tag en r) (◁ enum_tag_type en (enum_tag en r))).
   Proof.
     iSplitR; first done. iModIntro. iSplit.
-    + iApply enum_unfold_1'.
-    + simp_ltypes. by iApply enum_unfold_1'.
-  Qed.
+    (*+ iApply enum_unfold_1'.*)
+    (*+ simp_ltypes. by iApply enum_unfold_1'.*)
+  Abort.
 
 
 
@@ -629,13 +836,14 @@ Section rules.
       simpl. rewrite -Hul_variants. rewrite Hlook_ly. done. }
     simpl.
     iPoseProof (ty_own_val_has_layout with "Hv") as "%Hv"; first done.
+    iR.
     iSplitL "Hv".
     - rewrite take_app'; first done. done.
     - rewrite drop_app'; last done.
       iApply uninit_own_spec.
       iExists _. iSplitR. { iPureIntro. apply syn_type_has_layout_untyped; first done.
         - by apply layout_wf_align_log_0.
-        - rewrite {1}/ly_size. apply use_union_layout_alg_size in Hul'. lia.
+        - rewrite ly_size_active_union_rest_ly. apply use_union_layout_alg_size in Hul'. lia.
         - by apply ly_align_in_bounds_1. }
       iPureIntro. rewrite /has_layout_val.
       rewrite replicate_length. rewrite /use_layout_alg'.
