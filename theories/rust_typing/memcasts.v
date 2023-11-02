@@ -1,4 +1,4 @@
-From refinedrust Require Import base.
+From refinedrust Require Import base util.
 
 (** ** op_types and mem_casts *)
 
@@ -105,55 +105,18 @@ Section optypes.
   Qed.
 End optypes.
 
-Lemma mem_cast_idemp v ot st st' :
-  mem_cast (mem_cast v ot st) ot st' = mem_cast v ot st.
-Proof.
-  (* TODO need stronger induction principle for the struct case *)
-  induction ot; simpl.
-  - rewrite /mem_cast.
-    destruct (val_to_bool v) as [b | ] eqn:Heq.
-    + rewrite (val_to_bytes_id_bool _ b); last done. simpl.
-      rewrite Heq. simpl. rewrite (val_to_bytes_id_bool _ b); done.
-    + simpl. destruct v; simpl; first done. rewrite replicate_length. done.
-  - rewrite /mem_cast.
-    destruct (val_to_bytes v) as [v' | ] eqn:Heq; simpl.
-    + erewrite val_to_bytes_idemp; done.
-    + rewrite replicate_length.
-      generalize (length v). intros []; done.
-  - rewrite /mem_cast.
-    destruct (val_to_loc v) as [l | ] eqn:Heq; simpl.
-    { rewrite Heq. done. }
-    destruct (val_to_bytes v) as [v' | ] eqn:Heq'; simpl.
-    + destruct (val_to_Z v' usize_t) as [ z | ] eqn:Heq2; simpl.
-      * case_bool_decide; first by rewrite val_to_of_loc //.
-        case_bool_decide; first by rewrite val_to_of_loc //.
-        case_bool_decide; by rewrite val_to_of_loc //.
-      * destruct v; simpl; first done.
-        rewrite replicate_length. done.
-    + destruct v; simpl; first done.
-      rewrite replicate_length //.
-  - rewrite /mem_cast. fold mem_cast.
-    simpl.
-    rewrite resize_length.
-    f_equiv. f_equiv.
-    generalize (sl_members sl) => f.
-    clear sl.
-    induction f as [ | [name ly] f IH]; simpl; first done.
-    (*destruct name; simpl.*)
-    admit.
-  - done.
-Admitted.
-
 Definition is_memcast_val (v : val) (ot : op_type) (v' : val) : Prop :=
   v' = v ∨ ∃ st, v' = mem_cast v ot st.
 
 Lemma is_memcast_val_memcast v ot v' st :
+  v `has_layout_val` (ot_layout ot) →
+  op_type_wf ot →
   is_memcast_val v ot v' →
   is_memcast_val v ot (mem_cast v' ot st).
 Proof.
-  intros [-> | [st' ->]].
+  intros ?? [-> | [st' ->]].
   - right. eauto.
-  - right. exists st'. rewrite mem_cast_idemp. done.
+  - right. exists st'. rewrite mem_cast_idemp; done.
 Qed.
 
 Lemma is_memcast_val_untyped_inv v v' ly :
@@ -169,7 +132,7 @@ Proof.
   rewrite /has_layout_val mem_cast_length //.
 Qed.
 
-Lemma is_memcast_val_has_layout_val v v' ot ly : 
+Lemma is_memcast_val_has_layout_val v v' ot ly :
   is_memcast_val v ot v' →
   v `has_layout_val` ly →
   v' `has_layout_val` ly.
@@ -177,7 +140,15 @@ Proof.
   intros [-> | (st & ->)] Hb; first done.
   by apply has_layout_val_mem_cast.
 Qed.
-Lemma is_memcast_val_length v v' ot : 
+Lemma is_memcast_val_has_layout_val' v v' ot ly :
+  is_memcast_val v ot v' →
+  v' `has_layout_val` ly →
+  v `has_layout_val` ly.
+Proof.
+  intros [-> | (st & ->)]; first done.
+  rewrite /has_layout_val mem_cast_length//.
+Qed.
+Lemma is_memcast_val_length v v' ot :
   is_memcast_val v ot v' →
   length v = length v'.
 Proof.

@@ -222,7 +222,7 @@ Proof.
       eapply IH; done.
 Qed.
 
-Lemma pad_struct_lookup_Some_Some {A} s l f k (x : A) n ly : 
+Lemma pad_struct_lookup_Some_Some {A} s l f k (x : A) n ly :
   length l = length (field_names s) →
   pad_struct s l f !! k = Some x →
   s !! k = Some (Some n, ly) →
@@ -234,7 +234,7 @@ Proof.
   rewrite Hlook2 in Hlooka. injection Hlooka as [= <- <-].
   destruct Hlook1 as [(_ & ?) | (? & _)]; naive_solver.
 Qed.
-Lemma pad_struct_lookup_Some_None {A} s l f k (x : A) ly : 
+Lemma pad_struct_lookup_Some_None {A} s l f k (x : A) ly :
   length l = length (field_names s) →
   pad_struct s l f !! k = Some x →
   s !! k = Some (None, ly) →
@@ -538,4 +538,31 @@ Definition ot_layout (ot : op_type) : layout :=
   | IntOp it => it_layout it
   | StructOp sl ots => sl
   | UntypedOp ly => ly
+  end.
+
+Lemma op_type_recursor (P : op_type → Type) :
+  P BoolOp →
+  (∀ it, P (IntOp it)) →
+  P PtrOp →
+  (∀ sl ots, list_is_list _ P ots → P (StructOp sl ots)) →
+  (∀ ly, P (UntypedOp ly)) →
+  ∀ ot, P ot.
+Proof.
+  intros Hbool Hint Hptr Hstruct Huntyped.
+  refine (fix IH ot {struct ot} := _ ).
+  destruct ot.
+  - apply Hbool.
+  - apply Hint.
+  - apply Hptr.
+  - apply Hstruct.
+    by apply list_is_list_full.
+  - apply Huntyped.
+Qed.
+
+(* Well-formedness of op_types requires that [StructOp] has coherent op_types for every struct component *)
+Fixpoint op_type_wf (ot : op_type) :=
+  match ot with
+  | StructOp sl ots =>
+      Forall2_cb (λ ot '(n, ly), op_type_wf ot ∧ ot_layout ot = ly) ots (named_fields sl.(sl_members))
+  | _ => True
   end.

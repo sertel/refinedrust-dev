@@ -6,6 +6,19 @@ Global Unset Program Cases.
 Global Set Keyed Unification.
 Global Open Scope Z_scope.
 
+Section induction.
+  (* unary parametricity translation of lists to derive induction principles for rose-tree inductives *)
+  Inductive list_is_list (A : Type) (PA : A → Type) : list A → Type :=
+    | list_is_nil : list_is_list A PA []
+    | list_is_cons : ∀ a : A, PA a → ∀ l : list A, list_is_list A PA l → list_is_list A PA (a :: l).
+
+  Lemma list_is_list_full {A} (PA : A → Type) (l : list A) :
+    (∀ a, PA a) → list_is_list A PA l.
+  Proof.
+    intros Hf. induction l; constructor; eauto.
+  Defined.
+End induction.
+
 (* TODO move *)
 Definition flip3 {A B C D} (f : A → B → C → D) : C → A → B → D :=
   λ c a b, f a b c.
@@ -39,8 +52,25 @@ Proof.
   inversion 1; subst. done.
 Qed.
 
+(* Computable version of Forall2_cb that
+  works well with the guardedness checker in the first argument list *)
+Definition Forall2_cb {X Y : Type} (f : X → Y → Prop) :=
+  fix rec (l1 : list X) (l2 : list Y) :=
+    match l1, l2 with
+    | [], [] => True
+    | x :: l1, y :: l2 => f x y ∧ rec l1 l2
+    | _, _ => False
+    end.
+Lemma Forall2_Forall2_cb {X Y} (f : X → Y → Prop) l1 l2 :
+  Forall2 f l1 l2 ↔ Forall2_cb f l1 l2.
+Proof.
+  induction l1 as [ | x l1 IH] in l2 |-*; simpl; destruct l2 as [ | y l2].
+  - apply Forall2_nil.
+  - split; last done. apply Forall2_nil_cons_inv.
+  - split; last done. apply Forall2_cons_nil_inv.
+  - rewrite Forall2_cons. by rewrite IH.
+Qed.
 
-(* TODO Move *)
 Lemma drop_app' {A} (l k : list A) n :
   length l = n → drop n (l ++ k) = k.
 Proof. intros <-. apply drop_app. Qed.
@@ -50,7 +80,7 @@ Proof. intros <-. apply take_app. Qed.
 
 
 (* TODO move *)
-Lemma list_to_map_lookup_fst {A B} `{Countable A} (l : list (A * B)) k : 
+Lemma list_to_map_lookup_fst {A B} `{Countable A} (l : list (A * B)) k :
   k ∈ l.*1 →
   NoDup (l.*1) →
   ∃ v, list_to_map (M := gmap A B) l !! k = Some v.

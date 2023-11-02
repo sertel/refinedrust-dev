@@ -811,16 +811,6 @@ Section ltype_def.
         lty_wf lt_cur ∧ lty_wf lt_full ∧ lty_rt lt_cur = rt_cur
     end.
 
-  (* unary parametricity translation *)
-  Inductive list_is_list (A : Type) (PA : A → Type) : list A → Type :=
-    | list_is_nil : list_is_list A PA []
-    | list_is_cons : ∀ a : A, PA a → ∀ l : list A, list_is_list A PA l → list_is_list A PA (a :: l).
-
-  Lemma list_is_list_full {A} (PA : A → Type) (l : list A) :
-    (∀ a, PA a) → list_is_list A PA l.
-  Proof.
-    intros Hf. induction l; constructor; eauto.
-  Defined.
 
   (* induction principle loosely based on unary parametricity *)
   Lemma lty_recursor :

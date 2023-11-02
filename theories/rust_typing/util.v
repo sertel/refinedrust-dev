@@ -69,6 +69,7 @@ Proof.
   rewrite /Fractional. intros Ha p q. rewrite Ha bi.later_sep//.
 Qed.
 
+
 Lemma list_max_insert (l : list nat) i n :
   list_max (<[i := n]> l) ≤ Nat.max n (list_max l).
 Proof.

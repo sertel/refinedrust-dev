@@ -524,6 +524,82 @@ Proof.
   destruct n => //. by apply: Hly.
 Qed.
 
+Lemma mem_cast_idemp v ot st st' :
+  v `has_layout_val` (ot_layout ot) →
+  op_type_wf ot →
+  mem_cast (mem_cast v ot st) ot st' = mem_cast v ot st.
+Proof.
+  intros Hly Hwf.
+  induction ot as [ | | | sl ots IH | ] using op_type_recursor in v, Hly, Hwf|-*; simpl.
+  - rewrite /mem_cast.
+    destruct (val_to_bool v) as [b | ] eqn:Heq.
+    + rewrite (val_to_bytes_id_bool _ b); last done. simpl.
+      rewrite Heq. simpl. rewrite (val_to_bytes_id_bool _ b); done.
+    + simpl. destruct v; simpl; first done. rewrite replicate_length. done.
+  - rewrite /mem_cast.
+    destruct (val_to_bytes v) as [v' | ] eqn:Heq; simpl.
+    + erewrite val_to_bytes_idemp; done.
+    + rewrite replicate_length.
+      generalize (length v). intros []; done.
+  - rewrite /mem_cast.
+    destruct (val_to_loc v) as [l | ] eqn:Heq; simpl.
+    { rewrite Heq. done. }
+    destruct (val_to_bytes v) as [v' | ] eqn:Heq'; simpl.
+    + destruct (val_to_Z v' usize_t) as [ z | ] eqn:Heq2; simpl.
+      * case_bool_decide; first by rewrite val_to_of_loc //.
+        case_bool_decide; first by rewrite val_to_of_loc //.
+        case_bool_decide; by rewrite val_to_of_loc //.
+      * destruct v; simpl; first done.
+        rewrite replicate_length. done.
+    + destruct v; simpl; first done.
+      rewrite replicate_length //.
+  - rewrite /mem_cast. fold mem_cast.
+    simpl. rewrite resize_length.
+    simpl in Hly.
+    f_equiv. f_equiv.
+
+    move: Hly Hwf.
+    rewrite /has_layout_val /layout_of {1}/ly_size/=.
+    generalize (sl_members sl) => f Hly Hwf.
+    clear sl.
+
+    induction f as [ | [name ly] f IH'] in v, ots, Hly, Hwf, IH |-*; simpl; first done.
+    simpl in Hly.
+    destruct name as [ name | ].
+    + destruct ots as [ | ot ots]; simpl; first done.
+      simpl in Hwf; destruct Hwf as ((Hwf1 & <-) & Hwf).
+      rewrite take_resize.
+      rewrite resize_app; first last.
+      { rewrite mem_cast_length take_length//. }
+      inversion IH as [ | ? IH1 ? IH2 ]; subst.
+
+      f_equiv.
+      * apply IH1; last done.
+        rewrite /has_layout_val take_length. lia.
+      * (* use IH *)
+        specialize (IH' (drop (ly_size (ot_layout ot)) v) _ IH2).
+        rewrite drop_resize_le; last lia.
+        rewrite -{2}IH'; last done; first last.
+        { rewrite drop_length. unfold fmap. lia. }
+        f_equiv; first done.
+        f_equiv; first done.
+        rewrite drop_length.
+        f_equiv.
+        rewrite drop_app'; first done.
+        rewrite mem_cast_length take_length. lia.
+    + (* padding field *)
+      f_equiv.
+      rewrite drop_resize_le; last lia.
+      specialize (IH' (drop (ly_size ly) v) _ IH).
+      rewrite -{2}IH'; last done; first last.
+      { rewrite drop_length. unfold fmap. lia. }
+      f_equiv. f_equiv; first done.
+      rewrite drop_length.
+      f_equiv.
+      rewrite drop_app'; first done.
+      rewrite replicate_length//.
+  - done.
+Qed.
 
 Global Typeclasses Opaque mem_cast_id.
 Arguments mem_cast : simpl never.

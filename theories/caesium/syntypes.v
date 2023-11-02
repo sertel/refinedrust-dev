@@ -1396,6 +1396,7 @@ Proof.
 Qed.
 
 
+
 (** Prevent simplification from unfolding it too eagerly. *)
 Arguments use_op_alg : simpl never.
 
@@ -1511,6 +1512,38 @@ Proof.
     eapply (use_union_layout_alg_op_alg (mk_uls _ _)).
     eapply use_union_layout_alg_Some; done.
 Qed.
+
+Lemma use_op_alg_wf `{!LayoutAlg} st ot :
+  use_op_alg st = Some ot →
+  op_type_wf ot.
+Proof.
+  induction st as [ | | | | sn fields IH | | | | | en tag_it variants IH | un variants IH ] in ot |-* using syn_type_strong_ind; rewrite /use_op_alg; simpl; fold use_op_alg; try naive_solver.
+  - intros (sl & Halg & Hfields)%bind_Some.
+    apply bind_Some in Hfields as (ots & Hots & [= <-]). simpl.
+    apply use_struct_layout_alg_inv in Halg as (field_lys & Halg & Hfields).
+    simpl in *. apply struct_layout_alg_has_fields in Halg.
+    move : Halg. rewrite /sl_has_members. generalize (sl_members sl) as members => members. clear sl.
+    intros ->.
+    move: Hfields. generalize (named_fields members) as named => named Hfields.
+
+    induction fields as [ | [name st] fields IH2] in named, ots, Hots, Hfields, IH |-*; simpl in *.
+    { injection Hots as <-. apply Forall2_nil_inv_l in Hfields as ->. done. }
+    simpl in IH. apply Forall_cons in IH as (Hot & IH).
+    apply Forall2_cons_inv_l in Hfields as ([n' ly] & named' & [<- Hst] & Hfields & ->).
+    apply bind_Some in Hots as (ots' & Hots & Hot1).
+    apply bind_Some in Hot1 as (ot1 & Hot1 & [= <-]).
+    simpl.
+    split.
+    + split; first by apply Hot.
+      apply syn_type_has_layout_op_alg in Hst as (ot' & Hot' & <-).
+      f_equiv. by eapply use_op_alg_inj.
+    + apply IH2; done.
+  - intros (ly & Halg & [= <-])%bind_Some. done.
+  - intros (ly & Halg & [= <-])%bind_Some. done.
+  - intros (ly & Halg & [= <-])%bind_Some. done.
+Qed.
+
+
 
 
 (* We can convert a value at [st1] into a value at [st2]:
