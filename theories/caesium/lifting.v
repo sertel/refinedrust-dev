@@ -2067,6 +2067,75 @@ Proof.
   simpl. rewrite app_nil_r. done.
 Qed.
 
+(* Focussing initialized struct components *)
+Local Lemma pad_struct_focus' {A} (els : list A) fields (make_uninit : layout → A) (Φ : nat → A → iProp Σ) (i0 : nat) :
+  length els = length (named_fields fields) →
+  ([∗ list] i ↦ x ∈ pad_struct fields els make_uninit, Φ (i + i0)%nat x) -∗
+  (* get just the named fields *)
+  ([∗ list] i ↦ x ∈ els, ∃ j ly n, ⌜fields !! j = Some (Some n, ly)⌝ ∗ ⌜named_fields fields !! (i)%nat = Some (n, ly)⌝ ∗ Φ (j + i0)%nat x) ∗
+  (* if we return the named fields, we can get back the whole thing *)
+  (∀ els',
+    ⌜length els' = length els⌝ -∗
+
+    ([∗ list] i ↦ x ∈ els', ∃ j ly n, ⌜fields !! j = Some (Some n, ly)⌝ ∗ ⌜named_fields fields !! (i + i0)%nat = Some (n, ly)⌝ ∗ Φ (j + i0)%nat x) -∗
+
+    ([∗ list] i ↦ x ∈ pad_struct fields els' make_uninit, Φ (i + i0)%nat x)).
+Proof.
+
+  (* What do we need to piece it together?
+      basically I should be able to go via uniqueness of names I guess
+
+      (* TODO *)
+      *)
+
+  iIntros (Hlen) "Ha".
+  iInduction fields as [ | [n ly] fields] "IH" forall (els Hlen i0); simpl.
+  { simpl in Hlen. destruct els; last done. simpl. iSplitR; first done. iIntros (els' Hlen').
+    destruct els'; last done. eauto. }
+  destruct n as [ n | ]; simpl.
+  - simpl in Hlen. destruct els as [ | el els]; first done; simpl in *.
+    iDestruct "Ha" as "(Ha & Hb)".
+    iPoseProof ("IH" $! els with "[] [Hb]") as "(Hb & Hcl)".
+    { iPureIntro. lia. }
+    { setoid_rewrite <-Nat.add_succ_r. iApply "Hb". }
+    iSplitL "Ha Hb".
+    { (* show the split *)
+      iSplitL "Ha".
+      { iExists 0%nat, _, _. iSplitR; first done. iSplitR; done. }
+      iApply (big_sepL_impl with "Hb"). iModIntro. iIntros (k x Hlook).
+      iIntros "(%j & % & % & %Hlook1 & %Hlook2 & Ha)".
+      iExists (S j), _, _. simpl. rewrite Nat.add_succ_r. iSplitR; first done. iSplitR; done. }
+    (* show that we can shift back *)
+    iIntros (els' Hlen') "Ha".
+    destruct els' as [ | el' els']; first done. simpl.
+    iDestruct "Ha" as "((%j & % & % & % & % & Ha) & Hb)".
+    (* now we have these elements back *)
+    iPoseProof ("Hcl" $! els' with "[] [Hb]") as "Hb".
+    { iPureIntro. simpl in *. lia. }
+    { iApply (big_sepL_impl with "Hb"). iModIntro. iIntros (k x Hlook).
+      iIntros "(%j' & % & % & %Hlook1 & %Hlook2 & Ha)".
+      destruct j'.
+      { simpl in *. injection Hlook1 as [= [= <-] <-].
+      (*iExists (S j'), _, _. i*)
+
+        (*iExists (S j'), _, _. *)
+Admitted.
+Lemma pad_struct_focus {A} (els : list A) fields (make_uninit : layout → A) (Φ : nat → A → iProp Σ) :
+  length els = length (named_fields fields) →
+  ([∗ list] i ↦ x ∈ pad_struct fields els make_uninit, Φ i x) -∗
+  ([∗ list] i ↦ x ∈ els, ∃ j ly n, ⌜fields !! j = Some (Some n, ly)⌝ ∗ ⌜named_fields fields !! i = Some (n, ly)⌝ ∗ Φ j x) ∗
+  (∀ els',
+    ⌜length els' = length els⌝ -∗
+    ([∗ list] i ↦ x ∈ els', ∃ j ly n, ⌜fields !! j = Some (Some n, ly)⌝ ∗ ⌜named_fields fields !! i = Some (n, ly)⌝ ∗ Φ j x) -∗
+    ([∗ list] i ↦ x ∈ pad_struct fields els' make_uninit, Φ i x)).
+Proof.
+  iIntros (?) "Ha".
+  iPoseProof (pad_struct_focus' els fields make_uninit Φ 0 with "[Ha]") as "Ha".
+  { done. }
+  { setoid_rewrite Nat.add_0_r. done. }
+  setoid_rewrite Nat.add_0_r. done.
+Qed.
+
 Lemma wp_call_bind_ind vs E Φ vf el:
   foldr (λ e f, (λ vl, WP e @ E {{ v, f (vl ++ [v]) }}))
         (λ vl, WP Call (Val vf) (Val <$> (vs ++ vl)) @ E {{ Φ }}) el [] -∗

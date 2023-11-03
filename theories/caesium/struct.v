@@ -127,6 +127,50 @@ Proof.
     rewrite option_fmap_id. by apply IH.
 Qed.
 
+Lemma sl_index_of_lookup sl n i :
+  index_of (sl_members sl) n = Some i ↔ (∃ ly : layout, sl.(sl_members) !! i = Some (Some n, ly)).
+Proof.
+  rewrite index_of_lookup.
+  split; first naive_solver.
+  intros (ly & Hsl). exists ly. split; first done.
+  intros j (n' & ly') Hlook Hlt.
+  simpl. destruct n' as [ n' | ]; last naive_solver.
+  intros [= ->].
+  move: Hsl Hlook.
+  assert (NoDup (field_names (sl_members sl))) as Hnd.
+  { specialize (sl_nodup sl). case_bool_decide; naive_solver. }
+  move: Hnd. generalize (sl_members sl) as fields. clear sl.
+  induction fields as [ | [n1 ly1] fields IH] in i, j, Hlt |-*; simpl.
+  { naive_solver. }
+  destruct n1 as [ n1 | ].
+  - (* named head *)
+    rewrite NoDup_cons. intros [Hnel Hnd].
+    destruct i as [ | i].
+    { simpl. intros [= [= ->] ->]. destruct j; lia. }
+    simpl. destruct j as [ | j]; simpl.
+    { intros Ha [= [= ->] ->].
+      apply Hnel. apply elem_of_list_omap.
+      eexists (_, _); split; last done.
+      by eapply elem_of_list_lookup_2. }
+    { eapply IH; last done. lia. }
+  - intros Hnd.
+    destruct i as [ | i]; first done.
+    simpl. destruct j as [ | j]; simpl; first done.
+    eapply IH; last done. lia.
+Qed.
+Lemma sl_index_of_lookup_1 sl i n :
+  index_of sl.(sl_members) n = Some i →
+  ∃ ly, sl.(sl_members) !! i = Some (Some n, ly).
+Proof.
+  intros Ha. apply sl_index_of_lookup. eauto.
+Qed.
+Lemma sl_index_of_lookup_2 sl i n ly :
+  sl.(sl_members) !! i = Some (Some n, ly) →
+  index_of sl.(sl_members) n = Some i.
+Proof.
+  intros Ha. apply sl_index_of_lookup. eauto.
+Qed.
+
 Lemma pad_struct_length {A} s (l : list A) f:
   length (pad_struct s l f) = length s.
 Proof. elim: s l => //= -[[?|]?] s IH l/=; f_equal; done. Qed.

@@ -261,6 +261,206 @@ Section subtype.
   Qed.
 End subtype.
 
+Section subltype.
+  Context `{!typeGS Σ}.
+
+  (** Box *)
+  (*  Admitted because the proofs are very similar to OwnedPtr and they are going to be removed soon when Box is no longer a primitive but defined in terms of OwnedPtr. *)
+  Local Lemma box_ltype_incl'_shared_in {rt1 rt2} (lt1 : ltype rt1) (lt2 : ltype rt2) κ' r1 r2 :
+    ltype_incl (Shared (κ')) r1 r2 lt1 lt2 -∗
+    ltype_incl' (Shared κ') #(r1) #(r2) (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq".
+    iModIntro.
+    iIntros (π l). rewrite !ltype_own_box_unfold /box_ltype_own.
+    iIntros "(%ly & ? & ? & ? & %r' & Hrfn & #Hb)".
+    iExists ly. iFrame.
+    iDestruct "Hrfn" as "%Heq". subst.
+    iExists r2. iSplitR; first done.
+    iModIntro. iMod "Hb". iDestruct "Hb" as "(%li & Hs & Hb)".
+    iDestruct "Heq" as "(_ & Heq & _)".
+    iModIntro. iExists _. iFrame "Hs". iApply ("Heq" with "Hb").
+  Qed.
+  Lemma box_ltype_incl_shared_in {rt1 rt2} (lt1 : ltype rt1) (lt2 : ltype rt2) κ' r1 r2 :
+    ltype_incl (Shared (κ')) r1 r2 lt1 lt2 -∗
+    ltype_incl (Shared κ') #(r1) #(r2) (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq".
+    iPoseProof (ltype_incl_syn_type with "Heq") as "%Hst".
+    iSplitR; first done. iModIntro.
+    simp_ltypes.
+    iSplit; (iApply box_ltype_incl'_shared_in).
+    - done.
+    - iApply ltype_incl_core. done.
+  Qed.
+
+  Local Lemma box_ltype_incl'_shared {rt} (lt1 lt2 : ltype rt) κ' r :
+    (∀ r, ltype_incl (Shared (κ')) r r lt1 lt2) -∗
+    ltype_incl' (Shared κ') r r (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq".
+    iModIntro.
+    iIntros (π l). rewrite !ltype_own_box_unfold /box_ltype_own.
+    iIntros "(%ly & ? & ? & ? & %r' & Hrfn & #Hb)".
+    iExists ly. iFrame.
+    iExists _. iFrame.
+    iModIntro. iMod "Hb". iDestruct "Hb" as "(%li & Hs & Hb)".
+    iDestruct ("Heq" $! _) as "(_ & Heq' & _)".
+    iModIntro. iExists _. iFrame "Hs". iApply ("Heq'" with "Hb").
+  Qed.
+  Lemma box_ltype_incl_shared {rt} (lt1 : ltype rt) (lt2 : ltype rt) κ' r :
+    (∀ r, ltype_incl (Shared (κ')) r r lt1 lt2) -∗
+    ltype_incl (Shared κ') r r (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq".
+    iPoseProof (ltype_incl_syn_type _ inhabitant with "Heq") as "%Hst".
+    iSplitR; first done. iModIntro.
+    simp_ltypes.
+    iSplit; (iApply box_ltype_incl'_shared).
+    - done.
+    - iIntros (?). iApply ltype_incl_core. done.
+  Qed.
+
+  Local Lemma box_ltype_incl'_owned_in {rt1 rt2} (lt1 : ltype rt1) (lt2 : ltype rt2) wl r1 r2 :
+    ltype_incl (Owned true) r1 r2 lt1 lt2  -∗
+    ltype_incl' (Owned wl) #(r1) #(r2) (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq". iModIntro.
+    iIntros (π l). rewrite !ltype_own_box_unfold /box_ltype_own.
+    iIntros "(%ly & ? & ? & Hlb & ? & Hb)".
+    iModIntro.
+    iExists _. iFrame.
+    iDestruct "Hb" as "(%r' & Hrfn & Hb)".
+    iDestruct "Hrfn" as "%Heq". rewrite -Heq.
+    iExists _. iSplitR; first done. iNext.
+    iMod "Hb" as "(%li & %ly' & Hl & ? & ? & ? & Hb)".
+    iDestruct "Heq" as "(%Hly_eq & Heq & _)".
+    iExists li, ly'. rewrite Hly_eq. iFrame.
+    iMod ("Heq" with "Hb") as "Hb". eauto with iFrame.
+  Qed.
+  Lemma box_ltype_incl_owned_in {rt1 rt2} (lt1 : ltype rt1) (lt2 : ltype rt2) wl r1 r2 :
+    ltype_incl (Owned true) r1 r2 lt1 lt2  -∗
+    ltype_incl (Owned wl) #(r1) #(r2) (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq".
+    iPoseProof (ltype_incl_syn_type with "Heq") as "%Hst".
+    iSplitR; first done. iModIntro.
+    simp_ltypes.
+    iSplit; (iApply box_ltype_incl'_owned_in).
+    - done.
+    - iApply ltype_incl_core. done.
+  Qed.
+
+  Local Lemma box_ltype_incl'_owned {rt} (lt1 lt2 : ltype rt) wl r :
+    (∀ r, ltype_incl (Owned true) r r lt1 lt2) -∗
+    ltype_incl' (Owned wl) r r (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq". iModIntro.
+    iIntros (π l). rewrite !ltype_own_box_unfold /box_ltype_own.
+    iIntros "(%ly & ? & ? & Hlb & ? & Hb)".
+    iModIntro.
+    iExists _. iFrame.
+    iDestruct "Hb" as "(%r' & Hrfn & Hb)".
+    iExists _. iFrame "Hrfn". iNext.
+    iMod "Hb" as "(%li & %ly' & Hl & ? & ? & ? & Hb)".
+    iDestruct ("Heq" $! _) as "(%Hly_eq & Heq' & _)".
+    iExists li, ly'. rewrite Hly_eq. iFrame.
+    iMod ("Heq'" with "Hb") as "Hb". eauto with iFrame.
+  Qed.
+  Lemma box_ltype_incl_owned {rt} (lt1 : ltype rt) (lt2 : ltype rt) wl r :
+    (∀ r, ltype_incl (Owned true) r r lt1 lt2) -∗
+    ltype_incl (Owned wl) r r (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq".
+    iPoseProof (ltype_incl_syn_type _ inhabitant with "Heq") as "%Hst".
+    iSplitR; first done. iModIntro.
+    simp_ltypes.
+    iSplit; (iApply box_ltype_incl'_owned).
+    - done.
+    - iIntros (?). iApply ltype_incl_core. done.
+  Qed.
+
+
+  (* Refinement subtyping under mutable references is restricted: we need to make sure that, no matter the future updates,
+     we can always get back to what the lender expects. Thus we loose all refinement information when descending below mutable references. *)
+  Local Lemma box_ltype_incl'_uniq {rt} (lt1 lt2 : ltype rt) κ r γ :
+    (∀ r, ltype_eq (Owned true) r r lt1 lt2) -∗
+    ltype_incl' (Uniq κ γ) r r (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq". iModIntro.
+    iIntros (π l). rewrite !ltype_own_box_unfold /box_ltype_own.
+      iIntros "(%ly & ? & ? & ? & ? & Hobs & Hb)".
+      iExists ly. iFrame.
+      iMod "Hb". iModIntro.
+      iApply (pinned_bor_iff with "[] [] Hb").
+      + iNext. iModIntro. iSplit; iIntros "(%r' & Hauth & Hb)";
+        iDestruct ("Heq" $! _) as "((%Hly_eq & Heq1 & _) & (_ & Heq2 & _))";
+        iExists _; rewrite Hly_eq; iFrame "Hauth".
+        all: iMod "Hb"; iDestruct "Hb" as "(%li & %ly' & Hl & ? & ? & ? & Hb)".
+        * iMod ("Heq1" with "Hb") as "Hb".
+          iModIntro. iExists _, _. iFrame.
+        * iMod ("Heq2" with "Hb") as "Hb".
+          iModIntro. iExists _, _. iFrame.
+      + iNext. iModIntro. iSplit; iIntros "(%r' & Hauth & Hb)";
+        iDestruct ("Heq" $! _) as "((%Hly_eq & _ & Heq1) & (_ & _ & Heq2))";
+        iExists _; rewrite Hly_eq; iFrame "Hauth".
+        all: iMod "Hb"; iDestruct "Hb" as "(%li & %ly' & Hl & ? & ? & ? & Hb)".
+        * rewrite !ltype_own_core_equiv. iMod ("Heq1" with "Hb") as "Hb".
+          iModIntro. iExists _, _. iFrame. rewrite ltype_own_core_equiv. done.
+        * rewrite !ltype_own_core_equiv. iMod ("Heq2" with "Hb") as "Hb".
+          iModIntro. iExists _, _. iFrame. rewrite ltype_own_core_equiv. done.
+  Qed.
+  Lemma box_ltype_incl_uniq {rt} (lt1 lt2 : ltype rt) κ r γ :
+    (∀ r, ltype_eq (Owned true) r r lt1 lt2) -∗
+    ltype_incl (Uniq κ γ) r r (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq".
+    iPoseProof (ltype_eq_syn_type _ inhabitant with "Heq") as "%Hst".
+    iSplitR; first done. iModIntro.
+    simp_ltypes.
+    iSplit; (iApply box_ltype_incl'_uniq).
+    - done.
+    - iIntros (?). iApply ltype_eq_core. done.
+  Qed.
+
+  Lemma box_ltype_incl {rt} (lt1 lt2 : ltype rt) k r :
+    (∀ k r, ltype_eq k r r lt1 lt2) -∗
+    ltype_incl k r r (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq".
+    destruct k.
+    - iApply box_ltype_incl_owned. iIntros (?). iDestruct ("Heq" $! _ _) as "[$ _]".
+    - iApply box_ltype_incl_shared. iIntros (?). iDestruct ("Heq" $! _ _) as "[$ _]".
+    - iApply box_ltype_incl_uniq. iIntros (?). done.
+  Qed.
+  Lemma box_ltype_eq {rt} (lt1 lt2 : ltype rt) k r :
+    (∀ k r, ltype_eq k r r lt1 lt2) -∗
+    ltype_eq k r r (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    iIntros "#Heq".
+    iSplit.
+    - iApply box_ltype_incl; done.
+    - iApply box_ltype_incl. iIntros (??). iApply ltype_eq_sym. done.
+  Qed.
+
+  Lemma box_full_subltype E L {rt} (lt1 lt2 : ltype rt) :
+    full_eqltype E L lt1 lt2 →
+    full_subltype E L (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    intros Hsub.
+    iIntros (qL) "HL #CTX #HE". iIntros (??).
+    iPoseProof (Hsub  with "HL CTX HE") as "Hsub".
+    iApply (box_ltype_incl with "Hsub").
+  Qed.
+  Lemma box_full_eqltype E L {rt} (lt1 lt2 : ltype rt) :
+    full_eqltype E L lt1 lt2 →
+    full_eqltype E L (BoxLtype lt1) (BoxLtype lt2).
+  Proof.
+    intros Hsub.
+    apply full_subltype_eqltype; eapply box_full_subltype; naive_solver.
+  Qed.
+End subltype.
+
 Section unfold.
   Context `{typeGS Σ} {rt} (ty : type rt).
 

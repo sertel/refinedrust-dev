@@ -100,6 +100,21 @@ Proof.
   - apply IH.
 Qed.
 
+Lemma list_lookup_omap_Some {A B} (l : list A) (f : A → option B) x y i :
+  l !! i = Some x →
+  f x = Some y →
+  ∃ j, omap f l !! j = Some y.
+Proof.
+  induction l as [ | h l IH] in i |-*; simpl; first done.
+  destruct i as [ | i]; simpl.
+  - intros [= ->] -> => /=.
+    by exists 0.
+  - intros Hlook Ha. destruct (IH _ Hlook Ha) as (j & Hlook').
+    destruct (f h) as [Hx | ].
+    + exists (S j). naive_solver.
+    + naive_solver.
+Qed.
+
 Lemma elem_of_cons_dec {A} `{!EqDecision A} (l : list A) (x y : A) :
   x ∈ y :: l ↔ x = y ∨ x ≠ y ∧ x ∈ l.
 Proof.
