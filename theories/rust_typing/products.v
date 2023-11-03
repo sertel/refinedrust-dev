@@ -2365,6 +2365,7 @@ Section lemmas.
     iIntros (Hlen Halg) "Hl".
     iPoseProof (pad_struct_focus with "Hl") as "(Hl & Hl_cl)".
     { rewrite hpzipl_length. rewrite named_fields_field_names_length (struct_layout_spec_has_layout_fields_length sls); done. }
+    { specialize (sl_nodup sl). rewrite bool_decide_spec. done. }
     (* remember the layouts *)
     iAssert ([∗ list] i↦x ∈ hpzipl rts lts rs, ∃ (ly : layout) (n : string), ⌜named_fields (sl_members sl) !! i = Some (n, ly)⌝ ∗ ⌜syn_type_has_layout (ltype_st (projT2 x).1) ly⌝)%I with "[Hl]" as "%Hly_agree".
     { iApply (big_sepL_impl with "Hl").
