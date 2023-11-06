@@ -197,7 +197,7 @@ Proof.
     destruct b1, b2; try done; unfold bor_kind_direct_incl.
     + iDestruct "Hincl" as "->"; eauto.
     + rewrite !ltype_own_shrblocked_unfold /shr_blocked_lty_own.
-      iIntros "(%ly & ? & ? & ? & ? & %r' & -> & Hb)".
+      iIntros "(%ly & ? & ? & ? & ? & %r' & Hrfn & Hb)".
       done.
       (*iExists ly. iFrame. iExists r'. iSplitR; first done.*)
       (*by iApply ty_shr_mono.*)

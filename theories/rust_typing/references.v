@@ -2502,7 +2502,7 @@ Section rules.
   (** Typing rule for shared borrowing, manually applied by the tactics *)
   Lemma type_shr_bor E L T e π κ_name ty_annot :
     (∃ M, named_lfts M ∗ li_tactic (compute_map_lookup_nofail_goal M κ_name) (λ κ,
-    (named_lfts M -∗ typed_borrow_shr π E L e κ ty_annot (λ L' v rt ty r, T L' v (place_rfn rt) (shr_ref ty κ) (PlaceIn r)))))
+    (named_lfts M -∗ typed_borrow_shr π E L e κ ty_annot (λ L' v rt ty r, T L' v (place_rfn rt) (shr_ref ty κ) (r)))))
     ⊢ typed_val_expr π E L (&ref{Shr, ty_annot, κ_name} e)%E T.
   Proof.
     rewrite /compute_map_lookup_nofail_goal.
@@ -2514,10 +2514,10 @@ Section rules.
     iApply wp_skip. iNext. iIntros "Hcred HT !> !>".
     iApply (wp_logical_step with "TIME HT"); [solve_ndisj.. | ].
     iApply wp_skip. iNext. iIntros "Hcred' HT".
-    iMod ("HT" with "Hcred'") as (L' rt ty r ly) "(#Hshr & %Halg & %Hly & #Hlb & #Hsc & HL & Hna & HT)".
+    iMod ("HT" with "Hcred'") as (L' rt ty r r' ly) "(#Hrfn & #Hshr & %Halg & %Hly & #Hlb & #Hsc & HL & Hna & HT)".
     iModIntro. iApply ("HΦ" with "HL Hna [Hshr] HT").
-    iExists l, ly, r. iSplitR; first done. iFrame "Hlb Hsc %".
-    iSplitR; first done. iModIntro. iModIntro. done.
+    iExists l, ly, r'. iSplitR; first done. iFrame "Hlb Hrfn Hsc %".
+    iModIntro. iModIntro. done.
   Qed.
 
   (** cast_ltype *)

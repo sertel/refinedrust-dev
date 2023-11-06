@@ -1223,6 +1223,11 @@ Section judgments.
     | Uniq _ _ => False
     | Shared _ => False
     end.
+  Definition bor_kind_mut_borrowable (b : bor_kind) :=
+    match b with
+    | Shared _ => False
+    | _ => True
+    end.
 
   Record weak_ctx (rto rti : Type) : Type := mk_weak {
     weak_lt : (ltype rti → place_rfn rti → ltype rto);
@@ -2654,7 +2659,7 @@ Section judgments.
     * we type the place context with [typed_place]
     * we use [typed_borrow_shr_end] to do the final checking
   *)
-  Definition typed_borrow_shr_cont_t := llctx → val → ∀ (rt : Type), type rt → rt → iProp Σ.
+  Definition typed_borrow_shr_cont_t := llctx → val → ∀ (rt : Type), type rt → place_rfn rt → iProp Σ.
   Definition typed_borrow_shr π (E : elctx) (L : llctx) (e : expr) (κ : lft) (ty_annot : option rust_type) (T : typed_borrow_shr_cont_t) : iProp Σ :=
     (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
     rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
@@ -2665,8 +2670,8 @@ Section judgments.
       logical_step F (logical_step F (
         (* one credit for the inheritance VS *)
         £1 ={F}=∗
-        ∃ (L' : llctx) (rt : Type) (ty : type rt) (r : rt) (ly : layout),
-          ty.(ty_shr) κ π r l ∗
+        ∃ (L' : llctx) (rt : Type) (ty : type rt) (r : place_rfn rt) (r' : rt) (ly : layout),
+          place_rfn_interp_shared r r' ∗ ty.(ty_shr) κ π r' l ∗
           ⌜syn_type_has_layout ty.(ty_syn_type) ly⌝ ∗
           ⌜l `has_layout_loc` ly⌝ ∗
           loc_in_bounds l 0 (ly.(ly_size)) ∗ ty.(ty_sidecond) ∗
@@ -2677,7 +2682,7 @@ Section judgments.
       WP e {{ Φ }})%I.
 
   Definition typed_borrow_shr_end_cont_t rt := ltype rt → place_rfn rt → iProp Σ.
-  Definition typed_borrow_shr_end π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : rt) (b2 bmin : bor_kind) (T : typed_borrow_shr_end_cont_t rt) : iProp Σ :=
+  Definition typed_borrow_shr_end π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : place_rfn rt) (b2 bmin : bor_kind) (T : typed_borrow_shr_end_cont_t rt) : iProp Σ :=
     (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
     rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
     bmin ⊑ₖ b2 -∗
@@ -2687,23 +2692,24 @@ Section judgments.
         but how to formulate this properly?
         Really, I want to say that [lt]'s core should be equivalent to ◁ty for some ty?
     *)
-    l ◁ₗ[π, b2] PlaceIn r @ (◁ ty) ={F}=∗
+    l ◁ₗ[π, b2] r @ (◁ ty) ={F}=∗
     (* we provide a borrow of ty *)
     logical_step F (
     (* one credit for the inheritance VS *)
     £1 ={F}=∗
-    ∃ ly (lt : ltype rt), ty.(ty_shr) κ π r l ∗
+    ∃ ly (lt : ltype rt) r',
+    place_rfn_interp_shared r r' ∗ ty.(ty_shr) κ π r' l ∗
     ⌜syn_type_has_layout ty.(ty_syn_type) ly⌝ ∗
     loc_in_bounds l 0 (ly.(ly_size)) ∗ ty.(ty_sidecond) ∗
     (* and a blocked ownership of the borrowed location *)
-    l ◁ₗ[π, b2] PlaceIn r @ lt  ∗
+    l ◁ₗ[π, b2] r @ lt  ∗
     (* and a proof that we can unblock again *)
-    typed_place_cond bmin (◁ ty) lt (PlaceIn r) (PlaceIn r)  ∗
+    typed_place_cond bmin (◁ ty) lt (r) (r)  ∗
     (* and the context and postco *)
     llctx_interp L ∗
     na_own π shrE ∗
-    T lt (PlaceIn r))).
-  Class TypedBorrowShrEnd π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : rt) (b2 bmin : bor_kind) : Type :=
+    T lt (r))).
+  Class TypedBorrowShrEnd π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : place_rfn rt) (b2 bmin : bor_kind) : Type :=
     typed_borrow_shr_end_proof T : iProp_to_Prop (typed_borrow_shr_end π E L κ l ty r b2 bmin T).
 
   (** ** Address-of judgments *)
