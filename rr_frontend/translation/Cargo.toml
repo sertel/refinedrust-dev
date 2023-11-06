@@ -19,7 +19,6 @@ lazy_static = "1.4.0"
 unicode-xid = "0.0.4"
 typed-arena = "2.0.1"
 serde_json = "1.0"
-libc = "0.2.101"
 
 analysis = { path = "../analysis" }
 rr_rustc_interface = { path = "../rr_rustc_interface" }
