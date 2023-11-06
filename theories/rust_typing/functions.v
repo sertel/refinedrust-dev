@@ -186,7 +186,36 @@ Section function.
       iIntros "(%fn & % & -> & _)". eauto.
   Qed.
   Global Instance copyable_function_ptr fal fp : Copyable (function_ptr fal fp) := _.
+
+
+  (* The [inline_function_ptr] is similar to the [function_ptr],
+     except that [st_own] does not have the [typed_function] predicate. *)
+  Program Definition inline_function_ptr (arg_types : list (syn_type)) (fn: function) : type loc := {|
+    st_own π f v := (∃ local_sts, ⌜v = val_of_loc f⌝ ∗ fntbl_entry f fn ∗
+      ⌜list_map_option use_layout_alg arg_types = Some fn.(f_args).*2⌝ ∗
+      ⌜list_map_option use_layout_alg local_sts = Some fn.(f_local_vars).*2⌝)%I;
+    st_has_op_type ot mt := is_ptr_ot ot;
+    st_syn_type := FnPtrSynType;
+  |}.
+  Next Obligation.
+    simpl. iIntros (fal fn π r v) "(%local_sts & -> & _)". eauto.
+  Qed.
+  Next Obligation.
+    intros ? ? ot mt Hot. apply is_ptr_ot_layout in Hot. rewrite Hot. done.
+  Qed.
+  Next Obligation.
+    simpl. iIntros (lya fn ot mt st π r v Hot).
+    destruct mt.
+    - eauto.
+    - iIntros "(%local_sts & -> & Hfntbl & %Halg & Hfn)".
+      iExists _. iFrame. iPureIntro. split; last done.
+      destruct ot; try done. unfold mem_cast. rewrite val_to_of_loc. done.
+    - iApply (mem_cast_compat_loc (λ v, _)); first done.
+      iIntros "(% & -> & _)". eauto.
+  Qed.
+  Global Instance copyable_inline_function_ptr fal fn : Copyable (inline_function_ptr fal fn) := _.
 End function.
+
 Section call.
   Context `{!typeGS Σ}.
   Import EqNotations.
@@ -391,6 +420,19 @@ Section call.
   Global Instance type_call_fnptr_inst π E L {A} (lfts : nat) eκs l v vl fp lya tys :
     TypedCall π E L eκs  v (v ◁ᵥ{π} l @ function_ptr lya fp) vl tys :=
     λ T, i2p (type_call_fnptr π E L (A := A)lfts eκs l v vl tys T fp lya).
+
+  Fail Lemma type_call_inline_fnptr
+    (* NOTE: Currently added *) π r E L eκs sta ϝ lya lyv
+    (* NOTE: Used in RefinedC *) l v vl tys fn T:
+    (⌜Forall2 (λ ty '(_, p), ty.(ty_has_op_type) (UntypedOp p) MCNone) tys (f_args fn)⌝ ∗
+      foldr (λ '(v, ty) T lsa, ∀ l, l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty) -∗ T (lsa ++ [l]))
+      (λ lsa, foldr (λ ly T lsv, ∀ l, l ◁ₗ[π, Owned false] (PlaceIn ()) @ (◁ (uninit (UntypedSynType ly))) -∗ T (lsv ++ [l]))
+                    (λ lsv,
+                     introduce_typed_stmt π E L ϝ fn lsa lsv lya lyv T)
+                    fn.(f_local_vars).*2 [])
+      (zip vl tys)
+      [])
+    ⊢ typed_call π E L eκs v (v ◁ᵥ{π} l @ inline_function_ptr sta fn) vl tys T.
 End call.
 
 Global Typeclasses Opaque function_ptr.
