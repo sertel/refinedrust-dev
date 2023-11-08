@@ -2363,7 +2363,7 @@ Section lemmas.
          (l +ₗ offset_of_idx (sl_members sl) i) ◁ₗ[ π, k] (projT2 ty).2 @ (projT2 ty).1)).
   Proof.
     iIntros (Hlen Halg) "Hl".
-    iPoseProof (pad_struct_focus with "Hl") as "(Hl & Hl_cl)".
+    iPoseProof (pad_struct_focus_no_uninit with "Hl") as "(Hl & Hl_cl)".
     { rewrite hpzipl_length. rewrite named_fields_field_names_length (struct_layout_spec_has_layout_fields_length sls); done. }
     { specialize (sl_nodup sl). rewrite bool_decide_spec. done. }
     (* remember the layouts *)
@@ -2916,6 +2916,19 @@ Section rules.
     (*iApply typed_place_cond_rfn_refl.*)
   Qed.
 
+  (* needs to have lower priority than the id instance *)
+  Lemma typed_place_ofty_struct {rts} π E L l (tys : hlist type rts) (r : place_rfn (plist place_rfn rts)) sls bmin0 b P T :
+    typed_place π E L l (StructLtype (hmap (λ _, OfTy) tys) sls) r bmin0 b P T
+    ⊢ typed_place π E L l (◁ (struct_t sls tys)) r bmin0 b P T.
+  Proof.
+    iIntros "Hp". iApply typed_place_eqltype; last iFrame.
+    iIntros (?) "HL CTX HE".
+    iIntros (??). iApply struct_t_unfold.
+  Qed.
+  Global Instance typed_place_ofty_struct_inst {rts} π E L l (tys : hlist type rts) (r : place_rfn (plist place_rfn rts)) sls bmin0 b P :
+    TypedPlace E L π l (◁ (struct_t sls tys))%I r bmin0 b P | 30 :=
+        λ T, i2p (typed_place_ofty_struct π E L l tys r sls bmin0 b P T).
+
   Lemma typed_place_struct_owned {rts} (lts : hlist ltype rts) π E L (r : plist place_rfn rts) sls f wl bmin0 P l
     (T : place_cont_t (plist place_rfn rts)) :
     ((* sidecondition for other components *)
@@ -3339,18 +3352,6 @@ Section rules.
     StratifyLtype π E L mu StratDoUnfold ma ml l (◁ (struct_t sls tys))%I r b | 30 :=
         λ T, i2p (stratify_ltype_ofty_struct π E L mu ma ml l tys r sls b T).
 
-  (* needs to have lower priority than the id instance *)
-  Lemma typed_place_ofty_struct {rts} π E L l (tys : hlist type rts) (r : place_rfn (plist place_rfn rts)) sls bmin0 b P T :
-    typed_place π E L l (StructLtype (hmap (λ _, OfTy) tys) sls) r bmin0 b P T
-    ⊢ typed_place π E L l (◁ (struct_t sls tys)) r bmin0 b P T.
-  Proof.
-    iIntros "Hp". iApply typed_place_eqltype; last iFrame.
-    iIntros (?) "HL CTX HE".
-    iIntros (??). iApply struct_t_unfold.
-  Qed.
-  Global Instance typed_place_ofty_struct_inst {rts} π E L l (tys : hlist type rts) (r : place_rfn (plist place_rfn rts)) sls bmin0 b P :
-    TypedPlace E L π l (◁ (struct_t sls tys))%I r bmin0 b P | 30 :=
-        λ T, i2p (typed_place_ofty_struct π E L l tys r sls bmin0 b P T).
 
   (** Subtyping *)
   (* TODO replace foldr with relate_hlist *)

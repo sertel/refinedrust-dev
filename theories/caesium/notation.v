@@ -318,6 +318,14 @@ Notation "l 'atst{' s '}ₗ' m" := (GetMemberLocSt l s m) (at level 10, format "
 Global Typeclasses Opaque GetMemberLocSt.
 Arguments GetMemberLocSt : simpl never.
 
+Definition GetEnumDataLocSt `{!LayoutAlg} (l : loc) (els : enum_layout_spec) : loc :=
+  let el := use_enum_layout_alg' els in
+  (l +ₗ Z.of_nat (default 0%nat (offset_of el.(sl_members) "data"))).
+Definition GetEnumDiscriminantLocSt `{!LayoutAlg} (l : loc) (els : enum_layout_spec) : loc :=
+  let el := use_enum_layout_alg' els in
+  (l +ₗ Z.of_nat (default 0%nat (offset_of el.(sl_members) "discriminant"))).
+
+
 (* TODO: maybe change this if we ever have different offsets *)
 (*Definition GetMemberUnionLocSt (l : loc) (ul : union_layout_spec) (m : var_name) : loc := (l).*)
 (*Notation "l 'at_unionst{' ul '}ₗ' m" := (GetMemberUnionLocSt l ul m) (at level 10, format "l  'at_union{' ul '}ₗ'  m") : stdpp_scope.*)

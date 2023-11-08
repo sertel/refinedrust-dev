@@ -529,7 +529,7 @@ Section ltype_def.
   *)
   Inductive place_rfn_mode := PlaceModeIn | PlaceModeGhost.
   (* concrete refinements *)
-  #[universes(polymorphic)]
+  (*#[universes(polymorphic)]*)
   Inductive place_rfn (rt : Type) :=
     | PlaceIn (r : rt)
     | PlaceGhost (γ : gname).
@@ -1573,7 +1573,7 @@ Section ltype_def.
         (∃ v, ((l atst{sls_of_els en.(enum_els)}ₗ "data") +ₗ (size_of_st (lty_st lte))) ↦ v ∗ ⌜v `has_layout_val` ly_offset (els_data_ly en.(enum_els)) (size_of_st (lty_st lte))⌝) ∗
         (* ownership of the padding fields of the sl *)
         ([∗ list] i ↦ mly ∈ pad_struct el.(sl_members) [None; None] (λ ly, Some ly),
-        if mly is Some ly then lty_of_ty_own (uninit (UntypedSynType ly)) (Owned false) π (PlaceIn ()) (l +ₗ Z.of_nat (offset_of_idx el.(sl_members) i)) else True)
+          from_option (λ ly, lty_of_ty_own (uninit (UntypedSynType ly)) (Owned false) π (PlaceIn ()) (l +ₗ Z.of_nat (offset_of_idx el.(sl_members) i))) True mly)
         )
       | _ =>
           (* TODO *)
@@ -3518,7 +3518,7 @@ Section ltype_def.
     rewrite big_sepL2_alt.
     rewrite -Hlen. rewrite Heq. rewrite left_id.
     rewrite zip_fmap_l big_sepL_fmap.
-    f_equiv; last done. intros ? [lt r']. simpl.
+    f_equiv. intros ? [lt r']. simpl.
     iSplit.
     { iIntros "(%Heq2 & $ & Hb)". generalize (ltype_rt_agree lt) => Heq3.
       rewrite (UIP_t _ _ _ Heq2 Heq3). done.
@@ -3540,20 +3540,20 @@ Section ltype_def.
     (*f_equiv.*)
     (*{ rewrite Forall_fmap. iPureIntro. apply Forall_iff. intros []; done. }*)
     f_equiv.
-    - do 4 f_equiv; first done.
+    - do 4 f_equiv.
       f_equiv. f_equiv.
       apply sep_equiv_proper => Hlen.
       rewrite big_sepL_P_eq.
       rewrite -OfTy_ltype_lty.
       rewrite interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
       rewrite interpret_iml_length //.
-    - do 3 f_equiv; first done.
+    - do 3 f_equiv.
       do 2 f_equiv.
       apply sep_equiv_proper => Hlen.
       rewrite big_sepL_P_eq.
       rewrite -OfTy_ltype_lty interpret_iml_fmap ArrayLtype_big_sepL_fmap //.
       rewrite interpret_iml_length//.
-    - do 6 f_equiv. all: f_equiv; first done.
+    - do 6 f_equiv. all: f_equiv.
       all: f_equiv.
       all: apply sep_equiv_proper => Hlen.
       all: repeat f_equiv; rewrite big_sepL_P_eq.
