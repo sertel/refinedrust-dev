@@ -53,9 +53,7 @@ use typed_arena::Arena;
 
 use std::collections::{HashSet, HashMap};
 
-use std::process::{Command, Stdio};
-
-use libc::{pid_t, waitpid, WCONTINUED, WEXITED, WNOHANG};
+use std::process::Command;
 
 
 mod utils;
@@ -452,57 +450,27 @@ pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
 
 
     // maybe run proof checker
+
+    // TODO: Refactor the analyze function into smaller parts.
+    // The flush should not be done explicitly.
+    code_file.flush().unwrap();
+    spec_file.flush().unwrap();
+    dune_file.flush().unwrap();
+
     if let Some(true) = rrconfig::check_proofs() {
         if cfg!(target_os = "windows") {
             println!("Cannot run proof checker on Windows.");
         }
         else {
             println!("calling type checker in {:?}", dir_path);
-            let child = Command::new("dune")
+
+            let status = Command::new("dune")
                 .arg("build")
                 .current_dir(&dir_path)
-                .stdin(Stdio::null())
-                .stdout(Stdio::inherit())
-                .stderr(Stdio::inherit())
-                .spawn()
+                .status()
                 .expect("failed to execute process");
 
-
-            // Wait for all subprocesses to complete before exiting.
-            //let status = child.wait().expect("build process failed");
-            //println!("build process status: {:?}", status);
-            // Wait for all subprocesses to complete before exiting.
-            wait_for_child_processes(child.id() as pid_t);
-        }
-    }
-}
-
-
-// Thanks, ChatGPT.
-// TODO somehow this doesn't correctly exit for [dune].
-fn wait_for_child_processes(pid: pid_t) {
-    loop {
-        let result = unsafe {
-            waitpid(
-                pid,
-                &mut 0,
-                WNOHANG | WCONTINUED | WEXITED,
-            )
-        };
-
-        match result {
-            -1 => {
-                println!("waitpid failed: {} (os error {})", std::io::Error::last_os_error(), std::io::Error::last_os_error().raw_os_error().unwrap_or(0));
-                break;
-            }
-            0 => {
-                // no child process has exited
-                std::thread::yield_now();
-            }
-            _ => {
-                println!("process {} exited", pid);
-                break;
-            }
+            println!("Type checker finished with {status}");
         }
     }
 }

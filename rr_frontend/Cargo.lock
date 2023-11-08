@@ -243,7 +243,6 @@ dependencies = [
  "datafrog",
  "env_logger 0.7.1",
  "lazy_static",
- "libc",
  "log",
  "regex",
  "rr_rustc_interface",
