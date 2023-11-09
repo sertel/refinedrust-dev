@@ -27,6 +27,7 @@ Proof.
   all: print_typesystem_goal "RawVec_T_grow".
   Unshelve. all: unshelve_sidecond; sidecond_hook.
   Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook.
+  all: solve_goal with nia.
   Unshelve. all: try done; try apply: inhabitant; print_remaining_shelved_goal "RawVec_T_grow".
 Qed.
 End proof.
