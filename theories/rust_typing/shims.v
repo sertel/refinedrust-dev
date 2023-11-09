@@ -47,6 +47,7 @@ Proof.
   rewrite /bits_per_byte/=.
   intros [Ha Hb].
   split; first solve_goal.
+  rewrite MaxInt_eq.
   rewrite /max_int/=/int_modulus/bits_per_int/bytes_per_int/it_byte_size_log/=.
   rewrite /bits_per_byte/=.
   assert ((2 ^ ly_align_log ly) ≤ 2 ^ (8%nat * 8))%nat as Hle.
@@ -62,7 +63,8 @@ Proof.
   intros [_ Ha]%ly_align_log_in_u8.
   split; first solve_goal.
   etrans; first apply Ha.
-  rewrite /max_int/=/int_modulus/bits_per_int/bytes_per_int/it_byte_size_log/bits_per_byte/=.
+  rewrite MaxInt_eq in Ha.
+  rewrite !MaxInt_eq /max_int/=/int_modulus/bits_per_int/bytes_per_int/it_byte_size_log/bits_per_byte/=.
   nia.
 Qed.
 Lemma ly_align_in_usize ly :
@@ -74,7 +76,7 @@ Proof.
   rewrite /max_alloc_end.
   unfold max_alloc_end.
   rewrite /bytes_per_addr/bytes_per_addr_log.
-  rewrite /max_int/=/int_modulus/bits_per_int/bytes_per_int/it_byte_size_log/=.
+  rewrite !MaxInt_eq /max_int/=/int_modulus/bits_per_int/bytes_per_int/it_byte_size_log/=.
   nia.
 Qed.
 
@@ -247,11 +249,9 @@ Proof.
   iApply fupd_typed_stmt.
   iMod (ofty_uninit_to_value with "Ht") as "(%v_t & Ht)"; first done.
   iMod (ofty_value_has_length with "Hs") as "(%Hlen_s & Hs)"; first done.
-  { sidecond_hook. revert select (ly_size (mk_array_layout _ _) ≤ _).
-    rewrite /mk_array_layout/=. lia. }
+  { sidecond_hook. }
   iMod (ofty_value_has_length with "Ht") as "(%Hlen_t & Ht)"; first done.
-  { sidecond_hook. revert select (ly_size (mk_array_layout _ _) ≤ _).
-    rewrite /mk_array_layout/=. lia. }
+  { sidecond_hook. }
 
   (* turn it into arrays *)
   iPoseProof (ofty_value_untyped_to_array with "Hs") as "Hs".
@@ -344,6 +344,7 @@ Definition type_of_ptr_write `{!typeGS Σ} (T_rt : Type) (T_st : syn_type) :=
     → ∃ () : unit, () @ unit_t; λ π,
         l ◁ₗ[π, Owned false] PlaceIn r @ ◁ T_ty.
 
+
 Lemma ptr_write_typed `{!typeGS Σ} π T_rt T_st T_ly :
   syn_type_has_layout T_st T_ly →
   ⊢ typed_function π (ptr_write T_st) [] (type_of_ptr_write T_rt T_st).
@@ -352,7 +353,7 @@ Proof.
   intros ls_dst ls_src.
   repeat liRStep; liShow.
   Unshelve. all: unshelve_sidecond; sidecond_hook.
-  Unshelve. all: inv_layout_alg; done.
+  Unshelve. all: unfold_common_defs; solve_goal.
 Qed.
 
 
@@ -397,7 +398,7 @@ Proof.
   liFromSyntax.
   repeat liRStep; liShow.
   Unshelve. all: unshelve_sidecond; sidecond_hook.
-  Unshelve. all: solve_goal.
+  Unshelve. all: unfold_common_defs; solve_goal.
 Qed.
 
 (*assert_unsafe_precondition!(is_aligned_and_not_null(src) && is_aligned_and_not_null(dst));*)
@@ -503,9 +504,7 @@ Proof.
   repeat liRStep.
   Unshelve.
   all: unshelve_sidecond; sidecond_hook.
-  rewrite /aligned_to /=.
-  destruct caesium_config.enforce_alignment; last done.
-  apply Z.divide_refl.
+  all: unfold_common_defs; solve_goal.
 Qed.
 
 (** inspired by NonNull::dangling *)
@@ -597,7 +596,7 @@ Proof.
   { done. }
   { apply val_to_of_loc. }
   { done. }
-  { split; simplify_layout_goal; lia. }
+  { split; simplify_layout_goal; rewrite -?MinInt_eq -?MaxInt_eq; lia. }
   { rewrite /offset_loc. fold (size_of_st T_st).
     iApply (loc_in_bounds_offset with "Hbounds'").
     { done. }
@@ -620,6 +619,7 @@ Proof.
   repeat liRStep; liShow.
 
   Unshelve. all: unshelve_sidecond; sidecond_hook; prepare_sideconditions; normalize_and_simpl_goal; try solve_goal.
+  Unshelve. all: unfold_common_defs; solve_goal.
 Qed.
 
 Definition ptr_add `{!LayoutAlg} (T_st : syn_type) (ptr_offset_loc : loc) : function := {|
@@ -642,6 +642,11 @@ Definition type_of_ptr_add `{!typeGS Σ} (T_rt : Type) (T_st : syn_type) :=
   ) →
   ∃ () : unit, (l, Z.to_nat offset) @ offset_ptr_t T_st; λ π, £ (S (num_laters_per_step 1)) ∗ atime 1.
 
+(* TODO move *)
+Lemma wrap_to_int_id' z it :
+  z ∈ it → wrap_to_it z it = z.
+Proof. rewrite int_elem_of_it_iff. apply wrap_to_int_id. Qed.
+
 Lemma ptr_add_typed `{!typeGS Σ} π T_rt T_st T_ly ptr_offset_loc :
   syn_type_has_layout T_st T_ly →
   ptr_offset_loc ◁ᵥ{π} ptr_offset_loc @ function_ptr [PtrSynType; IntSynType isize_t] (type_of_ptr_offset T_rt T_st) -∗
@@ -659,9 +664,10 @@ Proof.
     *)
   4,6: rewrite /OffsetLocSt; simplify_layout (use_layout_alg' T_st); do 2 f_equiv.
   all: destruct (decide (ly_size T_st_ly = 0%nat));
-    [ lia | assert (min_int isize_t ≤ offset ≤ max_int isize_t)%Z; prepare_sideconditions; normalize_and_simpl_goal; try (unfold_common_defs; solve_goal)].
-  all: rewrite wrap_to_int_id.
+    [ lia | assert (MinInt isize_t ≤ offset ≤ MaxInt isize_t)%Z by solve_goal with nia; prepare_sideconditions; normalize_and_simpl_goal; try (unfold_common_defs; solve_goal)].
+  all: rewrite wrap_to_int_id'.
   all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal).
+  Unshelve. all: unfold_common_defs; solve_goal.
 Qed.
 
 Definition ptr_is_null `{!LayoutAlg} (T_st : syn_type) : function := {|
@@ -745,8 +751,6 @@ Proof.
   { rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     assert (syn_type_has_layout (UntypedSynType ly) ly) as Hly'.
     { solve_layout_alg. }
-      (*subst ly. rewrite /layout_wf /ly_align /ly_size. cbn. *)
-      (*apply Nat2Z_divide. done. }*)
     iExists ly. simpl. iSplitR; first done.
     iSplitR; first done. iSplitR; first done.
     iPoseProof (heap_mapsto_loc_in_bounds with "Hl") as "#Hlb".
@@ -756,7 +760,6 @@ Proof.
     iModIntro. iExists _. iFrame. rewrite uninit_own_spec. iExists ly.
     iSplitR; first done. iPureIntro. rewrite /has_layout_val replicate_length /ly /ly_size //. }
 
-  (*value_subsume_full_goal_ofty*)
   iRevert "Hf".
 
   repeat liRStep; liShow.
@@ -826,6 +829,7 @@ Proof.
   repeat liRStep; liShow.
 
   Unshelve. all: unshelve_sidecond; sidecond_hook; prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; unsolved_sidecond_hook.
+  Unshelve. all: unfold_common_defs; solve_goal.
 Qed.
 
 (**
@@ -860,7 +864,7 @@ Definition type_of_alloc_realloc `{!typeGS Σ} :=
     (* TODO restriction of the spec: we cannot shrink it *)
     ⌜(old_size ≤ new_size)%Z⌝ ∗
     ⌜(0 < old_size)%Z⌝ ∗
-    ⌜new_size ≤ max_int isize_t⌝ ∗
+    ⌜new_size ≤ MaxInt isize_t⌝ ∗
     (* TODO: restriction placed by our syntype model, not required in Rust *)
     ⌜layout_wf (Layout (Z.to_nat new_size) (Z.to_nat align_log2))⌝ ∗
     (*⌜ly_align_in_bounds (Layout (Z.to_nat new_size) (Z.to_nat align_log2))⌝ ∗*)
@@ -1022,7 +1026,7 @@ Proof.
     unfold_no_enrich. inv_layout_alg.
     have: (Z.of_nat $ ly_size T_st_ly) ∈ usize_t by done.
     efeed pose proof (ly_align_log_in_usize T_st_ly) as Ha; first done.
-    move: Ha.
+    move: Ha. rewrite int_elem_of_it_iff int_elem_of_it_iff.
     intros [? Halign]%(val_of_Z_is_Some None) [? Hsz]%(val_of_Z_is_Some None).
     iDestruct "CTX" as "(LFT & TIME & LLCTX)".
     iSelect (credit_store _ _) ltac:(fun H => iRename H into "Hstore").
@@ -1251,7 +1255,7 @@ Proof.
   iAssert (x'0 ◁ᵥ{π} .@ uninit (UntypedSynType (mk_array_layout T_st_ly (Z.to_nat (new_size - old_size)))))%I as "Ha".
   { rewrite uninit_own_spec. iExists _.
     { iSplitR.
-      { iPureIntro. solve_layout_alg. solve_goal. }
+      { iPureIntro. solve_layout_alg. }
       iPureIntro. rewrite /has_layout_val.
       match goal with | H : x'0 `has_layout_val` _ |- _ => rename H into Hlen end.
       rewrite Hlen.
@@ -1340,7 +1344,7 @@ Definition check_array_layoutable `{!LayoutAlg} (T_st : syn_type) (mem_align_log
     <["bb1" :=
       (* result fits into usize *)
       "bytes" <-{ IntOp usize_t } ((use{IntOp usize_t} "len") ×c{IntOp usize_t, IntOp usize_t} (use{IntOp usize_t} "size_of_T"));
-      "__0" <-{use_op_alg' BoolSynType} ((use{IntOp usize_t} "bytes") ≤{IntOp usize_t, IntOp usize_t, u8} (I2v (max_int isize_t) USize));
+      "__0" <-{use_op_alg' BoolSynType} ((use{IntOp usize_t} "bytes") ≤{IntOp usize_t, IntOp usize_t, u8} (I2v (MaxInt isize_t) USize));
       return (use{use_op_alg' BoolSynType} "__0")
     ]>%E $
     <["bb2" :=
@@ -1353,7 +1357,7 @@ Definition check_array_layoutable `{!LayoutAlg} (T_st : syn_type) (mem_align_log
 
 Definition type_of_check_array_layoutable `{!typeGS Σ} (T_rt : Type) (T_st : syn_type) :=
   fn(∀ () : 0 | (size) : (Z), (λ ϝ, []); size @ int usize_t; λ π, True) →
-  ∃ () : unit, (bool_decide (size_of_array_in_bytes T_st (Z.to_nat size) ≤ max_int isize_t)%Z) @ bool_t; λ π, True.
+  ∃ () : unit, (bool_decide (size_of_array_in_bytes T_st (Z.to_nat size) ≤ MaxInt isize_t)%Z) @ bool_t; λ π, True.
 
 Lemma check_array_layoutable_typed `{!typeGS Σ} π T_rt (T_st : syn_type) (mem_align_log_of_T_loc mem_size_of_T_loc : loc) :
   syn_type_is_layoutable T_st →
@@ -1379,12 +1383,14 @@ Proof.
   iEval (rewrite /ty_own_val/=) in "Hv2".
   iDestruct "Hv1" as "(%Hsize &_)".
   iDestruct "Hv2" as "(%HTsize & _)".
-  iApply wp_check_int_arithop; [done.. | ].
+  iApply (wp_check_int_arithop _ _ _ _ _ _ (bool_decide ((size * ly_size T_st_ly ∈ usize_t)))); [done.. | | ].
+  { simpl. rewrite /check_arith_bin_op. simpl. f_equiv.
+    rewrite /elem_of/int_elem_of_it/int_elem_of_it' MinInt_eq MaxInt_eq//. }
   iNext. iIntros "_".
   iApply ("HC" $! _ _ _ (bool_t) with "HL Hna"). { iApply type_val_bool'. }
 
   repeat liRStep.
 
-  Unshelve. all: unshelve_sidecond; sidecond_hook.
-  Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; unsolved_sidecond_hook.
+  Unshelve. all: unshelve_sidecond; sidecond_hook; prepare_sideconditions; normalize_and_simpl_goal; try solve_goal.
+  Unshelve. all: unfold_common_defs; solve_goal.
 Qed.

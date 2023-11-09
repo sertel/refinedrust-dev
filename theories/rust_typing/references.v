@@ -1,5 +1,5 @@
-From refinedrust Require Export base type ltypes.
 From caesium Require Import derived.
+From refinedrust Require Export base type ltypes.
 From refinedrust Require Import programs ltype_rules.
 
 Local Definition ref_layout := void_ptr.

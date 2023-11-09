@@ -9,21 +9,23 @@ Section typing.
 
   Global Program Instance learn_from_hyp_val_int_unsigned it z `{Hu : TCDone (it.(it_signed) = false)} :
     LearnFromHypVal (int it) z :=
-    {| learn_from_hyp_val_Q := 0 ≤ z ≤ max_int it |}.
+    {| learn_from_hyp_val_Q := 0 ≤ z ≤ MaxInt it |}.
   Next Obligation.
     iIntros (? z Hu ????) "Hv".
     rewrite /ty_own_val/=.
     iDestruct "Hv" as "(%Hit & %)".
     specialize (val_to_Z_in_range _ _ _ Hit) as [Hran ?].
-    iModIntro. iPureIntro. split_and!; [done.. | | done].
-    specialize (min_int_unsigned_0 it). lia.
+    iModIntro. iPureIntro. split_and!; [done.. | | ].
+    { specialize (min_int_unsigned_0 it). lia. }
+    { rewrite MaxInt_eq. done. }
   Qed.
   Global Program Instance learn_from_hyp_val_int_signed it z `{Hs : TCDone (it.(it_signed) = true)} :
     LearnFromHypVal (int it) z :=
-    {| learn_from_hyp_val_Q := min_int it ≤ z ≤ max_int it |}.
+    {| learn_from_hyp_val_Q := MinInt it ≤ z ≤ MaxInt it |}.
   Next Obligation.
     iIntros (? z Hs ????) "Hv".
     rewrite /ty_own_val/=.
+    rewrite !MaxInt_eq !MinInt_eq.
     iDestruct "Hv" as "(%Hit & %)".
     specialize (val_to_Z_in_range _ _ _ Hit) as [Hran ?].
     iModIntro. iPureIntro. split_and!; done.
@@ -33,10 +35,12 @@ Section typing.
     ly_size it ≤ max_int isize_t →
     z ∈ it → ⊢ i2v z it ◁ᵥ{π} z @ int it.
   Proof.
+    rewrite int_elem_of_it_iff.
     intros ? Hn.
     move: Hn => /(val_of_Z_is_Some None) [v Hv].
     move: (Hv) => /val_to_of_Z Hn.
     rewrite /ty_own_val/=. iPureIntro.
+    rewrite MaxInt_eq.
     split; last done. rewrite /i2v Hv/=//.
   Qed.
 
@@ -66,6 +70,7 @@ Section typing.
   Proof.
     rewrite /ty_own_val/=.
     iIntros "%Hop HT [%Hv1 %] [%Hv2 _]" (Φ) "#CTX #HE HL Hna HΦ".
+    rewrite !int_elem_of_it_iff.
     iDestruct ("HT" with "[] []" ) as "HT".
     1-2: iPureIntro; by apply: val_to_Z_in_range.
     iApply (wp_binop_det_pure (val_of_bool b)).
@@ -125,7 +130,7 @@ Section typing.
     | OrOp  => True
     | XorOp => True
     (* TODO: check accuracy of shifting semantics *)
-    | ShlOp => 0 ≤ n2 < bits_per_int it ∧ 0 ≤ n1 ∧ n ≤ max_int it
+    | ShlOp => 0 ≤ n2 < bits_per_int it ∧ 0 ≤ n1 ∧ n ≤ MaxInt it
     | ShrOp => 0 ≤ n2 < bits_per_int it ∧ 0 ≤ n1
     | DivOp => n2 ≠ 0 ∧ n ∈ it
     | ModOp => n2 ≠ 0 ∧ n ∈ it
@@ -142,9 +147,12 @@ Section typing.
   Proof.
     rewrite /ty_own_val/=.
     iIntros "%Hop HT [%Hv1 %] [%Hv2 _] %Φ #CTX #HE HL Hna HΦ".
+    rewrite !int_elem_of_it_iff.
     iDestruct ("HT" with "[] []" ) as (Hsc) "HT".
     1-2: iPureIntro; by apply: val_to_Z_in_range.
-    iApply wp_int_arithop; [done..|].
+    iApply wp_int_arithop; [done..| | ].
+    { move: Hsc. rewrite /int_arithop_sidecond /arith_op_sidecond. destruct op; rewrite ?int_elem_of_it_iff ?MaxInt_eq; done. }
+
     iIntros (v Hv) "!> Hcred". rewrite /i2v Hv/=. iApply ("HΦ" with "HL Hna [] HT").
     rewrite /ty_own_val/=.
     iPureIntro. split; first by apply: val_to_of_Z. done.
@@ -217,10 +225,11 @@ Section typing.
     λ m ss def fn R ϝ, i2p (type_switch_int π E L n it m ss def fn R ϝ v).
 
   Lemma type_neg_int π E L n it v (T : typed_un_op_cont_t) :
-    (⌜n ∈ it⌝ -∗ ⌜it.(it_signed)⌝ ∗ ⌜n ≠ min_int it⌝ ∗ T L (i2v (-n) it) _ (int it) (-n))
+    (⌜n ∈ it⌝ -∗ ⌜it.(it_signed)⌝ ∗ ⌜n ≠ MinInt it⌝ ∗ T L (i2v (-n) it) _ (int it) (-n))
     ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it)%I (NegOp) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
+    rewrite int_elem_of_it_iff MinInt_eq.
     iIntros "HT [%Hv %Hit] %Φ #CTX #HE HL Hna HΦ". move: (Hv) => /val_to_Z_in_range ?.
     iDestruct ("HT" with "[//]") as (Hs Hn) "HT".
     have [|v' Hv']:= val_of_Z_is_Some None it (- n). {
@@ -243,6 +252,7 @@ Section typing.
     ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it)%I (NotIntOp) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
+    rewrite int_elem_of_it_iff.
     iIntros "HT [%Hv %Hit] %Φ #CTX #HE HL Hna HΦ". move: (Hv) => /val_to_Z_in_range ?.
     iDestruct ("HT" with "[//]") as "HT".
     set (nz := (if it_signed it then Z.lnot n else Z_lunot (bits_per_int it) n)).
@@ -270,10 +280,11 @@ Section typing.
     λ T, i2p (type_not_int π E L n it v T).
 
   Lemma type_cast_int π E L n (it1 it2 : int_type) v (T : typed_un_op_cont_t) :
-    ⌜ly_size it2 ≤ max_int isize_t⌝ ∗ (⌜n ∈ it1⌝ -∗ ∀ v, T L v _ (int it2) (wrap_to_it n it2))
+    ⌜ly_size it2 ≤ MaxInt isize_t⌝ ∗ (⌜n ∈ it1⌝ -∗ ∀ v, T L v _ (int it2) (wrap_to_it n it2))
     ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it1)%I (CastOp (IntOp it2)) (IntOp it1) T.
   Proof.
     rewrite /ty_own_val/=.
+    rewrite int_elem_of_it_iff MaxInt_eq.
     iIntros "[%Hit2 HT] [%Hv %Hit] %Φ #CTX #HE HL Hna HΦ".
     iSpecialize ("HT" with "[]").
     { iPureIntro. by apply: val_to_Z_in_range. }
@@ -281,7 +292,7 @@ Section typing.
     { apply wrap_to_it_in_range. }
     iApply wp_cast_int => //.
     iNext. iIntros "Hcred". iApply ("HΦ" with "HL Hna [] HT") => //.
-    rewrite /ty_own_val/=.
+    rewrite /ty_own_val/= MaxInt_eq.
     iPureIntro. split; last done. by apply: val_to_of_Z.
   Qed.
   Global Instance type_cast_int_inst π E L n it1 it2 v:

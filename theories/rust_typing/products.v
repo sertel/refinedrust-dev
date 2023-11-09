@@ -720,7 +720,7 @@ Section init.
       assert (syn_type_has_layout (UntypedSynType ly) ly).
       { apply syn_type_has_layout_untyped; first done.
         - inversion Hpad; subst. apply layout_wf_align_log_0. done.
-        - simpl in Hsize. lia.
+        - simpl in Hsize. rewrite MaxInt_eq. lia.
         - apply ly_align_in_bounds_1. inversion Hpad; subst. done. }
       iR. rewrite take_app'; first last. { rewrite replicate_length//. }
       rewrite uninit_own_spec.

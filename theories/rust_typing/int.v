@@ -8,7 +8,7 @@ Section int.
 
   (* Separate definition such that we can make it typeclasses opaque later. *)
   Program Definition int (it : int_type) : type Z := {|
-    st_own tid z v := ⌜val_to_Z v it = Some z⌝ ∗ ⌜ly_size it ≤ max_int isize_t⌝;
+    st_own tid z v := ⌜val_to_Z v it = Some z⌝ ∗ ⌜ly_size it ≤ MaxInt isize_t⌝;
     st_has_op_type ot mt := is_int_ot ot it;
     st_syn_type := IntSynType it;
   |}%I.
@@ -32,7 +32,7 @@ Section int.
   Qed.
 
   Lemma ty_own_int_in_range l π n it : l ◁ᵥ{π} n @ int it -∗ ⌜n ∈ it⌝.
-  Proof. iIntros "[%Hl _]". iPureIntro. by eapply val_to_Z_in_range. Qed.
+  Proof. iIntros "[%Hl _]". iPureIntro. rewrite int_elem_of_it_iff. by eapply val_to_Z_in_range. Qed.
 
   (* We only get this under a later for sharing:
      the refinement predicate needs to sit under a later for the whole sharing business.
@@ -41,7 +41,7 @@ Section int.
   Lemma ty_shr_int_in_range l π κ n it : l ◁ₗ{π, κ} n @ int it -∗ ▷ ⌜n ∈ it⌝.
   Proof.
     iIntros "(%v & (%ly & Hv & (Ha & _) & Halg & Hl))" => /=. iNext. iDestruct "Ha" as "%Hn".
-    iPureIntro. by eapply val_to_Z_in_range.
+    iPureIntro. apply int_elem_of_it_iff. by eapply val_to_Z_in_range.
   Qed.
 
   Global Instance int_copyable it : Copyable (int it).

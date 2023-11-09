@@ -57,6 +57,14 @@ Class LayoutSizeLe (ly1 ly2 : layout) := layout_size_le_proof : ly_size ly1 ≤ 
 Global Instance layout_size_le_refl ly : LayoutSizeLe ly ly.
 Proof. constructor. Qed.
 
+Global Remove Hints int_elem_of_it : typeclass_instances.
+Global Existing Instance int_elem_of_it'.
+Lemma int_elem_of_it_iff z it :
+  z ∈ it ↔ int_elem_of_it z it.
+Proof.
+  rewrite /elem_of/int_elem_of_it' MinInt_eq MaxInt_eq//.
+Qed.
+
 
 (** Block typeclass resolution for an argument *)
 Definition TCNoResolve (P : Type) := P.

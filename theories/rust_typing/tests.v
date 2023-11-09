@@ -398,7 +398,7 @@ Section test.
 
   Lemma solve_layout_size_test2 T_ly :
     use_layout_alg T_st = Some T_ly →
-    (size_of_st T_st * 43 ≤ max_int isize_t)%Z →
+    (size_of_st T_st * 43 ≤ MaxInt isize_t)%Z →
     ly_size (use_layout_alg' (ArraySynType T_st 42)) ≤ ly_size (use_layout_alg' (ArraySynType T_st 43)).
   Proof.
     intros. solve_layout_size; solve[fail].
@@ -413,7 +413,7 @@ Section test.
 
   Lemma solve_layout_size_test4 T_ly :
     use_layout_alg T_st = Some T_ly →
-    (size_of_st T_st * 43 ≤ max_int isize_t)%Z →
+    (size_of_st T_st * 43 ≤ MaxInt isize_t)%Z →
     size_of_st T_st > 0 →
     ly_size (use_layout_alg' (ArraySynType T_st 42)) < ly_size (use_layout_alg' (ArraySynType T_st 43)).
   Proof.
@@ -436,7 +436,7 @@ Section test.
 
   Lemma solve_layout_alg_test2 T_ly :
     use_layout_alg T_st = Some T_ly →
-    (ly_size T_ly * 42 ≤ max_int isize_t)%Z →
+    (ly_size T_ly * 42 ≤ MaxInt isize_t)%Z →
     syn_type_has_layout (ArraySynType T_st 42) (mk_array_layout T_ly 42).
   Proof.
     intros. solve_layout_alg; solve [fail].
@@ -444,7 +444,7 @@ Section test.
 
   Lemma solve_layout_alg_test2' T_ly size :
     use_layout_alg T_st = Some T_ly →
-    (ly_size T_ly * Z.to_nat size ≤ max_int isize_t)%Z →
+    (ly_size T_ly * Z.to_nat size ≤ MaxInt isize_t)%Z →
     ∃ ly, syn_type_has_layout (ArraySynType T_st (Z.to_nat size)) ly.
   Proof.
     intros. eexists.

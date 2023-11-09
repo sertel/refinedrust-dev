@@ -15,8 +15,8 @@ Inductive memcast_compat_type : Set :=
 
 Definition is_int_ot (ot : op_type) (it : int_type) : Prop :=
   match ot with
-    | IntOp it' => it = it' ∧ (ly_size it ≤ max_int isize_t)%Z
-    | UntypedOp ly => ly = it_layout it ∧ (ly_size it ≤ max_int isize_t)%Z
+    | IntOp it' => it = it' ∧ (ly_size it ≤ MaxInt isize_t)%Z
+    | UntypedOp ly => ly = it_layout it ∧ (ly_size it ≤ MaxInt isize_t)%Z
     | _ => False
   end.
 (* TODO: ideally, BoolOp should also garble up all the other bits of the read value, as Rust will use the 7 excess bits of bool for niche optimizations *)
@@ -33,7 +33,7 @@ Proof.
   destruct ot => //=; naive_solver.
 Qed.
 Lemma is_int_ot_size ot it :
-  is_int_ot ot it → (ly_size it ≤ max_int isize_t)%Z.
+  is_int_ot ot it → (ly_size it ≤ MaxInt isize_t)%Z.
 Proof.
   destruct ot; try done; intros []; done.
 Qed.

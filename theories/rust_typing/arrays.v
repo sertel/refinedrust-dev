@@ -74,7 +74,7 @@ Definition is_array_ot `{!typeGS Σ} {rt} (ty : type rt) (len : nat) (ot : op_ty
   | UntypedOp ly =>
       ∃ ly', ly = mk_array_layout ly' len ∧ ty.(ty_has_op_type) (UntypedOp ly') mt ∧
         (* required for offsetting with LLVM's GEP *)
-        (ly_size ly ≤ max_int isize_t)%Z ∧
+        (ly_size ly ≤ MaxInt isize_t)%Z ∧
         (* enforced by Rust *)
         layout_wf ly'
   | _ => False
@@ -181,7 +181,7 @@ Section array.
     ty_own_val π r v :=
       ∃ ly,
         ⌜syn_type_has_layout ty.(ty_syn_type) ly⌝ ∗
-        ⌜(ly_size ly * len ≤ max_int isize_t)%Z⌝ ∗
+        ⌜(ly_size ly * len ≤ MaxInt isize_t)%Z⌝ ∗
         ⌜length r = len⌝ ∗
         ⌜v `has_layout_val` (mk_array_layout ly len)⌝ ∗
         [∗ list] r'; v' ∈ r; reshape (replicate len (ly_size ly)) v,
@@ -189,7 +189,7 @@ Section array.
     ty_shr κ π r l :=
       ∃ ly,
         ⌜syn_type_has_layout ty.(ty_syn_type) ly⌝ ∗
-        ⌜(ly_size ly * len ≤ max_int isize_t)%Z⌝ ∗
+        ⌜(ly_size ly * len ≤ MaxInt isize_t)%Z⌝ ∗
         ⌜length r = len⌝ ∗
         ⌜l `has_layout_loc` ly⌝ ∗
         [∗ list] i ↦ r' ∈ r, array_own_el_shr π κ i ly ty r' l;
@@ -234,7 +234,7 @@ Section array.
     rewrite -lft_tok_sep. iDestruct "Htok" as "(Htok & Htok')".
     iApply fupd_logical_step.
     (* reshape the borrow - we must not freeze the existential over v to initiate recursive sharing *)
-    iPoseProof (bor_iff _ _ (∃ ly', ⌜syn_type_has_layout (ty_syn_type ty) ly'⌝ ∗ ⌜(ly_size ly' * len ≤ max_int isize_t)%Z⌝ ∗  ⌜length r = len⌝ ∗ [∗ list] i ↦ r' ∈ r, ∃ v, array_own_el_loc π 1%Qp v i ly' ty r' l)%I with "[] Hb") as "Hb".
+    iPoseProof (bor_iff _ _ (∃ ly', ⌜syn_type_has_layout (ty_syn_type ty) ly'⌝ ∗ ⌜(ly_size ly' * len ≤ MaxInt isize_t)%Z⌝ ∗  ⌜length r = len⌝ ∗ [∗ list] i ↦ r' ∈ r, ∃ v, array_own_el_loc π 1%Qp v i ly' ty r' l)%I with "[] Hb") as "Hb".
     { iNext. iModIntro. iSplit.
       - iIntros "(%v & Hl & %ly' & %Hst' & %Hsz & %Hlen & %Hv & Hv)".
         iExists ly'. iSplitR; first done. iSplitR; first done. iSplitR; first done.
@@ -363,7 +363,7 @@ Section lemmas.
   Qed.
 
   Lemma array_t_own_val_merge {rt} (ty : type rt) π (n1 n2 : nat) v1 v2 rs1 rs2 :
-    (size_of_st ty.(ty_syn_type) * (n1 + n2) ≤ max_int isize_t)%Z →
+    (size_of_st ty.(ty_syn_type) * (n1 + n2) ≤ MaxInt isize_t)%Z →
     v1 ◁ᵥ{π} rs1 @ array_t ty n1 -∗
     v2 ◁ᵥ{π} rs2 @ array_t ty n2 -∗
     (v1 ++ v2) ◁ᵥ{π} (rs1 ++ rs2) @ array_t ty (n1 + n2).
@@ -408,7 +408,7 @@ Section lemmas.
   Qed.
 
   Lemma array_t_shr_merge {rt} (ty : type rt) π κ (n1 n2 : nat) l rs1 rs2 :
-    (size_of_st ty.(ty_syn_type) * (n1 + n2) ≤ max_int isize_t)%Z →
+    (size_of_st ty.(ty_syn_type) * (n1 + n2) ≤ MaxInt isize_t)%Z →
     l ◁ₗ{π, κ} rs1 @ array_t ty n1 -∗
     (l offsetst{ty.(ty_syn_type)}ₗ n1) ◁ₗ{π, κ} rs2 @ array_t ty n2 -∗
     l ◁ₗ{π, κ} (rs1 ++ rs2) @ array_t ty (n1 + n2).
@@ -994,7 +994,7 @@ Section unfold.
   Proof.
     iModIntro. iIntros (π l) "Hl".
     rewrite ltype_own_array_unfold /array_ltype_own/=.
-    iDestruct "Hl" as "(%ly & %Hst & % & % & #Hlb & Hcreds & %r' & Hrfn & Hb)".
+    iDestruct "Hl" as "(%ly & %Hst & %Hsz & % & #Hlb & Hcreds & %r' & Hrfn & Hb)".
     iModIntro. rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iExists (mk_array_layout ly len). iFrame "% ∗".
     simpl. iSplitR. { iPureIntro. eapply syn_type_has_layout_array; done. }
@@ -1013,7 +1013,7 @@ Section unfold.
   Proof.
     iModIntro. iIntros (π l) "Hl".
     rewrite ltype_own_array_unfold /array_ltype_own/=.
-    iDestruct "Hl" as "(%ly & %Hst & % & % & #Hlb & %r' & Hrfn & #Hb)".
+    iDestruct "Hl" as "(%ly & %Hst & %Hsz & % & #Hlb & %r' & Hrfn & #Hb)".
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iExists (mk_array_layout ly len). simpl.
     iSplitR. { iPureIntro. eapply syn_type_has_layout_array; done. }
@@ -1035,7 +1035,7 @@ Section unfold.
   Proof.
     iModIntro. iIntros (π l) "Hl".
     rewrite ltype_own_array_unfold /array_ltype_own/=.
-    iDestruct "Hl" as "(%ly & %Hst & % & % & #Hlb & Hcreds & Hrfn & Hb)".
+    iDestruct "Hl" as "(%ly & %Hst & %Hsz & % & #Hlb & Hcreds & Hrfn & Hb)".
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iExists (mk_array_layout ly len). iFrame "% ∗".
     simpl. iSplitR. { iPureIntro. eapply syn_type_has_layout_array; done. }
@@ -1120,7 +1120,7 @@ Section unfold.
     iDestruct "Hl" as "(%ly & %Hst & %Hl & _ & Hlb & Hcreds & %rs' & Hrfn & Ha)".
     apply syn_type_has_layout_array_inv in Hst as (ly' & Hst & -> & Hsz).
     iModIntro. iExists _. iR.
-    iSplitR. { iPureIntro. move: Hsz. rewrite ly_size_mk_array_layout. lia. }
+    iSplitR. { iPureIntro. move: Hsz. rewrite ly_size_mk_array_layout MaxInt_eq. lia. }
     iR. rewrite ly_size_mk_array_layout. iFrame.
     iExists rs'. iFrame. iNext. iMod "Ha" as "(%v & Hl & Hv)".
     rewrite /ty_own_val /=.
@@ -1143,7 +1143,7 @@ Section unfold.
     iDestruct "Hl" as "(%ly & %Hst & % & Hsc & #Hlb & %r' & Hrfn & #Hb)".
     apply syn_type_has_layout_array_inv in Hst as (ly' & Hst & -> & Hsz).
     iExists ly'. iR.
-    iSplitR. { iPureIntro. move: Hsz. rewrite ly_size_mk_array_layout. lia. }
+    iSplitR. { iPureIntro. move: Hsz. rewrite ly_size_mk_array_layout MaxInt_eq. lia. }
     iR. rewrite ly_size_mk_array_layout. iR.
     iExists _. iFrame.
     iModIntro. iMod "Hb" as "Hb". iModIntro.
@@ -1421,7 +1421,7 @@ Section lemmas.
     l ◁ₗ[π, Owned wl] #rs @ ArrayLtype def len lts -∗
     ∃ ly, ⌜syn_type_has_layout def.(ty_syn_type) ly⌝ ∗
       ⌜l `has_layout_loc` (mk_array_layout ly len)⌝ ∗
-      ⌜(ly_size ly * len ≤ max_int isize_t)%Z⌝ ∗
+      ⌜(ly_size ly * len ≤ MaxInt isize_t)%Z⌝ ∗
       (*⌜Forall (λ '(i, _), i < len) lts⌝ ∗*)
       loc_in_bounds l 0 (ly.(ly_size) * len) ∗ |={F}=>
       ([∗ list] i↦lt;r0 ∈ interpret_iml (◁ def) len lts;rs, ⌜ltype_st lt = ty_syn_type def⌝ ∗ (l offset{ly}ₗ i) ◁ₗ[π, Owned false] r0 @ lt) ∗
@@ -1456,7 +1456,7 @@ Section lemmas.
     l ◁ₗ[π, Owned wl] #rs @ ArrayLtype def len lts -∗
     ∃ ly, ⌜syn_type_has_layout def.(ty_syn_type) ly⌝ ∗
       ⌜l `has_layout_loc` (mk_array_layout ly len)⌝ ∗
-      ⌜(ly_size ly * len ≤ max_int isize_t)%Z⌝ ∗
+      ⌜(ly_size ly * len ≤ MaxInt isize_t)%Z⌝ ∗
       (*⌜Forall (λ '(i, _), i < len) lts⌝ ∗*)
       loc_in_bounds l 0 (ly.(ly_size) * len) ∗ |={F}=>
       ([∗ list] i↦lt;r0 ∈ interpret_iml (◁ def) len lts;rs, ⌜ltype_st lt = ty_syn_type def⌝ ∗ (l offset{ly}ₗ i) ◁ₗ[π, Owned false] r0 @ lt) ∗
@@ -1593,7 +1593,7 @@ Section lemmas.
     l ◁ₗ[π, Uniq κ γ] #rs @ ArrayLtype def len lts -∗
     ∃ ly, ⌜syn_type_has_layout def.(ty_syn_type) ly⌝ ∗
       ⌜l `has_layout_loc` (mk_array_layout ly len)⌝ ∗
-      ⌜(ly_size ly * len ≤ max_int isize_t)%Z⌝ ∗
+      ⌜(ly_size ly * len ≤ MaxInt isize_t)%Z⌝ ∗
       (*⌜Forall (λ '(i, _), i < len) lts⌝ ∗*)
       loc_in_bounds l 0 (ly.(ly_size) * len) ∗ |={F}=>
       ([∗ list] i↦lt;r0 ∈ interpret_iml (◁ def) len lts;rs, ⌜ltype_st lt = ty_syn_type def⌝ ∗ (l offset{ly}ₗ i) ◁ₗ[π, Owned false] r0 @ lt) ∗
@@ -1612,7 +1612,6 @@ Section lemmas.
         typed_place_cond (Uniq κ γ ⊓ₖ bmin) (ArrayLtype def len lts) (ArrayLtype def' len lts') (#rs) (#rs')
         ).
   Proof.
-    (* TODO *)
     iIntros (?) "#(LFT & TIME & LLCTX) Htok Htokcl Hb". rewrite ltype_own_array_unfold /array_ltype_own.
     iDestruct "Hb" as "(%ly & %Hst & % & %Hly & #Hlb & Hcred & Hrfn & Hb)".
     iExists ly. iR. iR. iR. iR.
@@ -1689,7 +1688,7 @@ Section lemmas.
     l ◁ₗ[π, Shared κ] #rs @ ArrayLtype def len lts -∗
     ∃ ly, ⌜syn_type_has_layout def.(ty_syn_type) ly⌝ ∗
       ⌜l `has_layout_loc` (mk_array_layout ly len)⌝ ∗
-      ⌜(ly_size ly * len ≤ max_int isize_t)%Z⌝ ∗
+      ⌜(ly_size ly * len ≤ MaxInt isize_t)%Z⌝ ∗
       loc_in_bounds l 0 (ly.(ly_size) * len) ∗ |={F}=>
       ([∗ list] i↦lt;r0 ∈ interpret_iml (◁ def) len lts;rs, ⌜ltype_st lt = ty_syn_type def⌝ ∗ (l offset{ly}ₗ i) ◁ₗ[π, Shared κ] r0 @ lt) ∗
       (∀ (def' : type rt) (lts' : list (nat * ltype rt)) rs',
@@ -1835,7 +1834,7 @@ Section rules.
     iApply wp_ptr_offset.
     { eapply val_to_of_loc. }
     { done. }
-    { rewrite /elem_of/int_elem_of_it. split; last nia.
+    { rewrite /elem_of/int_elem_of_it. rewrite MaxInt_eq in Hsz. split; last nia.
       specialize (min_int_le_0 isize_t). lia. }
     { iPoseProof (loc_in_bounds_array_offset _ _ (Z.to_nat i') with "Hlb") as "Hlb'"; first lia.
       rewrite Z2Nat.id; last done.
@@ -1926,7 +1925,7 @@ Section rules.
     iApply wp_ptr_offset.
     { eapply val_to_of_loc. }
     { done. }
-    { rewrite /elem_of/int_elem_of_it. split; last nia.
+    { rewrite /elem_of/int_elem_of_it. rewrite MaxInt_eq in Hsz. split; last nia.
       specialize (min_int_le_0 isize_t). lia. }
     { iPoseProof (loc_in_bounds_array_offset _ _ (Z.to_nat i') with "Hlb") as "Hlb'"; first lia.
       rewrite Z2Nat.id; last done.
@@ -2015,7 +2014,7 @@ Section rules.
     iApply wp_ptr_offset.
     { eapply val_to_of_loc. }
     { done. }
-    { rewrite /elem_of/int_elem_of_it. split; last nia.
+    { rewrite /elem_of/int_elem_of_it. rewrite MaxInt_eq in Hsz. split; last nia.
       specialize (min_int_le_0 isize_t). lia. }
     { iPoseProof (loc_in_bounds_array_offset _ _ (Z.to_nat i') with "Hlb") as "Hlb'"; first lia.
       rewrite Z2Nat.id; last done.
@@ -2104,7 +2103,7 @@ Section rules.
   (* TODO: how would that scale to more complex transformations? E.g. what about take etc. -- I guess for that we could have instances as well.
     Basically, I would imagine that we only want to look in the context for primitive values. *)
   Lemma prove_with_subtype_array_val_split π E L pm v1 v2 {rt} (ty : type rt) r1 r2 (len : nat) T :
-    ⌜(size_of_st (ty_syn_type ty) * len ≤ max_int isize_t)%Z⌝ ∗
+    ⌜(size_of_st (ty_syn_type ty) * len ≤ MaxInt isize_t)%Z⌝ ∗
     ⌜length r1 ≤ len⌝ ∗
     prove_with_subtype E L false pm (v1 ◁ᵥ{π} r1 @ array_t ty (length r1)) (λ L2 κs1 R2,
       prove_with_subtype E L2 false pm (v2 ◁ᵥ{π} r2 @ array_t ty (len - length r1)) (λ L3 κs2 R3, T L3 (κs1 ++ κs2) (R2 ∗ R3)%I))
@@ -3102,7 +3101,7 @@ Section value.
     - done.
     - by apply array_layout_wf.
     - rewrite ly_size_mk_array_layout.
-      move: Hsz. rewrite fmap_length. lia.
+      move: Hsz. rewrite fmap_length MaxInt_eq. lia.
     - rewrite /ly_align_in_bounds ly_align_mk_array_layout //.
   Qed.
   Lemma value_t_untyped_from_array π v vs n ly :

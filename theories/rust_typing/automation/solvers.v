@@ -1739,14 +1739,6 @@ Ltac solve_layout_size :=
   subst;
   (* simplify simple layout sizes *)
   simpl;
-  (* enrich the context *)
-  (*
-  repeat match goal with
-  | H : use_layout_alg ?st = Some ?ly |- _ =>
-    specialize (use_layout_alg_size _ _ H) as ?;
-    apply dont_enrich in H
-  end;
-  *)
   (* call into lia *)
   try lia.
 
@@ -1809,7 +1801,7 @@ Ltac solve_layout_alg ::=
   lazymatch goal with
   | |- syn_type_has_layout (IntSynType ?it) ?ly =>
       refine (syn_type_has_layout_int _ _ _ _);
-      [ solve_layout_eq | done ]
+      [ solve_layout_eq | solve_layout_size; shelve ]
   | |- syn_type_has_layout BoolSynType ?ly =>
       refine (syn_type_has_layout_bool _ _);
       [solve_layout_eq ]
@@ -1830,7 +1822,7 @@ Ltac solve_layout_alg ::=
       [solve_layout_eq ]
   | |- syn_type_has_layout (ArraySynType ?st ?len) ?ly =>
       refine (syn_type_has_layout_array st len _ ly _ _ _);
-      [ solve_layout_eq | solve_layout_alg | solve_layout_size ]
+      [ solve_layout_eq | solve_layout_alg | solve_layout_size; shelve ]
   | |- syn_type_has_layout (UnsafeCell ?st) ?ly =>
       refine (syn_type_has_layout_unsafecell st ly _);
       [solve_layout_alg ]
@@ -1844,7 +1836,7 @@ Ltac solve_layout_alg ::=
             [solve_layout_eq | solve_layout_alg]
       | _ =>
           refine (syn_type_has_layout_untyped ly ly' _ _ _ _);
-            [solve_layout_eq | solve_layout_wf | solve_layout_size | solve_ly_align_ib ]
+            [solve_layout_eq | solve_layout_wf | solve_layout_size; shelve | solve_ly_align_ib ]
       end
   | |- syn_type_has_layout (EnumSynType ?name ?it ?variants) ?ly =>
       refine (syn_type_has_layout_enum_tac name variants _ it _ _ _ _ _ _ _);
@@ -2171,34 +2163,50 @@ Ltac solve_bor_kind_outlives :=
 
 
 (** ** Augment the context with commonly needed facts. *)
+Section augment.
+  Lemma MaxInt_isize_lt_usize : (MaxInt isize_t < MaxInt usize_t)%Z.
+  Proof. rewrite !MaxInt_eq. apply max_int_isize_lt_usize. Qed.
+  Lemma MaxInt_ge_127 (it : int_type) : (127 ≤ MaxInt it)%Z.
+  Proof. rewrite MaxInt_eq. apply max_int_ge_127. Qed.
+  Lemma MinInt_le_n128_signed (it : int_type) :
+    it_signed it = true → (MinInt it ≤ -128)%Z.
+  Proof. rewrite MinInt_eq. apply min_int_le_n128_signed. Qed.
+  Lemma MinInt_unsigned_0 (it : int_type) :
+    it_signed it = false → (MinInt it = 0)%Z.
+  Proof. rewrite MinInt_eq. apply min_int_unsigned_0. Qed.
+  Lemma bytes_per_addr_eq :
+    bytes_per_addr = 8%nat.
+  Proof. done. Qed.
+End augment.
 
 
 Ltac augment_context :=
-  specialize (max_int_isize_lt_usize) as ?;
-  specialize (max_int_ge_127 i8) as ?;
-  specialize (max_int_ge_127 u8) as ?;
-  specialize (max_int_ge_127 i16) as ?;
-  specialize (max_int_ge_127 u16) as ?;
-  specialize (max_int_ge_127 i32) as ?;
-  specialize (max_int_ge_127 u32) as ?;
-  specialize (max_int_ge_127 i64) as ?;
-  specialize (max_int_ge_127 u64) as ?;
-  specialize (max_int_ge_127 i128) as ?;
-  specialize (max_int_ge_127 u128) as ?;
-  specialize (max_int_ge_127 isize_t) as ?;
-  specialize (max_int_ge_127 usize_t) as ?;
-  specialize (min_int_le_n128_signed i8 eq_refl) as ?;
-  specialize (min_int_le_n128_signed i16 eq_refl) as ?;
-  specialize (min_int_le_n128_signed i32 eq_refl) as ?;
-  specialize (min_int_le_n128_signed i64 eq_refl) as ?;
-  specialize (min_int_le_n128_signed i128 eq_refl) as ?;
-  specialize (min_int_le_n128_signed isize_t eq_refl) as ?;
-  specialize (min_int_unsigned_0 u8 eq_refl) as ?;
-  specialize (min_int_unsigned_0 u16 eq_refl) as ?;
-  specialize (min_int_unsigned_0 u32 eq_refl) as ?;
-  specialize (min_int_unsigned_0 u64 eq_refl) as ?;
-  specialize (min_int_unsigned_0 u128 eq_refl) as ?;
-  specialize (min_int_unsigned_0 usize_t eq_refl) as ?
+  (*specialize (bytes_per_addr_eq) as ?;*)
+  specialize (MaxInt_isize_lt_usize) as ?;
+  specialize (MaxInt_ge_127 i8) as ?;
+  specialize (MaxInt_ge_127 u8) as ?;
+  specialize (MaxInt_ge_127 i16) as ?;
+  specialize (MaxInt_ge_127 u16) as ?;
+  specialize (MaxInt_ge_127 i32) as ?;
+  specialize (MaxInt_ge_127 u32) as ?;
+  specialize (MaxInt_ge_127 i64) as ?;
+  specialize (MaxInt_ge_127 u64) as ?;
+  specialize (MaxInt_ge_127 i128) as ?;
+  specialize (MaxInt_ge_127 u128) as ?;
+  specialize (MaxInt_ge_127 isize_t) as ?;
+  specialize (MaxInt_ge_127 usize_t) as ?;
+  specialize (MinInt_le_n128_signed i8 eq_refl) as ?;
+  specialize (MinInt_le_n128_signed i16 eq_refl) as ?;
+  specialize (MinInt_le_n128_signed i32 eq_refl) as ?;
+  specialize (MinInt_le_n128_signed i64 eq_refl) as ?;
+  specialize (MinInt_le_n128_signed i128 eq_refl) as ?;
+  specialize (MinInt_le_n128_signed isize_t eq_refl) as ?;
+  specialize (MinInt_unsigned_0 u8 eq_refl) as ?;
+  specialize (MinInt_unsigned_0 u16 eq_refl) as ?;
+  specialize (MinInt_unsigned_0 u32 eq_refl) as ?;
+  specialize (MinInt_unsigned_0 u64 eq_refl) as ?;
+  specialize (MinInt_unsigned_0 u128 eq_refl) as ?;
+  specialize (MinInt_unsigned_0 usize_t eq_refl) as ?
   (*specialize (layout_wf_unit) as ?;*)
   (*specialize (layout_wf_ptr) as ?*)
 .

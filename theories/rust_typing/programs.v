@@ -1,6 +1,5 @@
-From stdpp Require Import gmap.
-From refinedrust Require Export base type ltypes lft_contexts annotations ltype_rules.
 From caesium Require Import lang proofmode derived lifting.
+From refinedrust Require Export base type ltypes lft_contexts annotations ltype_rules.
 Set Default Proof Using "Type".
 
 
@@ -677,7 +676,7 @@ Section judgments.
   W.ectx_item because of BinOpPCtx since there the root of the place
   expression is not in evaluation position. *)
   Inductive place_ectx_item :=
-  | DerefPCtx (o : order) (ot : op_type) (mc : bool)
+  | DerefPCtx (o : lang.order) (ot : op_type) (mc : bool)
   | GetMemberPCtx (sls : struct_layout_spec) (m : var_name)
   | GetMemberUnionPCtx (uls : union_layout_spec) (m : var_name)
   | AnnotExprPCtx (n : nat) {A} (x : A)

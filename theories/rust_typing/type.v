@@ -3,7 +3,7 @@ From iris.base_logic.lib Require Export invariants na_invariants.
 From caesium Require Export proofmode notation syntypes.
 From lrust.lifetime Require Export frac_borrow.
 From refinedrust Require Export base util pinned_borrows lft_contexts gvar_refinement memcasts.
-From caesium Require Import derived.
+From caesium Require Import loc.
 From iris Require Import options.
 
 Class typeGS Σ := TypeG {

@@ -3,8 +3,8 @@ From iris.bi Require Export fractional.
 From iris.base_logic.lib Require Export invariants na_invariants.
 From caesium Require Export proofmode notation.
 From caesium Require Import derived.
-From refinedrust Require Import int.
 From lrust.lifetime Require Export frac_borrow.
+From refinedrust Require Import int.
 From refinedrust Require Export hlist.
 From refinedrust Require Export base lft_contexts gvar_refinement type uninit_def.
 
@@ -1507,7 +1507,7 @@ Section ltype_def.
       (** ArrayLty *)
       ∃ ly,
         ⌜syn_type_has_layout (ty_syn_type def) ly⌝ ∗
-        ⌜(ly_size ly * len ≤ max_int isize_t)%Z⌝ ∗
+        ⌜(ly_size ly * len ≤ MaxInt isize_t)%Z⌝ ∗
         ⌜l `has_layout_loc` ly⌝ ∗
         loc_in_bounds l 0 (ly.(ly_size) * len) ∗
         (*⌜Forall (λ '(i, lts), i < len) lts⌝ ∗*)
@@ -1722,7 +1722,7 @@ Section ltype_def.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
     - iDestruct "Hown" as "(%sl & % & % & % & _)".
       iExists sl. simpl. iPureIntro. split; last done. by apply use_struct_layout_alg_Some_inv.
-    - iDestruct "Hown" as "(%ly & % & % & % & _)".
+    - iDestruct "Hown" as "(%ly & % & %Hsz & % & _)".
       iExists (mk_array_layout ly len). iSplitR; last done.
       iPureIntro. simpl.
       eapply syn_type_has_layout_array; done.
@@ -3020,7 +3020,7 @@ Section ltype_def.
     (k : bor_kind) (π : thread_id) (r : place_rfn (list (place_rfn rt))) (l : loc) : iProp Σ :=
     ∃ ly,
       ⌜syn_type_has_layout (ty_syn_type def) ly⌝ ∗
-      ⌜(ly_size ly * len ≤ max_int isize_t)%Z⌝ ∗
+      ⌜(ly_size ly * len ≤ MaxInt isize_t)%Z⌝ ∗
       ⌜l `has_layout_loc` ly⌝ ∗
       loc_in_bounds l 0 (ly.(ly_size) * len) ∗
       (*⌜Forall (λ '(i, _), i < len) lts⌝ ∗*)

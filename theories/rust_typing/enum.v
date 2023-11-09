@@ -545,9 +545,10 @@ Section enum.
     split.
     { exists (els_tag_it (enum_els en)). split_and!.
       - eapply syn_type_has_layout_int; first done.
+        rewrite MaxInt_eq.
         apply IntType_to_it_size_bounded.
       - done.
-      - apply IntType_to_it_size_bounded. }
+      - rewrite MaxInt_eq. apply IntType_to_it_size_bounded. }
     split; last done.
     apply use_enum_layout_alg_inv in Hel as (ul & variants & Hul & Hel & Hvariants).
     exists ul.
@@ -641,6 +642,8 @@ Section subtype.
     - by iApply enum_own_val_mono.
     - by iApply enum_shr_mono.
   Qed.
+
+  (*weak_subtype*)
 
   Definition full_enum_incl E L {rt} (e1 e2 : enum rt) : Prop :=
     ∀ qL : Qp, llctx_interp_noend L qL -∗ elctx_interp E -∗ enum_incl e1 e2.
@@ -741,7 +744,7 @@ Section unfold.
     iSplitL "Htag".
     { iExists _. iSplitR. { iPureIntro.
       apply syn_type_has_layout_int; first done.
-      apply IntType_to_it_size_bounded. }
+      rewrite MaxInt_eq. apply IntType_to_it_size_bounded. }
       iSplitR. { iPureIntro.
         rewrite /GetMemberLocSt /use_struct_layout_alg' Halg'/=.
         rewrite /offset_of.
@@ -947,7 +950,7 @@ Section rules.
       rewrite /els_lookup_tag.
       subst variant. rewrite Htag_lookup /=.
       iApply type_int_val.
-      - apply els_tag_it_size.
+      - rewrite -MaxInt_eq. apply els_tag_it_size.
       - specialize (els_tag_int_wf3 (enum_els en)) as Hels.
         eapply Forall_forall in Hels.
         2: { apply elem_of_list_to_map_2. done. }

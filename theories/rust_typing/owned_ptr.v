@@ -1,6 +1,6 @@
+From caesium Require Import derived.
 From refinedrust Require Export base type.
 From refinedrust Require Import programs uninit ltypes.
-From caesium Require Import derived.
 
 Section owned_ptr.
   Context `{typeGS Σ} {rt}

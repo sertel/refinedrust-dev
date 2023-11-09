@@ -1005,7 +1005,7 @@ Ltac after_intro_hook ::=
 
 (** Lithium hooks for [solve_goal]: called for remaining sideconditions *)
 Lemma unfold_int_elem_of_it (z : Z) (it : int_type) :
-  z ∈ it = (min_int it ≤ z ∧ z ≤ max_int it)%Z.
+  z ∈ it = (MinInt it ≤ z ∧ z ≤ MaxInt it)%Z.
 Proof. done. Qed.
 
 Ltac unfold_common_defs :=
