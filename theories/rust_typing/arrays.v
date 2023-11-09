@@ -3176,8 +3176,8 @@ End value.
 Section offset_ptr.
   Context `{!typeGS Σ}.
 
-  Program Definition offset_ptr_t st : type (loc * nat) := {|
-    st_own π (p : loc * nat) v := let '(l, off) := p in ⌜v = l offsetst{st}ₗ off⌝%I;
+  Program Definition offset_ptr_t st : type (loc * Z) := {|
+    st_own π (p : loc * Z) v := let '(l, off) := p in ⌜v = l offsetst{st}ₗ off⌝%I;
     st_syn_type := PtrSynType;
     st_has_op_type ot mt := is_ptr_ot ot;
   |}.
@@ -3225,7 +3225,7 @@ Section offset_rules.
   *)
   (* TODO maybe we also generally want this to unblock/stratify first? *)
   Definition typed_array_access_cont_t : Type := llctx → ∀ (rt' : Type), type rt' → nat → list (nat * ltype rt') → list (place_rfn rt') → bor_kind → ∀ rte, ltype rte → place_rfn rte → iProp Σ.
-  Definition typed_array_access (π : thread_id) (E : elctx) (L : llctx) (base : loc) (off : nat) (st : syn_type) {rt} (lt : ltype rt) (r : place_rfn rt) (k : bor_kind) (T : typed_array_access_cont_t) : iProp Σ :=
+  Definition typed_array_access (π : thread_id) (E : elctx) (L : llctx) (base : loc) (off : Z) (st : syn_type) {rt} (lt : ltype rt) (r : place_rfn rt) (k : bor_kind) (T : typed_array_access_cont_t) : iProp Σ :=
     ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
     rrust_ctx -∗
     elctx_interp E -∗
@@ -3237,7 +3237,7 @@ Section offset_rules.
       (base offsetst{st}ₗ off) ◁ₗ[π, k'] re @ lte ∗
       llctx_interp L' ∗
       T L' _ ty' len iml rs' k' rte lte re.
-  Class TypedArrayAccess (π : thread_id) (E : elctx) (L : llctx) (base : loc) (off : nat) (st : syn_type) {rt} (lt : ltype rt) (r : place_rfn rt) (k : bor_kind) : Type :=
+  Class TypedArrayAccess (π : thread_id) (E : elctx) (L : llctx) (base : loc) (off : Z) (st : syn_type) {rt} (lt : ltype rt) (r : place_rfn rt) (k : bor_kind) : Type :=
     typed_array_access_proof T : iProp_to_Prop (typed_array_access π E L base off st lt r k T).
 
 
@@ -3254,15 +3254,15 @@ Section offset_rules.
     TypedArrayAccess π E L base off st (◁ array_t ty len)%I rs k :=
     λ T, i2p (typed_array_access_unfold π E L base off st ty len rs k T).
 
-  Lemma typed_array_access_array_owned π E L base off st {rt} (ty : type rt) len iml rs (wl : bool) (T : typed_array_access_cont_t) :
-    (⌜off < len⌝ ∗ ⌜st = ty_syn_type ty⌝ ∗
+  Lemma typed_array_access_array_owned π E L base (off : Z) st {rt} (ty : type rt) (len : nat) iml rs (wl : bool) (T : typed_array_access_cont_t) :
+    (⌜(off < len)%Z⌝ ∗ ⌜(0 ≤ off)%Z⌝ ∗ ⌜st = ty_syn_type ty⌝ ∗
       prove_with_subtype E L false ProveDirect (if wl then £ 1 else True) (λ L2 κs Q, Q -∗
-      ∀ lt r, ⌜interpret_iml (◁ ty)%I len iml !! off = Some lt⌝ -∗ ⌜rs !! off = Some r⌝ -∗
+      ∀ lt r, ⌜interpret_iml (◁ ty)%I len iml !! Z.to_nat off = Some lt⌝ -∗ ⌜rs !! Z.to_nat off = Some r⌝ -∗
       introduce_with_hooks E L2 (maybe_creds wl) (λ L3,
-      T L3 _ ty len ((off, AliasLtype _ st (base offsetst{st}ₗ off)) :: iml) (rs) (Owned false) _ lt r)))
+      T L3 _ ty len ((Z.to_nat off, AliasLtype _ st (base offsetst{st}ₗ off)) :: iml) (rs) (Owned false) _ lt r)))
     ⊢ typed_array_access π E L base off st (ArrayLtype ty len iml) (#rs) (Owned wl) T.
   Proof.
-    iIntros "(%Hoff & %Hst & HT)".
+    iIntros "(%Hoff & %Hoff' & %Hst & HT)".
     iIntros (???) "#CTX #HE HL Hl".
     iMod ("HT" with "[//] [//] CTX HE HL") as "(%L2 & %κs & %Q & >(HP & HQ) & HL & HT)".
     iPoseProof ("HT" with "HQ") as "HT".
@@ -3276,21 +3276,21 @@ Section offset_rules.
     iPoseProof (array_ltype_acc_owned' with "Hl") as "(%ly & %Halg & % & % & Hlb & >(Hb & Hcl))"; first done.
     iPoseProof (big_sepL2_length with "Hb") as "%Hlen".
     rewrite interpret_iml_length in Hlen.
-    specialize (lookup_lt_is_Some_2 rs off) as (r & Hr).
+    specialize (lookup_lt_is_Some_2 rs (Z.to_nat off)) as (r & Hr).
     { lia. }
-    specialize (lookup_lt_is_Some_2 (interpret_iml (◁ ty)%I len iml) off) as (lt & Hlt).
+    specialize (lookup_lt_is_Some_2 (interpret_iml (◁ ty)%I len iml) (Z.to_nat off)) as (lt & Hlt).
     { rewrite interpret_iml_length. lia. }
-    iPoseProof (big_sepL2_insert_acc _ _ _ off with "Hb") as "((%Hst' & Hel) & Hcl_b)"; [done.. | ].
+    iPoseProof (big_sepL2_insert_acc _ _ _ (Z.to_nat off) with "Hb") as "((%Hst' & Hel) & Hcl_b)"; [done.. | ].
     iPoseProof (ltype_own_make_alias false _ _ r with "Hel [//]") as "(Hel & Halias)".
     iPoseProof ("Hcl_b" $! (AliasLtype _ (ty_syn_type ty) (base offsetst{st}ₗ off)) r with "[Halias]") as "Ha".
-    { simp_ltypes. iR. rewrite /OffsetLocSt /use_layout_alg' Hst Halg /=. rewrite Hst'. done. }
-    iMod ("Hcl" $! _ ty ((off, AliasLtype rt st (base offsetst{st}ₗ off)) :: iml) rs with "[//] [//] [Ha]") as "Ha".
-    { simpl. rewrite (list_insert_id rs off r); last done. rewrite Hst.  done. }
+    { simp_ltypes. iR. rewrite /OffsetLocSt /offset_loc /use_layout_alg' Hst Halg /=. rewrite Hst'. rewrite !Z2Nat.id; last done. done. }
+    iMod ("Hcl" $! _ ty ((Z.to_nat off, AliasLtype rt st (base offsetst{st}ₗ off)) :: iml) rs with "[//] [//] [Ha]") as "Ha".
+    { simpl. rewrite (list_insert_id rs (Z.to_nat off) r); last done. rewrite Hst.  done. }
     iMod ("HT" with "[//] [//] [//] HE HL Hcred") as "(%L3 & HL & HT)".
     iModIntro. iExists _, _, _, _, _, _, _, _. iExists _, _. iFrame.
-    rewrite /OffsetLocSt /use_layout_alg' Hst Halg//.
+    rewrite /OffsetLocSt /use_layout_alg' Hst Halg Z2Nat.id //.
   Qed.
-  Global Instance typed_array_access_owned_inst π E L base off st {rt} (ty : type rt) len iml rs wl :
+  Global Instance typed_array_access_owned_inst π E L base (off : Z) st {rt} (ty : type rt) len iml rs wl :
     TypedArrayAccess π E L base off st (ArrayLtype ty len iml) (#rs) (Owned wl) :=
     λ T, i2p (typed_array_access_array_owned π E L base off st ty len iml rs wl T).
 
@@ -3327,25 +3327,25 @@ Section offset_rules.
     λ T, i2p (typed_array_access_array_owned_false π E L base off st ty len iml rs T).
   *)
 
-  Lemma typed_array_access_array_shared π E L base off st {rt} (ty : type rt) len iml rs κ (T : typed_array_access_cont_t) :
-    (⌜off < len⌝ ∗ ⌜st = ty_syn_type ty⌝ ∗ ∀ lt r, ⌜interpret_iml (◁ ty)%I len iml !! off = Some lt⌝ -∗ ⌜rs !! off = Some r⌝ -∗
+  Lemma typed_array_access_array_shared π E L base off st {rt} (ty : type rt) (len : nat) iml rs κ (T : typed_array_access_cont_t) :
+    (⌜(off < len)%Z⌝ ∗ ⌜(0 ≤ off)%Z⌝ ∗ ⌜st = ty_syn_type ty⌝ ∗ ∀ lt r, ⌜interpret_iml (◁ ty)%I len iml !! Z.to_nat off = Some lt⌝ -∗ ⌜rs !! Z.to_nat off = Some r⌝ -∗
       T L _ ty len iml (rs) (Shared κ) _ lt r)
     ⊢ typed_array_access π E L base off st (ArrayLtype ty len iml) (#rs) (Shared κ) T.
   Proof.
-    iIntros "(%Hoff & %Hst & HT)".
+    iIntros "(%Hoff & %Hoff' & %Hst & HT)".
     iIntros (???) "#CTX #HE HL Hl".
     iPoseProof (array_ltype_acc_shared with "Hl") as "(%ly & %Halg & % & % & Hlb & >(#Hb & Hcl))"; first done.
     iPoseProof (big_sepL2_length with "Hb") as "%Hlen".
     rewrite interpret_iml_length in Hlen.
-    specialize (lookup_lt_is_Some_2 rs off) as (r & Hr).
+    specialize (lookup_lt_is_Some_2 rs (Z.to_nat off)) as (r & Hr).
     { lia. }
-    specialize (lookup_lt_is_Some_2 (interpret_iml (◁ ty)%I len iml) off) as (lt & Hlt).
+    specialize (lookup_lt_is_Some_2 (interpret_iml (◁ ty)%I len iml) (Z.to_nat off)) as (lt & Hlt).
     { rewrite interpret_iml_length. lia. }
-    iPoseProof (big_sepL2_lookup _ _ _ off with "Hb") as "(%Hst' & Hel)"; [done.. | ].
+    iPoseProof (big_sepL2_lookup _ _ _ (Z.to_nat off) with "Hb") as "(%Hst' & Hel)"; [done.. | ].
     iMod ("Hcl" $! ty iml with "[//] [//] Hb") as "(Ha & _)".
     iPoseProof ("HT" with "[//] [//]") as "HT".
     iModIntro. iExists _, _, _, _, _, _, _, _. iExists _, _. iFrame.
-    rewrite /OffsetLocSt /use_layout_alg' Hst Halg//.
+    rewrite /OffsetLocSt /use_layout_alg' Hst Halg Z2Nat.id //.
   Qed.
   Global Instance typed_array_access_shared_inst π E L base off st {rt} (ty : type rt) len iml rs κ :
     TypedArrayAccess π E L base off st (ArrayLtype ty len iml) (#rs) (Shared κ) :=
@@ -3479,7 +3479,7 @@ Section offset_rules.
     TypedPlace E L π l (◁ offset_ptr_t st)%I (#(base, offset)) bmin (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) |30 :=
     λ T, i2p (typed_place_offset_ptr_shared π E L l st base offset bmin P κ T).
 
-  Lemma owned_subtype_offset_alias π E L pers l (offset : nat) l2 st T :
+  Lemma owned_subtype_offset_alias π E L pers l (offset : Z) l2 st T :
     ⌜l2 = l offsetst{st}ₗ offset⌝ ∗ T L
     ⊢ owned_subtype π E L pers (l, offset) l2 (offset_ptr_t st) (alias_ptr_t) T.
   Proof.
@@ -3493,12 +3493,12 @@ Section offset_rules.
     - rewrite /ty_sidecond/=. done.
     - iIntros (v) "Hv". rewrite /ty_own_val/=. done.
   Qed.
-  Global Instance owned_subtype_offset_alias_inst π E L pers l (offset : nat) l2 st :
+  Global Instance owned_subtype_offset_alias_inst π E L pers l (offset : Z) l2 st :
     OwnedSubtype π E L pers (l, offset) l2 (offset_ptr_t st) (alias_ptr_t) :=
     λ T, i2p (owned_subtype_offset_alias π E L pers l offset l2 st T).
 
   Lemma owned_subtype_alias_offset π E L pers l l2 offset st T :
-    ⌜l2 = l⌝ ∗ ⌜offset = 0⌝ ∗ T L
+    ⌜l2 = l⌝ ∗ ⌜(offset = 0)%Z⌝ ∗ T L
     ⊢ owned_subtype π E L pers l (l2, offset) (alias_ptr_t) (offset_ptr_t st) T.
   Proof.
     iIntros "(-> & -> & HT)".
@@ -3512,21 +3512,21 @@ Section offset_rules.
     - rewrite /alias_ptr_t. iIntros (v) "->". rewrite /ty_own_val/=.
       rewrite /OffsetLocSt. rewrite Z.mul_0_r shift_loc_0//.
   Qed.
-  Global Instance owned_subtype_alias_offset_inst π E L pers l (offset : nat) l2 st :
+  Global Instance owned_subtype_alias_offset_inst π E L pers l (offset : Z) l2 st :
     OwnedSubtype π E L pers l (l2, offset) (alias_ptr_t) (offset_ptr_t st) :=
     λ T, i2p (owned_subtype_alias_offset π E L pers l l2 offset st T).
 
-  Lemma offset_ptr_simplify_hyp (v : val) π (l : loc) st (off : nat) T :
+  Lemma offset_ptr_simplify_hyp (v : val) π (l : loc) st (off : Z) T :
     (⌜v = l offsetst{st}ₗ off⌝ -∗ introduce_direct (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) -∗ T)
     ⊢ simplify_hyp (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) T.
   Proof.
     iIntros "HT %Hv". rewrite /introduce_direct. by iApply "HT".
   Qed.
-  Global Instance offset_ptr_simplify_hyp_inst (v : val) π l st (off : nat) :
+  Global Instance offset_ptr_simplify_hyp_inst (v : val) π l st (off : Z) :
     SimplifyHypVal v π (offset_ptr_t st) (l, off) (Some 0%N) :=
     λ T, i2p (offset_ptr_simplify_hyp v π l st off T).
 
-  Lemma offset_ptr_simplify_goal (v : val) π (l : loc) st (off : nat) T :
+  Lemma offset_ptr_simplify_goal (v : val) π (l : loc) st (off : Z) T :
     (⌜v = l offsetst{st}ₗ off⌝) ∗ T ⊢ simplify_goal (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) T.
   Proof.
     iIntros "(-> & HT)". iFrame. done.
@@ -3576,7 +3576,7 @@ Section offset_rules.
 
         Maybe all the value instances for joining values should also be put in there.
    *)
-  Lemma type_extract_value_annot_offset π E L n v l (off : nat) st (T : typed_annot_expr_cont_t) :
+  Lemma type_extract_value_annot_offset π E L n v l (off : Z) st (T : typed_annot_expr_cont_t) :
     (v ◁ᵥ{π} (l, off) @ offset_ptr_t st -∗ T L v _ (offset_ptr_t st) (l, off))
     ⊢ typed_annot_expr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) T.
   Proof.

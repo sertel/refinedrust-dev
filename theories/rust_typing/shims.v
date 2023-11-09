@@ -421,15 +421,15 @@ Definition ptr_copy `{!LayoutAlg} (T_st : syn_type) : function := {|
 
 (* TODO *)
 Definition sublist_lookup' {A} (i n : nat) (l : list A) := take n (drop i l).
-Definition ptr_copy_result {A} (off_src : nat) (off_dst : nat) (count : nat) (xs : list (place_rfn (option A))) :=
-  let wipe_src := list_inserts off_src (replicate count (#None)) xs in
-  let ins_dst := list_inserts off_dst (sublist_lookup' off_src count xs) wipe_src in
+Definition ptr_copy_result {A} (off_src : Z) (off_dst : Z) (count : nat) (xs : list (place_rfn (option A))) :=
+  let wipe_src := list_inserts (Z.to_nat off_src) (replicate count (#None)) xs in
+  let ins_dst := list_inserts (Z.to_nat off_dst) (sublist_lookup' (Z.to_nat off_src) count xs) wipe_src in
   ins_dst.
 
 (* This spec really relies on the fact that the core type system does not usually disassemble arrays, but keeps them as one chunk in the context. *)
 (* (Of course, ptr::copy_nonoverlapping is an exception) *)
 Definition type_of_ptr_copy `{!typeGS Σ} (T_rt : Type) (T_st : syn_type) :=
-  fn(∀ () : 0 | (T_ty, l, off_src, off_dst, count, len, xs) : (type T_rt * loc * nat * nat * Z * nat * list (place_rfn (option (place_rfn T_rt)))), (λ ϝ, []);
+  fn(∀ () : 0 | (T_ty, l, off_src, off_dst, count, len, xs) : (type T_rt * loc * Z * Z * Z * nat * list (place_rfn (option (place_rfn T_rt)))), (λ ϝ, []);
     (l, off_src) @ offset_ptr_t T_st,
     (l, off_dst) @ offset_ptr_t T_st,
     count @ int usize_t; λ π,
@@ -640,7 +640,7 @@ Definition type_of_ptr_add `{!typeGS Σ} (T_rt : Type) (T_st : syn_type) :=
     ⌜(offset * size_of_st T_st)%Z ∈ isize_t⌝ ∗
     loc_in_bounds l 0 ((Z.to_nat offset) * size_of_st T_st)
   ) →
-  ∃ () : unit, (l, Z.to_nat offset) @ offset_ptr_t T_st; λ π, £ (S (num_laters_per_step 1)) ∗ atime 1.
+  ∃ () : unit, (l, offset) @ offset_ptr_t T_st; λ π, £ (S (num_laters_per_step 1)) ∗ atime 1.
 
 (* TODO move *)
 Lemma wrap_to_int_id' z it :

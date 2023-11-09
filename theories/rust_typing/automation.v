@@ -1010,6 +1010,7 @@ Proof. done. Qed.
 
 Ltac unfold_common_defs :=
   unfold_common_caesium_defs;
+  unfold num_cred in *;
   unfold unit_sl in *.
 
 Ltac solve_goal_normalized_prepare_hook ::=

@@ -70,6 +70,18 @@ Proof.
   intros T [Hlook HT]. split; last done. by apply list_lookup_total_correct.
 Qed.
 
+Global Instance simpl_exist_hlist_nil {X} (F : X → Type) Q : 
+  SimplExist (hlist F []) Q (Q +[]).
+Proof.
+  rewrite /SimplExist. naive_solver.
+Qed.
+Global Instance simpl_exist_plist_nil {X} (F : X → Type) Q : 
+  SimplExist (plist F []) Q (Q -[]).
+Proof.
+  rewrite /SimplExist. naive_solver.
+Qed.
+
+
 (** Try to find a lookup proof with some abstract condition [P] *)
 Lemma simpl_list_lookup_assum {A} {P : nat → Prop} {E : nat → A} (l : list A) j x :
   (∀ i, P i → l !! i = Some (E i)) →

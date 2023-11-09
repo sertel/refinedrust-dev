@@ -24,6 +24,7 @@ Proof.
   all: print_typesystem_goal "RawVec_T_new".
   Unshelve. all: unshelve_sidecond; sidecond_hook.
   Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook.
+  Unshelve. rewrite MaxInt_eq. solve_goal. (* NOTE : manual *)
   Unshelve. all: try done; try apply: inhabitant; print_remaining_shelved_goal "RawVec_T_new".
 Qed.
 End proof.

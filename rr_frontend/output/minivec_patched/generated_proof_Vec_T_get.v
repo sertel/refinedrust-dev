@@ -24,10 +24,6 @@ Proof.
   init_tyvars ( <[ "T" := existT _ (T_ty) ]>%E $ ∅ ).
 
   repeat liRStep; liShow.
-  all: rewrite /std_option_Option_ty.
-  all: repeat liRStep; liShow.
-  replace ((struct_t (std_option_Option_Some_sls PtrSynType) +[shr_ref T_ty ulft__])) with (std_option_Option_Some_ty (shr_ref T_ty ulft__)) by done.
-  repeat liRStep; liShow.
 
   all: print_typesystem_goal "Vec_T_get".
   Unshelve. 
