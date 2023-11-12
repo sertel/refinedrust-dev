@@ -28,6 +28,7 @@ extern crate rustc_data_structures;
 extern crate rustc_session;
 extern crate rustc_attr;
 extern crate rustc_target;
+extern crate rustc_type_ir;
 
 extern crate polonius_engine;
 
@@ -74,6 +75,7 @@ mod tyvars;
 mod base;
 mod type_translator;
 mod inclusion_tracker;
+mod arg_folder;
 
 use environment::mir_storage;
 use environment::Environment;

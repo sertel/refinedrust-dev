@@ -220,12 +220,10 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Try to translate a region to a Caesium lifetime.
+    /// Note: This relies on all the regions being ReVar inference variables.
     fn translate_region(&self, region: &ty::Region<'tcx>) -> Option<caesium::Lft> {
-        // Trouble: I need to translate the Region to a RegionVid.
-        //  How can I do that? The stuff from universal_regions might help.
         match **region {
             ty::RegionKind::ReEarlyBound(early) => {
-                // early bound regions are mostly the ones that appear as parameters of structs
                 info!("Translating region: EarlyBound {:?}", early);
                 // TODO is the index here really the right one?
                 //self.lookup_universal_lifetime(early.index)

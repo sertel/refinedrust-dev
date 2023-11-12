@@ -35,6 +35,7 @@ use crate::tyvars::*;
 pub use crate::base::*;
 use crate::type_translator::*;
 use crate::inclusion_tracker::*;
+use crate::arg_folder::*;
 
 
 /**
@@ -397,10 +398,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let (late_sig, _late_region_map) = env.tcx().replace_late_bound_regions(sig, &mut folder);
 
                 let inputs: Vec<_> = late_sig.inputs().iter().map(|ty| {
-                    let wrapped_ty = ty::EarlyBinder::bind(*ty);
-                    wrapped_ty.instantiate(env.tcx(), subst_early_bounds) }).collect();
-                let output = ty::EarlyBinder::bind(late_sig.output());
-                let output = output.instantiate(env.tcx(), subst_early_bounds);
+                    ty_instantiate(*ty, env.tcx(), subst_early_bounds) }).collect();
+                let output = ty_instantiate(late_sig.output(), env.tcx(), subst_early_bounds);
 
                 info!("Have lifetime parameters: {:?} {:?}", universal_lifetimes, user_lifetime_names);
 
@@ -1178,30 +1177,6 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 }
                 info!("call region instantiations (late): {:?}", late_regions);
 
-                // recover a mapping for the late bound regions
-                // this traverses the type in exactly the same way as the borrow checker
-                // (in rustc_borrowck/src/type_check/mod.rs, Call case),
-                // to make sure this lines up.
-                let mut next_index = 0;
-                let mut folder =
-                    |_| {
-                        // this closure will be called when the folder needs a fresh variable.
-                        // we just hand out the late bound regions in sequence
-                        let v = late_regions.get(next_index).unwrap();
-                        next_index += 1;
-                        ty::Region::new_var(self.env.tcx(), *v)
-                    };
-                let (late_sig, late_region_map) = self.env.tcx().replace_late_bound_regions(sig, &mut folder);
-                info!("recovered late map: {:?}, sig: {}", late_region_map, late_sig);
-
-                // fully substitute the types (late parameters are already substituted, now subst early parameters)
-                let subst_inputs: Vec<Ty<'tcx>> = late_sig.inputs().iter().map(|ty| {
-                    let wrapped_ty = ty::EarlyBinder::bind(*ty);
-                    wrapped_ty.instantiate(self.env.tcx(), substs) }).collect();
-                let output = ty::EarlyBinder::bind(late_sig.output());
-                let _subst_output = output.instantiate(self.env.tcx(), substs);
-
-
                 // solve the constraints for the new_regions
                 // we first identify what kinds of constraints these new regions are subject to
                 #[derive(Debug)]
@@ -1282,7 +1257,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // translate the arguments
                 let func_expr = self.translate_operand(func, false)?;
                 let mut translated_args = Vec::new();
-                for (arg, _to_ty) in args.iter().zip(subst_inputs) {
+                for arg in args.iter() {
                     // to_ty is the type the function expects
 
                     //let ty = arg.ty(&self.proc.get_mir().local_decls, self.env.tcx());
