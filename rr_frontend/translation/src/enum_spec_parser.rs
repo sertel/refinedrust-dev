@@ -55,7 +55,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
                 match &*seg.ident.name.as_str() {
                     "refined_by" => {
                         let ty: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                        let ty = process_coq_literal(ty.value().as_str(), meta);
+                        let (ty, _) = process_coq_literal(ty.value().as_str(), meta);
                         rfn_type = Some(specs::CoqType::Literal(ty));
                     },
                     _ => {
@@ -77,12 +77,12 @@ impl EnumSpecParser for VerboseEnumSpecParser {
                     match &*seg.ident.name.as_str() {
                         "pattern" => {
                             let pat: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                            let pat = process_coq_literal(pat.value().as_str(), meta);
+                            let (pat, _) = process_coq_literal(pat.value().as_str(), meta);
                             pattern = Some(pat);
                         },
                         "refinement" => {
                             let rfn: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                            let rfn = process_coq_literal(rfn.value().as_str(), meta);
+                            let (rfn, _) = process_coq_literal(rfn.value().as_str(), meta);
                             refinement = Some(rfn);
                         },
                         _ => {

@@ -542,7 +542,35 @@ pub enum TypeIsRaw {
     No
 }
 
+/// Meta information from parsing type annotations
+#[derive(Clone, Debug, PartialEq)]
+pub struct TypeAnnotMeta {
+    /// Used lifetime variables
+    escaped_lfts: HashSet<Lft>,
+    /// Used type variables
+    escaped_tyvars: HashSet<TyParamNames>,
+}
 
+impl TypeAnnotMeta {
+    pub fn empty() -> TypeAnnotMeta {
+        TypeAnnotMeta {
+            escaped_lfts: HashSet::new(),
+            escaped_tyvars: HashSet::new(),
+        }
+    }
+
+    pub fn new(tyvars: HashSet<TyParamNames>, lfts: HashSet<Lft>) -> Self {
+        Self {escaped_lfts: lfts, escaped_tyvars: tyvars}
+    }
+
+    pub fn join(&mut self, s: &TypeAnnotMeta) {
+        let lfts: HashSet<_> = self.escaped_lfts.union(&s.escaped_lfts).cloned().collect();
+        let tyvars: HashSet<_> = self.escaped_tyvars.union(&s.escaped_tyvars).cloned().collect();
+
+        self.escaped_lfts = lfts;
+        self.escaped_tyvars = tyvars;
+    }
+}
 
 /// Representation of (semantic) RefinedRust types.
 /// 'def is the lifetime of the frontend for referencing struct definitions.
@@ -561,7 +589,7 @@ pub enum Type<'def> {
     /// an enum type, potentially instantiated with some type parameters
     Enum(AbstractEnumUse<'def>),
     /// Rust name, Coq name of the type (potentially applied to some generics), the refinement type, the syntactic type
-    Literal(Option<String>, CoqAppTerm<String>, CoqType, SynType),
+    Literal(Option<String>, CoqAppTerm<String>, CoqType, SynType, TypeAnnotMeta),
     /// the uninit type given to uninitialized values
     Uninit(SynType),
     /// the unit type
@@ -592,7 +620,7 @@ impl<'def> Display for Type<'def> {
             Self::Enum(su) => {
                 write!(f, "{}", su.generate_type_term())
             },
-            Self::Literal(_, term, _, _) => {
+            Self::Literal(_, term, _, _, _) => {
                 write!(f, "{}", term)
             },
             Self::Uninit(ly) => {
@@ -628,12 +656,12 @@ impl<'def> Type<'def> {
                 CoqType::PlaceRfn(Box::new (ty.get_rfn_type(env))),
             Self::BoxType(box ty) =>
                 CoqType::PlaceRfn(Box::new (ty.get_rfn_type(env))),
-            Self::Literal(_, _, t, _) => t.clone(),
+            Self::Literal(_, _, t, _, _) => t.clone(),
             Self::Uninit(_) => CoqType::Unit,
-            Self::Struct(su, _) =>
+            Self::Struct(su, raw) =>
                 // NOTE: we don't need to subst, due to our invariant that the instantiations for
                 // struct uses are already fully substituted
-                CoqType::Literal(su.get_rfn_type()),
+                CoqType::Literal(su.get_rfn_type(*raw)),
             Self::Enum(su) =>
                 // similar to structs, we don't need to subst
                 su.get_rfn_type(),
@@ -657,7 +685,7 @@ impl<'def> Type<'def> {
             Self::BoxType(..) => SynType::Ptr,
             Self::Struct(s, _) => s.generate_syn_type_term(),
             Self::Enum(s) => s.generate_syn_type_term(),
-            Self::Literal(_, _, _, st) => st.clone(),
+            Self::Literal(_, _, _, st, _) => st.clone(),
             Self::Uninit(st) => st.clone(),
             Self::Unit => SynType::Unit,
             // NOTE: for now, just treat Never as a ZST
@@ -666,6 +694,70 @@ impl<'def> Type<'def> {
                 SynType::Var(*i)
             },
             Self::RawPtr => SynType::Ptr,
+        }
+    }
+
+    pub fn get_ty_lfts(&self, s: &mut HashSet<Lft>) {
+        match self {
+            Self::Int(_) => (),
+            Self::Bool => (),
+            Self::MutRef(box ty, lft) => {
+                s.insert(lft.to_string());
+                ty.get_ty_lfts(s)
+            },
+            Self::ShrRef(box ty, lft) => {
+                s.insert(lft.to_string());
+                ty.get_ty_lfts(s)
+            },
+            Self::BoxType(box ty) => ty.get_ty_lfts(s),
+            Self::Literal(_, _, t, _, meta) => {
+                // TODO: use meta
+                s.insert(format!("ty_lfts {t}")); 
+            },
+            Self::Uninit(_) => (),
+            Self::Struct(su, raw) => {
+                su.get_ty_lfts(*raw, s)
+            }
+            Self::Enum(su) => {
+                su.get_ty_lfts(s)
+            },
+            Self::Unit => (),
+            Self::Never => (), 
+            Self::Var(i) => {
+                s.insert("RAW".to_string());
+            },
+            Self::RawPtr => (),
+        }
+    }
+
+    pub fn get_ty_wf_elctx(&self, s: &mut HashSet<String>) {
+        match self {
+            Self::Int(_) => (),
+            Self::Bool => (),
+            Self::MutRef(box ty, lft) => {
+                ty.get_ty_wf_elctx(s)
+            },
+            Self::ShrRef(box ty, lft) => {
+                ty.get_ty_wf_elctx(s)
+            },
+            Self::BoxType(box ty) => ty.get_ty_wf_elctx(s),
+            Self::Literal(_, _, t, _, meta) => {
+                // TODO: use meta
+                s.insert(format!("ty_wf_elctx {t}")); 
+            },
+            Self::Uninit(_) => (),
+            Self::Struct(su, raw) => {
+                su.get_ty_wf_elctx(*raw, s)
+            }
+            Self::Enum(su) => {
+                su.get_ty_wf_elctx(s)
+            },
+            Self::Unit => (),
+            Self::Never => (), 
+            Self::Var(i) => {
+                s.insert("RAW".to_string());
+            },
+            Self::RawPtr => (),
         }
     }
 
@@ -716,11 +808,13 @@ pub struct TyOwnSpec {
     rfn: String,
     /// type, with generics already fully substituted
     ty: String,
+    /// literal lifetimes and types escaped in the annotation parser
+    annot_meta: TypeAnnotMeta, 
 }
 
 impl TyOwnSpec {
-    pub fn new(loc: String, with_later: bool, rfn: String, ty: String) -> Self {
-        TyOwnSpec {loc, with_later, rfn, ty}
+    pub fn new(loc: String, rfn: String, ty: String, annot_meta: TypeAnnotMeta) -> Self {
+        TyOwnSpec {loc, with_later: true, rfn, ty, annot_meta}
     }
 
     pub fn fmt_owned(&self, tid: &str) -> String {
@@ -887,7 +981,12 @@ impl InvariantSpec {
 
         // go over all the types and concat their lfts
         for spec in self.ty_own_invariants.iter() {
-            write!(out, " ++ (ty_lfts ({}))", spec.ty).unwrap();
+            for ty in spec.annot_meta.escaped_tyvars.iter() {
+                write!(out, " ++ (ty_lfts ({}))", ty.ty_name).unwrap();
+            }
+            for lft in spec.annot_meta.escaped_lfts.iter() {
+                write!(out, " ++ [{}]", lft).unwrap();
+            }
         }
 
         out
@@ -900,7 +999,9 @@ impl InvariantSpec {
 
         // go over all the types and concat their lfts
         for spec in self.ty_own_invariants.iter() {
-            write!(out, " ++ (ty_wf_E ({}))", spec.ty).unwrap();
+            for ty in spec.annot_meta.escaped_tyvars.iter() {
+                write!(out, " ++ (ty_wf_E ({}))", ty.ty_name).unwrap();
+            }
         }
 
         out
@@ -923,7 +1024,7 @@ impl InvariantSpec {
     }
 
     /// Generate the Coq definition of the type, without the surrounding context assumptions.
-    fn generate_coq_type_def_core(&self, base_type: &str, base_rfn_type: &str) -> String {
+    fn generate_coq_type_def_core(&self, base_type: &str, base_rfn_type: &str, generics: &[String]) -> String {
         let mut out = String::with_capacity(200);
         let indent = "  ";
 
@@ -969,6 +1070,14 @@ impl InvariantSpec {
         write!(out, "{indent}Definition {} : type ({}) :=\n\
             {indent}{indent}ex_plain_t _ _ {spec_name} {}.\n",
             self.type_name, self.rfn_type, base_type).unwrap();
+        write!(out, "{indent}Global Typeclasses Transparent {}.\n", self.type_name).unwrap();
+        write!(out, "{indent}Definition {}_rt : Type.\n", self.type_name).unwrap();
+        write!(out, "{indent}Proof using {}. let __a := eval hnf in (rt_of {}) in exact __a. Defined.\n",
+            generics.join(" "), self.type_name).unwrap();
+        write!(out, "{indent}Global Typeclasses Transparent {}_rt.\n", self.type_name).unwrap();
+
+
+
 
         out
     }
@@ -1004,18 +1113,23 @@ impl InvariantSpec {
 
         // get the applied base_rfn_type
         let rfn_instantiations: Vec<String> = generic_params.iter().map(|names| names.rt_name.clone()).collect();
-        let applied_base_rfn_type = CoqAppTerm::new(base_rfn_type, rfn_instantiations);
+        let applied_base_rfn_type = CoqAppTerm::new(base_rfn_type, rfn_instantiations.clone());
 
         // get the applied base type
         let base_type_app: Vec<String> = generic_params.iter().map(|names| names.ty_name.clone()).collect();
         let applied_base_type = CoqAppTerm::new(base_type_name, base_type_app);
 
-        write!(out, "{}", self.generate_coq_type_def_core(applied_base_type.to_string().as_str(), applied_base_rfn_type.to_string().as_str())).unwrap();
+        write!(out, "{}", self.generate_coq_type_def_core(applied_base_type.to_string().as_str(), applied_base_rfn_type.to_string().as_str(), &rfn_instantiations)).unwrap();
 
         // finish
         write!(out, "End {}.\n", self.type_name).unwrap();
+        write!(out, "Global Arguments {}_rt : clear implicits.\n", self.type_name).unwrap();
 
         out
+    }
+
+    pub fn rt_def_name(&self) -> String {
+        format!("{}_rt", self.type_name)
     }
 }
 
@@ -1028,7 +1142,7 @@ pub enum StructRepr {
 }
 
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct TyParamNames {
     pub param_name: String,
     // name for the type
@@ -1043,7 +1157,8 @@ impl TyParamNames {
         Type::Literal(Some(self.param_name.clone()),
             CoqAppTerm::new_lhs(self.ty_name.clone()),
             CoqType::Literal(self.rt_name.clone()),
-            SynType::Literal(CoqAppTerm::new_lhs(st_name)))
+            SynType::Literal(CoqAppTerm::new_lhs(st_name)),
+            TypeAnnotMeta::empty())
     }
 }
 
@@ -1066,6 +1181,8 @@ pub struct AbstractVariant<'def> {
     /// the fields. The types are closed, i.e. have no `Var` variables (but may have literals
     /// referring to the Coq binders introduced by a surrounding AbstractStruct)
     fields: Vec<(String, Type<'def>)>,
+    /// `fields` with type variables substituted with literal coq strings for their definition
+    subst_fields: Vec<(String, Type<'def>)>,
     /// the refinement type of the plain struct
     rfn_type: CoqType,
     /// the struct representation mode
@@ -1078,7 +1195,7 @@ pub struct AbstractVariant<'def> {
     sls_def_name: String,
     /// the Coq def name for the struct's refinement type
     /// (used for using occurrences, but not for the definition itself)
-    rt_def_name: String,
+    plain_rt_def_name: String,
 }
 
 impl<'def> AbstractVariant<'def> {
@@ -1098,14 +1215,12 @@ impl<'def> AbstractVariant<'def> {
                typarams.join(" "),
                self.name).unwrap();
         let mut needs_sep = false;
-        //let substs: Vec<_> = st_params.iter().map(|name| Some(SynType::Literal(CoqAppTerm::new_lhs(name.clone())))).collect();
-        for (name, ty) in self.fields.iter() {
+        for (name, ty) in self.subst_fields.iter() {
             if needs_sep {
                 out.push_str(";");
             }
             needs_sep = true;
             let synty = ty.get_syn_type();
-            //synty.subst(&substs);
             write!(out, "\n{indent}{indent}(\"{}\", {})", name, synty).unwrap();
         }
         out.push_str("].\n");
@@ -1155,21 +1270,24 @@ impl<'def> AbstractVariant<'def> {
         write!(out, "{}Definition {} : type ({}) := struct_t {} +[", indent, self.plain_ty_name, self.rfn_type, sls_app_term).unwrap();
         let mut needs_sep = false;
 
-        for (_name, ty) in self.fields.iter() {
+        for (_name, ty) in self.subst_fields.iter() {
             if needs_sep {
                 out.push_str(";");
             }
             needs_sep = true;
-            let ty = ty.clone();
             write!(out, "\n{}{}{}", indent, indent, ty).unwrap();
         }
         out.push_str("].\n");
 
         // generate the refinement type definition
-        write!(out, "{indent}Definition {} : Type := rt_of {}.\n", self.rt_def_name, self.plain_ty_name).unwrap();
+        let rt_params: Vec<_> = ty_params.iter().map(|x| x.rt_name.clone()).collect();
+        write!(out, "{indent}Definition {} : Type.\n", self.plain_rt_def_name).unwrap();
+        write!(out, "{indent}Proof using {}. let __a := eval hnf in (rt_of {}) in exact __a. Defined.\n",
+                rt_params.join(" "), self.plain_ty_name).unwrap();
 
         // make it Typeclasses Transparent
-        write!(out, "{}Global Typeclasses Transparent {}.\n", indent, self.plain_ty_name).unwrap();
+        write!(out, "{indent}Global Typeclasses Transparent {}.\n", self.plain_ty_name).unwrap();
+        write!(out, "{indent}Global Typeclasses Transparent {}.\n", self.plain_rt_def_name).unwrap();
 
         out
     }
@@ -1204,6 +1322,7 @@ impl<'def> AbstractVariant<'def> {
         write!(out, "{}", self.generate_coq_type_def_core(ty_params)).unwrap();
 
         write!(out, "End {}.\n", self.plain_ty_name).unwrap();
+        write!(out, "Global Arguments {} : clear implicits.\n", self.plain_rt_def_name).unwrap();
         out
     }
 }
@@ -1269,8 +1388,8 @@ impl<'def> AbstractStruct<'def> {
         }
     }
 
-    pub fn rt_def_name(&self) -> &str {
-        &self.variant_def.rt_def_name
+    pub fn plain_rt_def_name(&self) -> &str {
+        &self.variant_def.plain_rt_def_name
     }
 
     /// Add an invariant specification to this type.
@@ -1298,7 +1417,7 @@ impl<'def> AbstractStruct<'def> {
         match self.invariant {
             None => None,
             Some(ref spec) => {
-                Some(spec.generate_coq_type_def(self.plain_ty_name(), &self.rt_def_name(), &self.ty_params))
+                Some(spec.generate_coq_type_def(self.plain_ty_name(), &self.plain_rt_def_name(), &self.ty_params))
             }
         }
 
@@ -1316,24 +1435,22 @@ pub struct VariantBuilder<'def> {
 }
 
 impl<'def> VariantBuilder<'def> {
-    pub fn finish(mut self, ty_params: &[TyParamNames], st_params: &[String]) -> AbstractVariant<'def> {
+    pub fn finish(self, ty_params: &[TyParamNames], st_params: &[String]) -> AbstractVariant<'def> {
         let sls_def_name: String = format!("{}_sls", &self.name);
         let plain_ty_name: String = format!("{}_ty", &self.name);
-        let rt_def_name: String = format!("{}_rt", &self.name);
+        let plain_rt_def_name: String = format!("{}_rt", &self.name);
 
-        // fully substitute the types now -- we don't really need the ability to refer to them
-        // apart from the Coq definitions. All references to them going forward are going to be applications of the Coq definition.
-        // (for structs, this is currently redundant, but not for tuples)
         let ty_env: Vec<Option<Type<'def>>> = ty_params.iter().zip(st_params.iter()).map(|(names, st_name)| {
-            Some(Type::Literal(Some(names.ty_name.clone()),
-                CoqAppTerm::new_lhs(names.param_name.clone()),
-                CoqType::Literal(names.rt_name.clone()),
-                SynType::Literal(CoqAppTerm::new_lhs(st_name.clone()))))
+            Some(names.make_literal_type(st_name.clone()))
         }).collect();
 
-        let _ = self.fields.iter_mut().map(|(_name, ty)| {
-            ty.subst(&ty_env);
-        }).count();
+        // create a fully substituted version of the types now
+        let subst_fields = self.fields.iter().map(|(name, ty)| {
+            let mut ty2 = ty.clone();
+            ty2.subst(&ty_env);
+            (name.clone(), ty2)
+        }).collect();
+
 
         let rfn_type = CoqType::PList("place_rfn".to_string(),
             self.fields.iter().map(|(_, t)| t.get_rfn_type(&[])).collect());
@@ -1341,11 +1458,12 @@ impl<'def> VariantBuilder<'def> {
         AbstractVariant {
             rfn_type,
             fields: self.fields,
+            subst_fields,
             repr: StructRepr::ReprRust,
             name: self.name,
             plain_ty_name,
             sls_def_name,
-            rt_def_name,
+            plain_rt_def_name
         }
     }
 
@@ -1432,15 +1550,36 @@ impl<'def> AbstractStructUse<'def> {
         self.def.is_none()
     }
 
+    /// Add the lifetimes appearing in this type to `s`.
+    pub fn get_ty_lfts(&self, raw: TypeIsRaw, s: &mut HashSet<Lft>) {
+        // TODO
+    }
+
+    /// Add the lifetime constraints in this type to `s`.
+    pub fn get_ty_wf_elctx(&self, raw: TypeIsRaw, s: &mut HashSet<String>) {
+        // TODO
+    }
+
     /// Get the refinement type of a struct usage.
     /// This requires that all type parameters of the struct have been instantiated.
-    pub fn get_rfn_type(&self) -> String {
+    pub fn get_rfn_type(&self, is_raw: TypeIsRaw) -> String {
         if let Some(def) = self.def.as_ref() {
             let rfn_instantiations: Vec<String> = self.ty_params.iter().map(|ty| ty.get_rfn_type(&[]).to_string()).collect();
-
-            let rfn_type = def.borrow().as_ref().unwrap().rt_def_name().to_string();
-            let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
-            applied.to_string()
+            match is_raw {
+                TypeIsRaw::Yes => {
+                    let rfn_type = def.borrow().as_ref().unwrap().plain_rt_def_name().to_string();
+                    let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
+                    applied.to_string()
+                },
+                TypeIsRaw::No => {
+                    let def =  def.borrow();
+                    let def = def.as_ref();
+                    let inv = &def.unwrap().invariant.as_ref().unwrap();
+                    let rfn_type = inv.rt_def_name();
+                    let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
+                    applied.to_string()
+                },
+            }
         }
         else {
             CoqType::Unit.to_string()
@@ -1474,6 +1613,7 @@ impl<'def> AbstractStructUse<'def> {
                 let st = p.get_syn_type();
                 param_sts.push(format!("({})", st));
             }
+            // TODO generates too many apps
 
             // use_struct_layout_alg' ([my_spec] [params])
             let specialized_spec = format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts));
@@ -1493,6 +1633,7 @@ impl<'def> AbstractStructUse<'def> {
                 let st = p.get_syn_type();
                 param_sts.push(format!("({})", st));
             }
+            // TODO generates too many apps
 
             // syn_type_of_sls ([my_spec] [params])
             let specialized_spec = format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts));
@@ -1646,9 +1787,12 @@ impl<'def> AbstractEnum<'def> {
 
             write!(out, "(\"{}\", {})", name, discr).unwrap();
         }
-        out.push_str("] _.\n");
+        out.push_str("] _ _ _ _.\n");
+        write!(out, "{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n").unwrap();
         write!(out, "{indent}Next Obligation. done. Qed.\n").unwrap();
-        write!(out, "Global Typeclasses Opaque {}.\n", self.els_def_name).unwrap();
+        write!(out, "{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n").unwrap();
+        write!(out, "{indent}Next Obligation. repeat first [econstructor | solve_goal]. Qed.\n").unwrap();
+        write!(out, "{indent}Global Typeclasses Opaque {}.\n", self.els_def_name).unwrap();
 
         // finish
         write!(out, "End {}.\n", self.els_def_name).unwrap();
@@ -1688,7 +1832,55 @@ impl<'def> AbstractEnum<'def> {
 
             write!(out, "| {pat} => existT _ ({ty}, {rfn})").unwrap();
         }
-        write!(out, "end").unwrap();
+        write!(out, " end").unwrap();
+
+        out
+    }
+
+    /// Generate a function that maps (valid) tags to the corresponding Coq type for the variant.
+    fn generate_enum_match(&self) -> String {
+        let spec = &self.spec;
+
+        let conditions: Vec<_> = self.variants.iter()
+            .map(|(name, var, _, _)| {
+                 let v = var.borrow();
+                 let v = v.as_ref().unwrap();
+                 let ty = v.public_type_name();
+
+                 format!("if (decide (variant = \"{name}\")) then Some $ existT _ {ty}")}).collect();
+        format!("λ variant, {} else None", conditions.join(" else "))
+    }
+
+    fn generate_lfts(&self) -> String {
+        // TODO: probably should build this up modularly over the fields
+        
+        let v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_lfts {})", p.ty_name)).collect();
+        v.join(" ++ ")
+    }
+
+    fn generate_wf_elctx(&self) -> String {
+        // TODO: probably should build this up modularly over the fields
+        let v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_wf_E {})", p.ty_name)).collect();
+        v.join(" ++ ")
+    }
+
+    fn generate_construct_enum(&self) -> String {
+        let mut out = String::with_capacity(200);
+
+        for ((tag, s, opt, _), pat) in self.variants.iter().zip(self.spec.variant_patterns.iter()) {
+            write!(out, "Global Program Instance construct_enum_{tag} ").unwrap();
+            // add things from pattern
+            // TODO
+
+            // add st constraints on params
+            // TODO
+
+            write!(out, " : ConstructEnum {} \"{}\" ({}) {} {} := construct_enum _ _.\n", self.enum_def_name, tag, "", "", "").unwrap();
+            write!(out, "Next Obligation. intros; unfold TCDone in *; naive_solver. Qed.\n").unwrap();
+        }
+      //Global Program Instance construct_enum_Some x st (Hst :  TCDone (st = ty_syn_type T_ty)) : ConstructEnum (std_option_Option_enum) "Some" (struct_t (std_option_Option_Some_sls st) +[ T_ty]) -[x] (Some (x)) :=
+        //construct_enum _ _ .
+      //Next Obligation. intros; unfold TCDone in *; naive_solver. Qed.
 
         out
     }
@@ -1719,6 +1911,8 @@ impl<'def> AbstractEnum<'def> {
         }
         out.push_str("\n");
 
+        let rt_params: Vec<_> = self.ty_params.iter().map(|x| x.rt_name.clone()).collect();
+
         // define types and type abstractions for all the component types.
         // TODO: we should actually use the abstracted types here.
         for (_name, variant, _, _) in self.variants.iter() {
@@ -1727,7 +1921,7 @@ impl<'def> AbstractEnum<'def> {
             write!(out, "{}\n", v.variant_def.generate_coq_type_def_core(&v.ty_params)).unwrap();
 
             if let Some(inv) = &v.invariant {
-                let inv_def = inv.generate_coq_type_def_core(v.variant_def.plain_ty_name.as_str(), v.variant_def.rt_def_name.as_str());
+                let inv_def = inv.generate_coq_type_def_core(v.variant_def.plain_ty_name.as_str(), v.variant_def.plain_rt_def_name.as_str(), &rt_params);
                 write!(out, "{}\n", inv_def).unwrap();
             }
         }
@@ -1742,23 +1936,41 @@ impl<'def> AbstractEnum<'def> {
         let els_app_term = CoqAppTerm::new(&self.els_def_name, els_app);
 
         // main def
-        write!(out, "{indent}Definition {} : enum ({}) := mk_enum\n\
+        write!(out, "{indent}Program Definition {} : enum ({}) := mk_enum\n\
                {indent}{indent}({els_app_term})\n\
                {indent}{indent}({})\n\
                {indent}{indent}({})\n\
-               {indent}.\n\n",
+               {indent}{indent}({})\n\
+               {indent}{indent}({})\n\
+               {indent}{indent}({})\n\
+               {indent}{indent}_ _ _.\n\n",
             self.enum_def_name, self.spec.rfn_type,
             self.generate_enum_tag(),
-            self.generate_enum_ty()).unwrap();
+            self.generate_enum_ty(),
+            self.generate_enum_match(),
+            self.generate_lfts(),
+            self.generate_wf_elctx(),
+            ).unwrap();
+        write!(out, "{indent}Next Obligation. intros []; set_solver. Qed.\n").unwrap();
+        write!(out, "{indent}Next Obligation. intros []; set_solver. Qed.\n").unwrap();
+        write!(out, "{indent}Next Obligation. intros []; naive_solver. Qed.\n").unwrap();
 
         // define the actual type
         write!(out, "{indent}Definition {} : type _ := enum_t {}.\n",
                self.plain_ty_name, self.enum_def_name).unwrap();
 
+        // generate the refinement type definition
+        write!(out, "{indent}Definition {}_rt : Type.\n", self.plain_ty_name).unwrap();
+        write!(out, "{indent}Proof using {}. let __a := eval hnf in (rt_of {}) in exact __a. Defined.\n",
+                rt_params.join(" "), self.plain_ty_name).unwrap();
+
         // make it Typeclasses Transparent
         write!(out, "{indent}Global Typeclasses Transparent {}.\n", self.plain_ty_name).unwrap();
+        write!(out, "{indent}Global Typeclasses Transparent {}_rt.\n", self.plain_ty_name).unwrap();
 
         write!(out, "End {}.\n", self.plain_ty_name).unwrap();
+        write!(out, "Global Arguments {}_rt : clear implicits.\n", self.plain_ty_name).unwrap();
+        write!(out, "Global Hint Unfold {} : solve_protected_eq_db.\n", self.plain_ty_name).unwrap();
 
         out
     }
@@ -1839,13 +2051,25 @@ impl<'def> AbstractEnumUse<'def> {
         }
     }
 
+    /// Add the lifetimes appearing in this type to `s`.
+    pub fn get_ty_lfts(&self, s: &mut HashSet<Lft>) {
+        // TODO
+    }
+
+    /// Add the lifetime constraints in this type to `s`.
+    pub fn get_ty_wf_elctx(&self, s: &mut HashSet<String>) {
+        // TODO
+    }
+
     /// Get the refinement type of an enum usage.
     /// This requires that all type parameters of the enum have been instantiated.
     pub fn get_rfn_type(&self) -> CoqType {
         let env = Vec::new(); // we use the empty environment per our assumption
         let rfn_instantiations: Vec<CoqType> = self.ty_params.iter().map(|ty| ty.get_rfn_type(&env)).collect();
+
         let mut rfn_type = self.def.borrow().as_ref().unwrap().spec.rfn_type.clone();
         rfn_type.subst(&rfn_instantiations);
+
         assert!(rfn_type.is_closed());
         rfn_type
     }

@@ -14,6 +14,8 @@ use crate::parse::{Peek, Parse, ParseStream, MToken, ParseResult};
 use regex::{self, Regex, Captures};
 use lazy_static::lazy_static;
 
+use std::collections::HashSet;
+
 /// Parse either a literal string (a term/pattern) or an identifier, e.g.
 /// `x`, `z`, `"w"`, `"(a, b)"`
 #[derive(Debug)]
@@ -49,6 +51,7 @@ pub struct LiteralTypeWithRef {
     pub rfn: IdentOrTerm,
     pub ty: Option<String>,
     pub raw: specs::TypeIsRaw,
+    pub meta: specs::TypeAnnotMeta,
 }
 
 impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
@@ -76,12 +79,12 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
         if parse::At::peek(input) {
             input.parse::<_, parse::MToken![@]>(meta)?;
             let ty: parse::LitStr = input.parse(meta)?;
-            let ty = process_coq_literal(&ty.value(), *meta);
+            let (ty, meta) = process_coq_literal(&ty.value(), *meta);
 
-            Ok(LiteralTypeWithRef {rfn, ty: Some(ty), raw})
+            Ok(LiteralTypeWithRef {rfn, ty: Some(ty), raw, meta})
         }
         else {
-            Ok(LiteralTypeWithRef {rfn, ty: None, raw})
+            Ok(LiteralTypeWithRef {rfn, ty: None, raw, meta: specs::TypeAnnotMeta::empty()})
         }
     }
 }
@@ -90,13 +93,14 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
 #[derive(Debug)]
 pub struct LiteralType {
     pub ty: String,
+    pub meta: specs::TypeAnnotMeta,
 }
 impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralType {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         let ty: parse::LitStr = input.parse(meta)?;
-        let ty = process_coq_literal(&ty.value(), *meta);
+        let (ty, meta) = process_coq_literal(&ty.value(), *meta);
 
-        Ok(LiteralType {ty})
+        Ok(LiteralType {ty, meta})
     }
 }
 
@@ -104,7 +108,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralType {
 impl<'a> Parse<ParseMeta<'a>> for specs::IProp {
     fn parse(input: ParseStream, meta: &ParseMeta) -> ParseResult<Self> {
         let lit: parse::LitStr = input.parse(meta)?;
-        let lit = process_coq_literal(&lit.value(), *meta);
+        let (lit, _) = process_coq_literal(&lit.value(), *meta);
 
         Ok(specs::IProp::Atom(lit))
     }
@@ -129,7 +133,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for RRParam {
         if parse::Colon::peek(input) {
             input.parse::<_, parse::MToken![:]>(meta)?;
             let ty: parse::LitStr = input.parse(meta)?;
-            let ty = process_coq_literal(&ty.value(), *meta);
+            let (ty, _) = process_coq_literal(&ty.value(), *meta);
             let ty = specs::CoqType::Literal(ty);
             Ok(RRParam{name, ty})
         }
@@ -160,15 +164,19 @@ pub type ParseMeta<'a> = (&'a [specs::TyParamNames], &'a [(Option<String>, specs
 /// below for supported escape sequences.
 ///
 /// Supported interpretations:
-/// - `{{...} is replaced by `{...}`
+/// - `{{...}}` is replaced by `{...}`
 /// - `{T}` is replaced by the type for the type parameter `T`
 /// - `{rt_of T}` is replaced by the refinement type of the type parameter `T`
 /// - `{st_of T}` is replaced by the syntactic type of the type parameter `T`
 /// - `{ly_of T}` is replaced by a term giving the layout of the type parameter `T`'s syntactic type
 /// - `{'a}` is replaced by a term corresponding to the lifetime parameter 'a
-pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> String {
+pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::TypeAnnotMeta) {
     let params = meta.0;
     let lfts = meta.1;
+
+    let mut literal_lfts: HashSet<String> = HashSet::new();
+    let mut literal_tyvars: HashSet<specs::TyParamNames> = HashSet::new();
+    
     /* regexes:
      * - '{\s*rt_of\s+([[:alpha:]])\s*}' replace by lookup of the refinement type name
      * - '{\s*st_of\s+([[:alpha:]])\s*}' replace by lookup of the syntype name
@@ -203,37 +211,51 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> String {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
         match param {
-            Some(param) => format!("{}{}{}", &c[1], &param.rt_name, &c[3]),
+            Some(param) => {
+                literal_tyvars.insert(param.clone());
+                format!("{}{}{}", &c[1], &param.rt_name, &c[3])
+            },
             None => format!("ERR"),
     }});
+
     let cs = RE_ST_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
         match param {
-            Some(param) => format!("{}(ty_syn_type {}){}", &c[1], &param.ty_name, &c[3]),
+            Some(param) => {
+                literal_tyvars.insert(param.clone());
+                format!("{}(ty_syn_type {}){}", &c[1], &param.ty_name, &c[3])
+            },
             None => "ERR".to_string(),
     }});
     let cs = RE_LY_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
         match param {
-            Some(param) =>
-                format!("{}(use_layout_alg' (ty_syn_type {})){}", &c[1], &param.ty_name, &c[3]),
+            Some(param) => {
+                literal_tyvars.insert(param.clone());
+                format!("{}(use_layout_alg' (ty_syn_type {})){}", &c[1], &param.ty_name, &c[3])
+            },
             None => "ERR".to_string(),
     }});
     let cs = RE_TY_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
         match param {
-            Some(param) => format!("{}{}{}", &c[1], &param.ty_name, &c[3]),
+            Some(param) => {
+                literal_tyvars.insert(param.clone());
+                format!("{}{}{}", &c[1], &param.ty_name, &c[3])
+            },
             None => format!("ERR"),
     }});
     let cs = RE_LFT_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let lft = lookup_lft_name(t);
         match lft {
-            Some(lft) =>
-                format!("{}{}{}", &c[1], lft, &c[3]),
+            Some(lft) => {
+                literal_lfts.insert(lft.clone());
+                format!("{}{}{}", &c[1], lft, &c[3])
+            },
             None => "ERR".to_string(),
         }
     });
@@ -241,5 +263,5 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> String {
         format!("{}", &c[1])
     });
 
-    cs.to_string()
+    (cs.to_string(), specs::TypeAnnotMeta::new(literal_tyvars, literal_lfts))
 }

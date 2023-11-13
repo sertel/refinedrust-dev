@@ -112,7 +112,7 @@ impl RustType {
             Type::Var(var) => {
                 // this must be a generic type variable
                 let ty = env.get(*var).unwrap().as_ref().unwrap();
-                if let Type::Literal(Some(name), _, _, _) = ty {
+                if let Type::Literal(Some(name), _, _, _, _) = ty {
                     //assert!(name.is_empty());
                     Self::TyVar(name.to_string())
                 }
@@ -154,7 +154,7 @@ impl RustType {
                 Self::Lit(vec![def.public_type_name().to_string()], typarams)
 
             },
-            Type::Literal(name,_, _, _) => {
+            Type::Literal(name,_, _, _, _) => {
                 if let Some(name) = name {
                 Self::TyVar(name.to_string())
                 }
@@ -1207,7 +1207,7 @@ impl<'def> FunctionBuilder<'def> {
 
     /// Add a generic type used by this function.
     pub fn add_generic_type(&mut self, t: &specs::Type<'def>) {
-        if let specs::Type::Literal(Some(name), ty, CoqType::Literal(rt), SynType::Literal(st)) = t {
+        if let specs::Type::Literal(Some(name), ty, CoqType::Literal(rt), SynType::Literal(st), _) = t {
             let names = TyParamNames {
                 param_name: name.clone(),
                 rt_name: rt.clone(),

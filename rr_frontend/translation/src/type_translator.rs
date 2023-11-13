@@ -164,7 +164,9 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                                     Some(p.name.as_str().to_string()),
                                     ty_term,
                                     caesium::CoqType::Literal(rt_name.clone()),
-                                    caesium::SynType::Literal(st_term.clone()))));
+                                    caesium::SynType::Literal(st_term.clone()), 
+                                    // TODO: maybe add something here?
+                                    caesium::TypeAnnotMeta::empty())));
                             syntypes.push(Some(caesium::SynType::Literal(st_term)));
                             rfntypes.push(Some(caesium::CoqType::Literal(rt_name)));
                         },
@@ -629,12 +631,14 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         }
         info!("adt variant spec: {:?}", invariant_spec);
 
-        // substitute all the type parameters by the literals here
+        // build a substitution environment that substitutes all the type parameters by literals
         let ty_env: Vec<Option<caesium::Type<'def>>> = ty_param_defs.iter().zip(st_params.iter()).map(|(names, st_name)| {
             Some(caesium::Type::Literal(Some(names.param_name.clone()),
                 caesium::CoqAppTerm::new_lhs(names.ty_name.clone()),
                 caesium::CoqType::Literal(names.rt_name.clone()),
-                caesium::SynType::Literal(caesium::CoqAppTerm::new_lhs(st_name.clone()))))
+                caesium::SynType::Literal(caesium::CoqAppTerm::new_lhs(st_name.clone())), 
+                // TODO: maybe add something here?
+                caesium::TypeAnnotMeta::empty()))
         }).collect();
 
         // assemble the field definition
@@ -647,6 +651,8 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
             let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
             let mut ty = self.translate_type(&f_ty)?;
+
+            // substitute all the type parameters by literals
             ty.subst(&ty_env);
 
             let mut parser = struct_spec_parser::VerboseStructFieldSpecParser::new(&ty, &ty_param_defs, &lft_params, expect_refinement);

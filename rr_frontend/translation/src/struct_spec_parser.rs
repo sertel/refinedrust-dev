@@ -14,6 +14,8 @@ use crate::parse as parse;
 use crate::parse::{Peek, Parse};
 use crate::parse_utils::*;
 
+use std::collections::HashSet;
+
 pub trait InvariantSpecParser {
     /// Parse attributes as an invariant type specification.
     /// `ty_name` is the name of the type to generate.
@@ -39,13 +41,13 @@ struct RfnPattern {
 impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         let pat = parse::LitStr::parse(input, meta)?;
-        let pat = process_coq_literal(pat.value().as_str(), *meta);
+        let (pat, _) = process_coq_literal(pat.value().as_str(), *meta);
 
         // optionally, parse a type annotation (otherwise, let Coq inference do its thing)
         if parse::Colon::peek(input) {
             input.parse::<_, parse::MToken![:]>(meta)?;
             let ty: parse::LitStr = input.parse(meta)?;
-            let ty = process_coq_literal(ty.value().as_str(), *meta);
+            let (ty, _) = process_coq_literal(ty.value().as_str(), *meta);
             Ok(RfnPattern {rfn_pat: pat, rfn_type: Some(specs::CoqType::Literal(ty))})
         }
         else {
@@ -82,21 +84,23 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 },
                 "type" => {
                     let loc_str: parse::LitStr = input.parse(meta)?;
-                    let loc_str = process_coq_literal(&loc_str.value(), *meta);
+                    let (loc_str, mut annot_meta) = process_coq_literal(&loc_str.value(), *meta);
 
                     input.parse::<_, parse::MToken![:]>(meta)?;
 
                     let rfn_str: parse::LitStr = input.parse(meta)?;
-                    let rfn_str = process_coq_literal(&rfn_str.value(), *meta);
+                    let (rfn_str, annot_meta2) = process_coq_literal(&rfn_str.value(), *meta);
+
+                    annot_meta.join(&annot_meta2);
 
                     input.parse::<_, parse::MToken![@]>(meta)?;
 
                     let type_str: parse::LitStr = input.parse(meta)?;
-                    let type_str = process_coq_literal(&type_str.value(), *meta);
+                    let (type_str, annot_meta3) = process_coq_literal(&type_str.value(), *meta);
 
-                    // TODO: have an option to specify a later here
-                    let with_later = false;
-                    let spec = specs::TyOwnSpec::new(loc_str, with_later, rfn_str, type_str);
+                    annot_meta.join(&annot_meta3);
+
+                    let spec = specs::TyOwnSpec::new(loc_str, rfn_str, type_str, annot_meta);
                     Ok(MetaIProp::Type(spec))
                 },
                 _ => {
@@ -284,7 +288,7 @@ impl<'a, 'def> VerboseStructFieldSpecParser<'a, 'def> {
         Self { field_type, params, lfts, expect_rfn }
     }
 
-    fn make_type(&self, lit: &LiteralType, ty: &specs::Type<'def>) -> specs::Type<'def> {
+    fn make_type(&self, lit: LiteralType, ty: &specs::Type<'def>) -> specs::Type<'def> {
         // literal type given, we use this literal type as the RR semantic type
         // just use the syntype from the Rust type
         let st = ty.get_syn_type();
@@ -294,9 +298,11 @@ impl<'a, 'def> VerboseStructFieldSpecParser<'a, 'def> {
         // we need this in order to be able to specify the invariant spec separately.
 
         info!("making type: {:?}, {:?}", lit, ty);
-        specs::Type::Literal(None, specs::CoqAppTerm::new_lhs(lit.ty.to_string()),
+        specs::Type::Literal(None, 
+                             specs::CoqAppTerm::new_lhs(lit.ty.to_string()),
                              specs::CoqType::Infer,
-                             st)
+                             st, 
+                             lit.meta)
     }
 }
 
@@ -324,7 +330,7 @@ impl<'a, 'def> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'a, 
                         let mut expect_ty = false;
                         if self.expect_rfn {
                             let rfn: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                            let rfn = process_coq_literal(rfn.value().as_str(), meta);
+                            let (rfn, _) = process_coq_literal(rfn.value().as_str(), meta);
                             parsed_rfn = Some(rfn);
 
                             if parse::At::peek(&buffer) {
@@ -340,7 +346,7 @@ impl<'a, 'def> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'a, 
                         if expect_ty {
                             let ty = LiteralType::parse(&buffer, &meta).map_err(str_err)?;
                             if let None = field_type {
-                                field_type = Some(self.make_type(&ty, self.field_type));
+                                field_type = Some(self.make_type(ty, self.field_type));
                             }
                             else {
                                 return Err(format!("field attribute specified twice for field {:?}", field_name));

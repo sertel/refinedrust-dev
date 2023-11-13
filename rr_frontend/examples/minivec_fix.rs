@@ -47,7 +47,7 @@ mod RRAlloc {
     #[rr::shim("alloc_array", "type_of_alloc_array")]
     pub unsafe fn alloc_array<T>(len: usize) -> *mut T {
         assert!(len > 0);
-        // checks that size is ≤ max_int isize
+        // checks that size is ≤ MaxInt isize
         let ly = Layout::array::<T>(len).unwrap();
 
         // will return null on alloc failure due to
@@ -65,7 +65,7 @@ mod RRAlloc {
     #[rr::shim("realloc_array", "type_of_realloc_array")]
     pub unsafe fn realloc_array<T>(old_len: usize, ptr: *mut T, new_len: usize) -> *mut T {
         assert!(new_len > 0);
-        // fine: checks that size is ≤ max_int isize
+        // fine: checks that size is ≤ MaxInt isize
         let old_layout = Layout::array::<T>(old_len).unwrap();
         // fine: same reason
         let new_layout = Layout::array::<T>(new_len).unwrap();
@@ -235,7 +235,7 @@ pub struct RawVec<T> {
 #[rr::refined_by("xs" : "list (place_rfn {rt_of T})")]
 #[rr::exists("cap" : "nat", "l" : "loc", "len" : "nat", "els")]
 #[rr::invariant(#type "l" : "els" @ "array_t (maybe_uninit {T}) cap")]
-#[rr::invariant("⌜xs = project_vec_els len els)⌝")]
+#[rr::invariant("⌜xs = project_vec_els len els⌝")]
 #[rr::invariant("⌜∀ i, (0 ≤ i < len)%nat → els !! i = Some (#(Some (xs !!! i)))⌝")]
 #[rr::invariant("⌜∀ i, (len ≤ i < cap)%nat → els !! i = Some (#None)⌝")]
 #[rr::invariant("⌜len = length xs⌝")]
@@ -243,7 +243,7 @@ pub struct RawVec<T> {
 // invariant due to GEP / ptr::offset limits: the total size of the allocation should not exceed isize::max bytes
 // we need the ZST case to know that we never call grow except when we have reached the capacity limit
 // TODO would be nice if we could deduplicate that with RawVec.
-#[rr::invariant("⌜if decide (size_of_st {st_of T} = 0%nat) then cap = Z.to_nat (max_int usize_t) else (size_of_array_in_bytes {st_of T} cap ≤ max_int isize_t)%Z⌝")]
+#[rr::invariant("⌜if decide (size_of_st {st_of T} = 0%nat) then cap = Z.to_nat (MaxInt usize_t) else (size_of_array_in_bytes {st_of T} cap ≤ MaxInt isize_t)%Z⌝")]
 pub struct Vec<T> {
     #[rr::field("(l, cap)")]
     buf: RawVec<T>,
@@ -294,8 +294,8 @@ impl<T> RawVec<T> {
     }
 
     #[rr::exists("l" : "loc", "cap" : "nat")]
-    #[rr::ensures("⌜cap = if decide (size_of_st {st_of T} = 0%nat) then Z.to_nat (max_int usize_t) else 0%nat⌝")]
-    #[rr::ensures(#type "l" : "#(replicate cap #None)" @ "array_t (maybe_uninit {T}) cap")]
+    #[rr::ensures("⌜cap = if decide (size_of_st {st_of T} = 0%nat) then Z.to_nat (MaxInt usize_t) else 0%nat⌝")]
+    #[rr::ensures(#type "l" : "(replicate cap #None)" @ "array_t (maybe_uninit {T}) cap")]
     #[rr::returns("(l, cap)")]
     #[rr::tactics("all: rewrite /size_of_array_in_bytes; simplify_layout_goal; lia.")]
     pub fn new() -> Self {
@@ -312,14 +312,14 @@ impl<T> RawVec<T> {
 
     #[rr::params("l", "xs", "cap" : "nat", "γ")]
     #[rr::args("(#(l, cap), γ)")]
-    #[rr::requires("⌜(size_of_array_in_bytes {st_of T} (2 * cap) ≤ max_int isize_t)%Z⌝")]
+    #[rr::requires("⌜(size_of_array_in_bytes {st_of T} (2 * cap) ≤ MaxInt isize_t)%Z⌝")]
     #[rr::requires("⌜(size_of_st {st_of T} > 0)%Z⌝")]
-    #[rr::requires(#type "l" : "#xs" @ "array_t (maybe_uninit {T}) cap")]
+    #[rr::requires(#type "l" : "xs" @ "array_t (maybe_uninit {T}) cap")]
     #[rr::exists("new_cap" : "nat", "l'" : "loc")]
     #[rr::ensures("gvar_pobs γ (l', new_cap)")]
-    #[rr::ensures(#type "l'" : "#(xs ++ replicate (new_cap - cap) #None)" @ "array_t (maybe_uninit {T}) new_cap")]
+    #[rr::ensures(#type "l'" : "(xs ++ replicate (new_cap - cap) #None)" @ "array_t (maybe_uninit {T}) new_cap")]
     #[rr::ensures("⌜new_cap > cap⌝")]
-    #[rr::ensures("⌜(size_of_array_in_bytes {st_of T} new_cap ≤ max_int isize_t)%Z⌝")]
+    #[rr::ensures("⌜(size_of_array_in_bytes {st_of T} new_cap ≤ MaxInt isize_t)%Z⌝")]
     pub fn grow(&mut self) {
         // unfold invariant - it will be broken quite consistently throughout
         // also need to learn the pure facts to pass all the checks.
@@ -404,8 +404,8 @@ impl<T> Vec<T> {
 
     #[rr::params("xs", "γ", "x")]
     #[rr::args("(#xs, γ)", "x")]
-    #[rr::requires("⌜(length xs < max_int usize_t)%Z⌝")]
-    #[rr::requires("⌜(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ max_int isize_t)%Z⌝")]
+    #[rr::requires("⌜(length xs < MaxInt usize_t)%Z⌝")]
+    #[rr::requires("⌜(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ MaxInt isize_t)%Z⌝")]
     #[rr::ensures("gvar_pobs γ (xs ++ [ #x])")]
     pub fn push(&mut self, elem: T) {
         if self.len == self.cap() {
@@ -422,7 +422,7 @@ impl<T> Vec<T> {
     }
 
     #[rr::params("xs", "γ")]
-    #[rr::args("(#xs, γ)")]
+    #[rr::args("(#(fmap (M:=list) PlaceIn xs), γ)")]
     #[rr::returns("fmap PlaceIn (last xs)")]
     #[rr::ensures("gvar_pobs γ (take (length xs - 1) (fmap (M:=list) PlaceIn xs))")]
     pub fn pop(&mut self) -> Option<T> {
@@ -437,8 +437,8 @@ impl<T> Vec<T> {
     #[rr::params("xs", "γ", "i" : "nat", "x")]
     #[rr::args("(#xs, γ)", "Z.of_nat i", "x")]
     #[rr::requires("⌜i ≤ length xs⌝")]
-    #[rr::requires("⌜(length xs < max_int usize_t)%Z⌝")]
-    #[rr::requires("⌜(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ max_int isize_t)%Z⌝")]
+    #[rr::requires("⌜(length xs < MaxInt usize_t)%Z⌝")]
+    #[rr::requires("⌜(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ MaxInt isize_t)%Z⌝")]
     // TODO: This spec is wrong. It should move the values in xs to the right
     #[rr::ensures("gvar_pobs γ (<[i := #x]> xs)")]
     pub fn insert(&mut self, index: usize, elem: T) {
@@ -503,7 +503,7 @@ impl<T> Vec<T> {
     #[rr::ensures("if decide (i < length xs) then Inherit {'a} InheritGhost (Rel2 γ2 γ (eq (A:=list (place_rfn T_rt)))) else True")]
     #[rr::ensures("gvar_pobs γ2 (if decide (i < length xs) then <[i := PlaceGhost γ1]> (fmap (M:=list) PlaceIn xs) else fmap (M:=list) PlaceIn xs)")]
     #[rr::ensures("if decide (i < length xs) then Inherit {'a} InheritGhost (Rel2 γi γ1 (eq (A:=T_rt))) else True")]
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut T> {
+    pub fn get_mut<'a>(&'a mut self, index: usize) -> Option<&'a mut T> {
         if (index < self.len()) {
             unsafe { Some (self.get_unchecked_mut(index)) }
         }

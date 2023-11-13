@@ -14,6 +14,8 @@ use crate::parse as parse;
 use crate::parse::{Peek, Parse, ParseStream, MToken, ParseResult};
 use crate::parse_utils::{*, ParseMeta};
 
+use std::collections::HashSet;
+
 pub trait FunctionSpecParser<'def> {
     /// Parse a set of attributes into a function spec.
     /// The implementation can assume the `attrs` to be prefixed by the tool prefix (e.g. `rr`) and
@@ -76,21 +78,22 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
             match macro_cmd.value().as_str() {
                 "type" => {
                     let loc_str: parse::LitStr = input.parse(meta)?;
-                    let loc_str = process_coq_literal(&loc_str.value(), *meta);
+                    let (loc_str, mut annot_meta) = process_coq_literal(&loc_str.value(), *meta);
 
                     input.parse::<_, parse::MToken![:]>(meta)?;
 
                     let rfn_str: parse::LitStr = input.parse(meta)?;
-                    let rfn_str = process_coq_literal(&rfn_str.value(), *meta);
+                    let (rfn_str, annot_meta2) = process_coq_literal(&rfn_str.value(), *meta);
+
+                    annot_meta.join(&annot_meta2);
 
                     input.parse::<_, parse::MToken![@]>(meta)?;
 
                     let type_str: parse::LitStr = input.parse(meta)?;
-                    let type_str = process_coq_literal(&type_str.value(), *meta);
+                    let (type_str, annot_meta3) = process_coq_literal(&type_str.value(), *meta);
+                    annot_meta.join(&annot_meta3);
 
-                    // TODO: have an option to specify a later here
-                    let with_later = false;
-                    let spec = specs::TyOwnSpec::new(loc_str, with_later, rfn_str, type_str);
+                    let spec = specs::TyOwnSpec::new(loc_str, rfn_str, type_str, annot_meta);
                     Ok(MetaIProp::Type(spec))
                 },
                 _ => {
@@ -150,7 +153,7 @@ impl<'a, 'def> VerboseFunctionSpecParser<'a, 'def> {
             // TODO: get CoqType for refinement. maybe have it as an annotation? the Infer is currently a placeholder.
 
             (specs::TypeWithRef::new(
-                specs::Type::Literal(None, specs::CoqAppTerm::new_lhs(lit_ty.to_string()), specs::CoqType::Infer, st),
+                specs::Type::Literal(None, specs::CoqAppTerm::new_lhs(lit_ty.to_string()), specs::CoqType::Infer, st, lit.meta.clone()),
                 lit.rfn.to_string()),
              None)
         }
