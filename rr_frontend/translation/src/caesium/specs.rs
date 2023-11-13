@@ -1252,6 +1252,24 @@ impl<'def> AbstractVariant<'def> {
         out
     }
 
+    pub fn generate_coq_type_term(&self, sls_app: Vec<String>) -> String {
+        let mut out = String::with_capacity(200);
+
+        write!(out, "struct_t {} +[", CoqAppTerm::new(&self.sls_def_name, sls_app)).unwrap();
+
+        let mut needs_sep = false;
+        for (_name, ty) in self.subst_fields.iter() {
+            if needs_sep {
+                out.push_str("; ");
+            }
+            needs_sep = true;
+            write!(out, "{}", ty).unwrap();
+        }
+        out.push_str("]");
+
+        out
+    }
+
     pub fn generate_coq_type_def_core(&self, ty_params: &[TyParamNames]) -> String {
         let mut out = String::with_capacity(200);
         let indent = "  ";
@@ -1263,21 +1281,9 @@ impl<'def> AbstractVariant<'def> {
             let term = format!("(ty_syn_type {})", names.ty_name);
             sls_app.push(term);
         }
-        // build the sls term applied to generics
-        let sls_app_term = CoqAppTerm::new(&self.sls_def_name, sls_app);
 
         // intro to main def
-        write!(out, "{}Definition {} : type ({}) := struct_t {} +[", indent, self.plain_ty_name, self.rfn_type, sls_app_term).unwrap();
-        let mut needs_sep = false;
-
-        for (_name, ty) in self.subst_fields.iter() {
-            if needs_sep {
-                out.push_str(";");
-            }
-            needs_sep = true;
-            write!(out, "\n{}{}{}", indent, indent, ty).unwrap();
-        }
-        out.push_str("].\n");
+        write!(out, "{}Definition {} : type ({}) := {}.\n", indent, self.plain_ty_name, self.rfn_type, self.generate_coq_type_term(sls_app)).unwrap();
 
         // generate the refinement type definition
         let rt_params: Vec<_> = ty_params.iter().map(|x| x.rt_name.clone()).collect();
@@ -1680,7 +1686,10 @@ pub struct EnumSpec {
     /// the refinement type of the enum
     pub rfn_type: CoqType,
     /// the refinement patterns for each of the variants
-    pub variant_patterns: Vec<(String, String)>,
+    /// eg. for options: 
+    /// - (None, [], -[])
+    /// - (Some, [x], -[x])
+    pub variant_patterns: Vec<(String, Vec<String>, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1806,8 +1815,8 @@ impl<'def> AbstractEnum<'def> {
 
         let spec = &self.spec;
         write!(out, "λ rfn, match rfn with ").unwrap();
-        for ((name, _, _, _), (pat, _)) in self.variants.iter().zip(spec.variant_patterns.iter()) {
-            write!(out, "| {pat} => \"{name}\" ").unwrap();
+        for ((name, _, _, _), (pat, apps, _)) in self.variants.iter().zip(spec.variant_patterns.iter()) {
+            write!(out, "| {} => \"{name}\" ", CoqAppTerm::new(pat, apps.clone())).unwrap();
         }
         write!(out, "end").unwrap();
 
@@ -1823,14 +1832,14 @@ impl<'def> AbstractEnum<'def> {
         let spec = &self.spec;
 
         write!(out, "λ rfn, match rfn with ").unwrap();
-        for ((_name, var, _, _), (pat, rfn)) in self.variants.iter().zip(spec.variant_patterns.iter()) {
+        for ((_name, var, _, _), (pat, apps, rfn)) in self.variants.iter().zip(spec.variant_patterns.iter()) {
             let v = var.borrow();
             let v = v.as_ref().unwrap();
             // we can just use the plain name here, because we assume this is used in an
             // environment where all the type parametes are already instantiated.
             let ty = v.public_type_name();
 
-            write!(out, "| {pat} => existT _ ({ty}, {rfn})").unwrap();
+            write!(out, "| {} => existT _ ({ty}, {rfn})", CoqAppTerm::new(pat, apps.clone())).unwrap();
         }
         write!(out, " end").unwrap();
 
@@ -1855,32 +1864,37 @@ impl<'def> AbstractEnum<'def> {
         // TODO: probably should build this up modularly over the fields
         
         let v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_lfts {})", p.ty_name)).collect();
-        v.join(" ++ ")
+        format!("[] ++ {}", v.join(" ++ "))
     }
 
     fn generate_wf_elctx(&self) -> String {
         // TODO: probably should build this up modularly over the fields
         let v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_wf_E {})", p.ty_name)).collect();
-        v.join(" ++ ")
+        format!("[] ++ {}", v.join(" ++ "))
     }
 
     fn generate_construct_enum(&self) -> String {
         let mut out = String::with_capacity(200);
+        let indent = "  ";
 
-        for ((tag, s, opt, _), pat) in self.variants.iter().zip(self.spec.variant_patterns.iter()) {
-            write!(out, "Global Program Instance construct_enum_{tag} ").unwrap();
-            // add things from pattern
-            // TODO
+        for ((tag, s, mask, _), (pat, args, res)) in self.variants.iter().zip(self.spec.variant_patterns.iter()) {
+            write!(out, "{indent}Global Program Instance construct_enum_{tag} {} ", args.join(" ")).unwrap();
 
             // add st constraints on params
-            // TODO
+            let mut sls_app = Vec::new();
+            for (param, (ty, m)) in self.st_params.iter().zip(self.ty_params.iter().zip(mask.iter())) {
+                if *m {
+                    write!(out, "{} `{{!TCDone ({} = ty_syn_type {})}} ", param, param, ty.ty_name).unwrap();
+                    sls_app.push(param.clone());
+                }
+            }
+            let s2 = s.borrow();
+            let s3 = s2.as_ref().unwrap();
+            let ty_def_term = s3.variant_def.generate_coq_type_term(sls_app);
 
-            write!(out, " : ConstructEnum {} \"{}\" ({}) {} {} := construct_enum _ _.\n", self.enum_def_name, tag, "", "", "").unwrap();
-            write!(out, "Next Obligation. intros; unfold TCDone in *; naive_solver. Qed.\n").unwrap();
+            write!(out, ": ConstructEnum {} \"{}\" ({}) {} {} := construct_enum _ _.\n", self.enum_def_name, tag, ty_def_term, res, CoqAppTerm::new(pat, args.clone())).unwrap();
+            write!(out, "{indent}Next Obligation. intros; unfold TCDone in *; naive_solver. Qed.\n").unwrap();
         }
-      //Global Program Instance construct_enum_Some x st (Hst :  TCDone (st = ty_syn_type T_ty)) : ConstructEnum (std_option_Option_enum) "Some" (struct_t (std_option_Option_Some_sls st) +[ T_ty]) -[x] (Some (x)) :=
-        //construct_enum _ _ .
-      //Next Obligation. intros; unfold TCDone in *; naive_solver. Qed.
 
         out
     }
@@ -1943,7 +1957,7 @@ impl<'def> AbstractEnum<'def> {
                {indent}{indent}({})\n\
                {indent}{indent}({})\n\
                {indent}{indent}({})\n\
-               {indent}{indent}_ _ _.\n\n",
+               {indent}{indent}_ _ _.\n",
             self.enum_def_name, self.spec.rfn_type,
             self.generate_enum_tag(),
             self.generate_enum_ty(),
@@ -1953,7 +1967,7 @@ impl<'def> AbstractEnum<'def> {
             ).unwrap();
         write!(out, "{indent}Next Obligation. intros []; set_solver. Qed.\n").unwrap();
         write!(out, "{indent}Next Obligation. intros []; set_solver. Qed.\n").unwrap();
-        write!(out, "{indent}Next Obligation. intros []; naive_solver. Qed.\n").unwrap();
+        write!(out, "{indent}Next Obligation. intros []; naive_solver. Qed.\n\n").unwrap();
 
         // define the actual type
         write!(out, "{indent}Definition {} : type _ := enum_t {}.\n",
@@ -1966,7 +1980,9 @@ impl<'def> AbstractEnum<'def> {
 
         // make it Typeclasses Transparent
         write!(out, "{indent}Global Typeclasses Transparent {}.\n", self.plain_ty_name).unwrap();
-        write!(out, "{indent}Global Typeclasses Transparent {}_rt.\n", self.plain_ty_name).unwrap();
+        write!(out, "{indent}Global Typeclasses Transparent {}_rt.\n\n", self.plain_ty_name).unwrap();
+
+        write!(out, "{}", self.generate_construct_enum()).unwrap();
 
         write!(out, "End {}.\n", self.plain_ty_name).unwrap();
         write!(out, "Global Arguments {}_rt : clear implicits.\n", self.plain_ty_name).unwrap();

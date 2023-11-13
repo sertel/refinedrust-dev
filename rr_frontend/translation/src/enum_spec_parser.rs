@@ -9,6 +9,7 @@ use crate::caesium::specs as specs;
 
 use crate::parse as parse;
 use crate::parse_utils::*;
+use crate::parse::Peek;
 
 /// An attribute spec parser handles the parsing of the attributes of the whole enum and relevant
 /// attributes on the variants at once.
@@ -23,6 +24,35 @@ use crate::parse_utils::*;
 pub trait EnumSpecParser {
     fn parse_enum_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], variant_attrs: &[Vec<&'a AttrItem>], params: &'a [specs::TyParamNames], lfts: &'a [(Option<String>, specs::Lft)]) -> Result<specs::EnumSpec, String>;
 }
+
+#[derive(Debug)]
+pub struct EnumPattern {
+    pub pat: String,
+    pub args: Vec<String>
+}
+
+impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
+    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+        // parse the pattern
+        let pat: parse::LitStr = input.parse(meta)?;
+        let (pat, _) = process_coq_literal(&pat.value(), *meta);
+
+        let mut args: Vec<String> = Vec::new();
+
+        // optionally parse args
+        if parse::Dollar::peek(input) {
+            input.parse::<_, parse::MToken![$]>(meta)?;
+
+            // parse a sequence of args
+            let parsed_args: parse::Punctuated<parse::LitStr, parse::MToken![,]> = parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
+            args = parsed_args.into_iter().map(|s| {
+                let (arg, _) = process_coq_literal(&s.value(), *meta);
+                arg }).collect();
+        }
+        Ok(EnumPattern {pat, args})
+    }
+}
+
 
 pub struct VerboseEnumSpecParser {
 }
@@ -43,7 +73,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
         }
         let meta = (params, lfts);
 
-        let mut variant_patterns: Vec<(String, String)> = Vec::new();
+        let mut variant_patterns: Vec<(String, Vec<String>, String)> = Vec::new();
         let mut rfn_type = None;
 
         for &it in attrs.iter() {
@@ -76,8 +106,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
                     let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
                     match &*seg.ident.name.as_str() {
                         "pattern" => {
-                            let pat: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                            let (pat, _) = process_coq_literal(pat.value().as_str(), meta);
+                            let pat: EnumPattern = buffer.parse(&meta).map_err(str_err)?;
                             pattern = Some(pat);
                         },
                         "refinement" => {
@@ -94,7 +123,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
             }
             if let Some(pattern) = pattern {
                 let refinement = refinement.unwrap_or("-[]".to_string());
-                variant_patterns.push((pattern, refinement));
+                variant_patterns.push((pattern.pat, pattern.args, refinement));
             }
 
         }

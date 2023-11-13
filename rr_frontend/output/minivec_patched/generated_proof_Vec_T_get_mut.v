@@ -62,8 +62,6 @@ Proof.
   Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook.
   { (* TODO: currently not handled by the solver *)
     apply Forall_forall.
-    rewrite /ty_lfts/=.
-    rewrite {2}/ty_lfts/=. rewrite app_nil_r.
     intros κe Hlft.
     eapply (lctx_lft_alive_incl ϝ); first sidecond_hook.
     apply lctx_lft_incl_external.

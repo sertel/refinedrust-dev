@@ -738,8 +738,8 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         let option_did = crate::utils::try_resolve_did(self.env.tcx(), &["std", "option", "Option"]);
         let option_spec = caesium::EnumSpec {
             rfn_type: caesium::CoqType::Literal("_".to_string()),
-            variant_patterns: vec![("None".to_string(), "-[]".to_string()),
-                                   ("Some x".to_string(), "-[x]".to_string())],
+            variant_patterns: vec![("None".to_string(), vec![], "-[]".to_string()),
+                                   ("Some".to_string(), vec!["x".to_string()], "-[x]".to_string())],
 
         };
 
