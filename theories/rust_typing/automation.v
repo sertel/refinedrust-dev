@@ -980,6 +980,9 @@ Global Arguments freeable_nz : simpl never.
 Global Typeclasses Opaque ty_shr.
 Global Typeclasses Opaque ty_own_val.
 
+Global Arguments ty_lfts : simpl nomatch.
+Global Arguments ty_wf_E : simpl nomatch.
+
 Global Arguments plist : simpl never.
 
 Global Typeclasses Opaque Rel2.
