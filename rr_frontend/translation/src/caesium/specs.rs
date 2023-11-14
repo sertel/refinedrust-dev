@@ -1451,7 +1451,7 @@ impl<'def> VariantBuilder<'def> {
         }).collect();
 
         // create a fully substituted version of the types now
-        let subst_fields = self.fields.iter().map(|(name, ty)| {
+        let subst_fields: Vec<_> = self.fields.iter().map(|(name, ty)| {
             let mut ty2 = ty.clone();
             ty2.subst(&ty_env);
             (name.clone(), ty2)
@@ -1459,7 +1459,7 @@ impl<'def> VariantBuilder<'def> {
 
 
         let rfn_type = CoqType::PList("place_rfn".to_string(),
-            self.fields.iter().map(|(_, t)| t.get_rfn_type(&[])).collect());
+            subst_fields.iter().map(|(_, t)| t.get_rfn_type(&[])).collect());
 
         AbstractVariant {
             rfn_type,
