@@ -20,4 +20,3 @@ Over time, the feature support will grow.
 
 ## Known bugs
 - Re-declared variables (e.g. `let x = 5; let x = (32, 43);`) are not handled properly
-- In some cases with structs/enums with type parameters (where not all constructors use all the type parameters), the generated code will not pass the Coq type checker and requires manual edits, as too many parameters are passed.
