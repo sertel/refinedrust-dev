@@ -1310,7 +1310,6 @@ Definition Vec_T_pop_def (Vec_T_ptr_T_loc : loc) (std_ptr_read_T_loc : loc) (ptr
   ]>%E $
   <[
   "_bb1" :=
-    (* TODO fixed the instantiation for the None variant here *)
    "__0" <-{ (use_op_alg' (syn_type_of_els ((std_option_Option_els (T_st))))) } EnumInit ((std_option_Option_els (T_st))) "None" (RSTLitType ["std_option_Option_ty"] [RSTTyVar "T"]) (StructInit ((std_option_Option_None_sls )) []);
    Goto "_bb8"
   ]>%E $
