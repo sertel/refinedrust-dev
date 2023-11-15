@@ -2223,53 +2223,6 @@ Section typing.
     TypedReadEnd π E L l (◁ ty)%I (PlaceIn r) b2 bmin br ot | 10 :=
     λ T, i2p (type_read_ofty_copy E L π T b2 bmin br l ty r ot).
 
-  (*
-  For more generality, maybe have LtypeReadAs lty (λ ty r, ...)
-    that gives us an accessor as a type?
-    => this should work fine.
-     - T ty .. (Shared κ) -∗ LtypeReadAs (ShrBlocked ty) T
-     - T ty .. k -∗ LtypeReadAs (◁ ty) T
-     -
-  How does that work for moves? Well, we cannot move if it isn't an OfTy.
-     so there we should really cast first.
-  Note here: we should only trigger the copy instance if we can LtypeReadAs as something that is copy.
-     So we should really make that a TC and make it a precondition, similar to SimplifyHyp etc.
-
-  And similar for LtypeWriteAs lty (λ ty r, ...)?
-    well, there it is more difficult, because it even needs to hold if there are Blocked things below.
-    I don't think we can nicely solve that part.
-   *)
-
-  (** NOTE instance for moving is defined in value.v *)
-
-  (** Reading products: read each of the components in sequence *)
-  (* TODO check if this is the right thing to do.
-  Lemma type_read_prod E L π {rt1 rt2} `{ghost_varG Σ rt1} `{ghost_varG Σ rt2} `{ghost_varG Σ ((place_rfn rt1) * (place_rfn rt2))} b2 bmin l (lt1 : lty rt1) (lt2: lty rt2) r1 r2 sl ot
-    (T : val → ∀ rt', ghost_varG Σ rt' → lty rt' → place_rfn rt' → type (place_rfn rt1 * place_rfn rt2)%type → (place_rfn rt1 * place_rfn rt2) → iProp Σ) :
-    typed_read_end E L π (GetMemberLoc l sl "0") rt1 lt1 r1 b2 bmin ot (λ v1 rt1' _ lt1' r1' ty1 r1t,
-      typed_read_end E L π (GetMemberLoc l sl "1") rt2 lt2 r2 b2 bmin ot (λ v2 rt2' _ lt2' r2' ty2 r2t,
-        li_tactic (find_gvar_inst_goal (place_rfn rt1' * place_rfn rt2')) (λ _,
-        T (v1 ++ v2) (place_rfn rt1' * place_rfn rt2')%type _ (ProdLty lt1' lt2' sl) (PlaceIn (r1', r2')) (pair_t ty1 ty2 sl) (PlaceIn r1t, PlaceIn r2t)))) -∗
-    typed_read_end E L π l (place_rfn rt1 * place_rfn rt2) (ProdLty lt1 lt2 sl) (PlaceIn (r1, r2)) b2 bmin ot T.
-  Proof.
-  Admitted.
-  Global Instance type_read_prod_inst E L π {rt1 rt2} `{ghost_varG Σ rt1} `{ghost_varG Σ rt2} `{ghost_varG Σ ((place_rfn rt1) * (place_rfn rt2))} b2 bmin l (lt1 : lty rt1) (lt2: lty rt2) r1 r2 sl ot :
-    TypedReadEnd E L π l (ProdLty lt1 lt2 sl) (PlaceIn (r1, r2)) b2 bmin ot | 10 :=
-    λ T, i2p (type_read_prod E L π b2 bmin l lt1 lt2 r1 r2 sl ot T).
-
-  (** We can do copy reads from shr-blocked places *)
-  Lemma type_read_shr_blocked_copy E L π {rt} `{ghost_varG Σ rt} b2 bmin l (ty : type rt) r κ ot `{!Copyable ty} (T : val → ∀ rt', ghost_varG Σ rt' → lty rt' → place_rfn rt' → type rt → rt → iProp _) :
-    (⌜ty.(ty_has_op_type) ot⌝ ∗ ⌜lctx_lft_alive E L κ⌝ ∗ (∀ v, T v rt _ (ShrBlockedLty ty κ) (PlaceIn r) ty r)) -∗
-    typed_read_end E L π l rt (ShrBlockedLty ty κ) (PlaceIn r) b2 bmin ot T.
-  Proof.
-  Admitted.
-  Global Instance type_read_shr_blocked_copy_inst E L π {rt} `{ghost_varG Σ rt} b2 bmin l (ty : type rt) r κ ot `{!Copyable ty} :
-    TypedReadEnd E L π l (ShrBlockedLty ty κ) (PlaceIn r) b2 bmin ot | 10 :=
-    λ T, i2p (type_read_shr_blocked_copy E L π b2 bmin l ty r κ ot T).
-  *)
-
-
-
   (* TODO: potentially lemmas for reading from mut-ref and box ltypes.
       (this would be required for full generality, because shr_blocked can be below them)
    *)

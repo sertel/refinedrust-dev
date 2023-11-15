@@ -733,54 +733,12 @@ Section unify_loc.
   Global Instance subsume_full_ofty_value_untyped_prefix_inst π E L step l vs1 vs2 ly1 ly2 `{!LayoutSizeLe ly1 ly2} :
     SubsumeFull E L step (l ◁ₗ[π, Owned false] #vs1 @ ◁ value_t (UntypedSynType ly1))%I (l ◁ₗ[π, Owned false] #vs2 @ ◁ value_t (UntypedSynType ly2))%I | 7 :=
     λ T, i2p (subsume_full_ofty_value_untyped_prefix π E L step l vs1 vs2 ly1 ly2 T).
-
-  (* TODO we should also have a corresponding case if the RHS is smaller *)
-  (* TODO: need simplification mechanism for the ly_offset here to get to a sane layout.
-    Or more specifically: a SimplifyHyp instance for value_t. *)
-    (*ly_size ly2 = ly_size (ly_offset ly3 (ly_size ly1))*)
-  (*
-  Lemma subsume_full_ofty_value_untyped_larger π E L step l vs1 vs2 ly1 ly2 T :
-    (⌜ly_size ly2 ≤ ly_size ly1⌝ ∗
-    ⌜ly_align_log ly2 ≤ ly_align_log ly1⌝ ∗
-    ⌜layout_wf (ly_offset ly1 (ly_size ly2))⌝ ∗
-    ⌜vs2 = take (ly_size ly2) vs1⌝ ∗
-    ((l +ₗ ly_size ly2) ◁ₗ[π, Owned false] PlaceIn (drop (ly_size ly2) vs1) @ (◁ value_t (UntypedSynType (ly_offset ly1 (ly_size ly2)))) -∗ T L True%I))-∗
-    subsume_full E L step (l ◁ₗ[π, Owned false] #vs1 @ ◁ value_t (UntypedSynType ly1)) (l ◁ₗ[π, Owned false] #vs2 @ ◁ value_t (UntypedSynType ly2)) T.
-  Proof.
-    (* TODO *)
-  Admitted.
-  Global Instance subsume_full_ofty_value_untyped_larger_inst π E L step l vs1 vs2 ly1 ly2 :
-    SubsumeFull E L step (l ◁ₗ[π, Owned false] PlaceIn vs1 @ ◁ value_t (UntypedSynType ly1))%I (l ◁ₗ[π, Owned false] PlaceIn vs2 @ ◁ value_t (UntypedSynType ly2))%I | 9 :=
-    λ T, i2p (subsume_full_ofty_value_untyped_larger π E L step l vs1 vs2 ly1 ly2 T).
-   *)
 End unify_loc.
 
 Section unify_val.
   Context `{!typeGS Σ}.
 
   (** Same instances for the case that we have just values *)
-
-
-  (* if both are untyped, and have not been handled by the previous instance,
-     check if the sizes of the layout are the same;
-     - if so, show that the alignment of the goal is lower
-     - else, prove that the left one is a prefix of the latter, and continue searching for the rest. *)
-  (*
-  Lemma subsume_full_ofty_value_untyped_prefix π E L l vs1 vs2 ly1 ly2 T :
-    ⌜ly_align_log ly2 ≤ ly_align_log ly1⌝ ∗
-    ⌜ly_size ly1 ≤ ly_size ly2⌝ ∗
-    ⌜vs1 = take (ly_size ly1) vs2⌝ ∗
-    prove ((drop (ly_size ly1) vs2) ◁ᵥ{π} (drop (ly_size ly1) vs2) @ ◁ value_t (UntypedSynType (ly_offset ly2 (ly_size ly1)))) T -∗
-    subsume (v ◁ᵥ{π} vs1 @ value_t (UntypedSynType ly1)) (v ◁ᵥ{π} vs2 @ value_t (UntypedSynType ly2)) T.
-  Proof.
-      (* TODO *)
-  Admitted.
-  Global Instance subsume_full_ofty_value_untyped_prefix_inst π E L l vs1 vs2 ly1 ly2 :
-    SubsumeFull E L (l ◁ₗ[π, Owned false] PlaceIn vs1 @ ◁ value_t (UntypedSynType ly1))%I (l ◁ₗ[π, Owned false] PlaceIn vs2 @ ◁ value_t (UntypedSynType ly2))%I | 6 :=
-    λ T, i2p (subsume_full_ofty_value_untyped_prefix π E L l vs1 vs2 ly1 ly2 T).
-   *)
-
-
   (** Step 1 *)
   (* instantiate in case [st2] is an evar *)
   Lemma subsume_full_value_st_evar E L step π v st1 st2 vs1 vs2 T :
@@ -940,6 +898,7 @@ Section rules.
     TypedReadEnd π E L l (◁ ty)%I (#r) (Uniq κ γ) bmin AllowStrong ot | 20 :=
     λ T, i2p (type_read_ofty_move_uniq E L π T l ty r ot κ γ bmin).
 
+
   (* [type_read_end] instance that does a move -- should be triggered when the copy instance does not work, hence the lower priority.
      This leaves a [value_t] at the place. *)
   Lemma type_read_ofty_move_owned_value E L {rt} π (T : typed_read_end_cont_t rt) l (ty : type rt) r ot wl bmin :
@@ -988,137 +947,6 @@ Section rules.
   (*Global Instance type_read_ofty_move_owned_inst E L {rt} π wl bmin l (ty : type rt) r ot :*)
     (*TypedReadEnd π E L l (◁ ty)%I (PlaceIn r) (Owned wl) bmin AllowStrong ot | 19 :=*)
     (*λ T, i2p (type_read_ofty_move_owned E L π T l ty r ot wl bmin).*)
-
-  (* TODO for Untyped, we currently cannot leave a value, because we cannot do syntype updates, but [value_t] relies on the syntype to compute the value update *)
-  Lemma type_read_ofty_move_owned_untyped E L {rt} π (T : typed_read_end_cont_t rt) l (ty : type rt) r ly wl bmin :
-    ( ⌜ty.(ty_has_op_type) (UntypedOp ly) MCCopy⌝ ∗
-      ∀ v v', v ◁ᵥ{π} r @ ty -∗
-      T L v' _ (value_t (UntypedSynType ly)) v val (◁ value_t (UntypedSynType ly)) (#v) ResultStrong) -∗
-      typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong (UntypedOp ly) T.
-  Proof.
-    iIntros "(%Hot & Hs)" (F ???) "#CTX #HE HL".
-    iIntros "_ Hb".
-  Abort.
-
-  (* Instead we leave uninit *)
-  Lemma type_read_ofty_move_owned_value_untyped E L {rt} π (T : typed_read_end_cont_t rt) l (ty : type rt) r ly wl bmin :
-    (⌜ty.(ty_has_op_type) (UntypedOp ly) MCCopy⌝ ∗
-        ∀ v, T L v _ ty r unit (◁ uninit ty.(ty_syn_type)) (#()) ResultStrong)
-    ⊢ typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong (UntypedOp ly) T.
-  Proof.
-    iIntros "(%Hot & Hs)" (F ???) "#CTX #HE HL Hna".
-    iIntros "_ Hb".
-    iPoseProof (ofty_ltype_acc_owned with "Hb") as "(%ly' & %Halg & %Hly & Hsc & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
-    iPoseProof (ty_own_val_has_layout with "Hv") as "%Hlyv"; first done.
-    specialize (ty_op_type_stable Hot) as Halg''.
-    assert (ly' = ly) as ->. { by eapply syn_type_has_layout_inj. }
-    iModIntro. iExists _, _, rt, _, _.
-    iFrame "Hl Hv".
-    iSplitR; first done. iSplitR; first done.
-    iApply (logical_step_wand with "Hcl").
-    iIntros "Hcl %st Hl Hv". iMod ("Hcl" $! v _ (uninit ty.(ty_syn_type)) tt with "Hl [//] [] []") as "Hl".
-    { simpl. done. }
-    { iNext. iApply uninit_own_spec. iExists _. iSplitR; first done. done. }
-    iPoseProof (ty_memcast_compat with "Hv") as "Hid"; first done. simpl.
-    iModIntro. iExists _, _,_, _. iFrame.
-    (* strong update *)
-    iExists _, _, _, ResultStrong. iFrame.
-    iSplitR; first done.
-    iR.
-    done.
-  Qed.
-  (*
-  Global Instance type_read_ofty_move_owned_untyped_inst E L {rt} π wl bmin l (ty : type rt) r ly :
-    TypedReadEnd π E L l (◁ ty)%I (PlaceIn r) (Owned wl) bmin AllowStrong (UntypedOp ly) | 20 :=
-    λ T, i2p (type_read_ofty_move_owned_untyped E L π T l ty r ly wl bmin).
-  *)
-
-  (* TODO: this is now problematic. Maybe should have an untyped bit in the syntype after all?
-       Alternative: use syn_type_compat everywhere to allow untyped interaction.
-
-       Use an untyped bit:
-       - then we still have a problem that often we should maybe be talking about a concrete layout instead.
-          In particular when we assemble chunks.
-          For array, we can work around that, since it is "chunkable", but for everything else, that does not really work.
-          Q: do we reallyneed that for anything but arrays?
-          + when we want to have a view on data and change the element type: e.g. in copy_nonoverlapping, would like to have an array of u8.
-            We could in principle also do that for the ArraySynType, but it would be more of a hassle, and we would again end up with a different syntype
-            OTOH is copy_nonoverlapping that much of a concern?
-            In principle, we could also have something that first adapts
-       - making things untyped would be much less of a hassle in the rules.
-
-       Make rules compatible with UntypedSynType everywhere:
-       - what is the intuitive justification for this? Why should we do it?
-         + to my mind, UntypedSynType is just an undesirable artifact -- at least in safe Rust.
-         + for unsafe stuff, the story may be different. We may want to treat stuff just as bytes.
-            - allocation API itself should maybe treat it that way. We should just have some layout there.
-              In our system, we will have a mixed concrete-symbolic layout.
-              Arguably, that should not be a proper syntype, but that's how it is: our types need a syntype, and generally that requirement seems sensible.
-
-       Alternative for this particular issue:
-       - at the place, just don't leave an Untyped, but the right type. We should not loose information there!
-         Then we also do not need a syntype update.
-
-     *)
-
-  (* TODO: consider whether we need special instances for reading/writing.
-     In particular, what if we read with an ot from an UntypedOp-value? Then we should specialize the ot further in the result of the read.
-     - problem currently: the generic ofty instance requires the type to have the same ot
-     - but in case of value_t, we can change the ot!
-   *)
-
-
-
-  (* We also need stratification instances: should we generally move values back in during stratification?
-    - One option: always cancel value_t in stratification.
-        This limits expressivity a bit for specs, because when we really want to have value_t there, we get stuck.
-      => do this for now, it should suffice.
-     - Other option: have a (non-semantic) guidance parameter that gets provided by OpenedLtype.
-       Only if that guidance parameter is not giving us identity do we fold the value_t.
-     - Other option: do not let stratify do this, but rather have subtyping do this before folding.
-
-     TODO: currently not an instance, because we sometimes do not want to do this!
-     Instead, should give stratify some syntactic guidance from OpenedLtype above it.
-   *)
-  Lemma stratify_ltype_ofty_value_owned π E L mu mdu ma {M} (m : M) l st v wl (T : stratify_ltype_cont_t) :
-    find_in_context (FindVal v π) (λ '(existT rt (ty', r')),
-      ⌜ty'.(ty_has_op_type) (use_op_alg' ty'.(ty_syn_type)) MCCopy⌝ ∗
-      ⌜ty'.(ty_syn_type) = st⌝ ∗
-      stratify_ltype π E L mu mdu ma m l (◁ ty') (#r') (Owned wl) T)
-    ⊢ stratify_ltype π E L mu mdu ma m l (◁ value_t st)%I (#v) (Owned wl) T.
-  Proof.
-    iDestruct 1 as ([rt [ty' r']]) "(Hv & %Hot & %Heq & HT)" => /=.
-    iIntros (???) "#CTX #HE HL Hl".
-    iPoseProof (ltype_own_has_layout with "Hl") as "#(%ly & %Hst &_)".
-    iPoseProof (ofty_own_merge_value with "Hv Hl") as "Ha".
-    { subst st. destruct (ty_syn_type ty'); try done.
-      simp_ltypes in Hst. simpl in Hst.
-      specialize (syn_type_has_layout_untyped_inv _ _ Hst) as (-> & _).
-      done. }
-    iMod ("HT" with "[//] [//] CTX HE HL Ha") as "Ha".
-    subst st. eauto.
-  Qed.
-  (* needs to have a higher priority than the ofty_resolve_ghost instance *)
-  (*Global Instance stratify_ltype_unblock_ofty_value_owned_inst π E L mu mdu ma l st v wl :*)
-    (*StratifyLtype π E L mu mdu ma StratifyUnblockOp l (◁ value_t st)%I (PlaceIn v) (Owned wl) | 10:=*)
-    (*λ T, i2p (stratify_ltype_ofty_value_owned π E L mu mdu ma StratifyUnblockOp l st v wl T).*)
-  (* TODO: not an instance right now since we don't always want to stratify this -- esp. not for functions passing values in their interface *)
-
-
-  (* Simplification instance - when introducing a value_t, we simply destruct it *)
-  (* TODO how does this overlap with ghost_drop?
-     TODO can we simplify the is_memcast_val? Otherwise, it seems pretty useless. *)
-  (*
-  Lemma value_simplify π v T ot st p :
-    (⌜is_memcast_val p ot v⌝ -∗ ⌜v `has_layout_val` ot_layout ot⌝ -∗ ⌜syn_type_has_layout st (ot_layout ot)⌝ -∗ T) -∗
-    simplify_hyp (v ◁ᵥ{π} p @ value_t st)%I T.
-  Proof. iIntros "HT (% & % & %)". by iApply "HT". Qed.
-  Global Instance value_simplify_inst π v ot st p :
-    SimplifyHypVal v π (value_t ot st) p (Some 0%N) :=
-    λ T, i2p (value_simplify π v T ot st p).
-   *)
-
-
 
 End rules.
 

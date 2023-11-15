@@ -423,39 +423,4 @@ li_tactic (compute_layout_goal (ty_syn_type ty1)) (λ ly1,
   Global Instance uninit_mono_untyped_id_inst E L step π l (ly1 ly2 : layout) `{!TCDone (ly1 = ly2)} :
     SubsumeFull E L step (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType ly1)))%I (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType ly2)))%I | 11 :=
     λ T, i2p (uninit_mono_untyped_id E L π step l ly1 ly2 T).
-
-  (*
-  (* TODO: ideally generalize this to non-arrays too ; e.g. consider doing some copying into a repr(C) struct *)
-     TODO: first develop more principled theory for splitting up memory structures into multiple chunks.
-  Lemma uninit_mono_untyped_strong E L π step l (ly1 ly2 : layout) T :
-    (⌜ly_size ly2 ≤ ly_size ly1⌝ ∗
-     ⌜l +ₗ(ly_size ly2) `has_layout_loc` (ly_offset ly1 (ly_size ly2))⌝ ∗
-     ⌜l `has_layout_loc` ly2⌝ ∗
-    ((l +ₗ(ly_size ly2)) ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType (ly_offset ly1 (ly_size ly2)))) -∗ T L True%I)) -∗
-    subsume_full E L step (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType ly1))) (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType ly2))) T.
-  Proof.
-    (* split up the uninit value *)
-  Admitted.
-  Global Instance uninit_mono_untyped_strong_inst E L π step l (ly1 ly2 : layout) :
-    SubsumeFull E L step (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType ly1)))%I (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType ly2)))%I | 21 :=
-    λ T, i2p (uninit_mono_untyped_strong E L π step l ly1 ly2 T).
-
-  Lemma uninit_mono_untyped_array E L π step l (ly1' ly2' : layout) sz1 sz2 T :
-    (⌜ly1' = ly2'⌝ ∗
-    ⌜sz1 ≤ sz2⌝ ∗
-    ((l offset{ly1'}ₗ sz1) ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType (mk_array_layout ly1' (sz1 - sz2)))) -∗ T L True%I)) -∗
-    subsume_full E L step (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType (mk_array_layout ly1' sz1)))) (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType (mk_array_layout ly2' sz2)))) T.
-  Proof.
-    iIntros "(<- & %Hle & HT)" (???) "#CTX #HE HL Hl".
-    rewrite !ltype_own_ofty_unfold /lty_of_ty_own. simpl.
-    iDestruct "Hl" as "(%ly & %Halg & %Hly & _ & ? & _ & %r' & <- & Hv)".
-    iMod (fupd_mask_mono with "Hv") as "(%v & Hl & Hv)"; first done.
-    (* split up the uninit value *)
-  Admitted.
-  Global Instance uninit_mono_untyped_array_inst E L π step l (ly1' ly2' : layout) sz1 sz2 :
-    SubsumeFull E L step (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType (mk_array_layout ly1' sz1))))%I (l ◁ₗ[π, Owned false] .@ (◁ uninit (UntypedSynType (mk_array_layout ly2' sz2))))%I | 20 :=
-    λ T, i2p (uninit_mono_untyped_array E L π step l ly1' ly2' sz1 sz2 T).
-   *)
-
-
 End typing.

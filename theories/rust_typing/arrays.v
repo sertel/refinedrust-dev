@@ -3587,47 +3587,6 @@ Section offset_rules.
     SimplifyGoalVal v π (offset_ptr_t st) (l, off) (Some 50%N) :=
     λ T, i2p (offset_ptr_simplify_goal v π l st off T).
 
-  (*
-     prove l +ₗ ... ◁
-
-     subsume (v ◁ᵥ offset_ptr_t) (l ◁ₗ[π, ..] .. )
-
-
-   *)
-
-
-
-  (* Want:
-      - find type assingment
-      - subtype to array
-        this should potentially also be able to move it back in.
-        just subsume_full with a step is probably right.
-      - then we need that the offset is valid, prove it. okay.
-      - then we can provide the array with aliased ownership and get the ownership for that offset out.
-        for that we are going to need a step, if it is Owned true.
-
-     On the other side, when we need to move in again:
-        subtyping here should be able to put in aliases again.
-         so this needs to be owned_subltype_step/subsume_full with a step if it is Owned true, and for Owned false doesn't need a step.
-        in general, we won't have a step.
-        but how do we formulate the lemmas to enable that?
-        well, we basically need the stratification parts for that also in subtyping now...
-        why, well, because we consciously destroy it first.
-
-        but we also get that issue when we first do
-          ptr::write (moving an element out)
-        and then
-          ptr::copy (needs everything in place)
-        Maybe we should stratify place arguments in the precondition first?
-
-        i.e. prove_with_subtype (l ◁ₗ[...] ...) should find assignment for l and then stratify it, if it gets a step.
-          I'm not sure if that is a good idea in general though.
-        TODO
-
-        I guess in principle, maybe that is just something that should also be doable by subtyping, not by stratification.
-
-        Maybe all the value instances for joining values should also be put in there.
-   *)
   Lemma type_extract_value_annot_offset π E L n v l (off : Z) st (T : typed_annot_expr_cont_t) :
     (v ◁ᵥ{π} (l, off) @ offset_ptr_t st -∗ T L v _ (offset_ptr_t st) (l, off))
     ⊢ typed_annot_expr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) T.
@@ -3639,47 +3598,6 @@ Section offset_rules.
   Global Instance type_extract_value_annot_offset_inst π E L n v l off st :
     TypedAnnotExpr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st)%I :=
     λ T, i2p (type_extract_value_annot_offset π E L n v l off st T).
-
-  (* Problem:
-        Lithium simplifies only if it cannot find it in the context.
-        Maybe we shou
-
-
-      Now, what is our invariant? Do we want to have offset ptrs in the context as values?
-
-     If so, we get into trouble in some places where we need to go from an aliasptr to an offsetptr.
-
-     If not, we will try to find an assignment and can't find it in the preconditions we have.
-      Ideally, I'd like to be able to introduce something into the context without simplification at some points.
-      Or have simplification for gaining information.
-
-
-   *)
-
-
-
-  (*
-  Lemma type_extract_value_annot_offset π E L n v l (off : nat) st (T : typed_annot_expr_cont_t) :
-    ⌜n > 0⌝ ∗ find_in_context (FindLoc l π) (λ '(existT rt (lt, r, bk)),
-    (* TODO this is a pretty big hack currently and will break once we e.g. first move out the value. The problem is that we have trouble with the dependent evars *)
-      ∃ rt', ⌜rt = list (place_rfn rt')⌝ ∗ ∃ (ty : type rt') len iml (xs : list (place_rfn rt')),
-      subsume_full E L true (l ◁ₗ[π, bk] r @ lt) (l ◁ₗ[π, Owned false] #xs @ ArrayLtype ty len iml) (λ L2 R2,
-        ⌜(off < len)%Z⌝ ∗
-        ⌜ty_syn_type ty = st⌝ ∗ (* TODO might generalize this condition *)
-        (∀ x lt,
-          ⌜xs !! off = Some x⌝ -∗
-          ⌜interpret_iml (◁ ty)%I len iml !! off = Some lt⌝ -∗
-          (l offsetst{st}ₗ off) ◁ₗ[π, Owned false] x @ lt -∗
-          l ◁ₗ[π, Owned false] #xs @ ArrayLtype ty len [(off, AliasLtype _ (ty_syn_type ty) (l offsetst{ty_syn_type ty}ₗ off))] -∗
-          T L v _ (offset_ptr_t st) (l, off)))) -∗
-    typed_annot_expr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) T.
-  Proof.
-    (* TODO *)
-  Admitted.
-  Global Instance type_extract_value_annot_offset_inst π E L n v l off st :
-    TypedAnnotExpr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st)%I :=
-    λ T, i2p (type_extract_value_annot_offset π E L n v l off st T).
-  *)
 End offset_rules.
 
 Global Hint Mode TypedArrayAccess + + + + + + + + + + + + : typeclass_instances.
@@ -3699,84 +3617,4 @@ Global Typeclasses Opaque stratify_ltype_array_iter.
 Global Hint Mode StratifyLtypeArrayIter + + + + + + + + + + + + + + + + + + : typeclass_instances.
 Global Hint Mode ResolveGhostIter + + + + + + + + + + + + + + + : typeclass_instances.
 Global Typeclasses Opaque resolve_ghost_iter.
-
-
-
-  (*
-
-
-    Lifecycle of an array:
-    - initialization by subsumption from uninit - i.e. uninit -> array (uninit)
-    - array (uninit) -> array (ty)
-      + in Vec: ty = maybe_uninit ty)
-      + in safe Rust: write array value to it.
-        this always has constant size (no VLA); but it may not only contain constants.
-          I.e. this is an expression. We need to typecheck this expression at array_t, and can then assign it.
-    - on access of components: unfold.
-    - accesses of components may generate an override with a new ltype (homo).
-    - eventually, we fold again (stratification). here, we show that everything is coreable to the def type.
-    -
-
-    What about partially initialized arrays?
-    - in safe Rust, these don't exist.
-    - and in other cases, we will usually have maybe_uninit (e.g. Vec).
-
-
-     How do I imagine these lemmas to look?
-
-     For subltyping:
-       - should it take into account refinements, or directly require equality of those?
-          e.g. if we want to do array (T) <: array (maybe_uninit T), we need to take it into account.
-
-       Option 1:
-         - require subtyping for the def type.
-         - for the overrides:
-            + first simplify via tactic hint
-            + then enter a custom judgment that deals with imls (or something more general -- basically a generalization of subsume_list)
-       Option 2:
-       - do a subsumption that looks quite similar to refinedc's subsume_list -- i.e. we first interpret via interpret_iml, and then have a generalization of subsume_list.
-
-      => use Option 2 with relate_list.
-        We basically add a flag describing the operation to match on for instances.
-        In our case, it will also carry the whole refinements.
-        Then the individual instance for us will just do one step by doing a lookup.
-
-
-     For resolve_ghost:
-        - basically should take into account just the overrides.
-        - need to deal with list inserts in the refinement here. Use Lithiums built-in lookup facility.
-            strategy 1: walk over the refinement via syntactic matching on inserts. For each of these, do a resolution.
-              -> I think this is probably more robust.
-              How do I phrase this inductively, though?
-                probably extract the refinement first, converting it into a walkable list via Ltac.
-                then go over that list, and generate new inserts if we do a resolution.
-                Probably that needs a separate judgment.
-            strategy 2: walk over the types. However: we ideally also want to be able to resolve for folded things.
-              This would only suffice if we can get the better refinement contracts to work. (i.e., setting up relations after the fact).
-
-       On strategy1:
-       - ghost_resolve_list
-          Difference to structs: we don't deal with concrete, but with symbolic lists.
-         Is there some more general abstraction we could use?
-
-    For stratify:
-      - first, stratify all components.
-        Basically:
-          def is already a type and fully stratified.
-          for the overrides, for each do a lookup of the refinement, and stratify with that.
-      - then have the stratified components.
-        if all of them satisfy the placecond: go to ofty or coreable
-          + check if all of them are ofty, then require subtyping to the def. then can go to ofty for the array again.
-          + otherwise, go to coreable with the whole thing (?) => this is a choice here.
-            Do we want to completely "finalize" or not?
-        otherwise, keep the current state.
-
-    place access:
-      - how does unfolding of an array work?
-        well, after deref we give it an ofty, from which we can go on and generate an override.
-      - actual access:
-        + either go directly via lookup of the interpreted list.
-          => This is the path to take.
-        + or go via lookup of iml -- needs custom lookup li_tactic then.
-   *)
 
