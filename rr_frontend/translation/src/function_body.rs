@@ -293,6 +293,94 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         };
     }
 
+    fn compute_regions_of_function(tcx: ty::TyCtxt<'tcx>, did: DefId) {
+        let ty: ty::EarlyBinder<Ty<'tcx>> = tcx.type_of(did);
+        let ty = ty.instantiate_identity();
+        let (sig, substs) = match ty.kind() {
+            TyKind::FnDef(_def, args) => {
+                assert!(ty.is_fn());
+                let sig = ty.fn_sig(tcx);
+                (sig, args)
+            }
+            _ => panic!("can not handle non-fns")
+        };
+
+        let mut universal_lifetimes = Vec::new();
+        let mut user_lifetime_names = Vec::new();
+
+        // we create a substitution that replaces early bound regions with their Polonius
+        // region variables
+        let mut subst_early_bounds: Vec<ty::GenericArg<'tcx>> = Vec::new();
+        let mut num_early_bounds = 0;
+        for a in substs.iter() {
+            match a.unpack() {
+                ty::GenericArgKind::Lifetime(r) => {
+                    // skip over 0 = static
+                    let revar = ty::Region::new_var(tcx, ty::RegionVid::from_u32(num_early_bounds + 1));
+                    num_early_bounds += 1;
+                    subst_early_bounds.push(ty::GenericArg::from(revar));
+
+                    match *r {
+                        ty::RegionKind::ReEarlyBound(r) => {
+                            universal_lifetimes.push(strip_coq_ident(&format!("ulft_{}", r.name.to_string())));
+                            user_lifetime_names.push(Some(strip_coq_ident(r.name.as_str())));
+                        },
+                        _ => {
+                            universal_lifetimes.push(format!("ulft{}", num_early_bounds));
+                            user_lifetime_names.push(None);
+                        },
+                    }
+                    //println!("early region {}", r);
+                },
+                _ => {
+                    subst_early_bounds.push(a);
+                },
+            }
+        }
+        let subst_early_bounds = tcx.mk_args(&subst_early_bounds);
+
+        // add names for late bound region variables
+        let mut num_late_bounds = 0;
+        for b in sig.bound_vars().iter() {
+            match b {
+                ty::BoundVariableKind::Region(r) => {
+                    match r {
+                        ty::BoundRegionKind::BrNamed(_, sym) => {
+                            universal_lifetimes.push(strip_coq_ident(&format!("ulft_{}", sym.to_string())));
+                            user_lifetime_names.push(Some(strip_coq_ident(sym.as_str())));
+                        },
+                        ty::BoundRegionKind::BrAnon(_) => {
+                            universal_lifetimes.push(format!("ulft{}", num_early_bounds + num_late_bounds + 1));
+                            user_lifetime_names.push(None);
+                        },
+                        _ => (),
+                    }
+                    num_late_bounds += 1;
+                },
+                _ => (),
+            }
+        }
+
+        // replace late-bound region variables by re-enumerating them in the same way as the MIR
+        // type checker does (that this happens in the same way is important to make the names
+        // line up!)
+        let mut next_index = num_early_bounds + 1; // skip over one additional due to static
+        let mut folder =
+            |_| {
+                let cur_index = next_index;
+                next_index += 1;
+                ty::Region::new_var(tcx,ty::RegionVid::from_u32(cur_index))
+            };
+        let (late_sig, _late_region_map) = tcx.replace_late_bound_regions(sig, &mut folder);
+
+        let inputs: Vec<_> = late_sig.inputs().iter().map(|ty| {
+            ty_instantiate(*ty, tcx, subst_early_bounds) }).collect();
+        let output = ty_instantiate(late_sig.output(), tcx, subst_early_bounds);
+        
+        // TODO continue the refactor for pulling this out. 
+        // Then try to fix issue with stuff
+    }
+
     /// Translate the body of a function.
     pub fn new(env: &'def Environment<'tcx>, fname: String, proc: Procedure<'tcx>, attrs: &'a [Attribute], ty_translator: &'def TypeTranslator<'def, 'tcx>, proc_registry: &'a ProcedureScope<'def>, spec_fns: &'a HashSet<DefId>) -> Result<Self , TranslationError> {
         let fname = strip_coq_ident(&fname);
@@ -397,6 +485,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     };
                 let (late_sig, _late_region_map) = env.tcx().replace_late_bound_regions(sig, &mut folder);
 
+                // replace early bound variables
                 let inputs: Vec<_> = late_sig.inputs().iter().map(|ty| {
                     ty_instantiate(*ty, env.tcx(), subst_early_bounds) }).collect();
                 let output = ty_instantiate(late_sig.output(), env.tcx(), subst_early_bounds);
@@ -1276,6 +1365,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     lifetime_insts.push(lft);
                 }
                 info!("Call lifetime instantiation: {:?}", lifetime_insts);
+                // TODO: maybe should prune to length of actual lifetime args expected 
 
                 //let name = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r));
 

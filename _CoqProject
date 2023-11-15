@@ -8,4 +8,6 @@
 -arg -w -arg -redundant-canonical-projection
 
 -Q _build/default/rr_frontend/output/paper refinedrust.examples.paper
-#-Q _build/default/rr_frontend/output/minivec_patched refinedrust.examples.minivec_patched
+-Q _build/default/rr_frontend/output/minivec_patched refinedrust.examples.minivec_patched
+-Q _build/default/rr_frontend/output/minivec_fix refinedrust.examples.minivec_fix
+-Q _build/default/rr_frontend/output/enum refinedrust.examples.enum
