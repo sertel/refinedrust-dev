@@ -26,6 +26,7 @@ For each input module `mod`, the RefinedRust generates the following files in th
 We assume that you have `opam` installed on your system. Setup instructions can be found here: https://opam.ocaml.org/doc/Install.html
 
 0. `cd` into the directory containing this README.
+ NOTE that the path to this directory should NOT contain a space -- otherwise `opam` may have issues.
 
 1. Run the `install-artifact-deps.sh` script, which will set up a new opam switch, install the necessary dependencies, and afterwards build the RefinedRust implementation:
 
