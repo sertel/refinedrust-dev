@@ -45,10 +45,10 @@ builddep-opamfiles: builddep/refinedrust-builddep.opam
 define BUILDDEP_OPAM_BODY
 opam-version: "2.0"
 name: "refinedrust-builddep"
-maintainer: "Lennard Gäher"
-author: "Lennard Gäher"
-homepage: "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev"
-bug-reports: "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev"
+maintainer: "Anonymous"
+author: "Anonymous"
+homepage: "www.google.de"
+bug-reports: "www.google.de"
 synopsis: "---"
 description: """
 ---
