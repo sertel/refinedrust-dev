@@ -1,6 +1,6 @@
 # RefinedRust verification framework
 
-This repository contains a public mirror of the RefinedRust development version.
+This is the artifact accompanying the PLDI submission for RefinedRust.
 
 ## Structure
 The Coq implementation of RefinedRust can be found in the `theories` subfolder.
@@ -9,6 +9,7 @@ The frontend implementation and examples can be found in the `rr_frontend` subfo
 ### For the `theories` subfolder:
 * the `caesium` subfolder contains the Radium operational semantics, an adaptation of RefinedC's Caesium semantics.
 * the `lithium` subfolder contains RefinedC's Lithium separation logic automation engine with very lightweight modifications.
+* the `rust_typing` subfolder contains the implementation and soundness proof of RefinedRust's type system.
 
 
 ### For the `rr_frontend` subfolder:
@@ -26,24 +27,20 @@ We assume that you have `opam` installed on your system. Setup instructions can 
 
 0. `cd` into the directory containing this README.
 
-1. Create a new opam switch for RefinedRust:
+1. Run the `install-artifact-deps.sh` script, which will set up a new opam switch, install the necessary dependencies, and afterwards build the RefinedRust implementation:
+
 ```
-opam switch create refinedrust --packages=ocaml-variants.4.14.0+options,ocaml-option-flambda
-opam switch link refinedrust .
-opam switch refinedrust
-opam repo add coq-released https://coq.inria.fr/opam/released
-opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
+./install-artifact-deps.sh
 ```
-2. Install the necessary dependencies:
-```
-opam pin add coq 8.17.0
-opam pin add coq-lambda-rust.dev https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr
-make builddep
-```
-3. Build the project
-```
-dune build
-```
+The Coq implementation depends on the following packages:
+* Coq 8.17.1
+* dune
+* `coq-equations`
+* `coq-stdpp` (included in this artifact)
+* `coq-iris` (included in this artifact)
+* a fork of the lifetime logic of RustBelt (lambda-rust) (included in this artifact)
+
+2. To manually run the build process again, run `dune build`.
 
 
 ### Setup instructions for the frontend:
