@@ -448,7 +448,7 @@ pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
         (coq.theory\n\
          (flags -w -notation-overridden -w -redundant-canonical-projection)\n\
          (name refinedrust.examples.{})\n\
-         (theories caesium lithium refinedrust))", stem).as_bytes()).unwrap();
+         (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust))", stem).as_bytes()).unwrap();
 
 
     // maybe run proof checker
