@@ -36,7 +36,7 @@ opam repo add iris-dev https://gitlab.mpi-sws.org/iris/opam.git
 ```
 2. Install the necessary dependencies:
 ```
-opam pin add coq 8.17.0
+opam pin add coq 8.17.1
 opam pin add coq-lambda-rust.dev https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr
 make builddep
 ```
