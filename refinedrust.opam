@@ -11,7 +11,7 @@ RefinedRust is a prototype framework for verifying safe and unsafe Rust code.
 license: "BSD-3-Clause"
 
 depends: [
-  "coq-lithium" {= version | = "~dev"}
+  "coq-lithium" {= version | = "dev"}
   "coq-equations" { = "1.3+8.17" }
   "coq-lambda-rust" { = "dev" }
 ]
