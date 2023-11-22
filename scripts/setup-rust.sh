@@ -6,5 +6,5 @@
 
 cd $REFINEDRUST_ROOT
 cargo install rustup-toolchain-install-master
-./rr_frontend/rustup-toolchain
-./rr_frontend/refinedrust build
+$REFINEDRUST_ROOT/rr_frontend/rustup-toolchain
+$REFINEDRUST_ROOT/rr_frontend/refinedrust build

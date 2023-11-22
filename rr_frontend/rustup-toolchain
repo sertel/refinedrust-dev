@@ -26,6 +26,9 @@
 
 #!/bin/bash
 set -e
+
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
 # Manages a rustup toolchain called "refinedrust".
 #
 # All commands set "refinedrust" as the override toolchain for the current directory,
@@ -47,13 +50,13 @@ fi
 
 # Determine new commit.
 if [[ "$1" == "" ]]; then
-    NEW_COMMIT=$(cat rust-version)
+    NEW_COMMIT=$(cat "$SCRIPT_DIR/rust-version")
 elif [[ "$1" == "HEAD" ]]; then
     NEW_COMMIT=$(git ls-remote https://github.com/rust-lang/rust/ HEAD | cut -f 1)
 else
     NEW_COMMIT="$1"
 fi
-echo "$NEW_COMMIT" > rust-version
+echo "$NEW_COMMIT" > "$SCRIPT_DIR/rust-version"
 
 # Check if we already are at that commit.
 CUR_COMMIT=$(rustc +refinedrust --version -v 2>/dev/null | egrep "^commit-hash: " | cut -d " " -f 2)
