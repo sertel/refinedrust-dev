@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Installs RefinedRust in the current opam switch.
+# Installs RefinedRust's dependencies in the current opam switch.
 # Inputs:
 # - REFINEDRUST_ROOT: the root directory of the RefinedRust checkout
 
