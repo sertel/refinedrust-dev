@@ -4,5 +4,5 @@
 # Inputs:
 # - REFINEDRUST_ROOT: the root directory of the RefinedRust checkout
 
-opam install coq-lithium.dev $REFINEDRUST_ROOT
-opam install refinedrust.dev $REFINEDRUST_ROOT
+opam install coq-lithium.dev $REFINEDRUST_ROOT -y
+opam install refinedrust.dev $REFINEDRUST_ROOT -y
