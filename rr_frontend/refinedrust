@@ -88,7 +88,7 @@ case "$COMMAND" in
 install|install-debug)
     # "--locked" to respect the Cargo.lock file if it exists,
     # "--offline" to avoid querying the registry (for yanked packages).
-    cd translation; cargo install $CARGO_INSTALL_FLAGS  --path "$RRDIR" --force --locked --offline "$@"
+    cargo install $CARGO_INSTALL_FLAGS  --path "$RRDIR"/translation --force --locked --offline "$@"
     ;;
 check|check-debug)
     # Check, and let caller control flags.
