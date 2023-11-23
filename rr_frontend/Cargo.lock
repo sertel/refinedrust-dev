@@ -234,26 +234,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "frontend"
-version = "0.1.0"
-dependencies = [
- "analysis",
- "config",
- "csv",
- "datafrog",
- "env_logger 0.7.1",
- "lazy_static",
- "log",
- "regex",
- "rr_rustc_interface",
- "rustc-hash",
- "serde 1.0.130",
- "serde_json",
- "typed-arena",
- "unicode-xid",
-]
-
-[[package]]
 name = "getopts"
 version = "0.2.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -453,6 +433,26 @@ dependencies = [
  "getrandom",
  "redox_syscall",
  "thiserror",
+]
+
+[[package]]
+name = "refinedrust_translate"
+version = "0.1.0"
+dependencies = [
+ "analysis",
+ "config",
+ "csv",
+ "datafrog",
+ "env_logger 0.7.1",
+ "lazy_static",
+ "log",
+ "regex",
+ "rr_rustc_interface",
+ "rustc-hash",
+ "serde 1.0.130",
+ "serde_json",
+ "typed-arena",
+ "unicode-xid",
 ]
 
 [[package]]
