@@ -4,6 +4,7 @@ members = [
     "translation",
     "rr_rustc_interface",
     "annotations",
+    "refinedrust_frontend",
     "case_studies/minivec",
     "case_studies/paper-examples",
 ]

@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use log::{info};
+use log::info;
 
 use rustc_ast::ast::Attribute;
 use rustc_hir::def_id::DefId;
@@ -382,7 +382,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate the body of a function.
-    pub fn new(env: &'def Environment<'tcx>, fname: String, proc: Procedure<'tcx>, attrs: &'a [Attribute], ty_translator: &'def TypeTranslator<'def, 'tcx>, proc_registry: &'a ProcedureScope<'def>, spec_fns: &'a HashSet<DefId>) -> Result<Self , TranslationError> {
+    pub fn new(env: &'def Environment<'tcx>, fname: &str, proc: Procedure<'tcx>, attrs: &'a [Attribute], ty_translator: &'def TypeTranslator<'def, 'tcx>, proc_registry: &'a ProcedureScope<'def>, spec_fns: &'a HashSet<DefId>) -> Result<Self , TranslationError> {
         let fname = strip_coq_ident(&fname);
         let mut translated_fn = caesium::FunctionBuilder::new(&fname);
 

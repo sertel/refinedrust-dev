@@ -1,0 +1,18 @@
+[package]
+name = "refinedrust_translate"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = "0.4"
+env_logger = "0.7.1"
+
+translation = { path = "../translation" }
+analysis = { path = "../analysis" }
+rr_rustc_interface = { path = "../rr_rustc_interface" }
+
+
+[package.metadata.rust-analyzer]
+rustc_private=true
