@@ -421,26 +421,33 @@ Section call.
     TypedCall π E L eκs  v (v ◁ᵥ{π} l @ function_ptr lya fp) vl tys :=
     λ T, i2p (type_call_fnptr π E L (A := A)lfts eκs l v vl tys T fp lya).
 
-  Lemma type_call_inline_fnptr
-    (* NOTE: Currently added *) π r E L eκs sta
-    (* NOTE: Used in RefinedC *) l v vl tys fn T:
-    (* TODO: syn types matches *)
-    (* TODO: Create ϝ for this region *)
-
+  Lemma type_call_inline_fnptr π E L eκs sta l v vl tys fn T:
     let lya := fn.(f_args).*2 in
     let lyv := fn.(f_local_vars).*2 in
 
     ⌜eκs = []⌝ ∗
-    (⌜Forall2 (λ ty '(_, p), ty.(ty_has_op_type) (UntypedOp p) MCNone) tys (f_args fn)⌝ ∗
-      foldr (λ '(v, ty) T lsa, ∀ l, l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty) -∗ T (lsa ++ [l]))
-      (λ lsa, foldr (λ ly T lsv, ∀ l, l ◁ₗ[π, Owned false] (PlaceIn ()) @ (◁ (uninit (UntypedSynType ly))) -∗ T (lsv ++ [l]))
-                    (λ lsv, ∀ ϝ,
-                       ⌜∀ ϝ, elctx_sat (((λ '(_, κ, _), ϝ ⊑ₑ κ) <$> L2) ++ E) L2 ((fp κs x).(fp_elctx) ϝ)⌝ ∗
-                     introduce_typed_stmt π E L ϝ fn lsa lsv lya lyv T)
-                    fn.(f_local_vars).*2 [])
-      (zip vl tys)
-      [])
+    ⌜Forall2 (λ '(existT _ (ty, _)) '(_, p), ty.(ty_has_op_type) (UntypedOp p) MCNone) tys fn.(f_args)⌝ ∗
+    foldr
+      (λ '(existT _ (ty, r)) T lsa,
+        ∀ l, l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty) -∗ T (lsa ++ [l]))
+      (λ lsa, foldr
+        (λ ly T lsv,
+          ∀ l, l ◁ₗ[π, Owned false] .@ (◁ (uninit (UntypedSynType ly))) -∗ T (lsv ++ [l]))
+        (λ lsv,
+          ∀ (ϝ: lft),
+          introduce_typed_stmt π E ((ϝ ⊑ₗ{ 0} []) :: L) ϝ fn lsa lsv lya lyv
+            (λ v,
+              find_in_context (FindVal v π)
+                (λ '(existT rt (ty, r)),
+                  (v ◁ᵥ{π} r @ ty -∗ T L v rt ty r))))
+        fn.(f_local_vars).*2 [])
+      tys []
     ⊢ typed_call π E L eκs v (v ◁ᵥ{π} l @ inline_function_ptr sta fn) vl tys T.
+  Proof.
+  Admitted.
+
+  Definition type_call_inline_fnptr_inst := [instance type_call_inline_fnptr].
+  Global Existing Instance type_call_inline_fnptr_inst.
 End call.
 
 Global Typeclasses Opaque function_ptr.
