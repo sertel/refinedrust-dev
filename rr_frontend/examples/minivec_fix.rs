@@ -11,11 +11,6 @@ use std::mem;
 use std::ops::{Deref, DerefMut};
 use std::ptr::{self, NonNull};
 
-fn main() {
-
-}
-
-
 #[rr::returns("()")]
 fn get_mut_client() {
 

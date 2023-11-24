@@ -187,6 +187,9 @@ ______      __ _                _______          _    \n\
         }
     }
 
+    // always compile as a lib, so that we don't need a main function
+    rustc_args.push("--crate-type=lib".to_string());
+
     debug!("rustc arguments: {:?}", rustc_args);
 
 

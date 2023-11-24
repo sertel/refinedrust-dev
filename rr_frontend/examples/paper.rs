@@ -5,11 +5,6 @@
 // Examples from Section 2
 
 
-fn main() {
-
-}
-
-
 #[rr::params(x : "Z")]
 #[rr::args("#x")]
 #[rr::requires("⌜(x + 42)%Z ∈ i32⌝")]
