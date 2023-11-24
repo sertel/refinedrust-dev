@@ -25,11 +25,9 @@ use crate::environment::polonius_info::PoloniusInfo;
 use crate::environment::Environment;
 
 use crate::checked_op_analysis::CheckedOpLocalAnalysis;
-use crate::caesium;
+use radium;
 
-use crate::verbose_function_spec_parser::{FunctionSpecParser, VerboseFunctionSpecParser};
-
-use crate::rrconfig as rrconfig;
+use crate::spec_parsers::verbose_function_spec_parser::{FunctionSpecParser, VerboseFunctionSpecParser};
 
 use crate::tyvars::*;
 pub use crate::base::*;
@@ -47,7 +45,7 @@ pub struct ProcedureScope<'def> {
     /// maps the defid to (code_name, spec_name, name)
     name_map: HashMap<DefId, (String, String)>,
     /// track the actually translated functions
-    translated_functions: HashMap<DefId, caesium::Function<'def>>,
+    translated_functions: HashMap<DefId, radium::Function<'def>>,
 }
 
 impl<'def> ProcedureScope<'def> {
@@ -75,20 +73,20 @@ impl<'def> ProcedureScope<'def> {
     }
 
     /// Provide the code for a translated function.
-    pub fn provide_translated_function(&mut self, did: &DefId, trf: caesium::Function<'def>) {
+    pub fn provide_translated_function(&mut self, did: &DefId, trf: radium::Function<'def>) {
         assert!(self.name_map.get(did).is_some());
         assert!(self.translated_functions.insert(*did, trf).is_none());
     }
 
     /// Iterate over the functions we have generated code for.
-    pub fn iter_code(&self) -> std::collections::hash_map::Iter<'_, DefId, caesium::Function<'def>> {
+    pub fn iter_code(&self) -> std::collections::hash_map::Iter<'_, DefId, radium::Function<'def>> {
         self.translated_functions.iter()
     }
 }
 
 
 /**
- * Struct that keeps track of all information necessary to translate a MIR Body to a caesium::Function.
+ * Struct that keeps track of all information necessary to translate a MIR Body to a radium::Function.
  * `'a` is the lifetime of the translator and ends after translation has finished.
  * `'def` is the lifetime of the generated code (the code may refer to struct defs).
  * `'tcx' is the lifetime of the rustc tctx.
@@ -100,16 +98,16 @@ pub struct BodyTranslator<'a, 'def, 'tcx> {
     /// maps locals to variable names
     variable_map: HashMap<Local, String>,
     /// the Caesium function buildder
-    translated_fn: caesium::FunctionBuilder<'def>,
+    translated_fn: radium::FunctionBuilder<'def>,
     /// name of the return variable
     return_name: String,
     /// syntactic type of the thing to return
-    return_synty: caesium::SynType,
+    return_synty: radium::SynType,
     /// all the types used in this function
     collected_types: HashSet<Ty<'tcx>>,
     /// all the other procedures used by this function, and:
     /// (code_loc_parameter_name, spec_name, type_inst, syntype_of_all_args)
-    collected_procedures: HashMap<(DefId, FnGenericKey<'tcx>), (String, String, Vec<caesium::Type<'def>>, Vec<caesium::SynType>)>,
+    collected_procedures: HashMap<(DefId, FnGenericKey<'tcx>), (String, String, Vec<radium::Type<'def>>, Vec<radium::SynType>)>,
 
     /// tracking lifetime inclusions for the generation of lifetime inclusions
     inclusion_tracker: InclusionTracker<'a, 'tcx>,
@@ -121,7 +119,7 @@ pub struct BodyTranslator<'a, 'def, 'tcx> {
     /// polonius info for this function
     info: &'a PoloniusInfo<'a, 'tcx>,
     /// local lifetimes: the LHS is the lifetime name, the RHS are the super lifetimes
-    local_lifetimes: Vec<(caesium::specs::Lft, Vec<caesium::specs::Lft>)>,
+    local_lifetimes: Vec<(radium::specs::Lft, Vec<radium::specs::Lft>)>,
     /// data structures for tracking which basic blocks still need to be translated
     /// (we only translate the basic blocks which are actually reachable, in particular when
     /// skipping unwinding)
@@ -137,7 +135,7 @@ pub struct BodyTranslator<'a, 'def, 'tcx> {
     loop_specs: HashMap<BasicBlock, Option<DefId>>,
 
     /// relevant locals: (local, name, type)
-    fn_locals: Vec<(Local, String, caesium::Type<'def>)>,
+    fn_locals: Vec<(Local, String, radium::Type<'def>)>,
 
     /// inputs of the function, with both early and late bound regions substituted with their
     /// Polonius ReVar
@@ -160,7 +158,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// This function is deterministic, so subsequent calls with the same `BasicBlock` will always
     /// generate the same name.
     fn make_bb_name(bb_idx: &BasicBlock) -> String {
-        // NOTE: initial bb name needs to line up with caesium::FunctionCode::initial_bb!
+        // NOTE: initial bb name needs to line up with radium::FunctionCode::initial_bb!
         let mut bb_name = "_bb".to_string();
         bb_name.push_str(&bb_idx.index().to_string());
         bb_name
@@ -376,20 +374,20 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         let inputs: Vec<_> = late_sig.inputs().iter().map(|ty| {
             ty_instantiate(*ty, tcx, subst_early_bounds) }).collect();
         let output = ty_instantiate(late_sig.output(), tcx, subst_early_bounds);
-        
-        // TODO continue the refactor for pulling this out. 
+
+        // TODO continue the refactor for pulling this out.
         // Then try to fix issue with stuff
     }
 
     /// Translate the body of a function.
     pub fn new(env: &'def Environment<'tcx>, fname: &str, proc: Procedure<'tcx>, attrs: &'a [Attribute], ty_translator: &'def TypeTranslator<'def, 'tcx>, proc_registry: &'a ProcedureScope<'def>, spec_fns: &'a HashSet<DefId>) -> Result<Self , TranslationError> {
         let fname = strip_coq_ident(&fname);
-        let mut translated_fn = caesium::FunctionBuilder::new(&fname);
+        let mut translated_fn = radium::FunctionBuilder::new(&fname);
 
         // TODO can we avoid the leak
         let proc: &'def Procedure = &*Box::leak(Box::new(proc));
 
-        let mut return_synty = caesium::SynType::Unit; // default
+        let mut return_synty = radium::SynType::Unit; // default
         let body = proc.get_mir();
         // dump debug info
         Self::dump_body(body);
@@ -526,15 +524,15 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // TODO: remove
                 let mut collected_types = HashSet::new();
 
-                // map to translate between locals and the string names we use in caesium::
-                let mut caesium_name_map: HashMap<Local, String> = HashMap::new();
+                // map to translate between locals and the string names we use in radium::
+                let mut radium_name_map: HashMap<Local, String> = HashMap::new();
 
                 let local_decls = &body.local_decls;
                 info!("Have {} local decls\n", local_decls.len());
 
                 let mut fn_locals = Vec::new();
                 let mut opt_return_name = Err(TranslationError::UnknownError("could not find local for return value".to_string()));
-                // go over local_decls and create the right caesium:: stack layout
+                // go over local_decls and create the right radium:: stack layout
                 for (local, local_decl) in local_decls.iter_enumerated() {
                     let kind = body.local_kind(local);
                     let ty : &Ty<'tcx>;
@@ -560,7 +558,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     st.subst(ty_translator.synty_scope.borrow().as_ref());
 
                     let name = Self::make_local_name(body, &local);
-                    caesium_name_map.insert(local, name.to_string());
+                    radium_name_map.insert(local, name.to_string());
 
                     fn_locals.push((local, name.clone(), tr_ty));
 
@@ -589,7 +587,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 */
 
                 let t = BodyTranslator {env, proc, info,
-                    variable_map: caesium_name_map,
+                    variable_map: radium_name_map,
                     translated_fn,
                     return_name, return_synty,
                     collected_types, inclusion_tracker,
@@ -622,14 +620,14 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         let output = &self.output;
 
         info!("inputs: {:?}, output: {:?}", inputs, output);
-        let mut translated_arg_types: Vec<caesium::Type<'def>> = Vec::new();
+        let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
         let generic_env = &*self.ty_translator.generic_scope.borrow();
         for arg in inputs.iter() {
-            let mut translated: caesium::Type<'def> = self.ty_translator.translate_type(arg)?;
+            let mut translated: radium::Type<'def> = self.ty_translator.translate_type(arg)?;
             translated.subst(generic_env.as_slice());
             translated_arg_types.push(translated);
         }
-        let mut translated_ret_type: caesium::Type<'def> = self.ty_translator.translate_type(output)?;
+        let mut translated_ret_type: radium::Type<'def> = self.ty_translator.translate_type(output)?;
         translated_ret_type.subst(generic_env.as_slice());
         info!("translated function type: {:?} → {}", translated_arg_types, translated_ret_type);
 
@@ -700,15 +698,15 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     // TODO refactor/ move
-    fn to_universal_lft(&self, k: info::UniversalRegionKind, r: Region) -> caesium::UniversalLft {
+    fn to_universal_lft(&self, k: info::UniversalRegionKind, r: Region) -> radium::UniversalLft {
         match k {
-            info::UniversalRegionKind::Function => caesium::UniversalLft::Function,
-            info::UniversalRegionKind::Static => caesium::UniversalLft::Static,
+            info::UniversalRegionKind::Function => radium::UniversalLft::Function,
+            info::UniversalRegionKind::Static => radium::UniversalLft::Static,
             info::UniversalRegionKind::Local => {
-                caesium::UniversalLft::Local(self.ty_translator.lookup_universal_lifetime(r).unwrap())
+                radium::UniversalLft::Local(self.ty_translator.lookup_universal_lifetime(r).unwrap())
             },
             info::UniversalRegionKind::External => {
-                caesium::UniversalLft::External(self.ty_translator.lookup_universal_lifetime(r).unwrap())
+                radium::UniversalLft::External(self.ty_translator.lookup_universal_lifetime(r).unwrap())
             }
         }
     }
@@ -737,7 +735,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Filter the "interesting" constraints between universal lifetimes that need to hold
     /// (this does not include the constraints that need to hold for all universal lifetimes,
     /// e.g. that they outlive the function lifetime and are outlived by 'static).
-    fn get_relevant_universal_constraints(&mut self) -> Vec<(caesium::UniversalLft, caesium::UniversalLft)> {
+    fn get_relevant_universal_constraints(&mut self) -> Vec<(radium::UniversalLft, radium::UniversalLft)> {
         let info = &self.info;
         let input_facts = &info.borrowck_in_facts;
         let placeholder_subset = &input_facts.known_placeholder_subset;
@@ -768,9 +766,9 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         universal_constraints
     }
 
-    /// Main translation function that actually does the translation and returns a caesium::Function
+    /// Main translation function that actually does the translation and returns a radium::Function
     /// if successful.
-    pub fn translate(mut self) -> Result<caesium::Function<'def>, TranslationError> {
+    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
         let loop_info = self.proc.loop_info();
         info!("loop heads: {:?}", loop_info.loop_heads);
         for (head, bodies) in loop_info.loop_bodies.iter() {
@@ -798,8 +796,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             let mut translated_bb = self.translate_basic_block(initial_bb_idx, bb)?;
             // push annotation for initial constraints that relate argument's place regions to universals
             for (r1, r2) in initial_constraints.iter() {
-                translated_bb = caesium::Stmt::Annot{
-                    a: caesium::Annotation::CopyLftName(self.format_atomic_region(r1), self.format_atomic_region(r2)),
+                translated_bb = radium::Stmt::Annot{
+                    a: radium::Annotation::CopyLftName(self.format_atomic_region(r1), self.format_atomic_region(r2)),
                     s: Box::new(translated_bb)
                 };
             }
@@ -863,7 +861,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
     /// Parse the attributes on spec closure `did` as loop annotations and add it as an invariant
     /// to the generated code.
-    fn parse_attributes_on_loop_spec_closure(&self, loop_head: &BasicBlock, did: &Option<DefId>) -> caesium::LoopSpec {
+    fn parse_attributes_on_loop_spec_closure(&self, loop_head: &BasicBlock, did: &Option<DefId>) -> radium::LoopSpec {
 
         // for now: just make invariants True.
 
@@ -878,7 +876,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         // - introduce parameters for them.
 
         let mut rfn_binders = Vec::new();
-        let prop_body = caesium::IProp::True;
+        let prop_body = radium::IProp::True;
 
         // determine invariant on initialization:
         // - we need this both for the refinement invariant (though this could be removed if we make uninit generic over the refinement)
@@ -901,15 +899,15 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             let rfnty_scope = self.ty_translator.rfnty_scope.borrow();
             let mut rfn_ty = ty.get_rfn_type(&rfnty_scope);
             // wrap it in place_rfn, since we reason about places
-            rfn_ty = caesium::CoqType::PlaceRfn(Box::new(rfn_ty));
+            rfn_ty = radium::CoqType::PlaceRfn(Box::new(rfn_ty));
 
 
             // determine their initialization status
             //let initialized = true; // TODO
             // determine the actual refinement type for the current initialization status.
 
-            let rfn_name = caesium::CoqName::Named(format!("r_{}", name));
-            rfn_binders.push(caesium::CoqBinder::new(rfn_name, rfn_ty));
+            let rfn_name = radium::CoqName::Named(format!("r_{}", name));
+            rfn_binders.push(radium::CoqBinder::new(rfn_name, rfn_ty));
         }
 
         // TODO what do we do about stuff connecting borrows?
@@ -921,8 +919,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             info!("no attrs for loop {:?}", loop_head);
         }
 
-        let pred = caesium::IPropPredicate::new(rfn_binders, prop_body);
-        caesium::LoopSpec { func_predicate: pred }
+        let pred = radium::IPropPredicate::new(rfn_binders, prop_body);
+        radium::LoopSpec { func_predicate: pred }
     }
 
 
@@ -1009,7 +1007,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Generate a dynamic inclusion of r1 in r2 at point p. Prepends annotations for doing so to `cont`.
-    fn generate_dyn_inclusion(&mut self, r1: Region, r2: Region, p: PointIndex, cont: caesium::Stmt) -> caesium::Stmt {
+    fn generate_dyn_inclusion(&mut self, r1: Region, r2: Region, p: PointIndex, cont: radium::Stmt) -> radium::Stmt {
         // check if inclusion already holds
         if self.inclusion_tracker.check_inclusion(r1, r2, p) {
             // inclusion already holds, done
@@ -1027,14 +1025,14 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // for this, we need to figure out a path to make this inclusion true, i.e. we need
                 // an explanation of why it is syntactically included.
                 // TODO: for now, we just assume that r1 ⊑ₗ [r2] (in terms of Coq lifetime inclusion)
-                caesium::Stmt::Annot{ a: caesium::Annotation::ExtendLft(self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1))), s: Box::new(cont)}
+                radium::Stmt::Annot{ a: radium::Annotation::ExtendLft(self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1))), s: Box::new(cont)}
             }
             else {
                 self.inclusion_tracker.add_dynamic_inclusion(r1, r2, p);
                 // we generate a dynamic inclusion instruction
                 // we flip this around because the annotations are talking about lifetimes, which are oriented the other way around.
-                caesium::Stmt::Annot{ a:
-                    caesium::Annotation::DynIncludeLft(self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r2)), self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1))),
+                radium::Stmt::Annot{ a:
+                    radium::Annotation::DynIncludeLft(self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r2)), self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1))),
                     s: Box::new(cont) }
             }
         }
@@ -1111,9 +1109,9 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate a goto-like jump to `target`.
-    fn translate_goto_like(&mut self, _loc: &Location, target: &BasicBlock) -> Result<caesium::Stmt, TranslationError> {
+    fn translate_goto_like(&mut self, _loc: &Location, target: &BasicBlock) -> Result<radium::Stmt, TranslationError> {
         self.enqueue_basic_block(*target);
-        let res_stmt = caesium::Stmt::GotoBlock(Self::make_bb_name(target));
+        let res_stmt = radium::Stmt::GotoBlock(Self::make_bb_name(target));
 
         let loop_info = self.proc.loop_info();
         if loop_info.is_loop_head(*target) {
@@ -1165,7 +1163,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Translate a terminator.
     /// We pass the dying loans during this terminator. They need to be added at the right
     /// intermediate point.
-    fn translate_terminator(&mut self, term : &Terminator<'tcx>, loc: Location, dying_loans: Vec<facts::Loan>) -> Result<caesium::Stmt, TranslationError> {
+    fn translate_terminator(&mut self, term : &Terminator<'tcx>, loc: Location, dying_loans: Vec<facts::Loan>) -> Result<radium::Stmt, TranslationError> {
         // get optional hir-id
         //println!("Terminator info: {:?} for {:?}", term.source_info, term.kind);
         //let maybe_hir_id = term.source_info.scope.lint_root(&self.proc.get_mir().source_scopes);
@@ -1192,7 +1190,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let is_panic = self.is_call_destination_panic(func)?;
                 if is_panic {
                     info!("Replacing call to std::panicking::begin_panic with Stuck");
-                    return Ok(caesium::Stmt::Stuck);
+                    return Ok(radium::Stmt::Stuck);
                 }
 
 
@@ -1365,7 +1363,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     lifetime_insts.push(lft);
                 }
                 info!("Call lifetime instantiation: {:?}", lifetime_insts);
-                // TODO: maybe should prune to length of actual lifetime args expected 
+                // TODO: maybe should prune to length of actual lifetime args expected
 
                 //let name = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r));
 
@@ -1389,15 +1387,15 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                         cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.into_iter());
                         let ot = self.ty_translator.translate_syn_type_to_op_type(&place_st);
 
-                        caesium::Stmt::Assign{ot,
+                        radium::Stmt::Assign{ot,
                                             e1: place_expr,
-                                            e2 : caesium::Expr::Call {f : Box::new(func_expr), lfts: lifetime_insts, args: translated_args},
+                                            e2 : radium::Expr::Call {f : Box::new(func_expr), lfts: lifetime_insts, args: translated_args},
                                             s: Box::new(cont_stmt)}
                     },
                     None => {
                         // expr stmt with call; then stuck (we have not provided a continuation, after all)
-                        caesium::Stmt::ExprS{e : caesium::Expr::Call {f : Box::new(func_expr), lfts: lifetime_insts, args: translated_args},
-                                           s: Box::new(caesium::Stmt::Stuck)}
+                        radium::Stmt::ExprS{e : radium::Expr::Call {f : Box::new(func_expr), lfts: lifetime_insts, args: translated_args},
+                                           s: Box::new(radium::Stmt::Stuck)}
                     },
                 };
 
@@ -1407,8 +1405,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     match class {
                         CallRegionKind::EqR(r2) => {
                             let lft2 = self.format_atomic_region(&self.info.mk_atomic_region(*r2));
-                            stmt = caesium::Stmt::Annot{
-                                a: caesium::Annotation::CopyLftName(lft2, lft),
+                            stmt = radium::Stmt::Annot{
+                                a: radium::Annotation::CopyLftName(lft2, lft),
                                 s: Box::new(stmt)};
                         },
                         CallRegionKind::Intersection(rs) => {
@@ -1419,8 +1417,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 // this is really just an equality constraint
                                 for r2 in rs.iter() {
                                     let lft2 = self.format_atomic_region(&self.info.mk_atomic_region(*r2));
-                                    stmt = caesium::Stmt::Annot{
-                                        a: caesium::Annotation::CopyLftName(lft2, lft),
+                                    stmt = radium::Stmt::Annot{
+                                        a: radium::Annotation::CopyLftName(lft2, lft),
                                         s: Box::new(stmt)};
                                     break;
                                 }
@@ -1428,8 +1426,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                             else {
                                 // a proper intersection
                                 let lfts: Vec<_> = rs.iter().map(|r| self.format_atomic_region(&self.info.mk_atomic_region(*r))).collect();
-                                stmt = caesium::Stmt::Annot{
-                                    a: caesium::Annotation::AliasLftIntersection(lft, lfts),
+                                stmt = radium::Stmt::Annot{
+                                    a: radium::Annotation::AliasLftIntersection(lft, lfts),
                                     s: Box::new(stmt)};
                             }
                         },
@@ -1446,15 +1444,15 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // Is this semantics accurate wrt what the intended MIR semantics is?
                 // Possibly handle this differently by making the first argument of a function a dedicated return place?
                 // See also discussion at https://github.com/rust-lang/rust/issues/71117
-                res_stmt = caesium::Stmt::Return(caesium::Expr::Use {
+                res_stmt = radium::Stmt::Return(radium::Expr::Use {
                     ot: self.ty_translator.translate_syn_type_to_op_type(&self.return_synty),
-                    e: Box::new(caesium::Expr::Var(self.return_name.to_string()))});
+                    e: Box::new(radium::Expr::Var(self.return_name.to_string()))});
 
                 // TODO is this right?
                 res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
             },
             //TerminatorKind::Abort => {
-                //res_stmt = caesium::Stmt::Stuck;
+                //res_stmt = radium::Stmt::Stuck;
                 //res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
             //},
             TerminatorKind::SwitchInt{ref discr, ref targets} => {
@@ -1472,7 +1470,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     let false_target = all_targets[0];
                     let true_branch = self.translate_goto_like(&loc, &true_target)?;
                     let false_branch = self.translate_goto_like(&loc, &false_target)?;
-                    res_stmt = caesium::Stmt::If{e: operand, ot: caesium::OpType::BoolOp,
+                    res_stmt = radium::Stmt::If{e: operand, ot: radium::OpType::BoolOp,
                         s1: Box::new(true_branch), s2: Box::new(false_branch)};
 
                     // TODO: is this right?
@@ -1484,7 +1482,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     let ty = self.get_type_of_operand(discr)?;
 
                     let mut target_map: HashMap<u128, usize> = HashMap::new();
-                    let mut translated_targets: Vec<caesium::Stmt> = Vec::new();
+                    let mut translated_targets: Vec<radium::Stmt> = Vec::new();
                     for (idx, (tgt, bb)) in targets.iter().enumerate() {
                         let bb: BasicBlock = bb;
                         let translated_target = self.translate_goto_like(&loc, &bb)?;
@@ -1496,8 +1494,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     // TODO: need to put endlfts infront of gotos?
 
                     let translated_ty = self.ty_translator.translate_type(&ty)?;
-                    if let caesium::Type::Int(it) = translated_ty {
-                        res_stmt = caesium::Stmt::Switch { e: operand, it, index_map: target_map, bs: translated_targets, def: Box::new(translated_default) };
+                    if let radium::Type::Int(it) = translated_ty {
+                        res_stmt = radium::Stmt::Switch { e: operand, it, index_map: target_map, bs: translated_targets, def: Box::new(translated_default) };
                     }
                     else {
                         return Err(TranslationError::UnknownError("SwitchInt switching on non-integer type".to_string()))
@@ -1507,31 +1505,31 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             TerminatorKind::Assert{ref cond, expected, ref target, ..} => {
                 // this translation gets stuck on failure
                 let cond_translated = self.translate_operand(cond, true)?;
-                let comp = caesium::Expr::BinOp { o: caesium::Binop::EqOp,
-                    ot1: caesium::OpType::BoolOp,
-                    ot2: caesium::OpType::BoolOp,
+                let comp = radium::Expr::BinOp { o: radium::Binop::EqOp,
+                    ot1: radium::OpType::BoolOp,
+                    ot2: radium::OpType::BoolOp,
                     e1: Box::new(cond_translated),
-                    e2: Box::new(caesium::Expr::Literal(caesium::Literal::LitBool(expected)))};
+                    e2: Box::new(radium::Expr::Literal(radium::Literal::LitBool(expected)))};
 
                 res_stmt = self.translate_goto_like(&loc, target)?;
 
                 // TODO: should we really have this?
                 res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
 
-                res_stmt = caesium::Stmt::AssertS {e: comp, s: Box::new(res_stmt)};
+                res_stmt = radium::Stmt::AssertS {e: comp, s: Box::new(res_stmt)};
             },
             TerminatorKind::Drop{ref place, ref target, ..} => {
                 let ty = self.get_type_of_place(place)?;
                 self.register_drop_shim_for(ty.ty);
 
                 let place_translated = self.translate_place(place)?;
-                let _drope = caesium::Expr::DropE(Box::new(place_translated));
+                let _drope = radium::Expr::DropE(Box::new(place_translated));
 
                 res_stmt = self.translate_goto_like(&loc, target)?;
 
                 res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
 
-                //res_stmt = caesium::Stmt::ExprS { e: drope, s: Box::new(res_stmt)};
+                //res_stmt = radium::Stmt::ExprS { e: drope, s: Box::new(res_stmt)};
             },
             TerminatorKind::FalseEdge { real_target, .. } => {
                 // just a goto for our purposes
@@ -1548,7 +1546,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 return Err(TranslationError::UnsupportedFeature{description: format!("Unsupported terminator {:?}", term)})
             },
             TerminatorKind::Unreachable => {
-                res_stmt = caesium::Stmt::Stuck;
+                res_stmt = radium::Stmt::Stuck;
             },
             TerminatorKind::InlineAsm { .. } => {
                 return Err(TranslationError::UnsupportedFeature{description: format!("Unsupported terminator {:?}", term)})
@@ -1559,7 +1557,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Prepend endlft annotations for dying loans to a statement.
-    fn prepend_endlfts<I>(&self, st: caesium::Stmt, dying: I) -> caesium::Stmt
+    fn prepend_endlfts<I>(&self, st: radium::Stmt, dying: I) -> radium::Stmt
         where I : ExactSizeIterator<Item = facts::Loan>
     {
         let mut cont_stmt = st;
@@ -1567,8 +1565,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             //info!("Dying at {:?}: {:?}", loc, dying);
             for d in dying {
                 let lft = self.info.atomic_region_of_loan(d);
-                cont_stmt = caesium::Stmt::Annot {
-                a: caesium::Annotation::EndLft(self.format_atomic_region(&lft)),
+                cont_stmt = radium::Stmt::Annot {
+                a: radium::Annotation::EndLft(self.format_atomic_region(&lft)),
                 s: Box::new(cont_stmt),
                 };
             }
@@ -1606,10 +1604,10 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
 
     /// Generate an annotation on an expression needed to update the region name map.
-    fn generate_strong_update_annot(&self, ty: PlaceTy<'tcx>, mut expr: caesium::Expr) -> caesium::Expr {
+    fn generate_strong_update_annot(&self, ty: PlaceTy<'tcx>, mut expr: radium::Expr) -> radium::Expr {
         let (interesting, tree) = self.generate_strong_update_annot_rec(ty.ty);
         if interesting {
-            expr = caesium::Expr::Annot{a: caesium::Annotation::GetLftNames(tree), e: Box::new(expr)};
+            expr = radium::Expr::Annot{a: radium::Annotation::GetLftNames(tree), e: Box::new(expr)};
         }
 
         expr
@@ -1618,7 +1616,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Returns a tree for giving names to Coq lifetimes based on RR types.
     /// The boolean indicates whether the tree is "interesting", i.e. whether it names at least one
     /// lifetime.
-    fn generate_strong_update_annot_rec(&self, ty: Ty<'tcx>) -> (bool, caesium::LftNameTree) {
+    fn generate_strong_update_annot_rec(&self, ty: Ty<'tcx>) -> (bool, radium::LftNameTree) {
         // TODO for now this just handles nested references
         match ty.kind() {
             ty::TyKind::Ref(r, ty, _) => {
@@ -1626,7 +1624,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     ty::RegionKind::ReVar(r) => {
                         let name = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r));
                         let (_, ty_tree) = self.generate_strong_update_annot_rec(*ty);
-                        (true, caesium::LftNameTree::Ref(name, Box::new(ty_tree)))
+                        (true, radium::LftNameTree::Ref(name, Box::new(ty_tree)))
                     },
                     _ => {
                         panic!("generate_strong_update_annot: expected region variable");
@@ -1634,18 +1632,18 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 }
             },
             _  => {
-                (false, caesium::LftNameTree::Leaf)
+                (false, radium::LftNameTree::Leaf)
             },
         }
     }
 
     /// Generate an annotation to adapt the type of `expr` to `target_ty` from type `current_ty` by
     /// means of shortening lifetimes.
-    fn generate_shortenlft_annot(&self, target_ty: Ty<'tcx>, _current_ty: Ty<'tcx>, mut expr: caesium::Expr) -> caesium::Expr {
+    fn generate_shortenlft_annot(&self, target_ty: Ty<'tcx>, _current_ty: Ty<'tcx>, mut expr: radium::Expr) -> radium::Expr {
         // this is not so different from the strong update annotation
         let (interesting, tree) = self.generate_strong_update_annot_rec(target_ty);
         if interesting {
-            expr = caesium::Expr::Annot{a: caesium::Annotation::ShortenLft(tree), e: Box::new(expr)};
+            expr = radium::Expr::Annot{a: radium::Annotation::ShortenLft(tree), e: Box::new(expr)};
         }
         expr
     }
@@ -1692,7 +1690,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /**
      * Translate a single basic block.
      */
-    fn translate_basic_block(&mut self, bb_idx: BasicBlock, bb: &BasicBlockData<'tcx>) -> Result<caesium::Stmt, TranslationError> {
+    fn translate_basic_block(&mut self, bb_idx: BasicBlock, bb: &BasicBlockData<'tcx>) -> Result<radium::Stmt, TranslationError> {
         // we translate from back to front, starting with the terminator, since Caesium statements
         // have a continuation (the next statement to execute)
 
@@ -1702,7 +1700,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         let dying = self.info.get_dying_loans(loc);
         // TODO zombie?
         let _dying_zombie = self.info.get_dying_zombie_loans(loc);
-        let mut cont_stmt: caesium::Stmt = self.translate_terminator(bb.terminator(), loc, dying)?;
+        let mut cont_stmt: radium::Stmt = self.translate_terminator(bb.terminator(), loc, dying)?;
 
         //cont_stmt = self.prepend_endlfts(cont_stmt, loc, dying);
         //cont_stmt = self.prepend_endlfts(cont_stmt, loc, dying_zombie);
@@ -1753,7 +1751,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                             let synty = self.ty_translator.translate_type_to_syn_type(&ty)?;
                             let ot = self.ty_translator.translate_syn_type_to_op_type(&synty);
-                            cont_stmt = caesium::Stmt::Assign{
+                            cont_stmt = radium::Stmt::Assign{
                                 ot,
                                 e1: translated_place,
                                 e2: translated_val,
@@ -1801,7 +1799,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                             let synty = self.ty_translator.translate_type_to_syn_type(&plc_ty.ty)?;
                             let ot = self.ty_translator.translate_syn_type_to_op_type(&synty);
-                            cont_stmt = caesium::Stmt::Assign{
+                            cont_stmt = radium::Stmt::Assign{
                                 ot,
                                 e1: translated_place,
                                 e2: translated_val,
@@ -1823,8 +1821,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 let outliving = self.get_outliving_regions_on_loan(r, loan_point);
 
                                 // add statement for issuing the loan
-                                cont_stmt = caesium::Stmt::Annot{
-                                    a: caesium::Annotation::StartLft(self.format_atomic_region(&lft), outliving.iter().map(|r| { self.format_atomic_region(&info::AtomicRegion::PlaceRegion(*r)) }).collect()),
+                                cont_stmt = radium::Stmt::Annot{
+                                    a: radium::Annotation::StartLft(self.format_atomic_region(&lft), outliving.iter().map(|r| { self.format_atomic_region(&info::AtomicRegion::PlaceRegion(*r)) }).collect()),
                                     s: Box::new(cont_stmt)};
 
                                 info!("Issuing loan at {:?} with kind {:?}: {:?}; outliving: {:?}", loc, a, loan, outliving);
@@ -1850,8 +1848,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 if let Some(r) = included_region {
                                     //info!("Found inclusion {:?}⊑  {:?}", r, region);
                                     let lft1 = self.info.mk_atomic_region(*r);
-                                    cont_stmt = caesium::Stmt::Annot{
-                                        a: caesium::Annotation::CopyLftName(self.format_atomic_region(&lft1), self.format_atomic_region(&lft)),
+                                    cont_stmt = radium::Stmt::Annot{
+                                        a: radium::Annotation::CopyLftName(self.format_atomic_region(&lft1), self.format_atomic_region(&lft)),
                                         s: Box::new(cont_stmt)};
 
                                     // also add this to the inclusion checker
@@ -1863,8 +1861,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                                     let inferred_constrained = vec![];
 
                                     // add statement for issuing the loan
-                                    cont_stmt = caesium::Stmt::Annot{
-                                        a: caesium::Annotation::StartLft(self.format_atomic_region(&lft), inferred_constrained),
+                                    cont_stmt = radium::Stmt::Annot{
+                                        a: radium::Annotation::StartLft(self.format_atomic_region(&lft), inferred_constrained),
                                         s: Box::new(cont_stmt)};
 
                                     //panic!("Invariant violation: didn't find place region for shared reborrow");
@@ -1922,24 +1920,24 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate a BorrowKind.
-    fn translate_borrow_kind(&self, kind: &BorrowKind) -> Result<caesium::BorKind, TranslationError> {
+    fn translate_borrow_kind(&self, kind: &BorrowKind) -> Result<radium::BorKind, TranslationError> {
         match kind {
-            BorrowKind::Shared => Ok(caesium::BorKind::Shared),
+            BorrowKind::Shared => Ok(radium::BorKind::Shared),
             BorrowKind::Shallow =>
                 // TODO: figure out what to do with this
                 // arises in match lowering
                 Err(TranslationError::UnsupportedFeature { description: "Do not support Shallow borrows currently".to_string() }),
             BorrowKind::Mut{..} => {
                 // TODO: handle two-phase borrows?
-                Ok(caesium::BorKind::Mutable)
+                Ok(radium::BorKind::Mutable)
             }
         }
     }
 
-    fn translate_mutability(&self, mt: &Mutability) -> Result<caesium::Mutability, TranslationError> {
+    fn translate_mutability(&self, mt: &Mutability) -> Result<radium::Mutability, TranslationError> {
         match mt {
-            Mutability::Mut => Ok(caesium::Mutability::Mut),
-            Mutability::Not => Ok(caesium::Mutability::Shared),
+            Mutability::Mut => Ok(radium::Mutability::Mut),
+            Mutability::Not => Ok(radium::Mutability::Shared),
         }
     }
 
@@ -1957,29 +1955,29 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Translate binary operators.
     /// We need access to the operands, too, to handle the offset operator and get the right
     /// Caesium layout annotation.
-    fn translate_binop(&self, op: BinOp, e1: &Operand<'tcx>, _e2: &Operand<'tcx>) -> Result<caesium::Binop, TranslationError> {
+    fn translate_binop(&self, op: BinOp, e1: &Operand<'tcx>, _e2: &Operand<'tcx>) -> Result<radium::Binop, TranslationError> {
         match op {
-            BinOp::AddUnchecked => Ok(caesium::Binop::AddOp),
-            BinOp::SubUnchecked => Ok(caesium::Binop::SubOp),
-            BinOp::MulUnchecked => Ok(caesium::Binop::MulOp),
-            BinOp::ShlUnchecked => Ok(caesium::Binop::ShlOp),
-            BinOp::ShrUnchecked => Ok(caesium::Binop::ShrOp),
-            BinOp::Add => Ok(caesium::Binop::AddOp),
-            BinOp::Sub => Ok(caesium::Binop::SubOp),
-            BinOp::Mul => Ok(caesium::Binop::MulOp),
-            BinOp::Div => Ok(caesium::Binop::DivOp),
-            BinOp::Rem => Ok(caesium::Binop::ModOp),
-            BinOp::BitXor => Ok(caesium::Binop::BitXorOp),
-            BinOp::BitAnd => Ok(caesium::Binop::BitAndOp),
-            BinOp::BitOr => Ok(caesium::Binop::BitOrOp),
-            BinOp::Shl => Ok(caesium::Binop::ShlOp),
-            BinOp::Shr => Ok(caesium::Binop::ShrOp),
-            BinOp::Eq => Ok(caesium::Binop::EqOp),
-            BinOp::Lt => Ok(caesium::Binop::LtOp),
-            BinOp::Le => Ok(caesium::Binop::LeOp),
-            BinOp::Ne => Ok(caesium::Binop::NeOp),
-            BinOp::Ge => Ok(caesium::Binop::GeOp),
-            BinOp::Gt => Ok(caesium::Binop::GtOp),
+            BinOp::AddUnchecked => Ok(radium::Binop::AddOp),
+            BinOp::SubUnchecked => Ok(radium::Binop::SubOp),
+            BinOp::MulUnchecked => Ok(radium::Binop::MulOp),
+            BinOp::ShlUnchecked => Ok(radium::Binop::ShlOp),
+            BinOp::ShrUnchecked => Ok(radium::Binop::ShrOp),
+            BinOp::Add => Ok(radium::Binop::AddOp),
+            BinOp::Sub => Ok(radium::Binop::SubOp),
+            BinOp::Mul => Ok(radium::Binop::MulOp),
+            BinOp::Div => Ok(radium::Binop::DivOp),
+            BinOp::Rem => Ok(radium::Binop::ModOp),
+            BinOp::BitXor => Ok(radium::Binop::BitXorOp),
+            BinOp::BitAnd => Ok(radium::Binop::BitAndOp),
+            BinOp::BitOr => Ok(radium::Binop::BitOrOp),
+            BinOp::Shl => Ok(radium::Binop::ShlOp),
+            BinOp::Shr => Ok(radium::Binop::ShrOp),
+            BinOp::Eq => Ok(radium::Binop::EqOp),
+            BinOp::Lt => Ok(radium::Binop::LtOp),
+            BinOp::Le => Ok(radium::Binop::LeOp),
+            BinOp::Ne => Ok(radium::Binop::NeOp),
+            BinOp::Ge => Ok(radium::Binop::GeOp),
+            BinOp::Gt => Ok(radium::Binop::GtOp),
             BinOp::Offset => {
                 // we need to get the layout of the thing we're offsetting
                 // try to get the type of e1.
@@ -1987,7 +1985,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let off_ty = self.get_offset_ty(e1_ty)?;
                 let st = self.ty_translator.translate_type_to_syn_type(&off_ty)?;
                 let ly = self.ty_translator.translate_syn_type_to_layout(&st);
-                Ok(caesium::Binop::PtrOffsetOp(ly))
+                Ok(radium::Binop::PtrOffsetOp(ly))
             }
         }
     }
@@ -1995,11 +1993,11 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Translate checked binary operators.
     /// We need access to the operands, too, to handle the offset operator and get the right
     /// Caesium layout annotation.
-    fn translate_checked_binop(&self, op: BinOp) -> Result<caesium::Binop, TranslationError> {
+    fn translate_checked_binop(&self, op: BinOp) -> Result<radium::Binop, TranslationError> {
         match op {
-            BinOp::Add => Ok(caesium::Binop::CheckedAddOp),
-            BinOp::Sub => Ok(caesium::Binop::CheckedSubOp),
-            BinOp::Mul => Ok(caesium::Binop::CheckedMulOp),
+            BinOp::Add => Ok(radium::Binop::CheckedAddOp),
+            BinOp::Sub => Ok(radium::Binop::CheckedSubOp),
+            BinOp::Mul => Ok(radium::Binop::CheckedMulOp),
             BinOp::Shl => {
                 Err(TranslationError::UnsupportedFeature { description: "checked Shl is not currently supported".to_string() })
             },
@@ -2013,36 +2011,36 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate unary operators.
-    fn translate_unop(&self, op: UnOp, ty: &Ty<'tcx>) -> Result<caesium::Unop, TranslationError> {
+    fn translate_unop(&self, op: UnOp, ty: &Ty<'tcx>) -> Result<radium::Unop, TranslationError> {
         match op {
             UnOp::Not => {
                 match ty.kind() {
                     ty::TyKind::Bool => {
-                        Ok(caesium::Unop::NotBoolOp)
+                        Ok(radium::Unop::NotBoolOp)
                     },
                     ty::TyKind::Int(_) => {
-                        Ok(caesium::Unop::NotIntOp)
+                        Ok(radium::Unop::NotIntOp)
                     },
                     ty::TyKind::Uint(_) => {
-                        Ok(caesium::Unop::NotIntOp)
+                        Ok(radium::Unop::NotIntOp)
                     },
                     _ => {
                         Err(TranslationError::UnknownError("application of UnOp::Not to non-{Int, Bool}".to_string()))
                     },
                 }
             }
-            UnOp::Neg => Ok(caesium::Unop::NegOp),
+            UnOp::Neg => Ok(radium::Unop::NegOp),
         }
     }
 
     /// Get the type to annotate a borrow with.
-    fn get_type_annotation_for_borrow(&self, bk: BorrowKind, pl: &Place<'tcx>) -> Result<Option<caesium::RustType>, TranslationError> {
+    fn get_type_annotation_for_borrow(&self, bk: BorrowKind, pl: &Place<'tcx>) -> Result<Option<radium::RustType>, TranslationError> {
         if let BorrowKind::Mut { .. } = bk {
             let ty = self.get_type_of_place(pl)?;
             // For borrows, we can safely ignore the downcast type -- we cannot borrow a particularly variant
             let translated_ty = self.ty_translator.translate_type(&ty.ty)?;
             let env = self.ty_translator.generic_scope.borrow();
-            let annot_ty = caesium::RustType::of_type(&translated_ty, env.as_ref());
+            let annot_ty = radium::RustType::of_type(&translated_ty, env.as_ref());
             Ok(Some(annot_ty))
         }
         else {
@@ -2051,7 +2049,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translates an Rvalue.
-    fn translate_rvalue(&mut self, loc: Location, rval: &Rvalue<'tcx>) -> Result<caesium::Expr, TranslationError> {
+    fn translate_rvalue(&mut self, loc: Location, rval: &Rvalue<'tcx>) -> Result<radium::Expr, TranslationError> {
         match rval {
             Rvalue::Use(op) => {
                 // converts an lvalue to an rvalue
@@ -2065,21 +2063,21 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 if let Some(loan) = self.info.get_optional_loan_at_location(loc) {
                     let atomic_region = self.info.atomic_region_of_loan(loan);
                     let lft = self.format_atomic_region(&atomic_region);
-                    Ok(caesium::Expr::Borrow {lft, bk: translated_bk, ty: ty_annot, e: Box::new(translated_pl)})
+                    Ok(radium::Expr::Borrow {lft, bk: translated_bk, ty: ty_annot, e: Box::new(translated_pl)})
                 }
                 else {
                     info!("Didn't find loan at {:?}: {:?}; region {:?}",  loc, rval, region);
                     let region = self.region_to_region_vid(*region);
                     let lft = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(region));
 
-                    Ok(caesium::Expr::Borrow {lft, bk: translated_bk, ty: ty_annot, e: Box::new(translated_pl)})
+                    Ok(radium::Expr::Borrow {lft, bk: translated_bk, ty: ty_annot, e: Box::new(translated_pl)})
                     //Err(TranslationError::LoanNotFound(loc))
                 }
             },
             Rvalue::AddressOf(mt, pl) => {
                 let translated_pl = self.translate_place(pl)?;
                 let translated_mt = self.translate_mutability(mt)?;
-                Ok(caesium::Expr::AddressOf {mt: translated_mt, e: Box::new(translated_pl)})
+                Ok(radium::Expr::AddressOf {mt: translated_mt, e: Box::new(translated_pl)})
             },
             Rvalue::BinaryOp(op, operands) => {
                 let e1 = &operands.as_ref().0;
@@ -2096,7 +2094,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let translated_e2 = self.translate_operand(e2, true)?;
                 let translated_op = self.translate_binop(*op, &operands.as_ref().0, &operands.as_ref().1)?;
 
-                Ok(caesium::Expr::BinOp {o: translated_op, ot1: e1_ot, ot2: e2_ot, e1: Box::new(translated_e1), e2: Box::new(translated_e2)})
+                Ok(radium::Expr::BinOp {o: translated_op, ot1: e1_ot, ot2: e2_ot, e1: Box::new(translated_e1), e2: Box::new(translated_e2)})
             },
             Rvalue::CheckedBinaryOp(op, operands) => {
                 let e1 = &operands.as_ref().0;
@@ -2113,7 +2111,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let translated_e2 = self.translate_operand(e2, true)?;
                 let translated_op = self.translate_checked_binop(*op)?;
 
-                Ok(caesium::Expr::BinOp {o: translated_op, ot1: e1_ot, ot2: e2_ot, e1: Box::new(translated_e1), e2: Box::new(translated_e2)})
+                Ok(radium::Expr::BinOp {o: translated_op, ot1: e1_ot, ot2: e2_ot, e1: Box::new(translated_e1), e2: Box::new(translated_e2)})
             },
             Rvalue::UnaryOp(op, operand) => {
                 let translated_e1 = self.translate_operand(operand, true)?;
@@ -2121,7 +2119,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let e1_st = self.ty_translator.translate_type_to_syn_type(&e1_ty)?;
                 let e1_ot = self.ty_translator.translate_syn_type_to_op_type(&e1_st);
                 let translated_op = self.translate_unop(*op, &e1_ty)?;
-                Ok(caesium::Expr::UnOp { o: translated_op, ot: e1_ot, e: Box::new(translated_e1)})
+                Ok(radium::Expr::UnOp { o: translated_op, ot: e1_ot, e: Box::new(translated_e1)})
             },
             Rvalue::NullaryOp(op, _ty) => {
                 match op {
@@ -2136,16 +2134,16 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 info!("getting discriminant of {:?} at type {:?}", pl, ty);
 
                 let translated_ty = self.ty_translator.translate_type(&ty.ty)?;
-                if let caesium::Type::Enum(eu) = translated_ty {
+                if let radium::Type::Enum(eu) = translated_ty {
                     let els = eu.generate_enum_layout_spec_term();
-                    let discriminant_acc = caesium::Expr::EnumDiscriminant { els,
+                    let discriminant_acc = radium::Expr::EnumDiscriminant { els,
                         e: Box::new(translated_pl) };
                     // need to do a load from this place
                     let it = ty.ty.discriminant_ty(self.env.tcx());
                     let translated_it = self.ty_translator.translate_type(&it)?;
-                    if let caesium::Type::Int(translated_it) = translated_it {
-                        let ot = caesium::OpType::IntOp(translated_it);
-                        Ok(caesium::Expr::Use { ot, e: Box::new(discriminant_acc) })
+                    if let radium::Type::Int(translated_it) = translated_it {
+                        let ot = radium::OpType::IntOp(translated_it);
+                        Ok(radium::Expr::Use { ot, e: Box::new(discriminant_acc) })
                     }
                     else {
                         Err(TranslationError::UnknownError(format!("type of discriminant is not an integer type {:?}", it)))
@@ -2157,7 +2155,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             },
             Rvalue::Aggregate(kind, op) => {
                 // translate operands
-                let mut translated_ops: Vec<caesium::Expr> = Vec::new();
+                let mut translated_ops: Vec<radium::Expr> = Vec::new();
                 let mut operand_types: Vec<Ty<'tcx>> = Vec::new();
                 for o in op.iter() {
                     let translated_o = self.translate_operand(o, true)?;
@@ -2171,8 +2169,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                         let struct_use = self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r))?;
                         let sl = struct_use.generate_struct_layout_spec_term();
                         let initializers: Vec<_> = translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
-                        Ok(caesium::Expr::StructInitE {
-                            sls: caesium::CoqAppTerm::new_lhs(sl),
+                        Ok(radium::Expr::StructInitE {
+                            sls: radium::CoqAppTerm::new_lhs(sl),
                             components: initializers})
                     },
                     box mir::AggregateKind::Adt(did, variant, args, ..) => {
@@ -2183,7 +2181,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                             let variant = adt_def.variant(variant);
                             let struct_use = self.ty_translator.generate_struct_use(variant.def_id, args)?;
                             if struct_use.is_unit() {
-                                Ok(caesium::Expr::Literal(caesium::Literal::LitZST))
+                                Ok(radium::Expr::Literal(radium::Literal::LitZST))
                             }
                             else {
                                 let sl = struct_use.generate_struct_layout_spec_term();
@@ -2191,8 +2189,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                                     (field.name.to_string(), o)
                                 }).collect();
 
-                                Ok(caesium::Expr::StructInitE {
-                                    sls: caesium::CoqAppTerm::new_lhs(sl),
+                                Ok(radium::Expr::StructInitE {
+                                    sls: radium::CoqAppTerm::new_lhs(sl),
                                     components: initializers})
                             }
                         }
@@ -2203,14 +2201,14 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                             let initializers: Vec<_> = translated_ops.into_iter().zip(variant_def.fields.iter()).map(|(o, field)| {
                                     (field.name.to_string(), o)
                                 }).collect();
-                            let variant_e = caesium::Expr::StructInitE { sls: caesium::CoqAppTerm::new_lhs(sl), components: initializers};
+                            let variant_e = radium::Expr::StructInitE { sls: radium::CoqAppTerm::new_lhs(sl), components: initializers};
                             let enum_use = self.ty_translator.generate_enum_use(adt_def, args)?;
                             let els = enum_use.generate_enum_layout_spec_term();
 
                             let scope = self.ty_translator.generic_scope.borrow();
-                            let ty = caesium::RustType::of_type(&caesium::Type::Enum(enum_use), scope.as_ref());
+                            let ty = radium::RustType::of_type(&radium::Type::Enum(enum_use), scope.as_ref());
                             let variant_name = variant_def.name.to_string();
-                            Ok(caesium::Expr::EnumInitE { els: caesium::CoqAppTerm::new_lhs(els),
+                            Ok(radium::Expr::EnumInitE { els: radium::CoqAppTerm::new_lhs(els),
                                 variant: variant_name,
                                 ty,
                                 initializer: Box::new(variant_e) })
@@ -2323,7 +2321,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// This will either generate an lvalue (in case of Move or Copy) or an rvalue (in most cases
     /// of Constant). How this is used depends on the context. (e.g., Use of an integer constant
     /// does not typecheck, and produces a stuck program).
-    fn translate_operand(&mut self, op: &Operand<'tcx>, to_rvalue: bool) -> Result<caesium::Expr, TranslationError> {
+    fn translate_operand(&mut self, op: &Operand<'tcx>, to_rvalue: bool) -> Result<radium::Expr, TranslationError> {
         match op {
             // In Caesium: typed_place needs deref (not use) for place accesses.
             // use is used top-level to convert an lvalue to an rvalue, which is why we use it here.
@@ -2344,7 +2342,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                             }
                             else {
                                 // make this a constant false -- our semantics directly checks for overflows and otherwise throws UB.
-                                translated_place = caesium::Expr::Literal(caesium::Literal::LitBool(false));
+                                translated_place = radium::Expr::Literal(radium::Literal::LitBool(false));
                                 //ty = self.get_type_of_place(place)?;
                                 return Ok(translated_place);
                             }
@@ -2362,7 +2360,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let st = self.ty_translator.translate_type_to_syn_type(&ty.ty)?;
                 let ot = self.ty_translator.translate_syn_type_to_op_type(&st);
                 if to_rvalue {
-                    Ok(caesium::Expr::Use {ot, e: Box::new(translated_place)})
+                    Ok(radium::Expr::Use {ot, e: Box::new(translated_place)})
                 }
                 else {
                     Ok(translated_place)
@@ -2376,63 +2374,63 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    fn translate_fn_def_use(&mut self, ty: Ty<'tcx>) -> Result<caesium::Expr, TranslationError> {
+    fn translate_fn_def_use(&mut self, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
         match ty.kind() {
             TyKind::FnDef(defid, params) => {
                 // track that we are using this function and generate the Coq location name
                 let param_name = self.register_use_procedure(defid, params)?;
-                Ok(caesium::Expr::MetaParam(param_name))
+                Ok(radium::Expr::MetaParam(param_name))
             },
             _ => Err(TranslationError::UnknownError("not a FnDef type".to_string())),
         }
     }
 
-    /// Translate a scalar at a specific type to a caesium::Expr.
-    fn translate_scalar(&mut self, sc: &Scalar, ty: Ty<'tcx>) -> Result<caesium::Expr, TranslationError> {
+    /// Translate a scalar at a specific type to a radium::Expr.
+    fn translate_scalar(&mut self, sc: &Scalar, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
         match ty.kind() {
             TyKind::Int(it) => {
                 match it {
                     ty::IntTy::I8 =>
-                        sc.to_i8().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitI8(i)))),
+                        sc.to_i8().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitI8(i)))),
                     ty::IntTy::I16 =>
-                        sc.to_i16().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitI16(i)))),
+                        sc.to_i16().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitI16(i)))),
                     ty::IntTy::I32 =>
-                        sc.to_i32().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitI32(i)))),
+                        sc.to_i32().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitI32(i)))),
                     ty::IntTy::I64 =>
-                        sc.to_i64().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitI64(i)))),
+                        sc.to_i64().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitI64(i)))),
                     ty::IntTy::I128 =>
-                        sc.to_i128().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitI128(i)))),
-                    // for caesium, the pointer size is 8 bytes
+                        sc.to_i128().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitI128(i)))),
+                    // for radium, the pointer size is 8 bytes
                     ty::IntTy::Isize =>
-                        sc.to_i64().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitI64(i)))),
+                        sc.to_i64().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitI64(i)))),
                 }
             },
             TyKind::Uint(it) => {
                 match it {
                     ty::UintTy::U8 =>
-                        sc.to_u8().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitU8(i)))),
+                        sc.to_u8().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitU8(i)))),
                     ty::UintTy::U16 =>
-                        sc.to_u16().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitU16(i)))),
+                        sc.to_u16().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitU16(i)))),
                     ty::UintTy::U32 =>
-                        sc.to_u32().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitU32(i)))),
+                        sc.to_u32().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitU32(i)))),
                     ty::UintTy::U64 =>
-                        sc.to_u64().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitU64(i)))),
+                        sc.to_u64().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitU64(i)))),
                     ty::UintTy::U128 =>
-                        sc.to_u128().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitU128(i)))),
-                    // for caesium, the pointer size is 8 bytes
+                        sc.to_u128().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitU128(i)))),
+                    // for radium, the pointer size is 8 bytes
                     ty::UintTy::Usize =>
-                        sc.to_u64().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(caesium::Expr::Literal(caesium::Literal::LitU64(i)))),
+                        sc.to_u64().map_or_else(|_| Err(TranslationError::InvalidLayout), |i| Ok(radium::Expr::Literal(radium::Literal::LitU64(i)))),
                 }
             },
             TyKind::Bool => {
-                sc.to_bool().map_or_else(|_| Err(TranslationError::InvalidLayout), |b| Ok(caesium::Expr::Literal(caesium::Literal::LitBool(b))))
+                sc.to_bool().map_or_else(|_| Err(TranslationError::InvalidLayout), |b| Ok(radium::Expr::Literal(radium::Literal::LitBool(b))))
             },
             TyKind::FnDef(_, _) => {
                 self.translate_fn_def_use(ty)
             },
             TyKind::Tuple(tys) => {
                 if tys.is_empty() {
-                    Ok(caesium::Expr::Literal(caesium::Literal::LitZST))
+                    Ok(radium::Expr::Literal(radium::Literal::LitZST))
                 }
                 else {
                     Err(TranslationError::UnsupportedFeature{description: format!("Currently do not support compound construction of tuples using literals: {:?}", ty)})
@@ -2444,8 +2442,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    /// Translate a Constant to a caesium::Expr.
-    fn translate_constant(&mut self, constant: &Constant<'tcx>) -> Result<caesium::Expr, TranslationError> {
+    /// Translate a Constant to a radium::Expr.
+    fn translate_constant(&mut self, constant: &Constant<'tcx>) -> Result<radium::Expr, TranslationError> {
         match constant.literal {
             ConstantKind::Ty(v) => {
                 let const_ty = v.ty();
@@ -2477,7 +2475,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 info!("Translating ZST val for function call target: {:?}", ty);
                                 self.translate_fn_def_use(ty)
                             },
-                            _ => Ok(caesium::Expr::Literal(caesium::Literal::LitZST))
+                            _ => Ok(radium::Expr::Literal(radium::Literal::LitZST))
                         }
                     },
                     _ => {
@@ -2495,13 +2493,13 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
 
     /// Translate a place to a Caesium lvalue.
-    fn translate_place(&mut self, pl : &Place<'tcx>) -> Result<caesium::Expr, TranslationError> {
+    fn translate_place(&mut self, pl : &Place<'tcx>) -> Result<radium::Expr, TranslationError> {
         // Get the type of the underlying local. We will use this to
         // get the necessary layout information for dereferencing
         let cur_ty = self.get_type_of_local(&pl.local)?;
         let mut cur_ty = PlaceTy::from_ty(cur_ty);
         let local_name = self.variable_map.get(&pl.local).ok_or(TranslationError::UnknownVar(format!("{:?}", pl.local)))?;
-        let mut acc_expr: caesium::Expr = caesium::Expr::Var(local_name.to_string());
+        let mut acc_expr: radium::Expr = radium::Expr::Var(local_name.to_string());
 
         // iterate in evaluation order
         for ref it in pl.projection.iter() {
@@ -2510,7 +2508,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     // use the type of the dereferencee
                     let st = self.ty_translator.translate_type_to_syn_type(&cur_ty.ty)?;
                     let ot = self.ty_translator.translate_syn_type_to_op_type(&st);
-                    acc_expr = caesium::Expr::Deref{ot, e: Box::new(acc_expr)};
+                    acc_expr = radium::Expr::Deref{ot, e: Box::new(acc_expr)};
                 },
                 ProjectionElem::Field(f, _) => {
                     // `t` is the type of the field we are accessing!
@@ -2519,7 +2517,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                     let name = self.ty_translator.get_field_name_of(f, cur_ty.ty, cur_ty.variant_index.map(|a| a.as_usize()))?;
 
-                    acc_expr = caesium::Expr::FieldOf { e: Box::new(acc_expr), name, sls: struct_sls};
+                    acc_expr = radium::Expr::FieldOf { e: Box::new(acc_expr), name, sls: struct_sls};
                 },
                 ProjectionElem::Index(_v) => {
                     //TODO
@@ -2535,12 +2533,12 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 ProjectionElem::Downcast(_, variant_idx) => {
                     info!("Downcast of ty {:?} to {:?}", cur_ty, variant_idx);
                     let translated_ty = self.ty_translator.translate_type(&cur_ty.ty)?;
-                    if let caesium::Type::Enum(eu) = translated_ty {
+                    if let radium::Type::Enum(eu) = translated_ty {
                         let els = eu.generate_enum_layout_spec_term();
 
                         let variant_name = self.ty_translator.get_variant_name_of(cur_ty.ty, *variant_idx)?;
 
-                        acc_expr = caesium::Expr::EnumData { els, variant: variant_name, e: Box::new(acc_expr) }
+                        acc_expr = radium::Expr::EnumData { els, variant: variant_name, e: Box::new(acc_expr) }
                     }
                     else {
                         return Err(TranslationError::UnknownError("places: ADT downcasting on non-enum type".to_string()));

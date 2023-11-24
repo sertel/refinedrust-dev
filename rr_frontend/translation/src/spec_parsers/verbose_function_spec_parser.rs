@@ -7,20 +7,18 @@
 use log::{debug, info};
 
 use rustc_ast::ast::AttrItem;
-use crate::caesium::specs as specs;
-use crate::caesium as caesium;
+use radium::specs as specs;
+use radium;
 
-use crate::parse as parse;
-use crate::parse::{Peek, Parse, ParseStream, MToken, ParseResult};
-use crate::parse_utils::{*, ParseMeta};
-
-use std::collections::HashSet;
+use attribute_parse as parse;
+use parse::{Peek, Parse, ParseStream, MToken, ParseResult};
+use crate::spec_parsers::parse_utils::{*, ParseMeta};
 
 pub trait FunctionSpecParser<'def> {
     /// Parse a set of attributes into a function spec.
     /// The implementation can assume the `attrs` to be prefixed by the tool prefix (e.g. `rr`) and
     /// that it does not need to deal with any other attributes.
-    fn parse_function_spec<'a>(&'a mut self, attrs: &'a[&'a AttrItem], spec: &'a mut caesium::FunctionBuilder<'def>) -> Result<(), String>;
+    fn parse_function_spec<'a>(&'a mut self, attrs: &'a[&'a AttrItem], spec: &'a mut radium::FunctionBuilder<'def>) -> Result<(), String>;
 }
 
 /// Parse an assumed Coq context item, e.g.
@@ -102,8 +100,8 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
             }
         }
         else {
-            let prop: specs::IProp = input.parse(meta)?;
-            Ok(MetaIProp::Plain(prop))
+            let prop: IProp = input.parse(meta)?;
+            Ok(MetaIProp::Plain(prop.into()))
         }
     }
 }
@@ -175,7 +173,7 @@ fn str_err(e : parse::ParseError) -> String {
 }
 
 impl<'a, 'def> FunctionSpecParser<'def> for VerboseFunctionSpecParser<'a, 'def> {
-    fn parse_function_spec(&mut self, attrs: &[&AttrItem], spec: &mut caesium::FunctionBuilder<'def>) -> Result<(), String> {
+    fn parse_function_spec(&mut self, attrs: &[&AttrItem], spec: &mut radium::FunctionBuilder<'def>) -> Result<(), String> {
         if attrs.len() > 0 {
             spec.spec.have_spec();
         }

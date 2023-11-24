@@ -29,36 +29,26 @@ extern crate rustc_type_ir;
 
 extern crate polonius_engine;
 
-#[macro_use]
-extern crate lazy_static;
-
 use log::{info, warn, error};
-use rustc_hir::{def_id::DefId, def_id::LocalDefId};
 
+use rustc_hir::{def_id::DefId, def_id::LocalDefId};
 use rustc_middle::ty as ty;
 use rustc_middle::ty::TyCtxt;
 
 use std::fs;
-use std::io;
-use std::io::Write;
+use std::io::{self, Write};
 use std::path::Path;
 
 use typed_arena::Arena;
 
 use std::collections::{HashSet, HashMap};
 
+mod spec_parsers;
 mod utils;
 pub mod environment;
 mod force_matches_macro;
 mod data;
-pub mod rrconfig;
 mod function_body;
-mod parse;
-mod verbose_function_spec_parser;
-mod struct_spec_parser;
-mod enum_spec_parser;
-mod caesium;
-mod parse_utils;
 mod shim_registry;
 mod checked_op_analysis;
 mod tyvars;
@@ -72,7 +62,7 @@ use function_body::BodyTranslator;
 use type_translator::TypeTranslator;
 use function_body::ProcedureScope;
 
-use verbose_function_spec_parser::get_shim_attrs;
+use spec_parsers::verbose_function_spec_parser::get_shim_attrs;
 
 
 /// Order struct defs in the order in which we should emit them for respecting dependencies.
@@ -437,7 +427,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
 
 
 /// Translate a crate, creating a `VerificationCtxt` in the process.
-pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F) 
+pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F)
     where F: Fn(VerificationCtxt<'tcx, '_>) -> ()
 {
     let env = Environment::new(tcx);

@@ -5,11 +5,11 @@
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
 use rustc_ast::ast::AttrItem;
-use crate::caesium::specs as specs;
+use radium::specs as specs;
 
-use crate::parse as parse;
-use crate::parse_utils::*;
-use crate::parse::Peek;
+use attribute_parse as parse;
+use crate::spec_parsers::parse_utils::*;
+use parse::Peek;
 
 /// An attribute spec parser handles the parsing of the attributes of the whole enum and relevant
 /// attributes on the variants at once.

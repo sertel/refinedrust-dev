@@ -8,13 +8,11 @@
 use log::info;
 
 use rustc_ast::ast::AttrItem;
-use crate::caesium::specs as specs;
+use radium::specs as specs;
 
-use crate::parse as parse;
-use crate::parse::{Peek, Parse};
-use crate::parse_utils::*;
-
-use std::collections::HashSet;
+use attribute_parse as parse;
+use parse::{Peek, Parse};
+use crate::spec_parsers::parse_utils::*;
 
 pub trait InvariantSpecParser {
     /// Parse attributes as an invariant type specification.
@@ -75,12 +73,12 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
             let macro_cmd: parse::Ident = input.parse(meta)?;
             match macro_cmd.value().as_str() {
                 "own" => {
-                    let prop: specs::IProp = input.parse(meta)?;
-                    Ok(MetaIProp::Own(prop))
+                    let prop: IProp = input.parse(meta)?;
+                    Ok(MetaIProp::Own(prop.into()))
                 },
                 "shr" => {
-                    let prop: specs::IProp = input.parse(meta)?;
-                    Ok(MetaIProp::Shared(prop))
+                    let prop: IProp = input.parse(meta)?;
+                    Ok(MetaIProp::Shared(prop.into()))
                 },
                 "type" => {
                     let loc_str: parse::LitStr = input.parse(meta)?;
@@ -109,23 +107,30 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
             }
         }
         else {
-            let prop: specs::IProp = input.parse(meta)?;
-            Ok(MetaIProp::Plain(prop))
+            let prop: IProp = input.parse(meta)?;
+            Ok(MetaIProp::Plain(prop.into()))
         }
     }
 }
 
-impl<'tcx, U> parse::Parse<U> for specs::InvariantSpecFlags {
+pub struct InvariantSpecFlags(specs::InvariantSpecFlags);
+impl Into<specs::InvariantSpecFlags> for InvariantSpecFlags {
+    fn into(self) -> specs::InvariantSpecFlags {
+        self.0
+    }
+}
+
+impl<'tcx, U> parse::Parse<U> for InvariantSpecFlags {
     fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
         let mode: parse::Ident = input.parse(meta)?;
         match mode.value().as_str() {
-            "persistent" => Ok(specs::InvariantSpecFlags::Persistent),
-            "plain" => Ok(specs::InvariantSpecFlags::Plain),
+            "persistent" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Persistent)),
+            "plain" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Plain)),
             "na" => {
-                Ok(specs::InvariantSpecFlags::NonAtomic)
+                Ok(InvariantSpecFlags(specs::InvariantSpecFlags::NonAtomic))
             },
             "atomic" => {
-                Ok(specs::InvariantSpecFlags::Atomic)
+                Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Atomic))
             },
             _ => {
                 panic!("invalid ADT mode: {:?}", mode.value())
@@ -209,8 +214,8 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                         existentials.append(&mut params.params);
                     },
                     "mode" => {
-                        let mode = specs::InvariantSpecFlags::parse(&buffer, &meta).map_err(str_err)?;
-                        inv_flags = mode;
+                        let mode = InvariantSpecFlags::parse(&buffer, &meta).map_err(str_err)?;
+                        inv_flags = mode.into();
                     },
                     "refines" => {
                         let term = IdentOrTerm::parse(&buffer, &meta).map_err(str_err)?;
@@ -298,10 +303,10 @@ impl<'a, 'def> VerboseStructFieldSpecParser<'a, 'def> {
         // we need this in order to be able to specify the invariant spec separately.
 
         info!("making type: {:?}, {:?}", lit, ty);
-        specs::Type::Literal(None, 
+        specs::Type::Literal(None,
                              specs::CoqAppTerm::new_lhs(lit.ty.to_string()),
                              specs::CoqType::Infer,
-                             st, 
+                             st,
                              lit.meta)
     }
 }

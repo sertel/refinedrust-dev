@@ -90,13 +90,12 @@ pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
     translation::generate_coq_code(tcx, |vcx| vcx.write_coq_files());
 
 
-    // TODO move rrconfig to own crate
-    if let Some(true) = translation::rrconfig::check_proofs() {
+    if let Some(true) = rrconfig::check_proofs() {
         if cfg!(target_os = "windows") {
             println!("Cannot run proof checker on Windows.");
         }
         else {
-            let dir_str = translation::rrconfig::output_dir();
+            let dir_str = rrconfig::output_dir();
             let dir_path = std::path::PathBuf::from(&dir_str);
 
            info!("calling type checker in {:?}", dir_path);

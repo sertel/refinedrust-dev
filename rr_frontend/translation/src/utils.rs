@@ -15,7 +15,7 @@ use rustc_ast::ast;
 use log::trace;
 
 use crate::force_matches;
-use crate::rrconfig as config;
+use rrconfig as config;
 
 use rustc_hir::def_id::{DefId, CRATE_DEF_INDEX};
 use rustc_data_structures::fx::FxHashSet;

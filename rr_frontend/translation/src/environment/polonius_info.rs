@@ -36,7 +36,7 @@ use super::borrowck::regions;
 use super::loops;
 use super::procedure::Procedure;
 use super::Environment;
-use crate::rrconfig as config;
+use rrconfig as config;
 use crate::environment::mir_utils::RealEdges;
 
 use rustc_middle::ty::fold::TypeFolder;

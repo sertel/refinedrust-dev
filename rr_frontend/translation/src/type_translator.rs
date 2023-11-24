@@ -21,10 +21,10 @@ use typed_arena::Arena;
 
 use crate::environment::Environment;
 
-use crate::caesium;
+use radium;
 
-use crate::struct_spec_parser::{self, InvariantSpecParser, StructFieldSpecParser};
-use crate::enum_spec_parser::{VerboseEnumSpecParser, EnumSpecParser};
+use crate::spec_parsers::struct_spec_parser::{self, InvariantSpecParser, StructFieldSpecParser};
+use crate::spec_parsers::enum_spec_parser::{VerboseEnumSpecParser, EnumSpecParser};
 
 use crate::tyvars::*;
 pub use crate::base::*;
@@ -49,58 +49,58 @@ pub type FnGenericKey<'tcx> = Vec<ty::Ty<'tcx>>;
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub(crate) struct AdtUseKey {
     pub base_struct: DefId,
-    pub generics: Vec<caesium::SynType>,
+    pub generics: Vec<radium::SynType>,
 }
 
 
 // TODO(refactor): move the function-specific stuff out of here and into the BodyTranslator.
 pub struct TypeTranslator<'def, 'tcx> {
     env: &'def Environment<'tcx>,
-    
+
 
     /// maps universal lifetime indices (Polonius) to their names. offset by 1 because 0 = static.
     universal_lifetimes: RefCell<Vec<String>>,
 
     /// arena for keeping ownership of structs
     /// during building, it will be None, afterwards it will always be Some
-    struct_arena: &'def Arena<RefCell<Option<caesium::AbstractStruct<'def>>>>,
+    struct_arena: &'def Arena<RefCell<Option<radium::AbstractStruct<'def>>>>,
     /// arena for keeping ownership of enums
-    enum_arena: &'def Arena<RefCell<Option<caesium::AbstractEnum<'def>>>>,
+    enum_arena: &'def Arena<RefCell<Option<radium::AbstractEnum<'def>>>>,
 
     /// maps ADT variants to struct specifications.
     /// the boolean is true iff this is a variant of an enum.
-    variant_registry: RefCell<HashMap<DefId, (String, caesium::AbstractStructRef<'def>, &'tcx ty::VariantDef, bool)>>,
+    variant_registry: RefCell<HashMap<DefId, (String, radium::AbstractStructRef<'def>, &'tcx ty::VariantDef, bool)>>,
     /// maps ADTs to their (Coq-)name and def
     /// TODO what do we need this for.
     adt_registry: RefCell<HashMap<DefId, (String, ty::AdtDef<'tcx>)>>,
     /// maps ADTs that are enums to the enum specifications
-    enum_registry: RefCell<HashMap<DefId, (String, caesium::AbstractEnumRef<'def>, ty::AdtDef<'tcx>)>>,
+    enum_registry: RefCell<HashMap<DefId, (String, radium::AbstractEnumRef<'def>, ty::AdtDef<'tcx>)>>,
 
     /// a registry for abstract struct defs for tuples, indexed by the number of tuple fields
-    tuple_registry: RefCell<HashMap<usize, caesium::AbstractStructRef<'def>>>,
+    tuple_registry: RefCell<HashMap<usize, radium::AbstractStructRef<'def>>>,
 
     // TODO currently, these may contain duplicates
     /// collection of tuple types that we use
-    pub(crate) tuple_uses: RefCell<Vec<caesium::AbstractStructUse<'def>>>,
+    pub(crate) tuple_uses: RefCell<Vec<radium::AbstractStructUse<'def>>>,
     /// AbstractStructUses for this function
-    pub(crate) struct_uses: RefCell<HashMap<AdtUseKey, caesium::AbstractStructUse<'def>>>,
+    pub(crate) struct_uses: RefCell<HashMap<AdtUseKey, radium::AbstractStructUse<'def>>>,
     /// AbstractEnumUses for the current function
-    pub(crate) enum_uses: RefCell<HashMap<AdtUseKey, caesium::AbstractEnumUse<'def>>>,
+    pub(crate) enum_uses: RefCell<HashMap<AdtUseKey, radium::AbstractEnumUse<'def>>>,
     /// maps generic indices (De Bruijn) to the corresponding Coq names in the current environment
     /// the invariant is that they are Literals, consisting of three names:
     /// for the syntactic type, the type, and the refinement type.
     /// This contains options because we skip over region parameters.
-    pub generic_scope: RefCell<Vec<Option<caesium::Type<'def>>>>,
+    pub generic_scope: RefCell<Vec<Option<radium::Type<'def>>>>,
     /// for convenience: a copy of generic_scope that just contains the syntype names
-    pub synty_scope: RefCell<Vec<Option<caesium::SynType>>>,
+    pub synty_scope: RefCell<Vec<Option<radium::SynType>>>,
     /// for convenience: a copy of generic_scope that just contains the refinement type names
-    pub rfnty_scope: RefCell<Vec<Option<caesium::CoqType>>>,
+    pub rfnty_scope: RefCell<Vec<Option<radium::CoqType>>>,
 }
 
 impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     pub fn new(env: &'def Environment<'tcx>,
-               struct_arena: &'def Arena<RefCell<Option<caesium::AbstractStruct<'def>>>>,
-               enum_arena: &'def Arena<RefCell<Option<caesium::AbstractEnum<'def>>>>,
+               struct_arena: &'def Arena<RefCell<Option<radium::AbstractStruct<'def>>>>,
+               enum_arena: &'def Arena<RefCell<Option<radium::AbstractEnum<'def>>>>,
                ) -> Self {
         TypeTranslator { env,
             generic_scope: RefCell::new(Vec::new()),
@@ -120,7 +120,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Get all the struct definitions that clients have used (excluding the variants of enums).
-    pub fn get_struct_defs(&self) -> HashMap<DefId, caesium::AbstractStructRef<'def>> {
+    pub fn get_struct_defs(&self) -> HashMap<DefId, radium::AbstractStructRef<'def>> {
         let mut defs = HashMap::new();
         for (did, (_, su, _, is_of_enum)) in self.variant_registry.borrow().iter() {
             // skip structs belonging to enums
@@ -132,7 +132,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Get all the enum definitions that clients have used.
-    pub fn get_enum_defs(&self) -> HashMap<DefId, caesium::AbstractEnumRef<'def>> {
+    pub fn get_enum_defs(&self) -> HashMap<DefId, radium::AbstractEnumRef<'def>> {
         let mut defs = HashMap::new();
         for (did, (_, su, _)) in self.enum_registry.borrow().iter() {
             defs.insert(*did, *su);
@@ -145,7 +145,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     pub fn enter_procedure(&self, ty_params: &ty::GenericArgsRef<'tcx>, univ_lfts: Vec<String>) -> Result<(), TranslationError> {
         info!("Entering procedure with ty_params {:?} and univ_lfts {:?}", ty_params, univ_lfts);
 
-        let mut v: Vec<Option<caesium::Type<'def>>> = Vec::new();
+        let mut v: Vec<Option<radium::Type<'def>>> = Vec::new();
         let mut syntypes = Vec::new();
         let mut rfntypes = Vec::new();
         for gen_arg in ty_params.iter() {
@@ -158,17 +158,17 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                             let st_name = format!("{}_st", p.name);
                             let rt_name = format!("{}_rt", p.name);
 
-                            let ty_term = caesium::CoqAppTerm::new_lhs(type_name);
-                            let st_term = caesium::CoqAppTerm::new_lhs(st_name);
-                            v.push(Some(caesium::Type::Literal(
+                            let ty_term = radium::CoqAppTerm::new_lhs(type_name);
+                            let st_term = radium::CoqAppTerm::new_lhs(st_name);
+                            v.push(Some(radium::Type::Literal(
                                     Some(p.name.as_str().to_string()),
                                     ty_term,
-                                    caesium::CoqType::Literal(rt_name.clone()),
-                                    caesium::SynType::Literal(st_term.clone()), 
+                                    radium::CoqType::Literal(rt_name.clone()),
+                                    radium::SynType::Literal(st_term.clone()),
                                     // TODO: maybe add something here?
-                                    caesium::TypeAnnotMeta::empty())));
-                            syntypes.push(Some(caesium::SynType::Literal(st_term)));
-                            rfntypes.push(Some(caesium::CoqType::Literal(rt_name)));
+                                    radium::TypeAnnotMeta::empty())));
+                            syntypes.push(Some(radium::SynType::Literal(st_term)));
+                            rfntypes.push(Some(radium::CoqType::Literal(rt_name)));
                         },
                         _ => {
                             panic!("enter_generic_scope: not a type parameter");
@@ -216,14 +216,14 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Lookup a universal lifetime.
-    pub fn lookup_universal_lifetime(&self, lft: ty::RegionVid) -> Option<caesium::Lft> {
+    pub fn lookup_universal_lifetime(&self, lft: ty::RegionVid) -> Option<radium::Lft> {
         // offset by 1 due to static which is at zero
         self.universal_lifetimes.borrow().get(lft.as_usize() - 1).map(|s| s.to_string())
     }
 
     /// Try to translate a region to a Caesium lifetime.
     /// Note: This relies on all the regions being ReVar inference variables.
-    fn translate_region(&self, region: &ty::Region<'tcx>) -> Option<caesium::Lft> {
+    fn translate_region(&self, region: &ty::Region<'tcx>) -> Option<radium::Lft> {
         match **region {
             ty::RegionKind::ReEarlyBound(early) => {
                 info!("Translating region: EarlyBound {:?}", early);
@@ -253,7 +253,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Lookup an ADT variant and return a reference to its struct def.
-    fn lookup_adt_variant(&self, did: DefId) -> Result<caesium::AbstractStructRef<'def>, TranslationError> {
+    fn lookup_adt_variant(&self, did: DefId) -> Result<radium::AbstractStructRef<'def>, TranslationError> {
         if let Some((_n, st, _, _)) = self.variant_registry.borrow().get(&did) {
             Ok(*st)
         }
@@ -263,7 +263,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Lookup an enum ADT and return a reference to its enum def.
-    fn lookup_enum(&self, did: DefId) -> Result<caesium::AbstractEnumRef<'def>, TranslationError> {
+    fn lookup_enum(&self, did: DefId) -> Result<radium::AbstractEnumRef<'def>, TranslationError> {
         if let Some((_n, st, _)) = self.enum_registry.borrow().get(&did) {
             Ok(*st)
         }
@@ -274,7 +274,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
     /// Generate a use of a struct, instantiated with type parameters.
     /// This should only be called on tuples and struct ADTs.
-    pub fn generate_structlike_use(&self, ty: &Ty<'tcx>, variant: Option<rustc_target::abi::VariantIdx>) -> Result<caesium::AbstractStructUse<'def>, TranslationError> {
+    pub fn generate_structlike_use(&self, ty: &Ty<'tcx>, variant: Option<rustc_target::abi::VariantIdx>) -> Result<radium::AbstractStructUse<'def>, TranslationError> {
         match ty.kind() {
             TyKind::Adt(adt, args) => {
                 if adt.is_box() {
@@ -311,13 +311,13 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Generate the use of an enum.
-    pub fn generate_enum_use<F>(&self, adt_def: ty::AdtDef<'tcx>, args: F) -> Result<caesium::AbstractEnumUse<'def>, TranslationError>
+    pub fn generate_enum_use<F>(&self, adt_def: ty::AdtDef<'tcx>, args: F) -> Result<radium::AbstractEnumUse<'def>, TranslationError>
         where F: IntoIterator<Item=ty::GenericArg<'tcx>>
     {
         info!("generating enum use for {:?}", adt_def.did());
         self.register_adt(adt_def)?;
 
-        let enum_ref: caesium::AbstractEnumRef<'def> = self.lookup_enum(adt_def.did())?;
+        let enum_ref: radium::AbstractEnumRef<'def> = self.lookup_enum(adt_def.did())?;
         // apply the generic parameters
         let mut params = Vec::new();
         let generic_env = &*self.generic_scope.borrow();
@@ -333,7 +333,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             params.push(translated_ty);
         }
 
-        let enum_use = caesium::AbstractEnumUse::new(enum_ref, params);
+        let enum_use = radium::AbstractEnumUse::new(enum_ref, params);
 
         // track this enum use for the current function
         let key = AdtUseKey { base_struct: adt_def.did(), generics: generic_syntys};
@@ -367,17 +367,17 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Generate the use of a struct.
-    pub fn generate_struct_use<F>(&self, variant_id: DefId, args: F) -> Result<caesium::AbstractStructUse<'def>, TranslationError>
+    pub fn generate_struct_use<F>(&self, variant_id: DefId, args: F) -> Result<radium::AbstractStructUse<'def>, TranslationError>
         where F: IntoIterator<Item=ty::GenericArg<'tcx>>
     {
         info!("generating struct use for {:?}", variant_id);
 
         if let Some(true) = self.is_struct_definitely_zero_sized(variant_id) {
             info!("replacing zero-sized struct with unit");
-            return Ok(caesium::AbstractStructUse::new_unit());
+            return Ok(radium::AbstractStructUse::new_unit());
         }
 
-        let struct_ref: caesium::AbstractStructRef<'def> = self.lookup_adt_variant(variant_id)?;
+        let struct_ref: radium::AbstractStructRef<'def> = self.lookup_adt_variant(variant_id)?;
         // apply the generic parameters
         let mut params = Vec::new();
         let generic_env = &*self.generic_scope.borrow();
@@ -394,7 +394,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             params.push(translated_ty);
         }
 
-        let struct_use = caesium::AbstractStructUse::new(struct_ref, params);
+        let struct_use = radium::AbstractStructUse::new(struct_ref, params);
 
         // generate the struct use key
         let key = AdtUseKey { base_struct: variant_id, generics: generic_syntys};
@@ -407,18 +407,18 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Generate the use of an enum variant.
-    pub fn generate_enum_variant_use<F>(&self, adt_id: DefId, variant_idx: rustc_target::abi::VariantIdx, args: F) -> Result<caesium::AbstractStructUse<'def>, TranslationError>
+    pub fn generate_enum_variant_use<F>(&self, adt_id: DefId, variant_idx: rustc_target::abi::VariantIdx, args: F) -> Result<radium::AbstractStructUse<'def>, TranslationError>
         where F: IntoIterator<Item=ty::GenericArg<'tcx>>
     {
         info!("generating variant use for variant {:?} of {:?}", variant_idx, adt_id);
 
         let variant_idx = variant_idx.as_usize();
-        let enum_ref: caesium::AbstractEnumRef<'def> = self.lookup_enum(adt_id)?;
+        let enum_ref: radium::AbstractEnumRef<'def> = self.lookup_enum(adt_id)?;
         let enum_ref = enum_ref.borrow();
         let enum_ref = enum_ref.as_ref().unwrap();
 
-        let (_, struct_ref, mask, _) = enum_ref.variants.get(variant_idx).unwrap();
-        let struct_ref: caesium::AbstractStructRef<'def> = *struct_ref;
+        let (_, struct_ref, mask, _) = enum_ref.get_variant(variant_idx).unwrap();
+        let struct_ref: radium::AbstractStructRef<'def> = *struct_ref;
 
         // apply the generic parameters according to the mask
         let mut params = Vec::new();
@@ -434,7 +434,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             }
         }
 
-        let struct_use = caesium::AbstractStructUse::new(struct_ref, params);
+        let struct_use = radium::AbstractStructUse::new(struct_ref, params);
 
         // TODO maybe track the whole enum?
         // track this enum use for the current function
@@ -445,7 +445,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Generate a tuple use for a tuple with the given types.
-    pub fn generate_tuple_use<F>(&self, tys: F) -> Result<caesium::AbstractStructUse<'def>, TranslationError>
+    pub fn generate_tuple_use<F>(&self, tys: F) -> Result<radium::AbstractStructUse<'def>, TranslationError>
         where F: IntoIterator<Item=Ty<'tcx>>
     {
         let tys = tys.into_iter();
@@ -463,14 +463,14 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         let struct_ref = self.get_tuple_struct_ref(num_components);
 
         // TODO: don't generate duplicates
-        let struct_use = caesium::AbstractStructUse::new(struct_ref, params);
+        let struct_use = radium::AbstractStructUse::new(struct_ref, params);
         self.tuple_uses.borrow_mut().push(struct_use.clone());
 
         Ok(struct_use)
     }
 
     /// Get the struct ref for a tuple with [num_components] components.
-    fn get_tuple_struct_ref(&self, num_components: usize) -> caesium::AbstractStructRef<'def> {
+    fn get_tuple_struct_ref(&self, num_components: usize) -> radium::AbstractStructRef<'def> {
         if self.tuple_registry.borrow().get(&num_components).is_none() {
             self.register_tuple(num_components);
         }
@@ -482,7 +482,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     /// Register a tuple type with [num_components] components.
     fn register_tuple(&self, num_components: usize) {
         info!("Generating a tuple type with {} components", num_components);
-        let struct_def = caesium::make_tuple_struct_repr(num_components);
+        let struct_def = radium::make_tuple_struct_repr(num_components);
         let struct_def = self.struct_arena.alloc(RefCell::new(Some(struct_def)));
         self.tuple_registry.borrow_mut().insert(num_components, struct_def);
     }
@@ -544,7 +544,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
         // build names for ty_params
         let ty_param_defs: Vec<_> = ty_params.iter().map(|name|
-                caesium::TyParamNames {param_name: name.clone(), ty_name: format!("{}_ty", name),
+                radium::TyParamNames {param_name: name.clone(), ty_name: format!("{}_ty", name),
                 rt_name: format!("{}_rt", name)}).collect();
         let st_params: Vec<String> = ty_params.iter().map(|name|
                 format!("{}_st", name)).collect();
@@ -561,7 +561,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         let struct_name = strip_coq_ident(&ty.ident(tcx).to_string());
         let (variant_def, invariant_def) = self.make_adt_variant(&struct_name, ty, adt, &ty_param_defs, &st_params)?;
 
-        let mut struct_def = caesium::AbstractStruct::new(variant_def, ty_param_defs, st_params);
+        let mut struct_def = radium::AbstractStruct::new(variant_def, ty_param_defs, st_params);
         if let Some(invariant_def) = invariant_def {
             struct_def.add_invariant(invariant_def);
         }
@@ -581,8 +581,8 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     /// Make an ADT variant.
     /// This assumes that this variant has already been pre-registered to account for recursive
     /// occurrences.
-    fn make_adt_variant(&self, struct_name: &str, ty: &'tcx ty::VariantDef, adt: ty::AdtDef, ty_param_defs: &[caesium::TyParamNames], st_params: &[String])
-            -> Result<(caesium::AbstractVariant<'def>, Option<caesium::InvariantSpec>), TranslationError>
+    fn make_adt_variant(&self, struct_name: &str, ty: &'tcx ty::VariantDef, adt: ty::AdtDef, ty_param_defs: &[radium::TyParamNames], st_params: &[String])
+            -> Result<(radium::AbstractVariant<'def>, Option<radium::InvariantSpec>), TranslationError>
     {
         info!("adt variant: {:?}", ty);
 
@@ -590,7 +590,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
         // check for representation flags
         let repr = adt.repr();
-        let repr_opt = caesium::StructRepr::ReprRust;
+        let repr_opt = radium::StructRepr::ReprRust;
         if repr.c() {
             return Err(TranslationError::UnsupportedFeature { description: "The repr(C) flag is currently unsupported".to_string() })
         }
@@ -607,12 +607,12 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             return Err(TranslationError::UnsupportedFeature { description: "The repr(transparent) flag is currently unsupported".to_string() })
         }
 
-        let mut builder = caesium::VariantBuilder::new(struct_name.to_string(), repr_opt);
+        let mut builder = radium::VariantBuilder::new(struct_name.to_string(), repr_opt);
 
         // parse attributes
         let outer_attrs = self.env.get_attributes(ty.def_id);
         // TODO: change once we handle structs with lft parameters
-        let lft_params: Vec<(Option<String>, caesium::Lft)> = Vec::new();
+        let lft_params: Vec<(Option<String>, radium::Lft)> = Vec::new();
         let expect_refinement;
         let mut invariant_spec;
         if crate::utils::has_tool_attr(outer_attrs, "refined_by") {
@@ -632,13 +632,13 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         info!("adt variant spec: {:?}", invariant_spec);
 
         // build a substitution environment that substitutes all the type parameters by literals
-        let ty_env: Vec<Option<caesium::Type<'def>>> = ty_param_defs.iter().zip(st_params.iter()).map(|(names, st_name)| {
-            Some(caesium::Type::Literal(Some(names.param_name.clone()),
-                caesium::CoqAppTerm::new_lhs(names.ty_name.clone()),
-                caesium::CoqType::Literal(names.rt_name.clone()),
-                caesium::SynType::Literal(caesium::CoqAppTerm::new_lhs(st_name.clone())), 
+        let ty_env: Vec<Option<radium::Type<'def>>> = ty_param_defs.iter().zip(st_params.iter()).map(|(names, st_name)| {
+            Some(radium::Type::Literal(Some(names.param_name.clone()),
+                radium::CoqAppTerm::new_lhs(names.ty_name.clone()),
+                radium::CoqType::Literal(names.rt_name.clone()),
+                radium::SynType::Literal(radium::CoqAppTerm::new_lhs(st_name.clone())),
                 // TODO: maybe add something here?
-                caesium::TypeAnnotMeta::empty()))
+                radium::TypeAnnotMeta::empty()))
         }).collect();
 
         // assemble the field definition
@@ -734,10 +734,10 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Get the spec for a built-in enum like std::option::Option.
-    fn get_builtin_enum_spec(&self, did: DefId) -> Result<Option<caesium::EnumSpec>, TranslationError> {
+    fn get_builtin_enum_spec(&self, did: DefId) -> Result<Option<radium::EnumSpec>, TranslationError> {
         let option_did = crate::utils::try_resolve_did(self.env.tcx(), &["std", "option", "Option"]);
-        let option_spec = caesium::EnumSpec {
-            rfn_type: caesium::CoqType::Literal("_".to_string()),
+        let option_spec = radium::EnumSpec {
+            rfn_type: radium::CoqType::Literal("_".to_string()),
             variant_patterns: vec![("None".to_string(), vec![], "-[]".to_string()),
                                    ("Some".to_string(), vec!["x".to_string()], "-[x]".to_string())],
 
@@ -785,7 +785,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         let ty_params: Vec<String> = used_generics.iter().map(|param| param.name.to_string()).collect();
         // build names for ty_params
         let ty_param_defs: Vec<_> = ty_params.iter().map(|name|
-                caesium::TyParamNames {param_name: name.clone(), ty_name: format!("{}_ty", name),
+                radium::TyParamNames {param_name: name.clone(), ty_name: format!("{}_ty", name),
                 rt_name: format!("{}_rt", name)}).collect();
         let st_params: Vec<String> = ty_params.iter().map(|name|
                 format!("{}_st", name)).collect();
@@ -829,7 +829,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             let (variant_def, invariant_def) = self.make_adt_variant(struct_name.as_str(), v, def, &ty_param_defs, &st_params)?;
 
             // IMPORTANT: use the subset of actually used params for the definition
-            let mut struct_def = caesium::AbstractStruct::new(variant_def, these_param_defs, these_st_params);
+            let mut struct_def = radium::AbstractStruct::new(variant_def, these_param_defs, these_st_params);
             if let Some(invariant_def) = invariant_def {
                 struct_def.add_invariant(invariant_def);
             }
@@ -864,14 +864,14 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             let attributes = crate::utils::filter_tool_attrs(attributes);
 
             // TODO: change once we handle lft parameters properly
-            let lft_params: Vec<(Option<String>, caesium::Lft)> = Vec::new();
+            let lft_params: Vec<(Option<String>, radium::Lft)> = Vec::new();
 
             let mut parser = VerboseEnumSpecParser::new();
             enum_spec = parser.parse_enum_spec("", &attributes, &variant_attrs, &ty_param_defs, &lft_params)
                 .map_err(|err| TranslationError::FatalError(err))?;
         }
 
-        let mut enum_builder = caesium::EnumBuilder::new(enum_name, ty_param_defs, st_params, translated_it);
+        let mut enum_builder = radium::EnumBuilder::new(enum_name, ty_param_defs, st_params, translated_it);
         // now build the enum itself
         for v in def.variants().iter() {
             let variant_ref = self.lookup_adt_variant(v.def_id)?;
@@ -891,32 +891,32 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Translate type.
-    pub fn translate_type(&self, ty : &Ty<'tcx>) -> Result<caesium::Type<'def>, TranslationError> {
+    pub fn translate_type(&self, ty : &Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
         match ty.kind() {
             TyKind::Char => Err(TranslationError::UnsupportedType {description:
                 "RefinedRust does not support char".to_string()}),
-                //Ok(caesium::Layout::CharLayout),
-            TyKind::Int(it) => Ok(caesium::Type::Int(
+                //Ok(radium::Layout::CharLayout),
+            TyKind::Int(it) => Ok(radium::Type::Int(
                 match it {
-                    IntTy::I8 => caesium::IntType::I8,
-                    IntTy::I16 => caesium::IntType::I16,
-                    IntTy::I32 => caesium::IntType::I32,
-                    IntTy::I64 => caesium::IntType::I64,
-                    IntTy::I128 => caesium::IntType::I128,
-                    IntTy::Isize => caesium::IntType::ISize,    // should have same size as pointer types
+                    IntTy::I8 => radium::IntType::I8,
+                    IntTy::I16 => radium::IntType::I16,
+                    IntTy::I32 => radium::IntType::I32,
+                    IntTy::I64 => radium::IntType::I64,
+                    IntTy::I128 => radium::IntType::I128,
+                    IntTy::Isize => radium::IntType::ISize,    // should have same size as pointer types
 
                 })),
-            TyKind::Uint(it) => Ok(caesium::Type::Int(
+            TyKind::Uint(it) => Ok(radium::Type::Int(
                 match it {
-                    UintTy::U8 => caesium::IntType::U8,
-                    UintTy::U16 => caesium::IntType::U16,
-                    UintTy::U32 => caesium::IntType::U32,
-                    UintTy::U64 => caesium::IntType::U64,
-                    UintTy::U128 => caesium::IntType::U128,
-                    UintTy::Usize => caesium::IntType::USize,    // should have same size as pointer types
+                    UintTy::U8 => radium::IntType::U8,
+                    UintTy::U16 => radium::IntType::U16,
+                    UintTy::U32 => radium::IntType::U32,
+                    UintTy::U64 => radium::IntType::U64,
+                    UintTy::U128 => radium::IntType::U128,
+                    UintTy::Usize => radium::IntType::USize,    // should have same size as pointer types
 
                 })),
-            TyKind::Bool => Ok(caesium::Type::Bool),
+            TyKind::Bool => Ok(radium::Type::Bool),
             TyKind::Float(_) => Err(TranslationError::UnsupportedType {description:
                 "RefinedRust does not support float".to_string()}),
             TyKind::Array(_, _) =>
@@ -928,8 +928,8 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                     "Slices are currently unsupported".to_string()}),
             TyKind::RawPtr(_) =>
                 // just use a dummmy raw ptr type here that has no semantic interpretation, but of which we can get the syntype
-                Ok(caesium::Type::RawPtr),
-                //Ok(caesium::Layout::PtrLayout),
+                Ok(radium::Type::RawPtr),
+                //Ok(radium::Layout::PtrLayout),
             // TODO: this will have to change for handling fat ptrs. see the corresponding rustc
             // def for inspiration.
             TyKind::Ref(region, ty, mutability) => {
@@ -939,12 +939,12 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
                 match mutability {
                     rustc_ast::ast::Mutability::Mut =>
-                        Ok(caesium::Type::MutRef(Box::new(translated_ty), lft)),
+                        Ok(radium::Type::MutRef(Box::new(translated_ty), lft)),
                     _ =>
-                        Ok(caesium::Type::ShrRef(Box::new(translated_ty), lft)),
+                        Ok(radium::Type::ShrRef(Box::new(translated_ty), lft)),
                 }
             },
-            TyKind::Never => Ok(caesium::Type::Never),
+            TyKind::Never => Ok(radium::Type::Never),
             TyKind::Adt(adt, substs) => {
                 if adt.is_box() {
                     // extract the type parameter
@@ -952,20 +952,20 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                     assert!(substs.len() == 2);
                     let ty = substs[0].expect_ty();
                     let translated_ty = self.translate_type(&ty)?;
-                    Ok(caesium::Type::BoxType(Box::new(translated_ty)))
+                    Ok(radium::Type::BoxType(Box::new(translated_ty)))
                 }
                 else if let Some(true) = self.is_struct_definitely_zero_sized(adt.did()) {
                     // make this unit
-                    Ok(caesium::Type::Unit)
+                    Ok(radium::Type::Unit)
                 }
                 else {
                     if adt.is_struct() {
                         let su = self.generate_structlike_use(ty, None)?;
-                        Ok(caesium::Type::Struct(su, caesium::TypeIsRaw::No))
+                        Ok(radium::Type::Struct(su, radium::TypeIsRaw::No))
                     }
                     else if adt.is_enum() {
                         let eu = self.generate_enum_use(*adt, *substs)?;
-                        Ok(caesium::Type::Enum(eu))
+                        Ok(radium::Type::Enum(eu))
                     }
                     else {
                         Err(TranslationError::UnsupportedFeature { description: format!("unsupported ADT {:?}", ty) })
@@ -974,16 +974,16 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             },
             TyKind::Tuple(params) => {
                 if params.len() == 0 {
-                    Ok(caesium::Type::Unit)
+                    Ok(radium::Type::Unit)
                 }
                 else {
                     let su = self.generate_tuple_use(params.iter())?;
-                    Ok(caesium::Type::Struct(su, caesium::TypeIsRaw::Yes))
+                    Ok(radium::Type::Struct(su, radium::TypeIsRaw::Yes))
                 }
             },
             TyKind::Param(param_ty) => {
                 info!("using generic type param: {}", param_ty);
-                Ok(caesium::Type::Var(param_ty.index as usize))
+                Ok(radium::Type::Var(param_ty.index as usize))
             },
             TyKind::Foreign(_) => Err(TranslationError::UnsupportedType {description:
                 "RefinedRust does not support extern types".to_string()}),
@@ -1010,60 +1010,60 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Translate a rustc_attr::IntType (this is different from the rustc_ty IntType).
-    fn translate_int_type(&self, it: rustc_attr::IntType) -> Result<caesium::IntType, TranslationError> {
+    fn translate_int_type(&self, it: rustc_attr::IntType) -> Result<radium::IntType, TranslationError> {
         match it {
             rustc_attr::IntType::SignedInt(it) => {
                 Ok(match it {
-                   rustc_ast::IntTy::I8 => caesium::IntType::I8,
-                   rustc_ast::IntTy::I16 => caesium::IntType::I16,
-                   rustc_ast::IntTy::I32 => caesium::IntType::I32,
-                   rustc_ast::IntTy::I64 => caesium::IntType::I64,
-                   rustc_ast::IntTy::I128 => caesium::IntType::I128,
-                   rustc_ast::IntTy::Isize => caesium::IntType::ISize,
+                   rustc_ast::IntTy::I8 => radium::IntType::I8,
+                   rustc_ast::IntTy::I16 => radium::IntType::I16,
+                   rustc_ast::IntTy::I32 => radium::IntType::I32,
+                   rustc_ast::IntTy::I64 => radium::IntType::I64,
+                   rustc_ast::IntTy::I128 => radium::IntType::I128,
+                   rustc_ast::IntTy::Isize => radium::IntType::ISize,
                 })
             },
             rustc_attr::IntType::UnsignedInt(it) => {
                 Ok(match it {
-                   rustc_ast::UintTy::U8 => caesium::IntType::U8,
-                   rustc_ast::UintTy::U16 => caesium::IntType::U16,
-                   rustc_ast::UintTy::U32 => caesium::IntType::U32,
-                   rustc_ast::UintTy::U64 => caesium::IntType::U64,
-                   rustc_ast::UintTy::U128 => caesium::IntType::U128,
-                   rustc_ast::UintTy::Usize => caesium::IntType::USize,
+                   rustc_ast::UintTy::U8 => radium::IntType::U8,
+                   rustc_ast::UintTy::U16 => radium::IntType::U16,
+                   rustc_ast::UintTy::U32 => radium::IntType::U32,
+                   rustc_ast::UintTy::U64 => radium::IntType::U64,
+                   rustc_ast::UintTy::U128 => radium::IntType::U128,
+                   rustc_ast::UintTy::Usize => radium::IntType::USize,
                 })
             },
         }
     }
 
     /// Translate a rustc_attr::IntType (this is different from the rustc_ty IntType).
-    fn translate_integer_type(&self, it: rustc_abi::IntegerType) -> Result<caesium::IntType, TranslationError> {
+    fn translate_integer_type(&self, it: rustc_abi::IntegerType) -> Result<radium::IntType, TranslationError> {
         match it {
             rustc_abi::IntegerType::Fixed(size, sign) => {
                 if sign {
                     Ok(match size {
-                       rustc_abi::Integer::I8 => caesium::IntType::I8,
-                       rustc_abi::Integer::I16 => caesium::IntType::I16,
-                       rustc_abi::Integer::I32 => caesium::IntType::I32,
-                       rustc_abi::Integer::I64 => caesium::IntType::I64,
-                       rustc_abi::Integer::I128 => caesium::IntType::I128,
+                       rustc_abi::Integer::I8 => radium::IntType::I8,
+                       rustc_abi::Integer::I16 => radium::IntType::I16,
+                       rustc_abi::Integer::I32 => radium::IntType::I32,
+                       rustc_abi::Integer::I64 => radium::IntType::I64,
+                       rustc_abi::Integer::I128 => radium::IntType::I128,
                     })
                 }
                 else {
                     Ok(match size {
-                       rustc_abi::Integer::I8 => caesium::IntType::U8,
-                       rustc_abi::Integer::I16 => caesium::IntType::U16,
-                       rustc_abi::Integer::I32 => caesium::IntType::U32,
-                       rustc_abi::Integer::I64 => caesium::IntType::U64,
-                       rustc_abi::Integer::I128 => caesium::IntType::U128,
+                       rustc_abi::Integer::I8 => radium::IntType::U8,
+                       rustc_abi::Integer::I16 => radium::IntType::U16,
+                       rustc_abi::Integer::I32 => radium::IntType::U32,
+                       rustc_abi::Integer::I64 => radium::IntType::U64,
+                       rustc_abi::Integer::I128 => radium::IntType::U128,
                     })
                 }
             },
             rustc_abi::IntegerType::Pointer(sign) => {
                 if sign {
-                    Ok(caesium::IntType::ISize)
+                    Ok(radium::IntType::ISize)
                 }
                 else {
-                    Ok(caesium::IntType::USize)
+                    Ok(radium::IntType::USize)
                 }
             },
         }
@@ -1071,7 +1071,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
     /// Translate a MIR type to the Caesium syntactic type we need when storing an element of the type,
     /// substituting all generics.
-    pub fn translate_type_to_syn_type(&self, ty: &Ty<'tcx>) -> Result<caesium::SynType, TranslationError> {
+    pub fn translate_type_to_syn_type(&self, ty: &Ty<'tcx>) -> Result<radium::SynType, TranslationError> {
         // give an environment substituting in the generics
         //let env = &*self.synty_scope.borrow();
         self.translate_type(ty).map(|ty| {
@@ -1083,12 +1083,12 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Translates a syntactic type to an op type.
-    pub fn translate_syn_type_to_op_type(&self, st: &caesium::SynType) -> caesium::OpType {
+    pub fn translate_syn_type_to_op_type(&self, st: &radium::SynType) -> radium::OpType {
         st.optype(self.synty_scope.borrow().as_ref())
     }
 
     /// Translates a syntactic type to a layout term.
-    pub fn translate_syn_type_to_layout(&self, st: &caesium::SynType) -> caesium::Layout {
+    pub fn translate_syn_type_to_layout(&self, st: &radium::SynType) -> radium::Layout {
         st.layout_term(self.synty_scope.borrow().as_ref())
     }
 

@@ -10,18 +10,17 @@ datafrog = "2.0.1"
 env_logger = "0.7.1"
 regex = "1"
 rustc-hash = "1.1.0"
-serde = {version = "1.0.130", features = ["derive"]}
 csv = "1.1"
-config = "0.11"
 lazy_static = "1.4.0"
-#syn = { version = "1.0.80", features = ["full", "parsing"] }
-#proc-macro2 = "1.0"
-unicode-xid = "0.0.4"
 typed-arena = "2.0.1"
 serde_json = "1.0"
+serde = {version = "1.0.130", features = ["derive"]}
 
 analysis = { path = "../analysis" }
+radium = { path = "../radium" }
 rr_rustc_interface = { path = "../rr_rustc_interface" }
+attribute_parse = { path = "../attribute_parse" }
+rrconfig = { path = "../rrconfig" }
 
 
 [package.metadata.rust-analyzer]

@@ -9,6 +9,7 @@ use std::collections::HashSet;
 use std::env;
 use std::sync::RwLock;
 use serde::Deserialize;
+use lazy_static::lazy_static;
 
 lazy_static! {
     // Is this RwLock<..> necessary?

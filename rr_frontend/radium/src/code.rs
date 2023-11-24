@@ -15,8 +15,7 @@ use std::fmt::{Formatter, Display};
 
 use log::info;
 
-pub mod specs;
-pub use specs::*;
+use crate::specs::*;
 
 fn make_indent(i: usize) -> String {
     " ".repeat(i)
@@ -1206,8 +1205,8 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Add a generic type used by this function.
-    pub fn add_generic_type(&mut self, t: &specs::Type<'def>) {
-        if let specs::Type::Literal(Some(name), ty, CoqType::Literal(rt), SynType::Literal(st), _) = t {
+    pub fn add_generic_type(&mut self, t: &Type<'def>) {
+        if let Type::Literal(Some(name), ty, CoqType::Literal(rt), SynType::Literal(st), _) = t {
             let names = TyParamNames {
                 param_name: name.clone(),
                 rt_name: rt.clone(),

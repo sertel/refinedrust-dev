@@ -1732,6 +1732,10 @@ impl<'def> AbstractEnum<'def> {
         &self.plain_ty_name
     }
 
+    pub fn get_variant(&self, i: usize) -> Option<&(String, AbstractStructRef<'def>, Vec<bool>, isize)> {
+        self.variants.get(i)
+    }
+
     /// Generate a Coq definition for the enum layout spec, and all the struct_layout_specs for the
     /// variants.
     pub fn generate_coq_els_def(&self) -> String {

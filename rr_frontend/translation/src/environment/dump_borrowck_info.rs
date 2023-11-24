@@ -24,7 +24,7 @@ use std::fs::File;
 use std::io::{self, BufWriter, Write};
 use std::path::PathBuf;
 use log::{trace, debug};
-use crate::rrconfig as config;
+use rrconfig as config;
 use crate::environment::mir_utils::RealEdges;
 
 /*

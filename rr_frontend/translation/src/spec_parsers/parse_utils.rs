@@ -6,10 +6,10 @@
 
 /// This provides some general utilities for RefinedRust-specific attribute parsing.
 
-use crate::caesium::specs as specs;
+use radium::specs as specs;
 
-use crate::parse as parse;
-use crate::parse::{Peek, Parse, ParseStream, MToken, ParseResult};
+use attribute_parse as parse;
+use parse::{Peek, Parse, ParseStream, MToken, ParseResult};
 
 use regex::{self, Regex, Captures};
 use lazy_static::lazy_static;
@@ -104,13 +104,20 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralType {
     }
 }
 
+pub struct IProp(specs::IProp);
+impl Into<specs::IProp> for IProp {
+    fn into(self) -> specs::IProp {
+        self.0
+    }
+}
+
 /// Parse an iProp string, e.g. `"P ∗ Q ∨ R"`
-impl<'a> Parse<ParseMeta<'a>> for specs::IProp {
+impl<'a> Parse<ParseMeta<'a>> for IProp {
     fn parse(input: ParseStream, meta: &ParseMeta) -> ParseResult<Self> {
         let lit: parse::LitStr = input.parse(meta)?;
         let (lit, _) = process_coq_literal(&lit.value(), *meta);
 
-        Ok(specs::IProp::Atom(lit))
+        Ok(IProp(specs::IProp::Atom(lit)))
     }
 }
 
@@ -176,7 +183,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
 
     let mut literal_lfts: HashSet<String> = HashSet::new();
     let mut literal_tyvars: HashSet<specs::TyParamNames> = HashSet::new();
-    
+
     /* regexes:
      * - '{\s*rt_of\s+([[:alpha:]])\s*}' replace by lookup of the refinement type name
      * - '{\s*st_of\s+([[:alpha:]])\s*}' replace by lookup of the syntype name
