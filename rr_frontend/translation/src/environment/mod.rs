@@ -173,6 +173,13 @@ impl<'tcx> Environment<'tcx> {
         crate::utils::has_tool_attr(tcx.get_attrs_unchecked(def_id), name)
     }
 
+    /// Check whether the procedure has any `[tool]` attribute.
+    pub fn has_any_tool_attribute(&self, def_id: ProcedureDefId) -> bool {
+        let tcx = self.tcx();
+        // TODO: migrate to get_attrs
+        crate::utils::has_any_tool_attr(tcx.get_attrs_unchecked(def_id))
+    }
+
     /// Get the attributes of an item (e.g. procedures).
     pub fn get_attributes(&self, def_id: DefId) -> &[Attribute] {
         // TODO: migrate to get_attrs

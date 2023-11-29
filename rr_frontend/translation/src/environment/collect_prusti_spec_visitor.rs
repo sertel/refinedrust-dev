@@ -52,9 +52,11 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
         //let attrs = self.tcx.get_attrs(item.def_id.to_def_id());
         if let hir::ItemKind::Fn(..) = item.kind {
             let def_id = item.hir_id().owner.def_id;
-            let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
-            trace!("Add {} to result", item_def_path);
-            self.result.push(def_id);
+            if self.env.has_any_tool_attribute(def_id.to_def_id()) {
+                let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
+                trace!("Add {} to result", item_def_path);
+                self.result.push(def_id);
+            }
         }
         else if let hir::ItemKind::Const(_, _, _) = item.kind {
 
@@ -76,9 +78,12 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
             return;
         }
         let def_id = trait_item.hir_id().owner.def_id;
-        let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
-        trace!("Add {} to result", item_def_path);
-        self.result.push(def_id);
+
+        if self.env.has_any_tool_attribute(def_id.to_def_id()) {
+            let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
+            trace!("Add {} to result", item_def_path);
+            self.result.push(def_id);
+        }
     }
 
     fn visit_impl_item(&mut self, impl_item: &hir::ImplItem) {
@@ -92,9 +97,12 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
         }
 
         let def_id = impl_item.hir_id().owner.def_id;
-        let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
-        trace!("Add {} to result", item_def_path);
-        self.result.push(def_id);
+
+        if self.env.has_any_tool_attribute(def_id.to_def_id()) {
+            let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
+            trace!("Add {} to result", item_def_path);
+            self.result.push(def_id);
+        }
     }
 
     fn visit_foreign_item(&mut self, _foreign_item: &hir::ForeignItem) {

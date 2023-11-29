@@ -372,6 +372,18 @@ pub fn has_tool_attr(attrs: &[ast::Attribute], name: &str) -> bool {
     })
 }
 
+/// Check if any attribute starting with `<tool>` is among the attributes.
+pub fn has_any_tool_attr(attrs: &[ast::Attribute]) -> bool {
+    attrs.iter().any(|attr| match &attr.kind {
+        ast::AttrKind::Normal(n) => {
+            let na: &rustc_ast::ast::NormalAttr = &(*n);
+            let segments = &na.item.path.segments;
+            segments[0].ident.as_str() == config::spec_hotword().as_str()
+        }
+        _ => false,
+    })
+}
+
 /// Get all tool attributes, i.e. attributes of the shape `<tool>::attr`, where `tool` is
 /// determined by the `spec_hotword` config.
 pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {

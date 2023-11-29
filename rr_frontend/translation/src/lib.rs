@@ -43,6 +43,8 @@ use typed_arena::Arena;
 
 use std::collections::{HashSet, HashMap};
 
+use std::env;
+
 mod spec_parsers;
 mod utils;
 pub mod environment;
@@ -265,7 +267,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
                 proof_file.write("\
                     Section proof.\n\
-                    Context `{typeGS Σ}.\n".as_bytes()).unwrap();
+                    Context `{!typeGS Σ}.\n".as_bytes()).unwrap();
 
                 proof_file.write(fun.generate_proof().as_bytes()).unwrap();
 
@@ -296,10 +298,17 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         }
 
         // create output directory
-        let dir_str = rrconfig::output_dir();
+        let dir_str: String = if let Some(output) = rrconfig::output_dir() {
+            output
+        } else {
+            info!("No output directory specified, not writing files");
+            return;
+        };
+
         let mut dir_path = std::path::PathBuf::from(&dir_str);
         dir_path.push(&stem);
         let dir_path = dir_path.as_path();
+        info!("outputting generated code to {}", dir_path.to_str().unwrap());
         if let Err(_) = fs::read_dir(dir_path) {
             warn!("Output directory {} does not exist, creating directory", dir_str);
             fs::create_dir_all(dir_path).unwrap();
