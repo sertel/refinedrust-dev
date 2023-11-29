@@ -709,8 +709,8 @@ Section reorder_elctx.
   Proof.
     iIntros (HP) "Hs".
     rewrite /typed_stmt.
-    iIntros "#CTX #HE HL".
-    iApply ("Hs" with "CTX [] HL").
+    iIntros (?) "#CTX #HE HL Hcont".
+    iApply ("Hs" with "CTX [] HL Hcont").
     iApply elctx_interp_permut; done.
   Qed.
 

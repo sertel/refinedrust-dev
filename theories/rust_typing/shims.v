@@ -804,8 +804,9 @@ Proof.
   iSelect (freeable_nz _ _ _ _) (fun H => iRename H into "Hfree").
   rewrite {1 2}/ty_own_val /=. iDestruct "Hsize" as "[%Hsize _]".
   iDestruct "Halign_log2" as "[%Halign_log2 _]".
+
   rewrite /typed_stmt.
-  iIntros "#CTX #HE HL Hna".
+  iIntros (?) "#CTX #HE HL Hna Hcont".
   rewrite ltype_own_ofty_unfold /lty_of_ty_own. simpl.
   set (ly := Layout (Z.to_nat size) (Z.to_nat align_log2)).
   iDestruct "Hptr" as "(%ly' & %Hst & %Hly & _ & #Hlb & _ & %r' & <- & Hb)".
@@ -825,7 +826,9 @@ Proof.
     destruct ((Z.to_nat size)) eqn:Heq; first lia. done. }
   iIntros "!> Hcred".
 
-  to_typed_stmt "CTX HE HL Hna".
+  to_typed_stmt "CTX HE HL Hna Hcont".
+  (* TODO *)
+  instantiate (1 := ϝ).
   repeat liRStep; liShow.
 
   Unshelve. all: unshelve_sidecond; sidecond_hook; prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; unsolved_sidecond_hook.

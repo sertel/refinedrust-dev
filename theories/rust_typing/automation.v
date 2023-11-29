@@ -759,7 +759,15 @@ Section tac.
       let L := [ϝ ⊑ₗ{0} []] in
       ∃ E' E'', ⌜E = E'⌝ ∗ ⌜E' ≡ₚ E''⌝ ∗
       (credit_store 0 0 -∗ introduce_with_hooks E'' L (Qinit) (λ L2,
-        introduce_typed_stmt π E'' L2 ϝ fn lsa lsv lya lyv (fn_ret_prop π (fp κs x).(fp_fr)))))) -∗
+        introduce_typed_stmt π E'' L2 ϝ fn lsa lsv lya lyv (
+        λ v L2,
+            prove_with_subtype E L2 false ProveDirect (fn_ret_prop π (fp κs x).(fp_fr) v) (λ L3 _ R3,
+            introduce_with_hooks E L3 R3 (λ L4,
+            (* we don't really kill it here, but just need to find it in the context *)
+            li_tactic (llctx_find_llft_goal L4 ϝ LlctxFindLftFull) (λ _,
+            find_in_context FindCreditStore (λ _, True)
+          )))
+        ))))) -∗
     typed_function π fn local_sts fp.
   Proof.
     iIntros "#Ha".
@@ -767,14 +775,14 @@ Section tac.
     iIntros (???) "!# Hx1 Hx2".
     iIntros (lsa lsv) "(Hstore & Hinit)".
     rewrite /introduce_typed_stmt /typed_stmt.
-    iIntros "#CTX #HE HL Hna".
+    iIntros (?) "#CTX #HE HL Hna Hcont".
     iApply fupd_wps.
     iPoseProof ("Ha" with "Hx1 Hx2") as "HT".
     iDestruct ("HT" $! lsa lsv) as "(%E' & %E'' & <- & %Heq & HT)".
     iPoseProof (elctx_interp_permut with "HE") as "HE'". { symmetry. apply Heq. }
     rewrite /introduce_with_hooks.
     iMod ("HT" with "Hstore [] HE' HL Hinit") as "(%L2 & HL & HT)"; first done.
-    iApply ("HT" with "CTX HE' HL Hna").
+    by iApply ("HT" with "CTX HE' HL Hna").
   Qed.
 End tac.
 
@@ -916,7 +924,7 @@ Lemma tac_typed_stmt_bind `{!typeGS Σ} π E L s e Ks fn ϝ T :
 Proof.
   move => /W.find_stmt_fill_correct ->. iIntros "He".
   rewrite /typed_stmt.
-  iIntros "#CTX #HE HL Hna".
+  iIntros (?) "#CTX #HE HL Hna Hcont".
   rewrite stmt_wp_eq. iIntros (? rf ?) "?".
   have [Ks' HKs']:= W.stmt_fill_correct Ks rf. rewrite HKs'.
   iApply wp_bind.
@@ -926,7 +934,9 @@ Proof.
     iApply ("Hcont" with "Hv CTX HE HL Hna"). }
   iIntros (v) "HWP".
   rewrite -(HKs' (W.Val _)) /W.to_expr.
-  iApply ("HWP" with "[//]"). done.
+  iSpecialize ("HWP" with "Hcont").
+  rewrite stmt_wp_eq/stmt_wp_def/=.
+  iApply "HWP"; done.
 Qed.
 
 Tactic Notation "typed_stmt_bind" :=
@@ -939,22 +949,24 @@ Tactic Notation "typed_stmt_bind" :=
   | _ => fail "typed_stmt_bind: not a 'typed_stmt'"
   end.
 
-Lemma intro_typed_stmt `{!typeGS Σ} fn R ϝ π E L s :
+Lemma intro_typed_stmt `{!typeGS Σ} fn R ϝ π E L s Φ :
   rrust_ctx -∗
   elctx_interp E -∗
   llctx_interp L -∗
   na_own π shrE -∗
+  (∀ (L' : llctx) (v : val), llctx_interp L' -∗ na_own π shrE -∗ ([∗ list] l ∈ rf_locs fn, l.1 ↦|l.2|) -∗ R v L' -∗ Φ v) -∗
   typed_stmt π E L s fn R ϝ -∗
-  WPs s {{ f_code (rf_fn fn), typed_stmt_post_cond π ϝ fn R}}.
+  WPs s {{ f_code (rf_fn fn), Φ }}.
 Proof.
-  iIntros "#CTX #HE HL Hna Hs".
+  iIntros "#CTX #HE HL Hna Hcont Hs".
   rewrite /typed_stmt.
-  iApply ("Hs" with "CTX HE HL Hna").
+  iApply ("Hs" with "CTX HE HL Hna Hcont").
 Qed.
 Lemma fupd_typed_stmt `{!typeGS Σ} π E L s rf R ϝ :
   ⊢ (|={⊤}=> typed_stmt π E L s rf R ϝ) -∗ typed_stmt π E L s rf R ϝ.
 Proof.
-  iIntros "HT". rewrite /typed_stmt. iIntros "CTX HE HL". iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL").
+  iIntros "HT". rewrite /typed_stmt. iIntros (?) "CTX HE HL Hna Hcont".
+  iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hna Hcont").
 Qed.
 
 Ltac to_typed_stmt SPEC :=
@@ -979,6 +991,8 @@ Global Arguments freeable_nz : simpl never.
 (* should not be visible for automation *)
 Global Typeclasses Opaque ty_shr.
 Global Typeclasses Opaque ty_own_val.
+
+Global Typeclasses Opaque find_in_context.
 
 Global Arguments ty_lfts : simpl nomatch.
 Global Arguments ty_wf_E : simpl nomatch.

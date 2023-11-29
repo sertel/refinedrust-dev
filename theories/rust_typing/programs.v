@@ -613,19 +613,14 @@ Section judgments.
   (* [fn]: the surrounding function,
      [ls]: stack (list of locations for args and local variables),
   *)
-  Definition typed_stmt_R_t := val → iProp Σ.
-  Definition typed_stmt_post_cond (π : thread_id) (ϝ : lft) (fn : runtime_function) (R : typed_stmt_R_t) (v : val) : iProp Σ :=
-    (∃ (κs : list lft),
-      (* return ownership of the stack *)
-      ([∗ list] l ∈ (fn.(rf_locs)), l.1 ↦|l.2|) ∗
-      (* return the function lifetime *)
-      llctx_interp [ϝ ⊑ₗ{0} κs] ∗
-      (* return the non-atomic token *)
-      na_own π shrE ∗
-      (* return the credit context *)
-      credit_store 0 0 ∗
-      (* continuation *)
-      R v)%I.
+  Definition typed_stmt_R_t := val → llctx → iProp Σ.
+  Definition typed_stmt_post_cond (π : thread_id) (L : llctx) (fn : runtime_function) (R : typed_stmt_R_t) (v : val) : iProp Σ :=
+    ((* return ownership of the stack *)
+     ([∗ list] l ∈ (fn.(rf_locs)), l.1 ↦|l.2|) ∗
+     (* return the non-atomic token *)
+     na_own π shrE ∗
+     (* continuation *)
+     R v L)%I.
 
   (* [Q]: the current function body,
      [ls]: stack
@@ -634,16 +629,30 @@ Section judgments.
      [R] is a relation on the result value of this statement and its type: we require that the result value is a well-typed [R]-value at this type.
   *)
   Definition typed_stmt (π : thread_id) (E : elctx) (L : llctx) (s : stmt) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
-    (rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
-      WPs s {{fn.(rf_fn).(f_code), typed_stmt_post_cond π ϝ fn R}})%I.
+    (∀ (Φ : val → iProp Σ),
+      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+      (∀ L' (v : val),
+        llctx_interp L' -∗
+        na_own π shrE -∗
+        ([∗ list] l ∈ (fn.(rf_locs)), l.1 ↦|l.2|) -∗
+        R v L' -∗
+        Φ v) -∗
+      (*typed_stmt_post_cond π ϝ fn R L')*)
+      WPs s {{fn.(rf_fn).(f_code), Φ}})%I.
   Global Arguments typed_stmt _ _ _ _%E _ _%I _.
 
   (* [P] is an invariant on the context. *)
   Definition typed_block (π : thread_id) (P : elctx → llctx → iProp Σ) (b : label) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
-    (∀ E L,
+    (∀ Φ E L,
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
       P E L -∗
-      WPs (Goto b) {{ fn.(rf_fn).(f_code), (typed_stmt_post_cond π ϝ fn R)}}).
+      (∀ L' (v : val),
+        llctx_interp L' -∗
+        na_own π shrE -∗
+        ([∗ list] l ∈ (fn.(rf_locs)), l.1 ↦|l.2|) -∗
+        R v L' -∗
+        Φ v) -∗
+      WPs (Goto b) {{ fn.(rf_fn).(f_code), Φ}}).
 
   (** for all succeeding statements [s], assuming that [v] has type [ty], it can be converted to a non-zero integer *)
   Definition typed_assert (π : thread_id) (E : elctx) (L : llctx) (v : val) {rt} (ty : type rt) (r : rt) (s : stmt) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
@@ -1935,6 +1944,7 @@ Section judgments.
   Class ProveWithSubtype (E : elctx) (L : llctx) (step : bool) (pm : ProofMode) (P : iProp Σ) : Type :=
     prove_with_subtype_proof T : iProp_to_Prop (prove_with_subtype E L step pm P T).
 
+
   Lemma prove_with_subtype_sep E L step pm P1 P2 T :
     prove_with_subtype E L step pm P1 (λ L' κs R1, prove_with_subtype E L' step pm P2 (λ L'' κs2 R2, T L'' (κs ++ κs2) (R1 ∗ R2)))
     ⊢ prove_with_subtype E L step pm (P1 ∗ P2) T.
@@ -1967,7 +1977,6 @@ Section judgments.
   Qed.
   Global Instance prove_with_subtype_exists_inst {X} E L step pm (Φ : X → iProp Σ) : ProveWithSubtype E L step pm (∃ x, Φ x) :=
     λ T, i2p (prove_with_subtype_exists E L step pm Φ T).
-
 
   (** For ofty location ownership, we have special handling to stratify first, if possible.
       This only happens in the [ProveWithStratify] proof mode though, because we sometimes directly want to get into [Subsume]. *)
@@ -2212,6 +2221,17 @@ Section judgments.
     iModIntro. iL. destruct pm; iFrame. eauto.
   Qed.
 
+  (* We could make this an instance, but do not want to: it would sometimes make goals unprovable where stepping in manually would help *)
+  Lemma prove_with_subtype_default E L step pm P T :
+    P ∗ T L [] True ⊢
+    prove_with_subtype E L step pm P T.
+  Proof.
+    iIntros "(? & ?)".
+    iIntros (???) "???". iModIntro.
+    iExists _, _, _. iFrame.
+    iApply maybe_logical_step_intro. iL.
+    destruct pm; eauto with iFrame.
+  Qed.
 
   (** ** Prove a typed_place_cond (used together with [stratify_ltype]) *)
 
