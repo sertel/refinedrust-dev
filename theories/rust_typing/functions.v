@@ -6,7 +6,7 @@ Set Default Proof Using "Type".
 Definition to_runtime_function (fn : function) (lsa lsv : list loc) (lya lyv : list layout) : runtime_function :=
   let rf := subst_function (zip (fn.(f_args).*1 ++ fn.(f_local_vars).*1) (val_of_loc <$> (lsa ++ lsv))) fn in
   {| rf_fn := rf; rf_locs := zip lsa lya ++ zip lsv lyv |}.
-Definition introduce_typed_stmt {Σ} `{!typeGS Σ} (π : thread_id) (E : elctx) (L : llctx) (ϝ : lft) (fn : function) (lsa lsv : list loc) (lya lyv : list layout) (R : val → iProp Σ) : iProp Σ :=
+Definition introduce_typed_stmt {Σ} `{!typeGS Σ} (π : thread_id) (E : elctx) (L : llctx) (ϝ : lft) (fn : function) (lsa lsv : list loc) (lya lyv : list layout) (R : typed_stmt_R_t) : iProp Σ :=
   let rf := to_runtime_function fn lsa lsv lya lyv in
   typed_stmt π E L (Goto fn.(f_init)) rf R ϝ.
 Global Typeclasses Opaque to_runtime_function.
@@ -139,7 +139,14 @@ Section function.
           let E := ((fp κs x).(fp_elctx) ϝ) in
           (* local lifetime context: the function needs to be alive *)
           let L := [ϝ ⊑ₗ{0} []] in
-          Qinit -∗ introduce_typed_stmt π E L ϝ fn lsa lsv lya lyv (fn_ret_prop π (fp κs x).(fp_fr)))
+          Qinit -∗ introduce_typed_stmt π E L ϝ fn lsa lsv lya lyv (
+            λ v L2,
+            prove_with_subtype E L2 false ProveDirect (fn_ret_prop π (fp κs x).(fp_fr) v) (λ L3 _ R3,
+            introduce_with_hooks E L3 R3 (λ L4,
+            (* we don't really kill it here, but just need to find it in the context *)
+            li_tactic (llctx_find_llft_goal L4 ϝ LlctxFindLftFull) (λ _,
+            find_in_context FindCreditStore (λ _, True)
+          )))))
     )%I.
 
   Global Instance typed_function_persistent π fn local_sts fp : Persistent (typed_function π fn local_sts fp) := _.
@@ -181,6 +188,7 @@ End function.
 Section call.
   Context `{!typeGS Σ}.
   Import EqNotations.
+
   Lemma type_call_fnptr π E L {A : Type} (lfts : nat) eκs l v vl tys T (fp : prod_vec lft lfts → A → fn_params) sta :
     let eκs' := list_to_tup eκs in
     (([∗ list] v;t ∈ vl; tys, let '(existT rt (ty, r)) := t in v ◁ᵥ{π} r @ ty) -∗
@@ -282,73 +290,96 @@ Section call.
       by rewrite -Hlen2; eexists (list_to_vec _); symmetry; apply vec_to_list_to_vec. subst.
 
     iDestruct ("Hfn" $! lsa' lsv') as "Hm". unfold introduce_typed_stmt.
-    iExists _. iSplitR "Hr HR HΦ HL HL_cl HL_cl' Hkill" => /=.
+    set (RET_PROP v := (∃ κs',
+        llctx_elt_interp (ϝ ⊑ₗ{ 0} κs') ∗ na_own π shrE ∗
+        credit_store 0 0 ∗
+        ([∗ list] l0 ∈ (zip lsa' (f_args fn).*2 ++ zip lsv' (f_local_vars fn).*2), l0.1 ↦|l0.2|) ∗
+        fn_ret_prop π (fp_fr (fp aκs x)) v)%I).
+    iExists RET_PROP. iSplitR "Hr HR HΦ HL HL_cl HL_cl' Hkill" => /=.
     - iMod (persistent_time_receipt_0) as "#Htime".
-      iApply ("Hm" with "[-Hϝ Hna] [$LFT $TIME $LCTX] HE' [$Hϝ//] Hna"). iFrame.
-      (* we use the certificate + other credit to initialize the new functions credit store *)
-      iSplitL "Hcred Hc". { rewrite credit_store_eq /credit_store_def. iFrame. }
-      move: Hlen1 Hlya. move: (lsa' : list _) => lsa'' Hlen1 Hly. clear lsa' Hall.
-      move: Hlen3 Halg. move: (fp_atys (fp aκs x)) => atys Hlen3 Hl.
-      move: Hly Hl. move: (f_args fn) => alys Hly Hl.
-      iInduction (vl) as [|v vl] "IH" forall (atys lsa'' alys Hlen1 Hly Hlen3 Hl).
-      { destruct atys, lsa'' => //. iSplitR => //.
-        iPoseProof (big_sepL2_fmap_r (λ x, x.2) (λ _ l v, l ↦|v|)%I with "Hv") as "Hv".
-        move: Halgl. rewrite Forall2_fmap_r => Halgl.
-        assert ((f_local_vars fn).*2 = use_layout_alg' <$> local_sts) as Heq.
-        { clear -Halgl. move: Halgl. generalize (f_local_vars fn) => l.
-          induction local_sts as [ | ?? IH] in l |-*; inversion 1; first done.
-          simplify_eq/=. f_equiv. { rewrite /use_layout_alg'.
-            match goal with | H : use_layout_alg _ = Some _ |- _ => rewrite H end. done. }
-          by apply IH. }
-        rewrite Heq. rewrite big_sepL2_fmap_r.
-        iApply (big_sepL2_wand with "Hv").
-        iApply big_sepL2_intro. { rewrite Hlen2. apply Forall2_length in Halgl. done. }
-        iIntros "!>" (?? st ? Hlook) => /=. iDestruct 1 as (? Hly') "[%Hly'' Hl]".
-        rewrite ltype_own_ofty_unfold /lty_of_ty_own. simpl.
-        eapply (Forall2_lookup_l _ _ _ k) in Halgl as (ly & ? & Halg_st); last done.
-        simpl in Halg_st. rewrite /use_layout_alg' Halg_st in Hly'. rewrite /use_layout_alg' Halg_st in Hly''.
-        iExists _. iSplitR; first done.
-        iSplitR; first done. iSplitR; first done.
-        iPoseProof (heap_mapsto_loc_in_bounds with "Hl") as "#Hlb".
-        rewrite Hly'. iFrame "Hlb". iSplitR; first done.
-        iExists _. iSplitR; first done. iModIntro. iExists _. iFrame.
-        rewrite uninit_own_spec.
-        iExists _. done. }
-      destruct atys, lsa'' => //.
-      move: Hl. simpl. intros (ly & ? & ? & ? & Ha)%Forall2_cons_inv_l.
-      apply map_eq_cons in Ha as ([? ly'] & ? & -> & <- & <-).
-      csimpl in *; simplify_eq.
-      move: Hly => /(Forall2_cons _ _ _ _)[Hly ?].
-      (*apply bind_Some in Hlya as (lys & Hlya & (ly & Halg & [= <- <-])%bind_Some).*)
-      iDestruct "Hvl" as "[Hvl ?]".
-      iDestruct "Ha" as "[Ha ?]".
-      rewrite -bi.sep_assoc. iSplitL "Hvl Ha".
-      { destruct s as (rt & (ty & r)).
-        rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-        iDestruct (ty_has_layout with "Hvl") as "(%ly & % & %Hlyv)".
-        assert (ly = ly') as <-. { by eapply syn_type_has_layout_inj. }
-        iExists _. iSplitR; first done. iSplitR; first done.
-        iPoseProof (ty_own_val_sidecond with "Hvl") as "#$".
-        iPoseProof (heap_mapsto_loc_in_bounds with "Ha") as "#Hlb".
-        rewrite Hlyv. iSplitR; first done. iSplitR; first done.
-        iExists _. iSplitR; first done. iNext. eauto with iFrame. }
-      iApply ("IH" with "[//] [//] [//] [//] [$] [$] [$]").
+      iApply wps_fupd.
+      iApply ("Hm" with "[-Hϝ Hna] [$LFT $TIME $LCTX] HE' [$Hϝ//] Hna []").
+      { iFrame.
+        (* we use the certificate + other credit to initialize the new functions credit store *)
+        iSplitL "Hcred Hc". { rewrite credit_store_eq /credit_store_def. iFrame. }
+        move: Hlen1 Hlya. move: (lsa' : list _) => lsa'' Hlen1 Hly. clear RET_PROP lsa' Hall.
+        move: Hlen3 Halg. move: (fp_atys (fp aκs x)) => atys Hlen3 Hl.
+        move: Hly Hl. move: (f_args fn) => alys Hly Hl.
+        iInduction (vl) as [|v vl] "IH" forall (atys lsa'' alys Hlen1 Hly Hlen3 Hl).
+        { destruct atys, lsa'' => //. iSplitR => //.
+          iPoseProof (big_sepL2_fmap_r (λ x, x.2) (λ _ l v, l ↦|v|)%I with "Hv") as "Hv".
+          move: Halgl. rewrite Forall2_fmap_r => Halgl.
+          assert ((f_local_vars fn).*2 = use_layout_alg' <$> local_sts) as Heq.
+          { clear -Halgl. move: Halgl. generalize (f_local_vars fn) => l.
+            induction local_sts as [ | ?? IH] in l |-*; inversion 1; first done.
+            simplify_eq/=. f_equiv. { rewrite /use_layout_alg'.
+              match goal with | H : use_layout_alg _ = Some _ |- _ => rewrite H end. done. }
+            by apply IH. }
+          rewrite Heq. rewrite big_sepL2_fmap_r.
+          iApply (big_sepL2_wand with "Hv").
+          iApply big_sepL2_intro. { rewrite Hlen2. apply Forall2_length in Halgl. done. }
+          iIntros "!>" (?? st ? Hlook) => /=. iDestruct 1 as (? Hly') "[%Hly'' Hl]".
+          rewrite ltype_own_ofty_unfold /lty_of_ty_own. simpl.
+          eapply (Forall2_lookup_l _ _ _ k) in Halgl as (ly & ? & Halg_st); last done.
+          simpl in Halg_st. rewrite /use_layout_alg' Halg_st in Hly'. rewrite /use_layout_alg' Halg_st in Hly''.
+          iExists _. iSplitR; first done.
+          iSplitR; first done. iSplitR; first done.
+          iPoseProof (heap_mapsto_loc_in_bounds with "Hl") as "#Hlb".
+          rewrite Hly'. iFrame "Hlb". iSplitR; first done.
+          iExists _. iSplitR; first done. iModIntro. iExists _. iFrame.
+          rewrite uninit_own_spec.
+          iExists _. done. }
+        destruct atys, lsa'' => //.
+        move: Hl. simpl. intros (ly & ? & ? & ? & Ha)%Forall2_cons_inv_l.
+        apply map_eq_cons in Ha as ([? ly'] & ? & -> & <- & <-).
+        csimpl in *; simplify_eq.
+        move: Hly => /(Forall2_cons _ _ _ _)[Hly ?].
+        (*apply bind_Some in Hlya as (lys & Hlya & (ly & Halg & [= <- <-])%bind_Some).*)
+        iDestruct "Hvl" as "[Hvl ?]".
+        iDestruct "Ha" as "[Ha ?]".
+        rewrite -bi.sep_assoc. iSplitL "Hvl Ha".
+        { destruct s as (rt & (ty & r)).
+          rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+          iDestruct (ty_has_layout with "Hvl") as "(%ly & % & %Hlyv)".
+          assert (ly = ly') as <-. { by eapply syn_type_has_layout_inj. }
+          iExists _. iSplitR; first done. iSplitR; first done.
+          iPoseProof (ty_own_val_sidecond with "Hvl") as "#$".
+          iPoseProof (heap_mapsto_loc_in_bounds with "Ha") as "#Hlb".
+          rewrite Hlyv. iSplitR; first done. iSplitR; first done.
+          iExists _. iSplitR; first done. iNext. eauto with iFrame. }
+        iApply ("IH" with "[//] [//] [//] [//] [$] [$] [$]").
+      }
+      iIntros (L5 v) "HL Hna Hloc HT".
+      iMod ("HT" with "[] [] [] HE' HL") as "(%L3 & %κs1 & %R4 & Hp & HL & HT)"; [done.. |  | ].
+      { rewrite /rrust_ctx. iFrame "#". }
+      iMod "Hp" as "(Hret & HR)".
+      iMod ("HT" with "[] HE' HL HR") as "(%L6 & HL & HT)"; first done.
+      rewrite /llctx_find_llft_goal.
+      iDestruct "HT" as "(%HL6 & %κs' & %Hfind & HT)".
+      destruct Hfind as (L9 & L10 & ? & -> & -> & Hoc).
+      unfold llctx_find_lft_key_interp in Hoc. subst.
+      iDestruct "HL" as "(_ & Hϝ & _)".
+      iDestruct "HT" as ([n' m']) "(Hstore & _)"; simpl.
+
+      subst RET_PROP; simpl.
+      iExists _. iFrame.
+      iApply (credit_store_mono with "Hstore"); lia.
     - (* handle the postcondition at return *)
       iMod (persistent_time_receipt_0) as "Hpt".
-      iIntros "!>" (v). iDestruct 1 as (κs1) "(Hls & Hϝ & Hna & Hstore & HPr)".
-      rewrite credit_store_eq /credit_store_def.
-      iDestruct "Hstore" as "(Hcred1 & Hat)".
+      iIntros "!>" (v). iDestruct 1 as (κs') "(Hϝ & Hna & Hstore & Hls & HPr)".
+      iPoseProof (credit_store_borrow with "Hstore") as "(Hcred1 & Hat & _)".
       iExists 1, 0. iFrame.
       simpl. rewrite !big_sepL2_alt. iDestruct (big_sepL_app with "Hls") as "[? ?]".
       rewrite !zip_fmap_r !big_sepL_fmap. iFrame.
+
       iSplitR. { iPureIntro. apply Forall2_length in Halg.
         rewrite map_length in Halg. rewrite Hlen1 Hlen3 Halg fmap_length. done. }
       iSplitR; first done.
-      iIntros "Hcred Hat". iDestruct "Hϝ" as "(Hϝ & _)".
+      iIntros "Hcred Hat".
       iPoseProof ("Hkill" with "Hϝ") as "(Htok & Hkill)".
       iMod ("HL_cl'" with "Htok HL") as "HL".
       iPoseProof ("HL_cl" with "HL") as "HL".
-      (* we currently don't actually kill the lifetime, as we don't conceptually need that. *)
+       (*we currently don't actually kill the lifetime, as we don't conceptually need that. *)
       iDestruct ("HPr") as (?) "(Hty & HR2 & _)".
       iMod ("Hr" with "[] HE HL [Hat Hcred HR2 HR]") as "(%L3 & HL & Hr)"; first done.
       { iFrame. }
