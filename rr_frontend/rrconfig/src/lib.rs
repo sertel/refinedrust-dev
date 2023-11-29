@@ -61,10 +61,12 @@ lazy_static! {
 
         // 4. Override with env variables (`RR_QUIET`, ...)
         // TODO: I don't know why this panics
+        /*
         settings.merge(
             Environment::with_prefix("RR").ignore_empty(true)
         ).unwrap();
         check_keys(&settings, &allowed_keys, "environment variables");
+        */
 
          settings
     });

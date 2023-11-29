@@ -110,7 +110,7 @@ run|run-debug)
     cargo build $CARGO_BUILD_FLAGS
     find_sysroot
     # Then run the actual command.
-    exec cargo run $CARGO_BUILD_FLAGS --bin refinedrust-rustc -- --sysroot "$RR_SYSROOT" "$@"
+    exec cargo run $CARGO_BUILD_FLAGS --bin refinedrust-rustc -- --sysroot "$RR_SYSROOT" --crate-type=lib "$@"
     ;;
 *)
     if [ -n "$COMMAND" ]; then
