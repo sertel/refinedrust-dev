@@ -99,7 +99,6 @@ impl rr_rustc_interface::driver::Callbacks for OurCompilerCalls {
 
     fn after_analysis<'tcx>(
         &mut self,
-        _error_handler: &EarlyErrorHandler,
         compiler: &interface::Compiler,
         queries: &'tcx Queries<'tcx>,
     ) -> Compilation {

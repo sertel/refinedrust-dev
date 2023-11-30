@@ -117,7 +117,6 @@ impl rustc_driver::Callbacks for RRCompilerCalls {
 
     fn after_analysis<'tcx>(
         &mut self,
-        _handler: &rustc_session::EarlyErrorHandler,
         _ : &rustc_interface::interface::Compiler,
         queries : &'tcx rustc_interface::Queries<'tcx>
     ) -> Compilation {

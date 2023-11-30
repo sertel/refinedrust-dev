@@ -196,9 +196,6 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 VarDebugInfoContents::Const(_) => {
                     // is this case used when constant propagation happens during MIR construction?
                 },
-                VarDebugInfoContents::Composite { ty: _, fragments: _ } => {
-                    // Not sure
-                },
             }
         }
 
@@ -1180,7 +1177,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             TerminatorKind::UnwindResume => {
                 return Err(TranslationError::Unimplemented { description: "implement UnwindResume".to_string() })
             },
-            TerminatorKind::UnwindTerminate => {
+            TerminatorKind::UnwindTerminate(_) => {
                 return Err(TranslationError::Unimplemented { description: "implement UnwindTerminate".to_string() })
             },
             TerminatorKind::Goto {ref target} => {

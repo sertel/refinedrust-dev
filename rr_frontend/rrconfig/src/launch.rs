@@ -59,12 +59,12 @@ pub fn get_rust_toolchain_version() -> String {
         components: Option<Vec<String>>,
     }
 
-    let content = include_str!("../../rustup-toolchain");
+    let content = include_str!("../../rust-toolchain.toml");
     // Be ready to accept TOML format
     // See: https://github.com/rust-lang/rustup/pull/2438
     if content.starts_with("[toolchain]") {
         let rust_toolchain: RustToolchainFile =
-            toml::from_str(content).expect("failed to parse rustup-toolchain file");
+            toml::from_str(content).expect("failed to parse rust-toolchain.toml file");
         rust_toolchain.toolchain.channel
     } else {
         content.trim().to_string()

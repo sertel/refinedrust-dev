@@ -14,10 +14,7 @@ clean:
 	@dune clean
 .PHONY: clean
 
-frontend-setup:
-	cd rr_frontend && ./rustup-toolchain $(RR_RUST_VERSION)
-
-frontend: frontend-setup
+frontend:
 	cd rr_frontend && ./refinedrust build
 
 #RUST_SRC = $(wildcard rr_frontend/examples/*.rs)

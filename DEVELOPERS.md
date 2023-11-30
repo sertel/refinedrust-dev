@@ -11,20 +11,20 @@ Look at its README for instructions on configuring keybinds.
 
 However, by default, it ships its own `rustc` toolchain and sources which are used for completion and which are not updated frequently
 (this is apparently due to `rust-analyzer` having a very unstable API; see https://github.com/ycm-core/YouCompleteMe/issues/4012).
-This creates problems, because YCM will constantly rebuild the project with its own toolchain (and the build cache will conflict with `cargo build` in the `refinedrust` toolchain, so it needs to do full rebuilds),
+This creates problems, because YCM will constantly rebuild the project with its own toolchain (and the build cache will conflict with `cargo build` in the toolchain RefinedRust uses, so it needs to do full rebuilds),
 and you won't get proper autocompletion of `rustc` internals.
 
-The `_vimrc_local.vim` file shipped in this project already mostly takes care of setting the right toolchain (if you have installed `https://github.com/LucHermitte/local_vimrc`), by setting:
+To work around this, the `_vimrc_local.vim` file shipped in this project sets the right toolchain (if you have installed `https://github.com/LucHermitte/local_vimrc`), by setting:
 ```
-let g:ycm_rust_toolchain_root = '/home/[user]/.rustup/toolchains/refinedrust'
+let g:ycm_rust_toolchain_root = '/home/[user]/.rustup/toolchains/[current-toolchain]'
 ```
-You just have to change the `[user]` to match your setup (sadly, references to `home` by `~/` or `$HOME/` do not seem to be supported).
+You just have to change the `[user]` to match your setup (sadly, references to `home` by `~/` or `$HOME/` do not seem to be supported), and `[current-toolchain]` to the current version of the RefinedRust toolchain declared in `rust-toolchain.toml`.
 
 To set the `rustc` sources, setup a `.ycm_extra_conf.py` file (for setting it globally, add e.g.
 ```
 let g:ycm_global_ycm_extra_conf = "~/.vim/.ycm_extra_conf.py"
 ```
-to your `.vimrc`) and put the following into it:
+to your `.vimrc`) and put the following into it, putting the right path to a checkout of https://github.com/rust-lang/rust):
 ```
 def Settings(**kwargs):
   if kwargs['language'] == 'rust':
@@ -40,8 +40,7 @@ TODO: can we also point directly to the `rust-src` in the `refinedrust` toolchai
 
 
 ## Updating the frontend's rustc version
-1. Update the file `rust-version` in `rr_frontend` to the new desired `rust-lang/rust` commit.
-2. Run `./rustup_toolchain` in `rr_frontend`.
-3. Try to get the frontend building again.
+1. Update the file `rust-toolchain.toml` in `rr_frontend` to the new desired nightly version.
+2. Try to get the frontend building again.
 
 

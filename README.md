@@ -48,9 +48,7 @@ dune build
 
 ### Setup instructions for the frontend:
 1. Make sure that you have a working `rustup`/Rust install. Instructions for setting up Rust can be found on https://rustup.rs/.
-2. Run `cargo install rustup-toolchain-install-master`.
-3. Run `./rustup-toolchain` in `rr_frontend` to setup a Rust toolchain called `refinedrust`.
-4. Run `./refinedrust build` in `rr_frontend` to build the frontend.
+2. Run `./refinedrust build` in `rr_frontend` to build the frontend.
 
 
 ## Frontend usage

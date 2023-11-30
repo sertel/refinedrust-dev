@@ -425,6 +425,9 @@ dependencies = [
 [[package]]
 name = "paper-examples"
 version = "0.1.0"
+dependencies = [
+ "log",
+]
 
 [[package]]
 name = "proc-macro2"

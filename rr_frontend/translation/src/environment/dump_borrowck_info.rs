@@ -885,7 +885,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             TerminatorKind::UnwindResume => {
                 write_edge!(self, bb, str resume);
             }
-            TerminatorKind::UnwindTerminate => {
+            TerminatorKind::UnwindTerminate(_) => {
                 write_edge!(self, bb, str terminate);
             }
             | TerminatorKind::Drop {
