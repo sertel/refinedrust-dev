@@ -4,5 +4,5 @@
 # Inputs: 
 # - REFINEDRUST_ROOT: the root directory of the RefinedRust checkout
 
-cd $REFINEDRUST_ROOT
-$REFINEDRUST_ROOT/rr_frontend/refinedrust build
+cd $REFINEDRUST_ROOT/rr_frontend
+./refinedrust build
