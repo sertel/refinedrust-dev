@@ -46,7 +46,7 @@ fn env_prepend_path(name: &str, value: Vec<PathBuf>, cmd: &mut Command) {
     }
 }
 
-pub fn get_rust_toolchain_version() -> String {
+pub fn get_rust_toolchain_channel() -> String {
     #[derive(Deserialize)]
     struct RustToolchainFile {
         toolchain: RustToolchain,
@@ -69,10 +69,6 @@ pub fn get_rust_toolchain_version() -> String {
     } else {
         content.trim().to_string()
     }
-}
-
-pub fn get_rust_toolchain_channel() -> String {
-    "refinedrust".to_string()
 }
 
 /// Find RefinedRust's sysroot

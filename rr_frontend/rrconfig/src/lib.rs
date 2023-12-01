@@ -5,7 +5,6 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 //
 use config::{Config, Environment, File, FileFormat};
-use std::collections::HashSet;
 use std::env;
 use std::{sync::RwLock, path::PathBuf};
 use serde::Deserialize;
@@ -17,78 +16,47 @@ pub mod arg_value;
 lazy_static! {
     // Is this RwLock<..> necessary?
     static ref SETTINGS: RwLock<Config> = RwLock::new({
-        let mut settings = Config::default();
+        let mk_config = || {
+            let mut builder = Config::builder();
 
-        // 1. Default values
-        settings.set_default("be_rustc", false).unwrap();
-        //settings.set_default("check_overflows", true).unwrap();
-        //settings.set_default("check_panics", true).unwrap();
+            // 1. Default values
+            builder = builder.set_default("be_rustc", false)?
+                .set_default("log_dir", "./log/")?
+                .set_default("check_overflows", true)?
+                .set_default("dump_debug_info", false)?
+                .set_default("dump_borrowck_info", false)?
+                .set_default("quiet", false)?
+                .set_default("skip_unsupported_features", true)?
+                .set_default("spec_hotword", "rr")?
+                .set_default("attribute_parser", "verbose")?
+                .set_default("run_check", false)?
+                .set_default("verify_deps", false)?
+                .set_default("no_verify", false)?
+                .set_default("cargo_path", "cargo")?
+                .set_default("cargo_command", "check")?;
 
-        settings.set_default("log_dir", "./log/").unwrap();
-        settings.set_default::<Option<String>>("output_dir", None).unwrap();
-        settings.set_default("check_overflows", true).unwrap();
-        settings.set_default("dump_debug_info", false).unwrap();
-        settings.set_default("dump_borrowck_info", false).unwrap();
-        settings.set_default("quiet", false).unwrap();
-        settings.set_default("skip_unsupported_features", true).unwrap();
-        settings.set_default("spec_hotword", "rr").unwrap();
-        settings.set_default("attribute_parser", "verbose").unwrap();
+            // 2. Override with the optional TOML file "RefinedRust.toml" (if there is any)
+            builder = builder.add_source(
+                File::new("RefinedRust.toml", FileFormat::Toml).required(false)
+            );
 
-        settings.set_default("shims", None::<String>).unwrap();
-        settings.set_default("run_check", false).unwrap();
-        settings.set_default("verify_deps", false).unwrap();
-        settings.set_default("no_verify", false).unwrap();
+            // 3. Override with an optional TOML file specified by the `RR_CONFIG` env variable
+            if let Ok(file) = env::var("RR_CONFIG") {
+                // Since this file is explicitly specified by the user, it would be
+                // nice to tell them if we cannot open it.
+                builder = builder.add_source(File::with_name(&file));
+            }
 
-        settings.set_default("cargo_path", "cargo").unwrap();
-        settings.set_default("cargo_command", "check").unwrap();
+            // 4. Override with env variables (`RR_QUIET`, ...)
+            let builder = builder.add_source(
+                Environment::with_prefix("RR")
+                    .ignore_empty(true)
+            );
 
-        // Get the list of all allowed flags.
-        let allowed_keys = get_keys(&settings);
-
-        // 2. Override with the optional TOML file "RefinedRust.toml" (if there is any)
-        settings.merge(
-            File::new("RefinedRust.toml", FileFormat::Toml).required(false)
-        ).unwrap();
-        check_keys(&settings, &allowed_keys, "RefinedRust.toml file");
-
-        // 3. Override with an optional TOML file specified by the `RR_CONFIG` env variable
-        if let Ok(file) = env::var("RR_CONFIG") {
-            // Since this file is explicitly specified by the user, it would be
-            // nice to tell them if we cannot open it.
-            settings.merge(File::with_name(&file)).unwrap();
-            check_keys(&settings, &allowed_keys, &format!("{} file", file));
-        }
-
-        // 4. Override with env variables (`RR_QUIET`, ...)
-        // TODO: I don't know why this panics
-        /*
-        settings.merge(
-            Environment::with_prefix("RR").ignore_empty(true)
-        ).unwrap();
-        check_keys(&settings, &allowed_keys, "environment variables");
-        */
-
-         settings
+            builder.build()
+        };
+        mk_config().unwrap()
     });
-}
-
-fn get_keys(settings: &Config) -> HashSet<String> {
-    settings
-        .cache
-        .clone()
-        .into_table()
-        .unwrap()
-        .into_iter()
-        .map(|(key, _)| key)
-        .collect()
-}
-
-fn check_keys(settings: &Config, allowed_keys: &HashSet<String>, source: &str) {
-    for key in settings.cache.clone().into_table().unwrap().keys() {
-        if !allowed_keys.contains(key) {
-            panic!("{} contains unknown configuration flag: “{}”", source, key);
-        }
-    }
 }
 
 /// Generate a dump of the settings
@@ -155,12 +123,12 @@ pub fn attribute_parser() -> String {
 
 /// Which directory to write the generated Coq files to?
 pub fn output_dir() -> Option<String> {
-    read_setting("output_dir")
+    read_optional_setting("output_dir")
 }
 
 /// Which file to read shims from?
 pub fn shim_file() -> Option<String> {
-    read_setting("shims")
+    read_optional_setting("shims")
 }
 
 /// Run the proof checker after generating the Coq code?

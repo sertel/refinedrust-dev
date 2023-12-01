@@ -5,27 +5,14 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-
-
 #![feature(box_patterns)]
 #![feature(rustc_private)]
 extern crate rustc_driver;
-extern crate rustc_errors;
 extern crate rustc_interface;
 extern crate rustc_middle;
 extern crate rustc_hir;
-extern crate rustc_index;
-extern crate rustc_abi;
-extern crate rustc_ast;
-extern crate rustc_span;
-extern crate rustc_trait_selection;
-extern crate rustc_borrowck;
-extern crate rustc_data_structures;
 extern crate rustc_session;
-extern crate rustc_attr;
-extern crate rustc_target;
-extern crate rustc_type_ir;
-extern crate polonius_engine;
+extern crate rustc_borrowck;
 
 use log::{debug, info};
 use rustc_hir::def_id::LocalDefId;
@@ -112,7 +99,9 @@ pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
 impl rustc_driver::Callbacks for RRCompilerCalls {
     fn config(&mut self, config : &mut Config) {
         assert!(config.override_queries.is_none());
-        config.override_queries = Some(override_queries);
+        if !rrconfig::no_verify() {
+            config.override_queries = Some(override_queries);
+        }
     }
 
     fn after_analysis<'tcx>(
@@ -143,8 +132,11 @@ fn main() {
         rustc_driver::main();
     }
 
+
     // otherwise, initialize our loggers
     env_logger::init();
+
+    info!("Getting output dir: {:?}", env::var("RR_OUTPUT_DIR"));
 
     // This environment variable will not be set when building dependencies.
     let is_primary_package = env::var("CARGO_PRIMARY_PACKAGE").is_ok();
@@ -201,42 +193,44 @@ fn main() {
             println!("RefinedRust version: {}", get_rr_version_info());
         }
 
-        rustc_args.push("-Zalways-encode-mir".to_owned());
-        rustc_args.push("-Zpolonius".to_owned());
-
         // TODO figure out how we can do this such that also normal builds work
         //rustc_args.push("-Zcrate-attr=feature(stmt_expr_attributes)".to_owned());
         //rustc_args.push("-Zcrate-attr=feature(custom_inner_attributes)".to_owned());
         //rustc_args.push("-Zcrate-attr=feature(register_tool)".to_owned());
         //rustc_args.push("-Zcrate-attr=register_tool(rr)".to_owned());
 
-        if rrconfig::check_overflows() {
-            // Some crates might have a `overflow-checks = false` in their `Cargo.toml` to
-            // disable integer overflow checks, but we want to override that.
-            rustc_args.push("-Coverflow-checks=on".to_owned());
-        }
+        if !rrconfig::no_verify() {
+            rustc_args.push("-Zalways-encode-mir".to_owned());
+            rustc_args.push("-Zpolonius".to_owned());
 
-        if rrconfig::dump_debug_info() {
-            rustc_args.push(format!(
-                "-Zdump-mir-dir={}",
-                rrconfig::log_dir()
-                    .join("mir")
-                    .to_str()
-                    .expect("failed to configure dump-mir-dir")
-            ));
-            rustc_args.push("-Zdump-mir=all".to_owned());
-            rustc_args.push("-Zdump-mir-graphviz".to_owned());
-            rustc_args.push("-Zidentify-regions=yes".to_owned());
-        }
-        if rrconfig::dump_borrowck_info() {
-            rustc_args.push("-Znll-facts=yes".to_string());
-            rustc_args.push(format!(
-                "-Znll-facts-dir={}",
-                rrconfig::log_dir()
-                    .join("nll-facts")
-                    .to_str()
-                    .expect("failed to configure nll-facts-dir")
-            ));
+            if rrconfig::check_overflows() {
+                // Some crates might have a `overflow-checks = false` in their `Cargo.toml` to
+                // disable integer overflow checks, but we want to override that.
+                rustc_args.push("-Coverflow-checks=on".to_owned());
+            }
+
+            if rrconfig::dump_debug_info() {
+                rustc_args.push(format!(
+                    "-Zdump-mir-dir={}",
+                    rrconfig::log_dir()
+                        .join("mir")
+                        .to_str()
+                        .expect("failed to configure dump-mir-dir")
+                ));
+                rustc_args.push("-Zdump-mir=all".to_owned());
+                rustc_args.push("-Zdump-mir-graphviz".to_owned());
+                rustc_args.push("-Zidentify-regions=yes".to_owned());
+            }
+            if rrconfig::dump_borrowck_info() {
+                rustc_args.push("-Znll-facts=yes".to_string());
+                rustc_args.push(format!(
+                    "-Znll-facts-dir={}",
+                    rrconfig::log_dir()
+                        .join("nll-facts")
+                        .to_str()
+                        .expect("failed to configure nll-facts-dir")
+                ));
+            }
         }
 
         let mut callbacks = RRCompilerCalls {};

@@ -151,19 +151,20 @@ impl<'tcx> Environment<'tcx> {
         self.tcx.sess.has_errors().is_some()
     }
 
-    /// Get ids of Rust procedures (functions & closures).
-    pub fn get_annotated_procedures(&self) -> Vec<LocalDefId> {
+    /// Get ids of Rust procedures.
+    pub fn get_procedures(&self) -> Vec<LocalDefId> {
         let tcx = self.tcx;
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
+        visitor.get_annotated_procedures()
+    }
 
+    /// Get ids of Rust closures.
+    pub fn get_closures(&self) -> Vec<LocalDefId> {
+        let tcx = self.tcx;
         let mut cl_visitor = CollectClosureDefsVisitor::new(self);
         tcx.hir().visit_all_item_likes_in_crate(&mut cl_visitor);
-
-        let mut result: Vec<_> = visitor.get_annotated_procedures();
-        result.extend(cl_visitor.get_closure_defs());
-
-        result
+        cl_visitor.get_closure_defs()
     }
 
     /// Find whether the procedure has a particular `[tool]::<name>` attribute.

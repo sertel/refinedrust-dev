@@ -7,7 +7,6 @@
 
 //use prusti_utils::{config, launch};
 use std::{env, path::PathBuf, process::Command};
-use std::fs as fs;
 use fs_extra::dir::CopyOptions;
 
 use rrconfig::launch as launch;
@@ -70,7 +69,7 @@ where
     if exit_status.success() {
         // Optionally, copy to the old output dir
         if let Some(output_dir) = old_output_dir {
-            let output_path = std::path::PathBuf::from(&output_dir);
+            //let output_path = std::path::PathBuf::from(&output_dir);
             //if let Err(_) = fs::read_dir(&output_path) {
                 //fs::create_dir_all(output_path).unwrap();
             //}

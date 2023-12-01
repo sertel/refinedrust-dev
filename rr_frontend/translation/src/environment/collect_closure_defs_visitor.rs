@@ -43,7 +43,7 @@ impl<'env, 'tcx> Visitor<'tcx> for CollectClosureDefsVisitor<'env, 'tcx> {
         }) = expr.kind {
             let _tcx = self.env.tcx();
             let item_def_path = self.env.get_item_def_path(local_def_id.to_def_id());
-            trace!("Add {} to result", item_def_path);
+            trace!("Add closure {} to result", item_def_path);
             self.result.push(*local_def_id);
         }
 

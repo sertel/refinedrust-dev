@@ -434,6 +434,32 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     }
 }
 
+pub fn get_filtered_functions<'tcx>(env: &Environment<'tcx>) -> Vec<LocalDefId> {
+    let mut functions = env.get_procedures();
+    let closures = env.get_closures();
+    info!("Found {} function(s) and {} closure(s)", functions.len(), closures.len());
+    functions.extend(closures);
+
+    let functions_with_spec: Vec<_> = functions.into_iter().filter(|id| {
+        if env.has_any_tool_attribute(id.to_def_id()) {
+            if env.has_tool_attribute(id.to_def_id(), "skip") {
+                warn!("Function {:?} will be skipped due to a rr::skip annotation", id);
+                false
+            }
+            else {
+                true
+            }
+        } else {
+            false
+        }
+    }).collect();
+
+    for f in functions_with_spec.iter() {
+        info!("Function {:?} has a spec and will be processed", f);
+    }
+    functions_with_spec
+}
+
 
 /// Translate a crate, creating a `VerificationCtxt` in the process.
 pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F)
@@ -442,8 +468,7 @@ pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F)
     let env = Environment::new(tcx);
     let env: &Environment = &*Box::leak(Box::new(env));
 
-    let functions = env.get_annotated_procedures();
-    info!("Found {} function(s)", functions.len());
+    let functions = get_filtered_functions(&env);
 
     let struct_arena = Arena::new();
     let enum_arena = Arena::new();

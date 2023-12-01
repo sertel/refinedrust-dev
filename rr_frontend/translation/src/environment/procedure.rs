@@ -42,11 +42,11 @@ impl<'tcx> Procedure<'tcx> {
         let reachable_basic_blocks = build_reachable_basic_blocks(&mir, &real_edges);
         //let nonspec_basic_blocks = build_nonspec_basic_blocks(&mir, &real_edges, &tcx);
         let loop_info = loops::ProcedureLoops::new(&mir, &real_edges);
-    
+
         let ty = tcx.type_of(proc_def_id).instantiate_identity();
         let ty_params = match ty.kind() {
             ty::TyKind::FnDef(_, params) => params,
-            _ => panic!(""),
+            _ => panic!("Procedure::new called on a procedure whose type is not TyKind::FnDef!"),
         };
 
         Self {
