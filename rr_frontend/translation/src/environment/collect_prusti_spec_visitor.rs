@@ -14,7 +14,10 @@ use log::trace;
 pub struct CollectPrustiSpecVisitor<'a, 'tcx: 'a> {
     env: &'a Environment<'tcx>,
     tcx: TyCtxt<'tcx>,
-    result: Vec<LocalDefId>,
+    functions: Vec<LocalDefId>,
+    modules: Vec<LocalDefId>,
+    statics: Vec<LocalDefId>,
+    consts: Vec<LocalDefId>,
 }
 
 impl<'a, 'tcx> CollectPrustiSpecVisitor<'a, 'tcx> {
@@ -22,11 +25,15 @@ impl<'a, 'tcx> CollectPrustiSpecVisitor<'a, 'tcx> {
         CollectPrustiSpecVisitor {
             env,
             tcx: env.tcx(),
-            result: Vec::new(),
+            functions: Vec::new(),
+            modules: Vec::new(),
+            statics: Vec::new(),
+            consts: Vec::new(),
         }
     }
-    pub fn get_annotated_procedures(self) -> Vec<LocalDefId> {
-        self.result
+
+    pub fn get_results(self) -> (Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>) {
+        (self.functions, self.modules, self.statics, self.consts)
     }
 
     pub fn run(&mut self) {
@@ -53,11 +60,26 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
         if let hir::ItemKind::Fn(..) = item.kind {
             let def_id = item.hir_id().owner.def_id;
             let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
-            trace!("Add item {} to result", item_def_path);
-            self.result.push(def_id);
+            trace!("Add fn item {} to result", item_def_path);
+            self.functions.push(def_id);
         }
         else if let hir::ItemKind::Const(_, _, _) = item.kind {
-
+            let def_id = item.hir_id().owner.def_id;
+            let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
+            trace!("Add const {} to result", item_def_path);
+            self.consts.push(def_id);
+        }
+        else if let hir::ItemKind::Static(..) = item.kind {
+            let def_id = item.hir_id().owner.def_id;
+            let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
+            trace!("Add static {} to result", item_def_path);
+            self.statics.push(def_id);
+        }
+        else if let hir::ItemKind::Mod(..) = item.kind {
+            let def_id = item.hir_id().owner.def_id;
+            let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
+            trace!("Add module {} to result", item_def_path);
+            self.modules.push(def_id);
         }
     }
 
@@ -78,8 +100,8 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
         let def_id = trait_item.hir_id().owner.def_id;
 
         let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
-        trace!("Add trait-item {} to result", item_def_path);
-        self.result.push(def_id);
+        trace!("Add trait-fn-item {} to result", item_def_path);
+        self.functions.push(def_id);
     }
 
     fn visit_impl_item(&mut self, impl_item: &hir::ImplItem) {
@@ -95,8 +117,8 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
         let def_id = impl_item.hir_id().owner.def_id;
 
         let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
-        trace!("Add impl-item {} to result", item_def_path);
-        self.result.push(def_id);
+        trace!("Add impl-fn-item {} to result", item_def_path);
+        self.functions.push(def_id);
     }
 
     fn visit_foreign_item(&mut self, _foreign_item: &hir::ForeignItem) {
