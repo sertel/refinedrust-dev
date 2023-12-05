@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use log::info;
+use log::{info, warn};
 
 use rustc_ast::ast::Attribute;
 use rustc_hir::def_id::DefId;
@@ -1129,13 +1129,27 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     ConstantKind::Val(_, ty) => {
                         match ty.kind() {
                             TyKind::FnDef(did, _) => {
-                                let panic_id1 = crate::utils::try_resolve_did(self.env.tcx(), &["std", "panicking", "begin_panic"]).unwrap();
-                                let panic_id2 = crate::utils::try_resolve_did(self.env.tcx(), &["core", "panicking", "panic"]).unwrap();
-                                Ok(panic_id1 == *did || panic_id2 == *did)
+                                if let Some(panic_id1) = crate::utils::try_resolve_did(self.env.tcx(), &["std", "panicking", "begin_panic"]) {
+                                    if panic_id1 == *did {
+                                        return Ok(true);
+                                    }
+                                }
+                                else {
+                                    warn!("Failed to determine DefId of std::panicking::begin_panic");
+                                }
+
+                                if let Some(panic_id2) = crate::utils::try_resolve_did(self.env.tcx(), &["core", "panicking", "panic"]) {
+                                    if panic_id2 == *did {
+                                        return Ok(true);
+                                    }
+                                }
+                                else {
+                                    warn!("Failed to determine DefId of core::panicking::panic");
+                                }
+                                Ok(false)
                             },
                             _ => Ok(false),
                         }
-
                     },
                     _ => Ok(false)
                 }

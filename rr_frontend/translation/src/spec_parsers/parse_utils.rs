@@ -163,6 +163,32 @@ impl<'tcx, 'a> Parse<ParseMeta<'a>> for RRParams {
     }
 }
 
+pub(crate) struct CoqPath(specs::CoqPath);
+impl Into<specs::CoqPath> for CoqPath {
+    fn into(self) -> specs::CoqPath {
+        self.0
+    }
+}
+
+/// Parse a CoqPath.
+impl<'a, U> Parse<U> for CoqPath {
+    fn parse(input: ParseStream, meta: &U) -> ParseResult<Self> {
+        let path_or_module: parse::LitStr = input.parse(meta)?;
+        let path_or_module = path_or_module.value();
+
+        if parse::Comma::peek(input) {
+            input.parse::<_, parse::MToken![,]>(meta)?;
+            let module: parse::LitStr = input.parse(meta)?;
+            let module = module.value();
+
+            Ok(CoqPath(specs::CoqPath { path: Some(path_or_module.to_string()), module }))
+        }
+        else {
+            Ok(CoqPath(specs::CoqPath {path: None, module: path_or_module.to_string()}))
+        }
+    }
+}
+
 
 pub type ParseMeta<'a> = (&'a [specs::TyParamNames], &'a [(Option<String>, specs::Lft)]);
 

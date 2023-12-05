@@ -12,6 +12,24 @@ use std::fmt as fmt;
 use std::fmt::Write;
 use std::cell::RefCell;
 
+/// Represents a Coq path of the form
+/// `From A.B.C Import D`
+#[derive(Hash, Clone, Debug, Eq, PartialEq)]
+pub struct CoqPath {
+    pub path: Option<String>,
+    pub module: String,
+}
+
+impl fmt::Display for CoqPath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.path {
+            None => write!(f, "Require Import {}.\n", self.module),
+            Some(ref path) => write!(f, "From {} Require Import {}.\n", path, self.module),
+        }
+    }
+}
+
+
 /// Represents an application of a term to an rhs.
 /// (commonly used for layouts and instantiating them with generics).
 #[derive(Hash, Clone, Debug, Eq, PartialEq)]
@@ -712,7 +730,7 @@ impl<'def> Type<'def> {
             Self::BoxType(box ty) => ty.get_ty_lfts(s),
             Self::Literal(_, _, t, _, meta) => {
                 // TODO: use meta
-                s.insert(format!("ty_lfts {t}")); 
+                s.insert(format!("ty_lfts {t}"));
             },
             Self::Uninit(_) => (),
             Self::Struct(su, raw) => {
@@ -722,7 +740,7 @@ impl<'def> Type<'def> {
                 su.get_ty_lfts(s)
             },
             Self::Unit => (),
-            Self::Never => (), 
+            Self::Never => (),
             Self::Var(i) => {
                 s.insert("RAW".to_string());
             },
@@ -743,7 +761,7 @@ impl<'def> Type<'def> {
             Self::BoxType(box ty) => ty.get_ty_wf_elctx(s),
             Self::Literal(_, _, t, _, meta) => {
                 // TODO: use meta
-                s.insert(format!("ty_wf_elctx {t}")); 
+                s.insert(format!("ty_wf_elctx {t}"));
             },
             Self::Uninit(_) => (),
             Self::Struct(su, raw) => {
@@ -753,7 +771,7 @@ impl<'def> Type<'def> {
                 su.get_ty_wf_elctx(s)
             },
             Self::Unit => (),
-            Self::Never => (), 
+            Self::Never => (),
             Self::Var(i) => {
                 s.insert("RAW".to_string());
             },
@@ -809,7 +827,7 @@ pub struct TyOwnSpec {
     /// type, with generics already fully substituted
     ty: String,
     /// literal lifetimes and types escaped in the annotation parser
-    annot_meta: TypeAnnotMeta, 
+    annot_meta: TypeAnnotMeta,
 }
 
 impl TyOwnSpec {
@@ -1571,20 +1589,20 @@ impl<'def> AbstractStructUse<'def> {
     pub fn get_rfn_type(&self, is_raw: TypeIsRaw) -> String {
         if let Some(def) = self.def.as_ref() {
             let rfn_instantiations: Vec<String> = self.ty_params.iter().map(|ty| ty.get_rfn_type(&[]).to_string()).collect();
-            match is_raw {
-                TypeIsRaw::Yes => {
-                    let rfn_type = def.borrow().as_ref().unwrap().plain_rt_def_name().to_string();
-                    let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
-                    applied.to_string()
-                },
-                TypeIsRaw::No => {
-                    let def =  def.borrow();
-                    let def = def.as_ref();
-                    let inv = &def.unwrap().invariant.as_ref().unwrap();
-                    let rfn_type = inv.rt_def_name();
-                    let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
-                    applied.to_string()
-                },
+
+            let def =  def.borrow();
+            let def = def.as_ref();
+            let inv = &def.unwrap().invariant.as_ref();
+
+            if is_raw == TypeIsRaw::Yes || inv.is_none() {
+                let rfn_type = def.unwrap().plain_rt_def_name().to_string();
+                let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
+                applied.to_string()
+            } else {
+                let inv = inv.unwrap();
+                let rfn_type = inv.rt_def_name();
+                let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
+                applied.to_string()
             }
         }
         else {
@@ -1686,7 +1704,7 @@ pub struct EnumSpec {
     /// the refinement type of the enum
     pub rfn_type: CoqType,
     /// the refinement patterns for each of the variants
-    /// eg. for options: 
+    /// eg. for options:
     /// - (None, [], -[])
     /// - (Some, [x], -[x])
     pub variant_patterns: Vec<(String, Vec<String>, String)>,
@@ -1866,7 +1884,7 @@ impl<'def> AbstractEnum<'def> {
 
     fn generate_lfts(&self) -> String {
         // TODO: probably should build this up modularly over the fields
-        
+
         let v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_lfts {})", p.ty_name)).collect();
         format!("[] ++ {}", v.join(" ++ "))
     }

@@ -153,10 +153,38 @@ impl<'tcx> Environment<'tcx> {
 
     /// Get ids of Rust procedures.
     pub fn get_procedures(&self) -> Vec<LocalDefId> {
-        let tcx = self.tcx;
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
-        visitor.get_annotated_procedures()
+        // TODO: cache results
+        let (functions, _, _, _) = visitor.get_results();
+        functions
+    }
+
+    /// Get ids of Rust statics.
+    pub fn get_statics(&self) -> Vec<LocalDefId> {
+        let mut visitor = CollectPrustiSpecVisitor::new(self);
+        visitor.run();
+        // TODO: cache results
+        let (_, _, statics, _) = visitor.get_results();
+        statics
+    }
+
+    /// Get ids of Rust consts.
+    pub fn get_consts(&self) -> Vec<LocalDefId> {
+        let mut visitor = CollectPrustiSpecVisitor::new(self);
+        visitor.run();
+        // TODO: cache results
+        let (_, _, _, consts) = visitor.get_results();
+        consts
+    }
+    
+    /// Get ids of Rust modules.
+    pub fn get_modules(&self) -> Vec<LocalDefId> {
+        let mut visitor = CollectPrustiSpecVisitor::new(self);
+        visitor.run();
+        // TODO: cache results
+        let (_, modules, _, _) = visitor.get_results();
+        modules
     }
 
     /// Get ids of Rust closures.
