@@ -1758,7 +1758,7 @@ pub struct EnumSpec {
 #[derive(Clone, Debug, PartialEq)]
 pub struct AbstractEnum<'def> {
     /// variants of this enum: name, variant, a mask describing which of the type parameters it uses, and the discriminant
-    pub(crate) variants: Vec<(String, AbstractStructRef<'def>, Vec<bool>, isize)>,
+    pub(crate) variants: Vec<(String, AbstractStructRef<'def>, Vec<bool>, i128)>,
 
     /// specification
     spec: EnumSpec,
@@ -1797,7 +1797,7 @@ impl<'def> AbstractEnum<'def> {
         &self.plain_ty_name
     }
 
-    pub fn get_variant(&self, i: usize) -> Option<&(String, AbstractStructRef<'def>, Vec<bool>, isize)> {
+    pub fn get_variant(&self, i: usize) -> Option<&(String, AbstractStructRef<'def>, Vec<bool>, i128)> {
         self.variants.get(i)
     }
 
@@ -2067,7 +2067,7 @@ pub type AbstractEnumRef<'def> = &'def RefCell<Option<AbstractEnum<'def>>>;
 /// A builder for plain enums without fancy invariants etc.
 pub struct EnumBuilder<'def> {
     /// the variants
-    variants: Vec<(String, AbstractStructRef<'def>, Vec<bool>, isize)>,
+    variants: Vec<(String, AbstractStructRef<'def>, Vec<bool>, i128)>,
     /// the enum's name
     name: String,
     /// names for the type parameters (for the Coq definitions)
@@ -2117,7 +2117,7 @@ impl<'def> EnumBuilder<'def> {
     /// Append a variant to the struct def.
     /// `name` is also the Coq constructor of the refinement type we use.
     /// `used_params` is a mask describing which type parameters are used by this variant.
-    pub fn add_variant(&mut self, name: &str, variant: AbstractStructRef<'def>, used_params: Vec<bool>, discriminant: isize) {
+    pub fn add_variant(&mut self, name: &str, variant: AbstractStructRef<'def>, used_params: Vec<bool>, discriminant: i128) {
         self.variants.push((name.to_string(), variant, used_params, discriminant));
     }
 }

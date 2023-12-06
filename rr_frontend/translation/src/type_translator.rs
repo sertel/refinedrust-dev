@@ -696,35 +696,45 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         Ok((struct_def, invariant_spec))
     }
 
-    fn build_discriminant_map(&self, def: ty::AdtDef<'tcx>) -> Result<HashMap<String, isize>, TranslationError> {
-        let mut map: HashMap<String, isize> = HashMap::new();
+    /// Make a GlobalId for constants (use for discriminants).
+    fn make_global_id_for_discr<'a>(&self, did: DefId, env: &'a [ty::GenericArg<'tcx>]) -> rustc_middle::mir::interpret::GlobalId<'tcx> {
+        rustc_middle::mir::interpret::GlobalId {
+            instance: ty::Instance::new(did, self.env.tcx().mk_args(env)),
+            promoted: None
+        }
+    }
+
+    fn try_scalar_int_to_i128(s: rustc_middle::ty::ScalarInt) -> Option<i128> {
+        s.try_to_int(s.size()).ok()
+    }
+
+    /// Build a map from discriminant names to their value, if it fits in a i128.
+    fn build_discriminant_map(&self, def: ty::AdtDef<'tcx>) -> Result<HashMap<String, i128>, TranslationError> {
+        let mut map: HashMap<String, i128> = HashMap::new();
         let variants = def.variants();
 
-        let mut last_explicit_discr: isize = 0;
+        let mut last_explicit_discr: i128 = 0;
         for v in variants.iter() {
             let v: &ty::VariantDef = v;
+            let name = v.name.to_string();
             info!("Discriminant for {:?}: {:?}", v, v.discr);
             match v.discr {
                 ty::VariantDiscr::Explicit(did) => {
-                    let ty: ty::EarlyBinder<ty::Ty<'tcx>> = self.env.tcx().type_of(did);
-                    let did = did.expect_local();
-                    let hir = self.env.tcx().hir();
-                    let node = hir.get_by_def_id(did);
-                    match node {
-                        rustc_hir::Node::AnonConst(a) => {
-                            let bid = a.body;
-                            let body = hir.body(bid);
-                            //info!("Explcit discriminant: {:?} has body {:?}", did, body.value);
-                            // TODO: need something to evaluate that constant to an int.
-                            // Surely there must already be something somewhere in the compiler to do this?
-                        },
-                        _ => (),
-                    }
-                    return Err(TranslationError::UnsupportedFeature{description: "Explicit discriminants in enums are currently unsupported".to_string()});
+                    // we try to const-evaluate the discriminant
+                    let evaluated_discr = self.env.tcx().const_eval_global_id_for_typeck(ty::ParamEnv::empty(),
+                                                                   self.make_global_id_for_discr(did, &[]), None)
+                        .map_err(|err| TranslationError::FatalError(format!("Failed to const-evaluate discriminant: {:?}", err)))?;
+                    let evaluated_discr = evaluated_discr.ok_or(TranslationError::FatalError(format!("Failed to const-evaluate discriminant")))?;
+
+                    let evaluated_int = evaluated_discr.try_to_scalar_int().unwrap();
+                    let evaluated_int = Self::try_scalar_int_to_i128(evaluated_int).ok_or(TranslationError::FatalError(format!("Enum discriminant is too large")))?;
+                    info!("const-evaluated enum discriminant: {:?}", evaluated_int);
+
+                    last_explicit_discr = evaluated_int;
+                    map.insert(name, evaluated_int);
                 },
                 ty::VariantDiscr::Relative(offset) => {
-                    let idx: isize = last_explicit_discr + (offset as isize);
-                    let name = v.name.to_string();
+                    let idx: i128 = last_explicit_discr + (offset as i128);
                     map.insert(name, idx);
                 },
             }

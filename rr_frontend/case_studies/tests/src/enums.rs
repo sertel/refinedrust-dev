@@ -1,4 +1,4 @@
-#![rr::import("refinedrust.extra_proofs.tests.enums", "enums")]
+#![rr::import("refinedrust.extra_proofs.tests.enums", "typing")]
 
 enum Option<T> {
     None,
@@ -15,12 +15,12 @@ impl<T> Option<T> {
     }
 }
 
-//#[repr(usize)]
+#[repr(u8)]
 #[rr::refined_by("sizes")]
 enum sizes {
     #[rr::pattern("Sz1")]
     #[rr::variant("()")]
-    Sz1,
+    Sz1 = 2,
     #[rr::pattern("Sz2")]
     #[rr::variant("()")]
     Sz2,
