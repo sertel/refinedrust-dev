@@ -186,9 +186,9 @@ Section test.
 
   (** Struct tests *)
   Definition s1_spec :=
-    mk_sls "s1_T" [("s1_f1", T_st); ("s1_f2", IntSynType i32)].
+    mk_sls "s1_T" [("s1_f1", T_st); ("s1_f2", IntSynType i32)] StructReprRust.
   Definition s2_spec :=
-    mk_sls "s2_T" [("s2_f1", PtrSynType); ("s2_f2", s1_spec : syn_type)].
+    mk_sls "s2_T" [("s2_f1", PtrSynType); ("s2_f2", s1_spec : syn_type)] StructReprRust.
 
   Lemma inv_test' s2_ly :
     use_struct_layout_alg s2_spec = Some s2_ly →
@@ -247,9 +247,9 @@ Section test.
 
   (** Union tests *)
   Definition u1_spec :=
-    mk_uls "u1_T" [("u1_v1", T_st); ("u1_v2", IntSynType i32)].
+    mk_uls "u1_T" [("u1_v1", T_st); ("u1_v2", IntSynType i32)] UnionReprRust.
   Definition u2_spec :=
-    mk_uls "u2_T" [("u2_v1", PtrSynType); ("u2_v2", u1_spec : syn_type)].
+    mk_uls "u2_T" [("u2_v1", PtrSynType); ("u2_v2", u1_spec : syn_type)] UnionReprRust.
 
   Lemma inv_test' u2_ly :
     use_union_layout_alg u2_spec = Some u2_ly →
@@ -290,12 +290,12 @@ Section test.
   Abort.
 
   (** Enums *)
-  Definition std_option_Option_None_sls  : struct_layout_spec := mk_sls "std_option_Option_None" [].
+  Definition std_option_Option_None_sls  : struct_layout_spec := mk_sls "std_option_Option_None" [] StructReprRust.
   Definition std_option_Option_Some_sls : struct_layout_spec := mk_sls "std_option_Option_Some" [
-    ("0", T_st)].
+    ("0", T_st)] StructReprRust.
   Program Definition std_option_Option_els : enum_layout_spec := mk_els "std_option_Option" ISize [
     ("None", std_option_Option_None_sls  : syn_type);
-    ("Some", std_option_Option_Some_sls : syn_type)] [("None", 0); ("Some", 1)] _ _ _ _.
+    ("Some", std_option_Option_Some_sls : syn_type)] EnumReprRust [("None", 0); ("Some", 1)] _ _ _ _.
   Next Obligation. repeat first [econstructor | set_solver]. Qed.
   Next Obligation. done. Qed.
   Next Obligation. repeat first [econstructor | set_solver]. Qed.
@@ -742,14 +742,14 @@ Section test.
     Definition RawVec_sls (T_st : syn_type) : struct_layout_spec := mk_sls "RawVec" [
       ("ptr", PtrSynType);
       ("cap", IntSynType USize);
-      ("_marker", UnitSynType)].
+      ("_marker", UnitSynType)] StructReprRust.
   End RawVec_sls.
   Section Vec_sls.
     Context `{!typeGS Σ}.
 
     Definition Vec_sls (T_st : syn_type) : struct_layout_spec := mk_sls "Vec" [
       ("buf", (syn_type_of_sls ((RawVec_sls (T_st)))));
-      ("len", IntSynType USize)].
+      ("len", IntSynType USize)] StructReprRust.
   End Vec_sls.
   Section RawVec_ty.
     Context `{!typeGS Σ}.

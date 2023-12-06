@@ -1452,11 +1452,11 @@ Section solve_layout_alg_tac.
       use_layout_alg field_spec = Some field_ly ∧ field_name = field_name2 ∧ res = (field_name2, field_ly).
 
   (* structs *)
-  Lemma syn_type_has_layout_struct_tac name fields fields' ly ly' :
+  Lemma syn_type_has_layout_struct_tac name fields fields' repr ly ly' :
     Forall2 syn_type_has_layout_multi_pred fields fields' →
-    struct_layout_alg name fields' = Some ly' →
+    struct_layout_alg name fields' repr = Some ly' →
     ly = layout_of ly' →
-    syn_type_has_layout (StructSynType name fields) ly.
+    syn_type_has_layout (StructSynType name fields repr) ly.
   Proof.
     intros Ha Hb ->.
     eapply syn_type_has_layout_struct; last done.
@@ -1465,7 +1465,7 @@ Section solve_layout_alg_tac.
   Qed.
   Lemma struct_layout_spec_has_layout_tac (sls : struct_layout_spec) fields' (sl sl' : struct_layout) :
     Forall2 syn_type_has_layout_multi_pred sls.(sls_fields) fields' →
-    struct_layout_alg sls.(sls_name) fields' = Some sl' →
+    struct_layout_alg sls.(sls_name) fields' sls.(sls_repr) = Some sl' →
     sl = sl' →
     struct_layout_spec_has_layout sls sl.
   Proof.
@@ -1479,26 +1479,30 @@ Section solve_layout_alg_tac.
   Proof. done. Qed.
 
   (* enums *)
-  Lemma syn_type_has_layout_enum_tac name variants variants' (it : IntType) ly ul sl :
+  Lemma syn_type_has_layout_enum_tac name variants variants' (it : IntType) ly ul sl repr struct_repr union_repr :
     Forall2 syn_type_has_layout_multi_pred variants variants' →
-    union_layout_alg name variants' = Some ul →
-    struct_layout_alg name [("discriminant", it_layout it); ("data", ul : layout)] = Some sl →
+    union_repr = union_repr_of_enum_repr repr →
+    struct_repr = struct_repr_of_enum_repr repr →
+    union_layout_alg name variants' union_repr = Some ul →
+    struct_layout_alg name [("discriminant", it_layout it); ("data", ul : layout)] struct_repr = Some sl →
     ly = layout_of sl →
-    syn_type_has_layout (EnumSynType name it variants) ly.
+    syn_type_has_layout (EnumSynType name it variants repr) ly.
   Proof.
-    intros Ha Hb Hc ->.
+    intros Ha -> -> Hb Hc ->.
     eapply syn_type_has_layout_enum; [ | done..].
     eapply Forall2_impl; first apply Ha.
     intros [] [] (? & ? & ? & -> & [= -> ->]). eauto.
   Qed.
-  Lemma enum_layout_spec_has_layout_tac (els : enum_layout_spec) variants' (ul : union_layout) (sl sl' : struct_layout) :
+  Lemma enum_layout_spec_has_layout_tac (els : enum_layout_spec) variants' (ul : union_layout) (sl sl' : struct_layout) struct_repr union_repr :
     Forall2 syn_type_has_layout_multi_pred els.(els_variants) variants' →
-    union_layout_alg els.(els_name) variants' = Some ul →
-    struct_layout_alg els.(els_name) [("discriminant", it_layout els.(els_tag_it)); ("data", ul : layout)] = Some sl' →
+    union_repr = union_repr_of_enum_repr els.(els_repr) →
+    struct_repr = struct_repr_of_enum_repr els.(els_repr) →
+    union_layout_alg els.(els_name) variants' union_repr = Some ul →
+    struct_layout_alg els.(els_name) [("discriminant", it_layout els.(els_tag_it)); ("data", ul : layout)] struct_repr = Some sl' →
     sl = sl' →
     enum_layout_spec_has_layout els sl.
   Proof.
-    intros Ha Hb Hc ->.
+    intros Ha -> -> Hb Hc ->.
     eapply use_enum_layout_alg_Some; [ | done..].
     eapply Forall2_impl; first apply Ha.
     intros [] [] (? & ? & ? & -> & [= -> ->]). eauto.
@@ -1508,11 +1512,11 @@ Section solve_layout_alg_tac.
   Proof. done. Qed.
 
   (* unions *)
-  Lemma syn_type_has_layout_union_tac name variants variants' ly ul :
+  Lemma syn_type_has_layout_union_tac name variants variants' ly ul repr :
     Forall2 syn_type_has_layout_multi_pred variants variants' →
-    union_layout_alg name variants' = Some ul →
+    union_layout_alg name variants' repr = Some ul →
     ly = ul_layout ul →
-    syn_type_has_layout (UnionSynType name variants) ly.
+    syn_type_has_layout (UnionSynType name variants repr) ly.
   Proof.
     intros Ha Hb ->.
     eapply syn_type_has_layout_union; [ | done..].
@@ -1521,7 +1525,7 @@ Section solve_layout_alg_tac.
   Qed.
   Lemma union_layout_spec_has_layout_tac (uls : union_layout_spec) variants' (ul ul' : union_layout) :
     Forall2 syn_type_has_layout_multi_pred uls.(uls_variants) variants' →
-    union_layout_alg uls.(uls_name) variants' = Some ul' →
+    union_layout_alg uls.(uls_name) variants' uls.(uls_repr) = Some ul' →
     ul = ul' →
     union_layout_spec_has_layout uls ul.
   Proof.
@@ -1811,8 +1815,8 @@ Ltac solve_layout_alg ::=
   | |- syn_type_has_layout FnPtrSynType ?ly =>
       refine (syn_type_has_layout_fnptr _ _);
       [solve_layout_eq ]
-  | |- syn_type_has_layout (StructSynType ?name ?fields) ?ly =>
-      refine (syn_type_has_layout_struct_tac name fields _ _ _  _ _ _);
+  | |- syn_type_has_layout (StructSynType ?name ?fields ?repr) ?ly =>
+      refine (syn_type_has_layout_struct_tac name fields _ repr _ _  _ _ _);
       [solve_layout_alg_forall | eassumption | solve_layout_eq]
   | |- struct_layout_spec_has_layout ?sls ?sl =>
       refine (struct_layout_spec_has_layout_tac sls _ sl _ _ _ _);
@@ -1838,14 +1842,14 @@ Ltac solve_layout_alg ::=
           refine (syn_type_has_layout_untyped ly ly' _ _ _ _);
             [solve_layout_eq | solve_layout_wf | solve_layout_size; shelve | solve_ly_align_ib ]
       end
-  | |- syn_type_has_layout (EnumSynType ?name ?it ?variants) ?ly =>
-      refine (syn_type_has_layout_enum_tac name variants _ it _ _ _ _ _ _ _);
-      [solve_layout_alg_forall | eassumption | eassumption | solve_layout_eq]
+  | |- syn_type_has_layout (EnumSynType ?name ?it ?variants ?repr) ?ly =>
+      refine (syn_type_has_layout_enum_tac name variants _ it _ _ _ _ _ _ _ _ _ _ _ _ );
+      [solve_layout_alg_forall | reflexivity | reflexivity | eassumption | eassumption | solve_layout_eq]
   | |- enum_layout_spec_has_layout ?els ?el =>
-      refine (enum_layout_spec_has_layout_tac els _ _ _ _ _ _ _ _);
-      [solve_layout_alg_forall | eassumption | eassumption | solve_layout_eq]
-  | |- syn_type_has_layout (UnionSynType ?name ?variants) ?ly =>
-      refine (syn_type_has_layout_union_tac name variants _ _ _ _ _ _);
+      refine (enum_layout_spec_has_layout_tac els _ _ _ _ _ _ _ _ _ _ _ _ );
+      [solve_layout_alg_forall | reflexivity | reflexivity | eassumption | eassumption | solve_layout_eq]
+  | |- syn_type_has_layout (UnionSynType ?name ?variants ?repr) ?ly =>
+      refine (syn_type_has_layout_union_tac name variants _ _ _ _ _ _ _ );
       [solve_layout_alg_forall | eassumption | solve_layout_eq]
   | |- union_layout_spec_has_layout ?uls ?ul =>
       refine (union_layout_spec_has_layout_tac uls _ _ _ _ _ _);
@@ -1993,8 +1997,8 @@ Ltac solve_op_alg ::=
   | |- use_op_alg FnPtrSynType = Some ?ot =>
       refine (use_op_alg_fnptr _ _);
       [solve_ot_eq ]
-  | |- use_op_alg (StructSynType ?name ?fields) = Some ?ot =>
-      refine (use_op_alg_struct name fields _ _ _  _ _ _);
+  | |- use_op_alg (StructSynType ?name ?fields ?repr) = Some ?ot =>
+      refine (use_op_alg_struct name fields _ _ _ _  _ _ _);
       [solve_op_alg_forall | solve_layout_alg | solve_ot_eq ]
   | |- use_op_alg UnitSynType = Some ?ot =>
       refine (use_op_alg_unit _ _);
@@ -2008,11 +2012,11 @@ Ltac solve_op_alg ::=
       simplify_layout ly;
       refine (use_op_alg_untyped _ ot _);
       [solve_ot_eq ]
-  | |- use_op_alg (EnumSynType ?name ?it ?fields) = Some ?ot =>
-        refine (use_op_alg_enum _ _ _ _ _ _ _);
+  | |- use_op_alg (EnumSynType ?name ?it ?fields ?repr) = Some ?ot =>
+        refine (use_op_alg_enum _ _ _ _ _ _ _ _);
         [solve_layout_alg | solve_ot_eq]
-  | |- use_op_alg (UnionSynType ?name ?fields) = Some ?ot =>
-        refine (use_op_alg_union _ _ _ _ _ _);
+  | |- use_op_alg (UnionSynType ?name ?fields ?repr) = Some ?ot =>
+        refine (use_op_alg_union _ _ _ _ _ _ _);
         [solve_layout_alg | solve_ot_eq]
   | |- use_op_alg (ty_syn_type _) = Some ?ot =>
       refine (use_op_alg_tyvar_tac (ty_syn_type _) ot _ _);
@@ -2251,7 +2255,7 @@ Ltac inv_multi_fields Hrec :=
 From iris.proofmode Require Import string_ident.
 Tactic Notation "rename_layouts" "in" hyp(H) "with" tactic(cont) :=
   match type of H with
-  | struct_layout_alg ?name ?fields = Some ?sl =>
+  | struct_layout_alg ?name ?fields ?repr = Some ?sl =>
       let sl_name := eval cbv in (append name "_sl") in
       let fields_name := eval cbv in (append name "_fields") in
       let H_name := eval cbv in (append name "_salg") in
@@ -2262,7 +2266,7 @@ Tactic Notation "rename_layouts" "in" hyp(H) "with" tactic(cont) :=
       apply struct_layout_alg_has_fields in H as fields_n;
       rename H into H_n;
       cont H_n)))
-  | union_layout_alg ?name ?variants = Some ?ul =>
+  | union_layout_alg ?name ?variants ?repr = Some ?ul =>
       let ul_name := eval cbv in (append name "_ul") in
       let variants_name := eval cbv in (append name "_variants") in
       let H_name := eval cbv in (append name "_ualg") in
@@ -2294,9 +2298,14 @@ Ltac is_duplicate H :=
       | H2 : NO_ENRICH (use_layout_alg st = Some _) |- _ =>
           idtac
       end
-  | struct_layout_alg ?name ?fields = Some _ =>
+  | struct_layout_alg ?name ?fields ?repr = Some _ =>
       match goal with
-      | H2 : NO_ENRICH (struct_layout_alg name fields = Some _) |- _ =>
+      | H2 : NO_ENRICH (struct_layout_alg name fields repr = Some _) |- _ =>
+          idtac
+      end
+  | union_layout_alg ?name ?variants ?repr = Some _ =>
+      match goal with
+      | H2 : NO_ENRICH (union_layout_alg name variants repr = Some _) |- _ =>
           idtac
       end
   end.
@@ -2313,18 +2322,18 @@ Section handle_duplicate.
     intros ??. by eapply syn_type_has_layout_inj.
   Qed.
 
-  Lemma handle_duplicate_struct_layout_alg_tac name fields sl0 sl1 :
-    struct_layout_alg name fields = Some sl0 →
-    NO_ENRICH (struct_layout_alg name fields = Some sl1) →
+  Lemma handle_duplicate_struct_layout_alg_tac name fields repr sl0 sl1 :
+    struct_layout_alg name fields repr = Some sl0 →
+    NO_ENRICH (struct_layout_alg name fields repr = Some sl1) →
     sl0 = sl1.
   Proof.
     rewrite /NO_ENRICH.
     intros ??. by simplify_eq.
   Qed.
 
-  Lemma handle_duplicate_union_layout_alg_tac name variants ul0 ul1 :
-    union_layout_alg name variants = Some ul0 →
-    NO_ENRICH (union_layout_alg name variants = Some ul1) →
+  Lemma handle_duplicate_union_layout_alg_tac name variants repr ul0 ul1 :
+    union_layout_alg name variants repr = Some ul0 →
+    NO_ENRICH (union_layout_alg name variants repr = Some ul1) →
     ul0 = ul1.
   Proof.
     rewrite /NO_ENRICH.
@@ -2336,12 +2345,12 @@ End handle_duplicate.
 
 Ltac postprocess_new_struct_assum H Halg :=
   match type of Halg with
-  | struct_layout_alg ?name ?field_lys = Some _ =>
+  | struct_layout_alg ?name ?field_lys ?repr = Some _ =>
     first [
       (* if this is a duplicate, remove it *)
       match goal with
-      | H2 : NO_ENRICH (struct_layout_alg name field_lys = Some _) |- _ =>
-        specialize (handle_duplicate_struct_layout_alg_tac _ _ _ _ Halg H2) as ?;
+      | H2 : NO_ENRICH (struct_layout_alg name field_lys repr = Some _) |- _ =>
+        specialize (handle_duplicate_struct_layout_alg_tac _ _ _ _ _ Halg H2) as ?;
         clear Halg
       end
   |
@@ -2357,12 +2366,12 @@ Ltac postprocess_new_struct_assum H Halg :=
   end.
 Ltac postprocess_new_union_assum H Halg :=
   match type of Halg with
-  | union_layout_alg ?name ?variant_lys = Some _ =>
+  | union_layout_alg ?name ?variant_lys ?repr = Some _ =>
     first [
       (* if this is a duplicate, remove it *)
       match goal with
-      | H2 : NO_ENRICH (union_layout_alg name variant_lys = Some _) |- _ =>
-        specialize (handle_duplicate_union_layout_alg_tac _ _ _ _ Halg H2) as ?;
+      | H2 : NO_ENRICH (union_layout_alg name variant_lys repr = Some _) |- _ =>
+        specialize (handle_duplicate_union_layout_alg_tac _ _ _ _ _ Halg H2) as ?;
         clear Halg
       end
     |
@@ -2467,10 +2476,10 @@ Ltac simplify_layout_alg H ::=
   | use_layout_alg FnPtrSynType = Some _ =>
       apply syn_type_has_layout_fnptr_inv in H
 
-  | use_layout_alg (StructSynType _ ?fields) = Some _ =>
+  | use_layout_alg (StructSynType _ ?fields ?repr) = Some _ =>
       let Hrec := fresh "Hrec" in
       let Halg := fresh "Halg" in
-      specialize (syn_type_has_layout_struct_inv _ _ _  H) as (? & ? & ? & Halg & Hrec);
+      specialize (syn_type_has_layout_struct_inv _ _ _ _ H) as (? & ? & ? & Halg & Hrec);
       simpl in Halg;
       inv_multi_fields Hrec;
       simplify_eq;
@@ -2501,11 +2510,11 @@ Ltac simplify_layout_alg H ::=
   | use_layout_alg (UntypedSynType ?ly) = Some _ =>
       apply syn_type_has_layout_untyped_inv in H as (? & ? & ? & ?)
 
-  | use_layout_alg (EnumSynType _ ?it ?variants) = Some ?ly =>
+  | use_layout_alg (EnumSynType _ ?it ?variants ?repr) = Some ?ly =>
       let Hrec := fresh "Hrec" in
       let Halg_ul := fresh "Halg" in
       let Halg_sl := fresh "Halg" in
-      specialize (syn_type_has_layout_enum_inv _ _ _ _ H) as (? & ? & ? & Halg_ul & Halg_sl & ? & Hrec);
+      specialize (syn_type_has_layout_enum_inv _ _ _ _ _ H) as (? & ? & ? & Halg_ul & Halg_sl & ? & Hrec);
       simpl in Halg_ul, Halg_sl;
       inv_multi_fields Hrec;
       simplify_eq;
@@ -2526,10 +2535,10 @@ Ltac simplify_layout_alg H ::=
       try postprocess_new_struct_assum H Halg_sl;
       clear H
 
-  | use_layout_alg (UnionSynType _ ?variants) = Some _ =>
+  | use_layout_alg (UnionSynType _ ?variants ?repr) = Some _ =>
       let Hrec := fresh "Hrec" in
       let Halg_ul := fresh "Halg" in
-      specialize (syn_type_has_layout_union_inv _ _ _ H) as (? & ? & ? & Halg_ul & Hrec);
+      specialize (syn_type_has_layout_union_inv _ _ _ _ H) as (? & ? & ? & Halg_ul & Hrec);
       simpl in Halg_ul;
       inv_multi_fields Hrec;
       simplify_eq;

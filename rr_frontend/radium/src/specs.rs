@@ -1154,9 +1154,55 @@ impl InvariantSpec {
 
 /// Representation options for structs.
 #[derive(Debug, Clone, Copy, PartialEq)]
+/// Struct representation options supported by Radium
 pub enum StructRepr {
-    ReprC,
     ReprRust,
+    ReprC,
+    ReprTransparent
+}
+
+impl Display for StructRepr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReprRust => write!(f, "StructReprRust"),
+            Self::ReprC => write!(f, "StructReprC"),
+            Self::ReprTransparent => write!(f, "StructReprTransparent"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// Enum representation options supported by Radium
+pub enum EnumRepr {
+    ReprRust,
+    ReprC,
+    ReprTransparent
+}
+
+impl Display for EnumRepr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReprRust => write!(f, "EnumReprRust"),
+            Self::ReprC => write!(f, "EnumReprC"),
+            Self::ReprTransparent => write!(f, "EnumReprTransparent"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+/// Union representation options supported by Radium
+pub enum UnionRepr {
+    ReprRust,
+    ReprC
+}
+
+impl Display for UnionRepr {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::ReprRust => write!(f, "UnionReprRust"),
+            Self::ReprC => write!(f, "UnionReprC"),
+        }
+    }
 }
 
 
@@ -1241,7 +1287,7 @@ impl<'def> AbstractVariant<'def> {
             let synty = ty.get_syn_type();
             write!(out, "\n{indent}{indent}(\"{}\", {})", name, synty).unwrap();
         }
-        out.push_str("].\n");
+        write!(out, "] {}.\n", self.repr).unwrap();
 
         out
     }
@@ -1350,7 +1396,6 @@ impl<'def> AbstractVariant<'def> {
         out
     }
 }
-
 
 pub type AbstractStructRef<'def> = &'def RefCell<Option<AbstractStruct<'def>>>;
 
@@ -1483,7 +1528,7 @@ impl<'def> VariantBuilder<'def> {
             rfn_type,
             fields: self.fields,
             subst_fields,
-            repr: StructRepr::ReprRust,
+            repr: self.repr,
             name: self.name,
             plain_ty_name,
             sls_def_name,
@@ -1719,6 +1764,8 @@ pub struct AbstractEnum<'def> {
     spec: EnumSpec,
     /// the enum's name
     name: String,
+    /// the representation of the enum
+    repr: EnumRepr,
 
     /// name of the plain enum type (without additional invariants)
     plain_ty_name: String,
@@ -1807,8 +1854,9 @@ impl<'def> AbstractEnum<'def> {
 
             write!(out, "\n{}{}(\"{}\", {} {} : syn_type)", indent, indent, name, vbor.sls_def_name(), masked_typarams.join(" ")).unwrap();
         }
+        // write the repr
+        write!(out, "] {} [", self.repr).unwrap();
         // now write the tag-discriminant list
-        out.push_str("] [");
         needs_sep = false;
         for (name, _, _, discr) in self.variants.iter() {
             if needs_sep {
@@ -2028,6 +2076,8 @@ pub struct EnumBuilder<'def> {
     st_params: Vec<String>,
     /// type of the integer discriminant
     discriminant_type: IntType,
+    /// representation options for the enum
+    repr: EnumRepr
 }
 
 impl<'def> EnumBuilder<'def> {
@@ -2047,18 +2097,20 @@ impl<'def> EnumBuilder<'def> {
             ty_params: self.ty_params,
             st_params: self.st_params,
             discriminant_type: self.discriminant_type,
+            repr: self.repr
         }
     }
 
     /// Initialize an enum builder.
     /// `ty_params` are the user-facing type parameter names in the Rust code.
-    pub fn new(name: String, ty_param_defs: Vec<TyParamNames>, st_params: Vec<String>, discriminant_type: IntType) -> EnumBuilder<'def> {
+    pub fn new(name: String, ty_param_defs: Vec<TyParamNames>, st_params: Vec<String>, discriminant_type: IntType, repr: EnumRepr) -> EnumBuilder<'def> {
         EnumBuilder {
             variants: Vec::new(),
             name,
             ty_params: ty_param_defs,
             st_params,
             discriminant_type,
+            repr,
         }
     }
 

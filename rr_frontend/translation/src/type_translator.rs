@@ -590,9 +590,9 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
         // check for representation flags
         let repr = adt.repr();
-        let repr_opt = radium::StructRepr::ReprRust;
+        let mut repr_opt = radium::StructRepr::ReprRust;
         if repr.c() {
-            return Err(TranslationError::UnsupportedFeature { description: "The repr(C) flag is currently unsupported".to_string() })
+            repr_opt = radium::StructRepr::ReprC;
         }
         else if repr.simd() {
             return Err(TranslationError::UnsupportedFeature { description: "The SIMD flag is currently unsupported".to_string() })
@@ -604,7 +604,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             return Err(TranslationError::UnsupportedFeature { description: "The linear flag is currently unsupported".to_string() })
         }
         else if repr.transparent() {
-            return Err(TranslationError::UnsupportedFeature { description: "The repr(transparent) flag is currently unsupported".to_string() })
+            repr_opt = radium::StructRepr::ReprTransparent;
         }
 
         let mut builder = radium::VariantBuilder::new(struct_name.to_string(), repr_opt);
@@ -853,6 +853,25 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         // build the discriminant map
         let discrs = self.build_discriminant_map(def)?;
 
+        // get representation options
+        let repr = def.repr();
+        let mut repr_opt = radium::EnumRepr::ReprRust;
+        if repr.c() {
+            repr_opt = radium::EnumRepr::ReprC;
+        }
+        else if repr.simd() {
+            return Err(TranslationError::UnsupportedFeature { description: "The SIMD flag is currently unsupported".to_string() })
+        }
+        else if repr.packed() {
+            return Err(TranslationError::UnsupportedFeature { description: "The repr(packed) flag is currently unsupported".to_string() })
+        }
+        else if repr.linear() {
+            return Err(TranslationError::UnsupportedFeature { description: "The linear flag is currently unsupported".to_string() })
+        }
+        else if repr.transparent() {
+            repr_opt = radium::EnumRepr::ReprTransparent;
+        }
+
         // parse annotations for enum type
         let enum_spec;
         let builtin_spec = self.get_builtin_enum_spec(def.did())?;
@@ -871,7 +890,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                 .map_err(|err| TranslationError::FatalError(err))?;
         }
 
-        let mut enum_builder = radium::EnumBuilder::new(enum_name, ty_param_defs, st_params, translated_it);
+        let mut enum_builder = radium::EnumBuilder::new(enum_name, ty_param_defs, st_params, translated_it, repr_opt);
         // now build the enum itself
         for v in def.variants().iter() {
             let variant_ref = self.lookup_adt_variant(v.def_id)?;

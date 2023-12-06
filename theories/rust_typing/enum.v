@@ -710,7 +710,7 @@ Section unfold.
     rewrite ltype_own_enum_unfold/enum_ltype_own.
     simpl.
     iModIntro.
-    destruct (syn_type_has_layout_enum_inv _ _ _ _ Hst) as (el & ul & variant_lys & Hul & Hel & -> & Hvariants).
+    destruct (syn_type_has_layout_enum_inv _ _ _ _ _ Hst) as (el & ul & variant_lys & Hul & Hel & -> & Hvariants).
     iExists el.
     iSplitR. { iPureIntro. eapply use_enum_layout_alg_Some; eauto. }
     iR. iFrame "# ∗".
@@ -972,7 +972,7 @@ Section rules.
     iExists ly. iR.
     iSplitR. { iPureIntro.
       rewrite /layout_of_union_member.
-      specialize (union_layout_alg_has_variants _ _ _ Hul) as Hul_variants.
+      specialize (union_layout_alg_has_variants _ _ _ _ Hul) as Hul_variants.
       rewrite (index_of_union_lookup _ i _ ly).
       2: { rewrite -Hul_variants. subst variant. done. }
       simpl. rewrite -Hul_variants. rewrite Hlook_ly. done. }

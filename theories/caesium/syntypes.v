@@ -135,6 +135,42 @@ Ltac unsafe_unfold_common_caesium_defs :=
 Definition I2v (z : Z) (I : IntType) : val := i2v z I.
 Arguments I2v : simpl never.
 
+(** Rust repr options *)
+Inductive struct_repr :=
+  (** repr(rust) *)
+  | StructReprRust
+  (** repr(C) *)
+  | StructReprC
+  (** repr(transparent) *)
+  | StructReprTransparent.
+Global Instance struct_repr_eqdec : EqDecision struct_repr.
+Proof. solve_decision. Defined.
+Global Instance struct_repr_inhabited : Inhabited struct_repr.
+Proof. exact (populate StructReprRust). Qed.
+
+Inductive union_repr :=
+  (** repr(rust) *)
+  | UnionReprRust
+  (** repr(C) *)
+  | UnionReprC.
+Global Instance union_repr_eqdec : EqDecision union_repr.
+Proof. solve_decision. Defined.
+Global Instance union_repr_inhabited : Inhabited union_repr.
+Proof. exact (populate UnionReprRust). Qed.
+
+(** Rust already picks a representation for the tag at the MIR level, so we do not include this part. *)
+Inductive enum_repr :=
+  (** repr(rust) *)
+  | EnumReprRust
+  (** repr(C) *)
+  | EnumReprC
+  (** repr(transparent) *)
+  | EnumReprTransparent.
+Global Instance enum_repr_eqdec : EqDecision enum_repr.
+Proof. solve_decision. Defined.
+Global Instance enum_repr_inhabited : Inhabited enum_repr.
+Proof. exact (populate EnumReprRust). Qed.
+
 (** ** Syntactic types *)
 (** Syntactic types describe primitive types relevant to the operational semantics *before* layouting.
   They are not to be confused with proper semantic types, and also they are different from MiniRust types (which, weirdly, commit to one particular layout).
@@ -151,7 +187,7 @@ Inductive syn_type : Set :=
   (* function pointers *)
   | FnPtrSynType
   (* structs *)
-  | StructSynType (sn : string) (field_list : list (string * syn_type))
+  | StructSynType (sn : string) (field_list : list (string * syn_type)) (repr : struct_repr)
   (* unit *)
   | UnitSynType
   (* arrays of a specific length *)
@@ -163,9 +199,9 @@ Inductive syn_type : Set :=
      especially around the uninit semtype *)
   | UntypedSynType (ly : layout)
   (* enums *)
-  | EnumSynType (en : string) (tag_it : IntType) (variant_list : list (string * syn_type))
+  | EnumSynType (en : string) (tag_it : IntType) (variant_list : list (string * syn_type)) (repr : enum_repr)
   (* unions *)
-  | UnionSynType (un : string) (variant_list : list (string * syn_type))
+  | UnionSynType (un : string) (variant_list : list (string * syn_type)) (repr : union_repr)
 .
 Canonical Structure syn_typeO := leibnizO syn_type.
 Global Instance syn_type_eq_dec : EqDecision syn_type.
@@ -176,9 +212,11 @@ Proof.
     | BoolSynType, BoolSynType => left _
     | PtrSynType, PtrSynType => left _
     | FnPtrSynType, FnPtrSynType => left _
-    | StructSynType n1 fields1, StructSynType n2 fields2 =>
-        cast_if_and (decide (n1 = n2))
-          (List.list_eq_dec _ fields1 fields2)
+    | StructSynType n1 fields1 repr1, StructSynType n2 fields2 repr2 =>
+        if (decide (repr1 = repr2)) then
+          cast_if_and (decide (n1 = n2))
+            (List.list_eq_dec _ fields1 fields2)
+          else right _
     | UnitSynType, UnitSynType => left _
     | ArraySynType st len, ArraySynType st' len' =>
         if (decide (len = len')) then
@@ -187,13 +225,17 @@ Proof.
     | UntypedSynType ly1, UntypedSynType ly2 => cast_if (decide (ly1 = ly2))
     | UnsafeCell st1, UnsafeCell st2 =>
         cast_if (go st1 st2)
-    | EnumSynType en1 tag1 vars1, EnumSynType en2 tag2 vars2 =>
+    | EnumSynType en1 tag1 vars1 repr1, EnumSynType en2 tag2 vars2 repr2 =>
+        if decide (repr1 = repr2) then
         if (decide (en1 = en2)) then
           cast_if_and (decide (tag1 = tag2))
             (List.list_eq_dec _ vars1 vars2) else right _
-    | UnionSynType un1 vars1, UnionSynType un2 vars2 =>
+        else right _
+    | UnionSynType un1 vars1 repr1, UnionSynType un2 vars2 repr2 =>
+        if decide (repr1 = repr2) then
         cast_if_and (decide (un1 = un2))
           (List.list_eq_dec _ vars1 vars2)
+        else right _
     | _, _ => right _
     end);
     try (clear go; abstract intuition congruence).
@@ -205,19 +247,19 @@ Lemma syn_type_strong_ind (P : syn_type → Prop) :
   P BoolSynType →
   P PtrSynType →
   P FnPtrSynType →
-  (∀ (sn : string) (field_list : list (string * syn_type)),
+  (∀ (sn : string) (field_list : list (string * syn_type)) repr,
     Forall (λ '(_, st), P st) field_list →
-    P (StructSynType sn field_list)) →
+    P (StructSynType sn field_list repr)) →
   P UnitSynType →
   (∀ st : syn_type, P st → ∀ len : nat, P (ArraySynType st len)) →
   (∀ st : syn_type, P st → P (UnsafeCell st)) →
   (∀ ly : layout, P (UntypedSynType ly)) →
-  (∀ (en : string) (tag_it : IntType) (variant_list : list (string * syn_type)),
+  (∀ (en : string) (tag_it : IntType) (variant_list : list (string * syn_type)) repr,
     Forall (λ '(_, st), P st) variant_list →
-    P (EnumSynType en tag_it variant_list)) →
-  (∀ (un : string) (variant_list : list (string * syn_type)),
+    P (EnumSynType en tag_it variant_list repr)) →
+  (∀ (un : string) (variant_list : list (string * syn_type)) repr,
     Forall (λ '(_, st), P st) variant_list →
-    P (UnionSynType un variant_list)) →
+    P (UnionSynType un variant_list repr)) →
   ∀ s : syn_type, P s.
 Proof.
   intros Hint Hbool Hptr Hfptr Hstruct Hunit Harray Huc Huntyped Henum Hunion.
@@ -243,21 +285,21 @@ Proof.
 Qed.
 
 Record struct_layout_spec : Set := mk_sls
-  { sls_name : string; sls_fields : list (string * syn_type); }.
+  { sls_name : string; sls_fields : list (string * syn_type); sls_repr : struct_repr }.
 Global Instance struct_layout_spec_eq_dec : EqDecision struct_layout_spec.
 Proof. solve_decision. Defined.
 
 Definition syn_type_of_sls (sls : struct_layout_spec) : syn_type :=
-  StructSynType sls.(sls_name) sls.(sls_fields).
+  StructSynType sls.(sls_name) sls.(sls_fields) sls.(sls_repr).
 Coercion syn_type_of_sls : struct_layout_spec >-> syn_type.
 
 Record union_layout_spec : Set := mk_uls
-  { uls_name : string; uls_variants : list (string * syn_type); }.
+  { uls_name : string; uls_variants : list (string * syn_type); uls_repr : union_repr }.
 Global Instance union_layout_spec_eq_dec : EqDecision union_layout_spec.
 Proof. solve_decision. Defined.
 
 Definition syn_type_of_uls (uls : union_layout_spec) : syn_type :=
-  UnionSynType uls.(uls_name) uls.(uls_variants).
+  UnionSynType uls.(uls_name) uls.(uls_variants) uls.(uls_repr).
 Coercion syn_type_of_uls : union_layout_spec >-> syn_type.
 
 Record enum_layout_spec : Set := mk_els
@@ -265,6 +307,7 @@ Record enum_layout_spec : Set := mk_els
     (* This is fixed (and not something chooseable by the layout algorithm), because Rust's MIR already has this type fixed. *)
     els_tag_it : IntType;
     els_variants : list (string * syn_type);
+    els_repr : enum_repr;
     (* This is additional information that doesn't affect the layout algorithm, but just the operational behavior of enum operations *)
     els_tag_int : list (var_name * Z);
     (* The variant list should have no duplicates *)
@@ -282,15 +325,29 @@ Record enum_layout_spec : Set := mk_els
   }.
 
 Definition syn_type_of_els (els : enum_layout_spec) : syn_type :=
-  EnumSynType els.(els_name) els.(els_tag_it) els.(els_variants).
+  EnumSynType els.(els_name) els.(els_tag_it) els.(els_variants) els.(els_repr).
 Coercion syn_type_of_els : enum_layout_spec >-> syn_type.
 
-Definition enum_sls union_name variants (tag_it : int_type) : struct_layout_spec :=
-  mk_sls union_name [("discriminant", IntSynType tag_it); ("data", UnionSynType union_name variants)].
+(** We currently represent enums by a struct containing the discriminant as well as a union of structs for the data.
+  NOTE: This is not an accurate model, and fails to account for the following things:
+   - if the enum is annotated with a repr(C), the exact padding
+   - niche optimizations
+*)
+Definition enum_sls union_name variants (tag_it : int_type) urepr srepr : struct_layout_spec :=
+  mk_sls union_name [("discriminant", IntSynType tag_it); ("data", UnionSynType union_name variants urepr)] srepr.
+
+Definition struct_repr_of_enum_repr (r : enum_repr) : struct_repr :=
+  match r with
+  | EnumReprC => StructReprC
+  | EnumReprRust => StructReprRust
+  | EnumReprTransparent => StructReprTransparent
+  end.
+Definition union_repr_of_enum_repr (r : enum_repr) : union_repr :=
+  UnionReprC.
 Definition sls_of_els (els : enum_layout_spec) : struct_layout_spec :=
-  (enum_sls els.(els_name) els.(els_variants) els.(els_tag_it)).
+  (enum_sls els.(els_name) els.(els_variants) els.(els_tag_it) (union_repr_of_enum_repr els.(els_repr)) (struct_repr_of_enum_repr els.(els_repr))).
 Definition uls_of_els (els : enum_layout_spec) : union_layout_spec :=
-  (mk_uls els.(els_name) els.(els_variants)).
+  (mk_uls els.(els_name) els.(els_variants) (union_repr_of_enum_repr els.(els_repr))).
 Definition els_lookup_tag (els : enum_layout_spec) (f : string) : Z :=
   let discriminant_map : gmap _ _ := list_to_map (els.(els_tag_int)) in
   default 0%Z (discriminant_map !! f).
@@ -305,36 +362,40 @@ Definition sl_has_members (sl : struct_layout) (fields : list (var_name * layout
 Definition ul_has_variants (ul : union_layout) (variants : list (var_name * layout)) :=
   variants = ul.(ul_members).
 
+
 (** A layout algorithm takes a syn_type and produces a layout for it, if possible.
   The string arguments models that the algorithm may produce different layouts even for the same syn_type, in some case (e.g. structs).
  *)
 Class LayoutAlg : Type := {
   (* Note that we assume that fields have already been layouted: this encodes a kind of coherence requirement on the fields, i.e. that the algorithm really first layouts the fields according to their layout rules. *)
-  struct_layout_alg : string → list (string * layout) → option struct_layout;
-  union_layout_alg : string → list (string * layout) → option union_layout;
+  struct_layout_alg : string → list (string * layout) → struct_repr → option struct_layout;
+  union_layout_alg : string → list (string * layout) → union_repr → option union_layout;
   (* the named (= non-padding) fields should be exactly the input fields *)
-  struct_layout_alg_has_fields sn fields sl :
-    struct_layout_alg sn fields = Some sl →
+  struct_layout_alg_has_fields sn fields repr sl :
+    struct_layout_alg sn fields repr = Some sl →
     sl_has_members sl fields;
   (* the total size should be divisible by the alignment *)
-  struct_layout_alg_wf sn fields sl :
-    struct_layout_alg sn fields = Some sl →
+  struct_layout_alg_wf sn fields repr sl :
+    struct_layout_alg sn fields repr = Some sl →
     layout_wf sl;
   (* the padding fields should pose no alignment requirements *)
-  struct_layout_alg_pad_align sn fields sl :
-    struct_layout_alg sn fields = Some sl →
+  struct_layout_alg_pad_align sn fields repr sl :
+    struct_layout_alg sn fields repr = Some sl →
     Forall (λ '(named, ly), if named is None then ly_align_log ly = 0%nat else True) (sl_members sl);
+  (* TODO: add requirements on repr *)
+
   (* the variants should be exactly as given *)
-  union_layout_alg_has_variants un variants ul :
-    union_layout_alg un variants = Some ul →
+  union_layout_alg_has_variants un variants repr ul :
+    union_layout_alg un variants repr = Some ul →
     ul_has_variants ul variants;
   (* the total size should be divisible by the alignment *)
-  union_layout_alg_wf un variants ul :
-    union_layout_alg un variants = Some ul →
+  union_layout_alg_wf un variants repr ul :
+    union_layout_alg un variants repr = Some ul →
     layout_wf ul;
+  (* TODO: add requirements on repr *)
 }.
 Global Program Instance LayoutAlg_inhabited : Inhabited LayoutAlg :=
-  {| inhabitant := {| struct_layout_alg := λ _ _, None; union_layout_alg := λ _ _, None |} |}.
+  {| inhabitant := {| struct_layout_alg := λ _ _ _, None; union_layout_alg := λ _ _ _, None |} |}.
 Solve Obligations with done.
 
 (** We fix a specific layout for the unit type, since Rust gives layout guarantees for it. *)
@@ -414,11 +475,11 @@ Fixpoint use_layout_alg `{!LayoutAlg} (synty : syn_type) : option layout :=
   | BoolSynType => Some (it_layout u8)
   | PtrSynType => Some void*
   | FnPtrSynType => Some void*
-  | StructSynType sn fields =>
+  | StructSynType sn fields repr =>
       field_lys ← list_map_option (λ '(field_name, field_spec),
         ly ← use_layout_alg field_spec;
         Some (field_name, ly)) fields;
-      sl ← struct_layout_alg sn field_lys;
+      sl ← struct_layout_alg sn field_lys repr;
       Some (layout_of sl)
   | UnitSynType => Some (layout_of unit_sl)
   | ArraySynType st len =>
@@ -428,19 +489,19 @@ Fixpoint use_layout_alg `{!LayoutAlg} (synty : syn_type) : option layout :=
         Some (mk_array_layout ly len)
       else None
   | UnsafeCell st => use_layout_alg st
-  | UnionSynType un variants =>
+  | UnionSynType un variants repr =>
       variant_lys ← list_map_option (λ '(variant_name, variant_spec),
         ly ← use_layout_alg variant_spec;
         Some (variant_name, ly)) variants;
-      ul ← union_layout_alg un variant_lys;
+      ul ← union_layout_alg un variant_lys repr;
       Some (ul_layout ul)
-  | EnumSynType en tag variants =>
+  | EnumSynType en tag variants repr =>
       (* NOTE: this interface currently relies on union layouting not changing the order of variants to correctly map it to the tags. *)
       variant_lys ← list_map_option (λ '(variant_name, variant_spec),
         ly ← use_layout_alg variant_spec;
         Some (variant_name, ly)) variants;
-      ul ← union_layout_alg en variant_lys;
-      sl ← struct_layout_alg en [("discriminant", it_layout tag); ("data", ul_layout ul)];
+      ul ← union_layout_alg en variant_lys (union_repr_of_enum_repr repr);
+      sl ← struct_layout_alg en [("discriminant", it_layout tag); ("data", ul_layout ul)] (struct_repr_of_enum_repr repr);
       Some (layout_of sl)
   | UntypedSynType ly =>
       if decide (layout_wf ly ∧ ly_size ly ≤ MaxInt isize_t ∧ ly_align_in_bounds ly) then Some ly else None
@@ -461,7 +522,7 @@ Definition use_struct_layout_alg `{!LayoutAlg} (sl_spec : struct_layout_spec) : 
   field_lys ← list_map_option (λ '(field_name, field_spec),
     ly ← use_layout_alg field_spec;
     Some (field_name, ly)) sl_spec.(sls_fields);
-  struct_layout_alg sl_spec.(sls_name) field_lys.
+  struct_layout_alg sl_spec.(sls_name) field_lys (sl_spec.(sls_repr)).
 Arguments use_struct_layout_alg : simpl never.
 
 Lemma use_struct_layout_alg_Some_inv `{!LayoutAlg} (sls : struct_layout_spec) sl :
@@ -484,7 +545,7 @@ Qed.
 
 Lemma use_struct_layout_alg_Some `{!LayoutAlg} sls sl fields' :
   Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ use_layout_alg fst = Some fly) sls.(sls_fields) fields' →
-  struct_layout_alg sls.(sls_name) fields' = Some sl →
+  struct_layout_alg sls.(sls_name) fields' sls.(sls_repr) = Some sl →
   use_struct_layout_alg sls = Some sl.
 Proof.
   intros Ha Hb. rewrite /use_struct_layout_alg.
@@ -501,7 +562,7 @@ Local Arguments use_layout_alg : simpl nomatch.
 Lemma use_struct_layout_alg_inv `{!LayoutAlg} sls sl :
   use_struct_layout_alg sls = Some sl →
   ∃ (field_lys : list (string * layout)),
-    struct_layout_alg sls.(sls_name) field_lys = Some sl ∧
+    struct_layout_alg sls.(sls_name) field_lys sls.(sls_repr) = Some sl ∧
     Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ syn_type_has_layout fst fly) sls.(sls_fields) field_lys.
 Proof.
   intros (field_lys & Hfields%list_map_option_alt & Halg)%bind_Some.
@@ -509,22 +570,22 @@ Proof.
   eapply Forall2_impl; first done.
   intros [] []. intros (fly & ? & [= <- <-])%bind_Some. done.
 Qed.
-Lemma syn_type_has_layout_struct_inv `{!LayoutAlg} name fields ly :
-  syn_type_has_layout (StructSynType name fields) ly →
+Lemma syn_type_has_layout_struct_inv `{!LayoutAlg} name fields repr ly :
+  syn_type_has_layout (StructSynType name fields repr) ly →
   ∃ (field_lys : list (string * layout)) (sl : struct_layout),
     ly = layout_of sl ∧
-    struct_layout_alg name field_lys = Some sl ∧
+    struct_layout_alg name field_lys repr = Some sl ∧
     Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ syn_type_has_layout fst fly) fields field_lys.
 Proof.
-  set (sls := mk_sls name fields).
+  set (sls := mk_sls name fields repr).
   intros Ha. apply (use_layout_alg_struct_Some_inv sls) in Ha as (sl & Ha & ?).
   apply use_struct_layout_alg_inv in Ha as (? & ? & ?).
   naive_solver.
 Qed.
-Lemma syn_type_has_layout_struct `{!LayoutAlg} name fields fields' ly :
+Lemma syn_type_has_layout_struct `{!LayoutAlg} name fields fields' repr ly :
   Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ syn_type_has_layout fst fly) fields fields' →
-  struct_layout_alg name fields' = Some ly →
-  syn_type_has_layout (StructSynType name fields) ly.
+  struct_layout_alg name fields' repr = Some ly →
+  syn_type_has_layout (StructSynType name fields repr) ly.
 Proof.
   intros Ha Hb. rewrite /syn_type_has_layout /use_layout_alg /=;
   fold use_layout_alg.
@@ -563,7 +624,7 @@ Definition use_union_layout_alg `{!LayoutAlg} (uls : union_layout_spec) : option
   variant_lys ← list_map_option (λ '(variant_name, variant_spec),
     ly ← use_layout_alg variant_spec;
     Some (variant_name, ly)) uls.(uls_variants);
-  union_layout_alg uls.(uls_name) variant_lys.
+  union_layout_alg uls.(uls_name) variant_lys uls.(uls_repr).
 Arguments use_union_layout_alg : simpl never.
 
 Lemma use_union_layout_alg_Some_inv `{!LayoutAlg} (uls : union_layout_spec) ul :
@@ -585,7 +646,7 @@ Proof.
 Qed.
 Lemma use_union_layout_alg_Some `{!LayoutAlg} uls ul variants' :
   Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ use_layout_alg fst = Some fly) uls.(uls_variants) variants' →
-  union_layout_alg uls.(uls_name) variants' = Some ul →
+  union_layout_alg uls.(uls_name) variants' uls.(uls_repr) = Some ul →
   use_union_layout_alg uls = Some ul.
 Proof.
   intros Ha Hb. rewrite /use_union_layout_alg.
@@ -597,10 +658,10 @@ Proof.
   - intros ([name' ly] & variants'' & [<- Hst] & Ha & ->)%Forall2_cons_inv_l.
     erewrite IH; last done. simpl. rewrite Hst//.
 Qed.
-Lemma syn_type_has_layout_union `{!LayoutAlg} name variants variants' ly :
+Lemma syn_type_has_layout_union `{!LayoutAlg} name variants variants' repr ly :
   Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ syn_type_has_layout fst fly) variants variants' →
-  union_layout_alg name variants' = Some ly →
-  syn_type_has_layout (UnionSynType name variants) ly.
+  union_layout_alg name variants' repr = Some ly →
+  syn_type_has_layout (UnionSynType name variants repr) ly.
 Proof.
   intros Ha Hb. rewrite /syn_type_has_layout /use_layout_alg /=;
   fold use_layout_alg.
@@ -613,7 +674,7 @@ Qed.
 Lemma use_union_layout_alg_inv `{!LayoutAlg} uls ul :
   use_union_layout_alg uls = Some ul →
   ∃ (variant_lys : list (string * layout)),
-    union_layout_alg uls.(uls_name) variant_lys = Some ul ∧
+    union_layout_alg uls.(uls_name) variant_lys uls.(uls_repr) = Some ul ∧
     Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ syn_type_has_layout fst fly) uls.(uls_variants) variant_lys.
 Proof.
   intros (variant_lys & Hvars%list_map_option_alt & Halg)%bind_Some.
@@ -621,14 +682,14 @@ Proof.
   eapply Forall2_impl; first done.
   intros [] []. intros (fly & ? & [= <- <-])%bind_Some. done.
 Qed.
-Lemma syn_type_has_layout_union_inv `{!LayoutAlg} name variants ly :
-  syn_type_has_layout (UnionSynType name variants) ly →
+Lemma syn_type_has_layout_union_inv `{!LayoutAlg} name variants repr ly :
+  syn_type_has_layout (UnionSynType name variants repr) ly →
   ∃ (variant_lys : list (string * layout)) (ul : union_layout),
   ly = ul_layout ul ∧
-    union_layout_alg name variant_lys = Some ul ∧
+    union_layout_alg name variant_lys repr = Some ul ∧
     Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ syn_type_has_layout fst fly) variants variant_lys.
 Proof.
-  set (uls := mk_uls name variants).
+  set (uls := mk_uls name variants repr).
   intros Ha. apply (use_layout_alg_union_Some_inv uls) in Ha as (ul & Ha & ?).
   apply use_union_layout_alg_inv in Ha as (? & ? & ?).
   naive_solver.
@@ -673,8 +734,8 @@ Proof.
 Qed.
 Lemma use_enum_layout_alg_Some `{!LayoutAlg} els el ul variants' :
   Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ use_layout_alg fst = Some fly) els.(els_variants) variants' →
-  union_layout_alg els.(els_name) variants' = Some ul →
-  struct_layout_alg els.(els_name) [("discriminant", it_layout els.(els_tag_it)); ("data", ul_layout ul)] = Some el →
+  union_layout_alg els.(els_name) variants' (union_repr_of_enum_repr els.(els_repr)) = Some ul →
+  struct_layout_alg els.(els_name) [("discriminant", it_layout els.(els_tag_it)); ("data", ul_layout ul)] (struct_repr_of_enum_repr els.(els_repr)) = Some el →
   use_enum_layout_alg els = Some el.
 Proof.
   intros Ha Hb Hc. rewrite /use_enum_layout_alg.
@@ -808,7 +869,7 @@ Qed.
 Lemma struct_layout_spec_has_layout_alt_1 `{!LayoutAlg} sls sl :
   struct_layout_spec_has_layout sls sl →
   ∃ fields, Forall2 (λ '(name, st) '(name2, ly), use_layout_alg st = Some ly ∧ name2 = name) sls.(sls_fields) fields ∧
-    struct_layout_alg sls.(sls_name) fields = Some sl.
+    struct_layout_alg sls.(sls_name) fields sls.(sls_repr) = Some sl.
 Proof.
   rewrite /struct_layout_spec_has_layout /use_struct_layout_alg.
   intros (fields & Ha1 & Ha2)%bind_Some.
@@ -931,8 +992,8 @@ Proof. done. Qed.
 Lemma use_enum_layout_alg_inv `{!LayoutAlg} els el :
   use_enum_layout_alg els = Some el →
   ∃ ul (variant_lys : list (string * layout)),
-    union_layout_alg els.(els_name) variant_lys = Some ul ∧
-    struct_layout_alg els.(els_name) [("discriminant", it_layout els.(els_tag_it)); ("data", ul : layout)] = Some el ∧
+    union_layout_alg els.(els_name) variant_lys (union_repr_of_enum_repr els.(els_repr)) = Some ul ∧
+    struct_layout_alg els.(els_name) [("discriminant", it_layout els.(els_tag_it)); ("data", ul : layout)] (struct_repr_of_enum_repr els.(els_repr)) = Some el ∧
     Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ syn_type_has_layout fst fly) els.(els_variants) variant_lys.
 Proof.
   intros Ha%use_enum_layout_alg_inv'.
@@ -945,11 +1006,11 @@ Proof.
   apply syn_type_has_layout_int_inv in Hly1 as (-> & ?).
   exists ul, variant_lys. eauto.
 Qed.
-Lemma syn_type_has_layout_enum_inv `{!LayoutAlg} ly name it variants :
-  syn_type_has_layout (EnumSynType name it variants) ly →
+Lemma syn_type_has_layout_enum_inv `{!LayoutAlg} ly name it variants repr :
+  syn_type_has_layout (EnumSynType name it variants repr) ly →
   ∃ el ul (variant_lys : list (string * layout)),
-    union_layout_alg name variant_lys = Some ul ∧
-    struct_layout_alg name [("discriminant", it_layout it); ("data", ul : layout)] = Some el ∧
+    union_layout_alg name variant_lys (union_repr_of_enum_repr repr) = Some ul ∧
+    struct_layout_alg name [("discriminant", it_layout it); ("data", ul : layout)] (struct_repr_of_enum_repr repr) = Some el ∧
     ly = el ∧
     Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ syn_type_has_layout fst fly) variants variant_lys.
 Proof.
@@ -964,12 +1025,12 @@ Proof.
   intros (ly & Halg & [= -> ->])%bind_Some.
   eauto.
 Qed.
-Lemma syn_type_has_layout_enum `{!LayoutAlg} name (it : IntType) variants variants' ly ul sl :
+Lemma syn_type_has_layout_enum `{!LayoutAlg} name (it : IntType) variants variants' repr ly ul sl :
   Forall2 (λ '(fname, fst) '(fname', fly), fname = fname' ∧ syn_type_has_layout fst fly) variants variants' →
-  union_layout_alg name variants' = Some ul →
-  struct_layout_alg name [("discriminant", it_layout it); ("data", ul_layout ul)] = Some sl →
+  union_layout_alg name variants' (union_repr_of_enum_repr repr) = Some ul →
+  struct_layout_alg name [("discriminant", it_layout it); ("data", ul_layout ul)] (struct_repr_of_enum_repr repr) = Some sl →
   ly = layout_of sl →
-  syn_type_has_layout (EnumSynType name it variants) ly.
+  syn_type_has_layout (EnumSynType name it variants repr) ly.
 Proof.
   intros Ha Hb Hc ->.
   rewrite /syn_type_has_layout/use_layout_alg. fold use_layout_alg.
@@ -1099,16 +1160,16 @@ Proof.
   unfold fmap. lia.
 Qed.
 
-Lemma struct_layout_alg_align_in_bounds `{!LayoutAlg} sn fields sl :
+Lemma struct_layout_alg_align_in_bounds `{!LayoutAlg} sn fields repr sl :
   Forall (λ '(_, ly), ly_align_in_bounds ly) fields →
-  struct_layout_alg sn fields = Some sl →
+  struct_layout_alg sn fields repr = Some sl →
   ly_align_in_bounds sl.
 Proof.
   rewrite /ly_align_in_bounds.
   intros Hfields Halg.
   rewrite sl_align_eq.
-  specialize (struct_layout_alg_has_fields _ _ _ Halg) as ->.
-  specialize (struct_layout_alg_pad_align _ _ _ Halg) as Hpad.
+  specialize (struct_layout_alg_has_fields _ _ _ _ Halg) as ->.
+  specialize (struct_layout_alg_pad_align _ _ _ _ Halg) as Hpad.
   clear Halg.
   move: Hfields Hpad.
   generalize (sl_members sl) => mems. intros Halgs Hpad.
@@ -1129,15 +1190,15 @@ Proof.
       rewrite /ly_align Hly /min_alloc_start. rewrite /max_alloc_end/bytes_per_addr/bytes_per_addr_log/=/bits_per_byte. lia. }
     eapply IH'; done.
 Qed.
-Lemma union_layout_alg_align_in_bounds `{!LayoutAlg} sn variants ul :
+Lemma union_layout_alg_align_in_bounds `{!LayoutAlg} sn variants repr ul :
   Forall (λ '(_, ly), ly_align_in_bounds ly) variants →
-  union_layout_alg sn variants = Some ul →
+  union_layout_alg sn variants repr = Some ul →
   ly_align_in_bounds ul.
 Proof.
   rewrite /ly_align_in_bounds.
   intros Hfields Halg.
   rewrite ul_align_eq.
-  specialize (union_layout_alg_has_variants _ _ _ Halg) as ->.
+  specialize (union_layout_alg_has_variants _ _ _ _ Halg) as ->.
   clear Halg.
   move: Hfields.
   generalize (ul_members ul) => mems. intros Halgs.
@@ -1154,7 +1215,7 @@ Lemma use_layout_alg_align `{!LayoutAlg} st ly :
   use_layout_alg st = Some ly →
   ly_align_in_bounds ly.
 Proof.
-  induction st as [ it | | | | sn fields IH | | st IH len | st IH | ly' | en tag_it variant_list IH | un variant_list IH ] using syn_type_strong_ind in ly |-*; rewrite /use_layout_alg => ?; simplify_option_eq; fold use_layout_alg in *;
+  induction st as [ it | | | | sn fields repr IH | | st IH len | st IH | ly' | en tag_it variant_list repr IH | un variant_list repr IH ] using syn_type_strong_ind in ly |-*; rewrite /use_layout_alg => ?; simplify_option_eq; fold use_layout_alg in *;
       rewrite /ly_align_in_bounds.
   - rewrite /ly_align/it_layout/=.
     revert select (ly_size _ ≤ _). rewrite /ly_size/=/bytes_per_int => Ha.
@@ -1187,8 +1248,8 @@ Proof.
     rename select (list_map_option _ _ = Some _) into Halgs.
     match type of Halgs with list_map_option _ _ = Some ?Ha => rename Ha into mems end.
     apply list_map_option_alt in Halgs.
-    rename select (struct_layout_alg _ _ = _) into Hstruct.
-    rename select (union_layout_alg _ _ = _) into Hunion.
+    rename select (struct_layout_alg _ _ _ = _) into Hstruct.
+    rename select (union_layout_alg _ _ _ = _) into Hunion.
     eapply struct_layout_alg_align_in_bounds; last done.
     econstructor.
     { rewrite /ly_align_in_bounds.
@@ -1212,7 +1273,7 @@ Proof.
     rename select (list_map_option _ _ = Some _) into Halgs.
     match type of Halgs with list_map_option _ _ = Some ?Ha => rename Ha into mems end.
     apply list_map_option_alt in Halgs.
-    rename select (union_layout_alg _ _ = _) into Hunion.
+    rename select (union_layout_alg _ _ _ = _) into Hunion.
     eapply union_layout_alg_align_in_bounds; last done.
     clear -IH Halgs.
     induction mems as [ | [n ly] mems IH'] in variant_list, IH, Halgs |-*; simpl in *.
@@ -1324,8 +1385,8 @@ Fixpoint use_op_alg `{!LayoutAlg} (st : syn_type) : option op_type :=
   | BoolSynType => Some BoolOp
   | PtrSynType => Some PtrOp
   | FnPtrSynType => Some PtrOp
-  | StructSynType name fields =>
-    sl ← use_struct_layout_alg (mk_sls name fields);
+  | StructSynType name fields repr =>
+    sl ← use_struct_layout_alg (mk_sls name fields repr);
     ots ← list_map_option (λ '(name, st), use_op_alg st) fields;
     Some $ StructOp sl ots
   | UnitSynType => Some $ StructOp unit_sl []
@@ -1337,11 +1398,11 @@ Fixpoint use_op_alg `{!LayoutAlg} (st : syn_type) : option op_type :=
       use_op_alg st
   | UntypedSynType ly =>
       Some $ UntypedOp ly
-  | EnumSynType _ _ _ =>
+  | EnumSynType _ _ _ _ =>
       (* TODO this does not match Rust semantics -- ops on enums in Rust enforce validity *)
       ly ← use_layout_alg st;
       Some $ UntypedOp ly
-  | UnionSynType _ _ =>
+  | UnionSynType _ _ _ =>
       ly ← use_layout_alg st;
       Some $ UntypedOp ly
   end.
@@ -1357,11 +1418,11 @@ Proof.
 Qed.
 
 Definition use_op_alg_struct_pred `{!LayoutAlg} : (string * syn_type) → op_type → Prop := (λ '(_, fst) (fop : op_type), use_op_alg fst = Some fop).
-Lemma use_op_alg_struct `{!LayoutAlg} name fields sl ots ot :
+Lemma use_op_alg_struct `{!LayoutAlg} name fields sl ots ot repr :
   Forall2 use_op_alg_struct_pred (fields) ots →
-  use_struct_layout_alg (mk_sls name fields) = Some sl →
+  use_struct_layout_alg (mk_sls name fields repr) = Some sl →
   ot = StructOp sl ots →
-  use_op_alg (StructSynType name fields) = Some ot.
+  use_op_alg (StructSynType name fields repr) = Some ot.
 Proof.
   intros Ha Hb ->. rewrite /use_op_alg Hb /=. fold (use_op_alg).
   apply bind_Some. exists ots.
@@ -1398,18 +1459,18 @@ Lemma use_op_alg_untyped `{!LayoutAlg} ly ot :
   ot = (UntypedOp ly) →
   use_op_alg (UntypedSynType ly) = Some ot.
 Proof. intros ->. done. Qed.
-Lemma use_op_alg_enum `{!LayoutAlg} name it variants ly ot :
-  use_layout_alg (EnumSynType name it variants) = Some ly →
+Lemma use_op_alg_enum `{!LayoutAlg} name it variants ly ot repr :
+  use_layout_alg (EnumSynType name it variants repr) = Some ly →
   ot = (UntypedOp ly) →
-  use_op_alg (EnumSynType name it variants) = Some ot.
+  use_op_alg (EnumSynType name it variants repr) = Some ot.
 Proof.
   intros Halg ->.
   rewrite /use_op_alg Halg//.
 Qed.
-Lemma use_op_alg_union `{!LayoutAlg} name variants ly ot :
-  use_layout_alg (UnionSynType name variants) = Some ly →
+Lemma use_op_alg_union `{!LayoutAlg} name variants ly ot repr :
+  use_layout_alg (UnionSynType name variants repr) = Some ly →
   ot = (UntypedOp ly) →
-  use_op_alg (UnionSynType name variants) = Some ot.
+  use_op_alg (UnionSynType name variants repr) = Some ot.
 Proof.
   intros Halg ->.
   rewrite /use_op_alg Halg//.
@@ -1495,8 +1556,8 @@ Proof.
   - intros ->%syn_type_has_layout_ptr_inv.
     exists PtrOp. split; last done. done.
   - intros Hsl.
-    specialize (syn_type_has_layout_struct_inv _ _ _ Hsl) as (field_lys & sl & -> & Halg & Hfields).
-    eapply (use_struct_layout_alg_op_alg (mk_sls _ _)); last done.
+    specialize (syn_type_has_layout_struct_inv _ _ _ _ Hsl) as (field_lys & sl & -> & Halg & Hfields).
+    eapply (use_struct_layout_alg_op_alg (mk_sls _ _ _)); last done.
     eapply use_struct_layout_alg_Some; done.
   - intros ->%syn_type_has_layout_unit_inv. exists (StructOp unit_sl []). done.
   - intros (ly' & Ha & -> & Hb)%syn_type_has_layout_array_inv.
@@ -1535,7 +1596,7 @@ Proof.
     rewrite /use_op_alg.
      *)
   - intros (variant_lys & ul & -> & Halg & Hvariants)%syn_type_has_layout_union_inv.
-    eapply (use_union_layout_alg_op_alg (mk_uls _ _)).
+    eapply (use_union_layout_alg_op_alg (mk_uls _ _ _)).
     eapply use_union_layout_alg_Some; done.
 Qed.
 
@@ -1543,7 +1604,7 @@ Lemma use_op_alg_wf `{!LayoutAlg} st ot :
   use_op_alg st = Some ot →
   op_type_wf ot.
 Proof.
-  induction st as [ | | | | sn fields IH | | | | | en tag_it variants IH | un variants IH ] in ot |-* using syn_type_strong_ind; rewrite /use_op_alg; simpl; fold use_op_alg; try naive_solver.
+  induction st as [ | | | | sn fields repr IH | | | | | en tag_it variants repr IH | un variants repr IH ] in ot |-* using syn_type_strong_ind; rewrite /use_op_alg; simpl; fold use_op_alg; try naive_solver.
   - intros (sl & Halg & Hfields)%bind_Some.
     apply bind_Some in Hfields as (ots & Hots & [= <-]). simpl.
     apply use_struct_layout_alg_inv in Halg as (field_lys & Halg & Hfields).
