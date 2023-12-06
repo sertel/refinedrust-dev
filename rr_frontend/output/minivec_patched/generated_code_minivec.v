@@ -7,7 +7,7 @@ Section RawVec_sls.
   Definition RawVec_sls (T_st : syn_type) : struct_layout_spec := mk_sls "RawVec" [
     ("ptr", PtrSynType);
     ("cap", IntSynType USize);
-    ("_marker", UnitSynType)].
+    ("_marker", UnitSynType)] StructReprRust.
 End RawVec_sls.
 
 Section Vec_sls.
@@ -15,20 +15,20 @@ Section Vec_sls.
 
   Definition Vec_sls (T_st : syn_type) : struct_layout_spec := mk_sls "Vec" [
     ("buf", (syn_type_of_sls ((RawVec_sls (T_st)))));
-    ("len", IntSynType USize)].
+    ("len", IntSynType USize)] StructReprRust.
 End Vec_sls.
 
 Section std_option_Option_els.
   Context `{!typeGS Σ}.
 
-  Definition std_option_Option_None_sls  : struct_layout_spec := mk_sls "std_option_Option_None" [].
+  Definition std_option_Option_None_sls  : struct_layout_spec := mk_sls "std_option_Option_None" [] StructReprRust.
 
   Definition std_option_Option_Some_sls T_st : struct_layout_spec := mk_sls "std_option_Option_Some" [
-    ("0", T_st)].
+    ("0", T_st)] StructReprRust.
 
   Program Definition std_option_Option_els (T_st : syn_type): enum_layout_spec := mk_els "std_option_Option" ISize [
     ("None", std_option_Option_None_sls  : syn_type);
-    ("Some", std_option_Option_Some_sls T_st : syn_type)] [("None", 0); ("Some", 1)] _ _ _ _.
+    ("Some", std_option_Option_Some_sls T_st : syn_type)] EnumReprRust [("None", 0); ("Some", 1)] _ _ _ _.
   Next Obligation. repeat first [econstructor | set_solver]. Qed.
   Next Obligation. done. Qed.
   Next Obligation. repeat first [econstructor | set_solver]. Qed.

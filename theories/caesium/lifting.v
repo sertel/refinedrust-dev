@@ -1948,7 +1948,7 @@ Proof.
   intros Halg. iIntros "HT".
   iApply wp_struct_init'; first done.
   apply struct_layout_spec_has_layout_alt_1 in Halg as (fields & Hf & Halg).
-  specialize (struct_layout_alg_has_fields _ _ _ Halg) as Heq.
+  specialize (struct_layout_alg_has_fields _ _ _ _ Halg) as Heq.
   clear Halg. move: Hf Heq.
   rewrite /sl_has_members.
   generalize (sl_members sl).

@@ -659,7 +659,7 @@ Section init.
     iExists sl. iR. iR.
 
     apply use_struct_layout_alg_inv in Hsl as (field_lys & Halg & Hfields).
-    specialize (struct_layout_alg_pad_align _ _ _ Halg) as Hpad.
+    specialize (struct_layout_alg_pad_align _ _ _ _ Halg) as Hpad.
     specialize (sl_size sl) as Hsize.
     apply struct_layout_alg_has_fields in Halg.
     move: Halg Hfields Hlen Hpad Hsize.

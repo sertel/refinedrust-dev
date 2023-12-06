@@ -1,4 +1,5 @@
 
+#[repr(C)]
 struct Pair<T, U> {
     x: T,
     y: U,
