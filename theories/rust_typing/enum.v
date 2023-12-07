@@ -463,7 +463,7 @@ Section enum.
     rewrite /is_enum_ot. simpl.
     intros rt en ot mt Hot.
     destruct ot as [ | | | | ly]; try done.
-    destruct Hot as (el & Halg & -> & Ha).
+    destruct Hot as (el & Halg & ->).
     simpl. by apply use_enum_layout_alg_Some_inv.
   Qed.
   Next Obligation.
@@ -540,7 +540,7 @@ Section enum.
     simpl. rewrite /is_struct_ot/=. split; first done.
     destruct ot as [ | | | | ly']; [done.. | ].
     rewrite /is_enum_ot in Hot.
-    destruct Hot as (el & Hel & -> & Hels).
+    destruct Hot as (el & Hel & ->).
     exists el. split; first done. split; first done.
     split.
     { exists (els_tag_it (enum_els en)). split_and!.
