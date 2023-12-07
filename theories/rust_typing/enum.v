@@ -412,13 +412,13 @@ Section enum.
     match ot with
     | UntypedOp ly =>
         ∃ el : struct_layout, use_enum_layout_alg en.(enum_els) = Some el ∧
-        ly = el ∧
-        foldr (λ '(v, st) P,
-            ∃ rty ly',
-            en.(enum_tag_ty) v = Some rty ∧
-            syn_type_has_layout st ly' ∧
-            ty_has_op_type (projT2 rty) (UntypedOp ly') mt
-          ) True (en.(enum_els).(els_variants))
+        ly = el
+        (*f∧ oldr (λ '(v, st) P,*)
+            (*∃ rty ly',*)
+            (*en.(enum_tag_ty) v = Some rty ∧*)
+            (*syn_type_has_layout st ly' ∧*)
+            (*ty_has_op_type (projT2 rty) (UntypedOp ly') mt*)
+          (*) True (en.(enum_els).(els_variants))*)
     | _ => False
     end.
   Global Typeclasses Opaque is_enum_ot.
