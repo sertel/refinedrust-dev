@@ -1424,7 +1424,7 @@ Section judgments.
 
   (* generic instance constructors for descending below ofty *)
   Lemma typed_place_ofty_access_val_owned π E L {rt} l (ty : type rt) (r : rt) bmin0 wl P T :
-    ty.(ty_has_op_type) PtrOp MCCopy →
+    ty_has_op_type ty PtrOp MCCopy →
     (∀ F v, ⌜lftE ⊆ F⌝ -∗
       v ◁ᵥ{π} r @ ty ={F}=∗
       ∃ (l2 : loc) (rt2 : Type) (lt2 : ltype rt2) r2 b2, ⌜v = l2⌝ ∗
@@ -1492,7 +1492,7 @@ Section judgments.
 
   (* TODO generalize this similarly as the one above? *)
   Lemma typed_place_ofty_access_val_uniq π E L {rt} l (ty : type rt) (r : rt) bmin0 κ γ P T :
-    ty.(ty_has_op_type) PtrOp MCCopy →
+    ty_has_op_type ty PtrOp MCCopy →
     ⌜lctx_lft_alive E L κ⌝ ∗
     (∀ F v, ⌜lftE ⊆ F⌝ -∗
       v ◁ᵥ{π} r @ ty ={F}=∗
@@ -1549,7 +1549,7 @@ Section judgments.
 
   (* NOTE: we need to require it to be a simple type to get this generic lemma *)
   Lemma typed_place_ofty_access_val_shared π E L {rt} l (ty : simple_type rt) (r : rt) bmin0 κ P T :
-    ty.(ty_has_op_type) PtrOp MCCopy →
+    ty_has_op_type ty PtrOp MCCopy →
     ⌜lctx_lft_alive E L κ⌝ ∗
     (∀ F v, ⌜lftE ⊆ F⌝ -∗
       v ◁ᵥ{π} r @ ty ={F}=∗

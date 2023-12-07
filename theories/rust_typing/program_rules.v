@@ -1546,7 +1546,7 @@ Section typing.
 
   (* generic instance constructors for descending below ofty *)
   Lemma typed_place_ofty_access_val_owned π E L {rt} l (ty : type rt) (r : rt) bmin0 wl P T :
-    ty.(ty_has_op_type) PtrOp MCCopy →
+    ty_has_op_type ty PtrOp MCCopy →
     (∀ F v, ⌜lftE ⊆ F⌝ -∗
       v ◁ᵥ{π} r @ ty ={F}=∗
       ∃ (l2 : loc) (rt2 : Type) (lt2 : ltype rt2) r2 b2, ⌜v = l2⌝ ∗
@@ -1615,7 +1615,7 @@ Section typing.
 
   (* TODO generalize this similarly as the one above? *)
   Lemma typed_place_ofty_access_val_uniq π E L {rt} l (ty : type rt) (r : rt) bmin0 κ γ P T :
-    ty.(ty_has_op_type) PtrOp MCCopy →
+    ty_has_op_type ty PtrOp MCCopy →
     ⌜lctx_lft_alive E L κ⌝ ∗
     (∀ F v, ⌜lftE ⊆ F⌝ -∗
       v ◁ᵥ{π} r @ ty ={F}=∗
@@ -1672,7 +1672,7 @@ Section typing.
 
   (* NOTE: we need to require it to be a simple type to get this generic lemma *)
   Lemma typed_place_ofty_access_val_shared π E L {rt} l (ty : simple_type rt) (r : rt) bmin0 κ P T :
-    ty.(ty_has_op_type) PtrOp MCCopy →
+    ty_has_op_type ty PtrOp MCCopy →
     ⌜lctx_lft_alive E L κ⌝ ∗
     (∀ F v, ⌜lftE ⊆ F⌝ -∗
       v ◁ᵥ{π} r @ ty ={F}=∗
@@ -2151,7 +2151,7 @@ Section typing.
 
   (* [type_read_end] instance that does a copy *)
   Lemma type_read_ofty_copy E L {rt} π (T : typed_read_end_cont_t rt) b2 bmin br l (ty : type rt) r ot `{!Copyable ty}:
-    (⌜ty.(ty_has_op_type) ot MCCopy⌝ ∗ ⌜lctx_bor_kind_alive E L b2⌝ ∗ ∀ v, T L v rt ty r rt (◁ ty) (PlaceIn r) (ResultWeak eq_refl))
+    (⌜ty_has_op_type ty ot MCCopy⌝ ∗ ⌜lctx_bor_kind_alive E L b2⌝ ∗ ∀ v, T L v rt ty r rt (◁ ty) (PlaceIn r) (ResultWeak eq_refl))
     ⊢ typed_read_end π E L l (◁ ty) (#r) b2 bmin br ot T.
   Proof.
     iIntros "(%Hot & %Hal & Hs)" (F ???) "#CTX #HE HL Hna".
@@ -2342,7 +2342,7 @@ Section typing.
     more broadly, this is a symptom of our language not understanding about syntypes.
   *)
   Lemma type_write_ofty_strong E L {rt rt2} π (T : typed_write_end_cont_t rt2) l (ty : type rt) (ty2 : type rt2) r1 (r2 : rt2) v ot wl wl' :
-    (⌜ty.(ty_has_op_type) ot MCNone⌝ ∗ ⌜ty_syn_type ty = ty_syn_type ty2⌝ ∗
+    (⌜ty_has_op_type ty ot MCNone⌝ ∗ ⌜ty_syn_type ty = ty_syn_type ty2⌝ ∗
         (ty2.(ty_ghost_drop) π r2 -∗ T L rt ty r1 ResultStrong))
     ⊢ typed_write_end π E L ot v ty r1 (Owned wl) (Owned wl') AllowStrong l (◁ ty2) (#r2) T.
   Proof.
@@ -2381,7 +2381,7 @@ Section typing.
   Lemma type_write_ofty_weak E L {rt} π (T : typed_write_end_cont_t rt) b2 bmin ac l (ty ty2 : type rt) r1 r2 v ot :
     (∃ r3, owned_subtype π E L false r1 r3 ty ty2 (λ L2,
       ⌜ty_syn_type ty = ty_syn_type ty2⌝ ∗ (* TODO: would be nice to remove this requirement *)
-      ⌜ty.(ty_has_op_type) ot MCNone⌝ ∗ ⌜lctx_bor_kind_alive E L2 b2⌝ ∗ ⌜bor_kind_writeable b2⌝ ∗ (ty2.(ty_ghost_drop) π r2 -∗ T L2 rt ty2 r3 (ResultWeak eq_refl))))
+      ⌜ty_has_op_type ty ot MCNone⌝ ∗ ⌜lctx_bor_kind_alive E L2 b2⌝ ∗ ⌜bor_kind_writeable b2⌝ ∗ (ty2.(ty_ghost_drop) π r2 -∗ T L2 rt ty2 r3 (ResultWeak eq_refl))))
     ⊢ typed_write_end π E L ot v ty r1 b2 bmin ac l (◁ ty2) (#r2) T.
   Proof.
     iIntros "(%r3 & HT)".

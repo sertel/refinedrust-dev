@@ -121,7 +121,7 @@ Section ex.
     ty_shr κ π r l :=
       (∃ x : X, P.(inv_P_shr) π κ x r ∗ ty.(ty_shr) κ π x l)%I;
     ty_syn_type := ty.(ty_syn_type);
-    ty_has_op_type ot mt := ty.(ty_has_op_type) ot mt;
+    _ty_has_op_type ot mt := ty_has_op_type ty ot mt;
     ty_sidecond := ty.(ty_sidecond);
     (* TODO generalize ghost_drop in the type def *)
     ty_ghost_drop π r := (∃ x, P.(inv_P) π x r ∗ ty.(ty_ghost_drop) π x)%I;

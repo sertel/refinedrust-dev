@@ -17,7 +17,7 @@ Section owned_ptr.
         ∃ (ri : rt), place_rfn_interp_owned r ri ∗
         (* this needs to match up with the corresponding later/fupd in the OfTyLtype to get the unfolding equation *)
         ▷ |={lftE}=> ∃ v' : val, l ↦ v' ∗ inner.(ty_own_val) π ri v';
-    ty_has_op_type ot mt := is_ptr_ot ot;
+    _ty_has_op_type ot mt := is_ptr_ot ot;
     ty_syn_type := PtrSynType;
 
     ty_shr κ tid '(r, li) l :=

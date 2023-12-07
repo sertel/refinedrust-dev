@@ -23,7 +23,7 @@ Definition is_struct_ot `{typeGS Σ} (sls : struct_layout_spec) (tys : list rtyp
       length ots = length tys ∧
       (* pointwise, the members have the right op_type and a layout matching the optype *)
       foldr (λ ty, and (let '(ty, ot) := ty in
-          (ty.(rt_ty) : type _).(ty_has_op_type) ot mt ∧
+          ty_has_op_type (ty.(rt_ty) : type _) ot mt ∧
           syn_type_has_layout (ty.(rt_ty).(ty_syn_type)) (ot_layout ot)))
         True (zip tys ots)
   | UntypedOp ly =>
@@ -31,7 +31,7 @@ Definition is_struct_ot `{typeGS Σ} (sls : struct_layout_spec) (tys : list rtyp
       ∃ sl, use_struct_layout_alg sls = Some sl ∧ ly = sl ∧
       (* pointwise, the members have the right op type *)
       foldr (λ ty, and (∃ ly,
-            syn_type_has_layout (ty.(rt_ty).(ty_syn_type)) ly ∧ (ty.(rt_ty) : type _).(ty_has_op_type) (UntypedOp ly) mt
+            syn_type_has_layout (ty.(rt_ty).(ty_syn_type)) ly ∧ ty_has_op_type (ty.(rt_ty) : type _) (UntypedOp ly) mt
           ))
         True tys
   | _ => False
@@ -290,7 +290,7 @@ Section structs.
           struct_own_el_val π i sl.(sl_members) v' (projT2 ty).2 (projT2 ty).1
           )%I;
     ty_sidecond := ⌜length rts = length (sls_fields sls)⌝;
-    ty_has_op_type ot mt := is_struct_ot sls (zip_to_rtype rts tys) ot mt;
+    _ty_has_op_type ot mt := is_struct_ot sls (zip_to_rtype rts tys) ot mt;
     ty_syn_type := sls : syn_type;
     ty_shr κ π r l :=
       (∃ sl,
@@ -540,7 +540,7 @@ Section structs.
     intros ? sls -> tys1 tys2 Htys.
     constructor.
     - done.
-    - move => ot mt /=. rewrite /is_struct_ot. rewrite !fmap_length !hzipl_length.
+    - move => ot mt /=. rewrite ty_has_op_type_unfold/= /is_struct_ot. rewrite !fmap_length !hzipl_length.
       apply and_proper => Hsl.
       destruct ot as [ | | | sl ots | ly ] => //=.
       + f_equiv. apply and_proper => Halg. apply and_proper => Hots. rewrite -!Forall_fold_right.

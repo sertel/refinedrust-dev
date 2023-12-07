@@ -97,7 +97,7 @@ Section union.
         take ly.(ly_size) v ◁ᵥ{π} r @ ty ∗
         drop ly.(ly_size) v ◁ᵥ{π} () @ uninit (UntypedSynType $ active_union_rest_ly ul ly))%I;
     ty_syn_type := uls;
-    ty_has_op_type ot mt :=
+    _ty_has_op_type ot mt :=
       (* only untyped reads are allowed *)
       (* TODO maybe make this more precise. Typed ops would be allowed for the first segment *)
       ∃ ul, use_union_layout_alg uls = Some ul ∧ ot = UntypedOp ul;
@@ -443,7 +443,7 @@ Section enum.
       l ◁ₗ{π, κ} -[#(enum_lookup_tag e r); #r'] @ struct_t (sls_of_els e.(enum_els))
         +[int e.(enum_els).(els_tag_it); active_union_t ty' (enum_tag e r) (uls_of_els e.(enum_els))])%I;
     ty_syn_type := e.(enum_els);
-    ty_has_op_type ot mt :=
+    _ty_has_op_type ot mt :=
       is_enum_ot e ot mt;
     ty_sidecond := True%I;
     ty_ghost_drop π r := True%I; (* TODO *)
@@ -537,13 +537,14 @@ Section enum.
     iExists rt', ty', r', ly. iR. iR.
 
     iApply (ty_memcast_compat _ _ _ MCCopy with "Ha").
-    simpl. rewrite /is_struct_ot/=. split; first done.
+    rewrite ty_has_op_type_unfold. simpl. rewrite /is_struct_ot/=. split; first done.
     destruct ot as [ | | | | ly']; [done.. | ].
+    rewrite ty_has_op_type_unfold.
     rewrite /is_enum_ot in Hot.
     destruct Hot as (el & Hel & ->).
     exists el. split; first done. split; first done.
     split.
-    { exists (els_tag_it (enum_els en)). split_and!.
+    { exists (els_tag_it (enum_els en)). simpl. split_and!.
       - eapply syn_type_has_layout_int; first done.
         rewrite MaxInt_eq.
         apply IntType_to_it_size_bounded.

@@ -20,7 +20,7 @@ Section type.
       | None => (uninit T.(ty_syn_type)).(ty_own_val) π () v
       end%I;
     ty_syn_type := T.(ty_syn_type);   (* TODO: but every value is valid! - so in principle, this should be Untyped *)
-    ty_has_op_type ot mt :=  ∃ ly, syn_type_has_layout T.(ty_syn_type) ly ∧ ot = UntypedOp ly;
+    _ty_has_op_type ot mt :=  ∃ ly, syn_type_has_layout T.(ty_syn_type) ly ∧ ot = UntypedOp ly;
     ty_shr κ π r l :=
       match r with
       | Some r' => ∃ r'', place_rfn_interp_shared r' r'' ∗ T.(ty_shr) κ π r'' l

@@ -72,7 +72,7 @@ Set Default Proof Using "Type".
 Definition is_array_ot `{!typeGS Σ} {rt} (ty : type rt) (len : nat) (ot : op_type) (mt : memcast_compat_type) : Prop :=
   match ot with
   | UntypedOp ly =>
-      ∃ ly', ly = mk_array_layout ly' len ∧ ty.(ty_has_op_type) (UntypedOp ly') mt ∧
+      ∃ ly', ly = mk_array_layout ly' len ∧ ty_has_op_type ty (UntypedOp ly') mt ∧
         (* required for offsetting with LLVM's GEP *)
         (ly_size ly ≤ MaxInt isize_t)%Z ∧
         (* enforced by Rust *)
@@ -194,7 +194,7 @@ Section array.
         ⌜l `has_layout_loc` ly⌝ ∗
         [∗ list] i ↦ r' ∈ r, array_own_el_shr π κ i ly ty r' l;
     ty_syn_type := ArraySynType ty.(ty_syn_type) len;
-    ty_has_op_type := is_array_ot ty len;
+    _ty_has_op_type := is_array_ot ty len;
     ty_sidecond := True;
     ty_ghost_drop π r :=
       [∗ list] r' ∈ r, match r' with | #r'' => ty.(ty_ghost_drop) π r'' | _ => True end;
@@ -3459,7 +3459,7 @@ Section offset_rules.
     iApply fupd_place_to_wp.
     iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iApply (typed_place_ofty_access_val_owned with "[Hbase Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
-    { done. }
+    { rewrite ty_has_op_type_unfold. done. }
     iIntros (F' v ?) "Hoffset".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "->".
     iModIntro. iExists _, _, _, _, _. iR. iFrame "Hoff".
@@ -3490,7 +3490,7 @@ Section offset_rules.
     iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iPoseProof ("HT" with "Hbase") as "(%Hal & HT)".
     iApply (typed_place_ofty_access_val_uniq  _ _ _ _ (offset_ptr_t st) with "[Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
-    { done. }
+    { rewrite ty_has_op_type_unfold. done. }
     iR. iIntros (F' v ?) "Hoffset".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "->".
     iModIntro. iExists _, _, _, _, _. iR. iFrame "Hoff".
@@ -3520,7 +3520,7 @@ Section offset_rules.
     iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iPoseProof ("HT" with "Hbase") as "(%Hal & HT)".
     iApply (typed_place_ofty_access_val_shared with "[Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
-    { done. }
+    { rewrite ty_has_op_type_unfold. done. }
     iR. iIntros (F' v ?) "Hoffset".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "->".
     iModIntro. iExists _, _, _, _, _. iR. iFrame "Hoff".

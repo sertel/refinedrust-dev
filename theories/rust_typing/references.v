@@ -25,7 +25,7 @@ Section mut_ref.
       have_creds ∗
       |={lftE}=> &pin{κ} (∃ r' : rt, gvar_auth γ r' ∗ |={lftE}=> l ↦: inner.(ty_own_val) π r'))%I;
 
-    ty_has_op_type ot mt := is_ptr_ot ot;
+    _ty_has_op_type ot mt := is_ptr_ot ot;
     ty_syn_type := PtrSynType;
 
     ty_shr κ' tid '(r, γ) l :=
@@ -1691,7 +1691,7 @@ Section shr_ref.
         place_rfn_interp_shared r r' ∗
         □ |={lftE}=> inner.(ty_shr) κ π r' l)%I;
 
-    ty_has_op_type ot mt := is_ptr_ot ot;
+    _ty_has_op_type ot mt := is_ptr_ot ot;
     ty_syn_type := PtrSynType;
 
     ty_shr κ' π r l :=

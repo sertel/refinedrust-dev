@@ -537,7 +537,7 @@ Section rules.
 
   Lemma subsume_full_value_merge_ofty {rt} π E L (ty : type rt) r v l st wl T :
     (prove_with_subtype E L false ProveDirect (v ◁ᵥ{π} r @ ty) (λ L' _ R,
-      ⌜ty.(ty_has_op_type) (use_op_alg' ty.(ty_syn_type)) MCCopy⌝ ∗ ⌜ty_syn_type ty = st⌝ ∗ T L' R))
+      ⌜ty_has_op_type ty (use_op_alg' ty.(ty_syn_type)) MCCopy⌝ ∗ ⌜ty_syn_type ty = st⌝ ∗ T L' R))
     ⊢ subsume_full E L false (l ◁ₗ[π, Owned wl] #v @ ◁ value_t st) (l ◁ₗ[π, Owned wl] #r @ (◁ ty)) T.
   Proof.
     iIntros "HT".
@@ -556,7 +556,7 @@ Section rules.
 
   Lemma owned_subtype_value_merge {rt} π E L (ty : type rt) r v' st T :
     prove_with_subtype E L false ProveDirect (v' ◁ᵥ{π} r @ ty) (λ L' _ R,
-      introduce_with_hooks E L' R (λ L2, ⌜ty.(ty_has_op_type) (use_op_alg' ty.(ty_syn_type)) MCCopy⌝ ∗
+      introduce_with_hooks E L' R (λ L2, ⌜ty_has_op_type ty (use_op_alg' ty.(ty_syn_type)) MCCopy⌝ ∗
       ⌜ty_syn_type ty = st⌝ ∗ T L2))
     ⊢ owned_subtype π E L false v' r (value_t st) (ty) T.
   Proof.
@@ -867,7 +867,7 @@ Section rules.
      TODO: Ideally, we would like to leave a value instead to not loose information.
       The lemmas below explore this, but currently do not work. *)
   Lemma type_read_ofty_move_owned E L {rt} π (T : typed_read_end_cont_t rt) l (ty : type rt) r ot wl bmin :
-    (⌜ty.(ty_has_op_type) ot MCCopy⌝ ∗
+    (⌜ty_has_op_type ty ot MCCopy⌝ ∗
         ∀ v, T L v _ ty r unit (◁ uninit ty.(ty_syn_type)) (#()) ResultStrong)
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong ot T.
   Proof.
@@ -901,7 +901,7 @@ Section rules.
   (* TODO also move value out here. *)
   Lemma type_read_ofty_move_uniq E L {rt} π (T : typed_read_end_cont_t rt) l (ty : type rt) r ot κ γ bmin :
     (li_tactic (lctx_lft_alive_count_goal E L κ) (λ '(κs, L2),
-      ⌜ty.(ty_has_op_type) ot MCCopy⌝ ∗
+      ⌜ty_has_op_type ty ot MCCopy⌝ ∗
         ∀ v, T L2 v _ ty r unit (OpenedLtype (◁ uninit ty.(ty_syn_type)) (◁ ty) (◁ ty) (λ r1 r2, ⌜r1 = r2⌝) (λ _ _, llft_elt_toks κs)) (#()) ResultStrong))
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Uniq κ γ) bmin AllowStrong ot T.
   Proof.
@@ -971,7 +971,7 @@ Section rules.
       iR. iSplitR. { iPureIntro. left. done. }
       iSplitR; last done. iPureIntro. rewrite /has_layout_val . done. }
     iPoseProof (ty_memcast_compat_copy _ _ _ ot _ st with "Hv'") as "Hv''".
-    { simpl. exists ot. split_and!; first done; last done. by apply is_value_ot_core_refl. }
+    { rewrite ty_has_op_type_unfold. exists ot. split_and!; first done; last done. by apply is_value_ot_core_refl. }
     iMod ("Hcl" $! v _ (value_t ty.(ty_syn_type)) (v) with "Hl [//] [] []") as "Hl".
     { simpl. done. }
     { iNext. done. }
@@ -991,7 +991,7 @@ Section rules.
 
   (* TODO for Untyped, we currently cannot leave a value, because we cannot do syntype updates, but [value_t] relies on the syntype to compute the value update *)
   Lemma type_read_ofty_move_owned_untyped E L {rt} π (T : typed_read_end_cont_t rt) l (ty : type rt) r ly wl bmin :
-    ( ⌜ty.(ty_has_op_type) (UntypedOp ly) MCCopy⌝ ∗
+    ( ⌜ty_has_op_type ty (UntypedOp ly) MCCopy⌝ ∗
       ∀ v v', v ◁ᵥ{π} r @ ty -∗
       T L v' _ (value_t (UntypedSynType ly)) v val (◁ value_t (UntypedSynType ly)) (#v) ResultStrong) -∗
       typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong (UntypedOp ly) T.
@@ -1002,7 +1002,7 @@ Section rules.
 
   (* Instead we leave uninit *)
   Lemma type_read_ofty_move_owned_value_untyped E L {rt} π (T : typed_read_end_cont_t rt) l (ty : type rt) r ly wl bmin :
-    (⌜ty.(ty_has_op_type) (UntypedOp ly) MCCopy⌝ ∗
+    (⌜ty_has_op_type ty (UntypedOp ly) MCCopy⌝ ∗
         ∀ v, T L v _ ty r unit (◁ uninit ty.(ty_syn_type)) (#()) ResultStrong)
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong (UntypedOp ly) T.
   Proof.
@@ -1082,7 +1082,7 @@ Section rules.
    *)
   Lemma stratify_ltype_ofty_value_owned π E L mu mdu ma {M} (m : M) l st v wl (T : stratify_ltype_cont_t) :
     find_in_context (FindVal v π) (λ '(existT rt (ty', r')),
-      ⌜ty'.(ty_has_op_type) (use_op_alg' ty'.(ty_syn_type)) MCCopy⌝ ∗
+      ⌜ty_has_op_type ty' (use_op_alg' ty'.(ty_syn_type)) MCCopy⌝ ∗
       ⌜ty'.(ty_syn_type) = st⌝ ∗
       stratify_ltype π E L mu mdu ma m l (◁ ty') (#r') (Owned wl) T)
     ⊢ stratify_ltype π E L mu mdu ma m l (◁ value_t st)%I (#v) (Owned wl) T.

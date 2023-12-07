@@ -991,6 +991,11 @@ Global Arguments freeable_nz : simpl never.
 (* should not be visible for automation *)
 Global Typeclasses Opaque ty_shr.
 Global Typeclasses Opaque ty_own_val.
+Global Typeclasses Opaque ty_has_op_type.
+
+(* We get performance problems if discriminate (as part of done) or simpl try to look into this. *)
+(* TODO: maybe properly seal? *)
+Global Opaque ty_has_op_type.
 
 Global Typeclasses Opaque find_in_context.
 

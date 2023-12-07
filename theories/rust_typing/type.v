@@ -53,7 +53,7 @@ Record type `{!typeGS Σ} (rt : Type) := {
       we could require some properties that ty_has_op_type ot mt implies that ot is valid for ty_syn_type.
       otoh, it's questionable whether we really need that.
   *)
-  ty_has_op_type : op_type → memcast_compat_type → Prop;
+  _ty_has_op_type : op_type → memcast_compat_type → Prop;
 
 
   ty_shr : lft → thread_id → rt → loc → iProp Σ;
@@ -78,7 +78,7 @@ Record type `{!typeGS Σ} (rt : Type) := {
   ty_has_layout π r v :
     ty_own_val π r v -∗ ∃ ly : layout, ⌜syn_type_has_layout ty_syn_type ly⌝ ∗ ⌜v `has_layout_val` ly⌝;
   (* if we specify a particular op_type, its layout needs to be compatible with the underlying syntactic type *)
-  ty_op_type_stable ot mt : ty_has_op_type ot mt → syn_type_has_layout ty_syn_type (ot_layout ot);
+  _ty_op_type_stable ot mt : _ty_has_op_type ot mt → syn_type_has_layout ty_syn_type (ot_layout ot);
   ty_own_val_sidecond π r v : ty_own_val π r v -∗ ty_sidecond;
   ty_shr_sidecond κ π r l : ty_shr κ π r l -∗ ty_sidecond;
 
@@ -112,8 +112,8 @@ Record type `{!typeGS Σ} (rt : Type) := {
     lftE ⊆ F → ty_own_val π r v -∗ logical_step F (ty_ghost_drop π r);
 
   (* we can transport value ownership over memcasts according to the specification by [ty_has_op_type] *)
-  ty_memcast_compat ot mt st π r v :
-    ty_has_op_type ot mt →
+  _ty_memcast_compat ot mt st π r v :
+    _ty_has_op_type ot mt →
     ty_own_val π r v -∗
     match mt with
     | MCNone => True
@@ -142,7 +142,6 @@ Arguments ty_shr : simpl never.
 Arguments ty_rt_inhabited {_ _ _}.
 Arguments ty_own_val {_ _ _}.
 Arguments ty_sidecond {_ _ _}.
-Arguments ty_has_op_type {_ _ _}.
 Arguments ty_syn_type {_ _ _}.
 (*Arguments ty_layout {_ _ _}.*)
 Arguments ty_shr {_ _ _}.
@@ -151,9 +150,28 @@ Arguments ty_lfts {_ _ _} _.
 Arguments ty_wf_E {_ _ _} _.
 Arguments ty_share {_ _ _}.
 Arguments ty_own_ghost_drop {_ _ _}.
-Arguments ty_op_type_stable {_ _ _} [_ _ _].
 (*Arguments ty_has_op_type_compat {_ _ _} [_ _ _].*)
 (*Existing Instance ty_ghost_drop_timeless.*)
+
+(** We seal [ty_has_op_type] in order to avoid performance issues with automation accidentally unfolding it. *)
+Definition ty_has_op_type_aux `{!typeGS Σ} : seal (@_ty_has_op_type _ _). Proof. by eexists. Qed.
+Definition ty_has_op_type `{!typeGS Σ} := ty_has_op_type_aux.(unseal).
+Definition ty_has_op_type_unfold `{!typeGS Σ} : ty_has_op_type = _ty_has_op_type := ty_has_op_type_aux.(seal_eq).
+Arguments ty_has_op_type {_ _ _}.
+Lemma ty_op_type_stable `{!typeGS Σ} {rt} (ty : type rt) ot mt :
+  ty_has_op_type ty ot mt → syn_type_has_layout ty.(ty_syn_type) (ot_layout ot).
+Proof. rewrite ty_has_op_type_unfold. apply _ty_op_type_stable. Qed.
+Arguments ty_op_type_stable {_ _ _} [_ _ _].
+
+Lemma ty_memcast_compat `{!typeGS Σ} rt (ty : type rt) ot mt st π r v :
+  ty_has_op_type ty ot mt →
+  ty.(ty_own_val) π r v -∗
+  match mt with
+  | MCNone => True
+  | MCCopy => ty.(ty_own_val) π r (mem_cast v ot st)
+  | MCId => ⌜mem_cast_id v ot⌝
+  end.
+Proof. rewrite ty_has_op_type_unfold. apply _ty_memcast_compat. Qed.
 
 Global Hint Extern 3 (type ?rt) => lazymatch goal with H : type rt |- _ => apply H end : typeclass_instances.
 
@@ -179,9 +197,9 @@ Proof.
 Qed.
 
 Definition ty_allows_writes `{!typeGS Σ} {rt} (ty : type rt) :=
-  ty.(ty_has_op_type) (use_op_alg' ty.(ty_syn_type)) MCNone.
+  ty_has_op_type ty (use_op_alg' ty.(ty_syn_type)) MCNone.
 Definition ty_allows_reads `{!typeGS Σ} {rt} (ty : type rt) :=
-  ty.(ty_has_op_type) (use_op_alg' ty.(ty_syn_type)) MCCopy.
+  ty_has_op_type ty (use_op_alg' ty.(ty_syn_type)) MCCopy.
 
 Record rtype `{!typeGS Σ} `{!LayoutAlg} := mk_rtype {
   rt_rty : Type;
@@ -222,12 +240,12 @@ Fixpoint tyl_outlives_E `{!typeGS Σ} tyl (κ : lft) : elctx :=
 Section memcast.
   Context `{!typeGS Σ}.
   Lemma ty_memcast_compat_copy {rt} π r v ot (ty : type rt) st :
-    ty.(ty_has_op_type) ot MCCopy →
+    ty_has_op_type ty ot MCCopy →
     ty.(ty_own_val) π r v -∗ ty.(ty_own_val) π r (mem_cast v ot st).
   Proof. move => ?. by apply: (ty_memcast_compat _ _ _ MCCopy). Qed.
 
   Lemma ty_memcast_compat_id {rt} π r v ot (ty : type rt) :
-    ty.(ty_has_op_type) ot MCId →
+    ty_has_op_type ty ot MCId →
     ty.(ty_own_val) π r v -∗ ⌜mem_cast_id v ot⌝.
   Proof. move => ?. by apply: (ty_memcast_compat _ _ _ MCId inhabitant). Qed.
 End memcast.
@@ -277,7 +295,7 @@ Qed.
 Program Definition ty_of_st `{!typeGS Σ} rt (st : simple_type rt) : type rt :=
   {| ty_rt_inhabited := st.(st_rt_inhabited _);
      ty_own_val tid r v := (st.(st_own) tid r v)%I;
-     ty_has_op_type := st.(st_has_op_type);
+     _ty_has_op_type := st.(st_has_op_type);
      ty_syn_type := st.(st_syn_type);
      ty_sidecond := True;
      ty_shr κ tid r l :=
@@ -465,7 +483,7 @@ Section ofe.
   Inductive type_equiv' (ty1 ty2 : type rt) : Prop :=
     Type_equiv :
       (ty1.(ty_rt_inhabited).(inhabitant) = ty2.(ty_rt_inhabited).(inhabitant)) →
-      (∀ ot mt, ty1.(ty_has_op_type) ot mt ↔ ty2.(ty_has_op_type) ot mt) →
+      (∀ ot mt, ty_has_op_type ty1 ot mt ↔ ty_has_op_type ty2 ot mt) →
       (∀ π r v, ty1.(ty_own_val) π r v ≡ ty2.(ty_own_val) π r v) →
       (∀ κ π r l, ty1.(ty_shr) κ π r l ≡ ty2.(ty_shr) κ π r l) →
       (ty1.(ty_syn_type) = ty2.(ty_syn_type)) →
@@ -478,7 +496,7 @@ Section ofe.
   Inductive type_dist' (n : nat) (ty1 ty2 : type rt) : Prop :=
     Type_dist :
       (ty1.(ty_rt_inhabited).(inhabitant) = (ty2.(ty_rt_inhabited).(inhabitant))) →
-      (∀ ot mt, ty1.(ty_has_op_type) ot mt ↔ ty2.(ty_has_op_type) ot mt) →
+      (∀ ot mt, ty_has_op_type ty1 ot mt ↔ ty_has_op_type ty2 ot mt) →
       (∀ π r v, ty1.(ty_own_val) π r v ≡{n}≡ ty2.(ty_own_val) π r v) →
       (∀ κ π r v, ty1.(ty_shr) κ π r v ≡{n}≡ ty2.(ty_shr) κ π r v) →
       (ty1.(ty_syn_type) = ty2.(ty_syn_type)) →
@@ -545,7 +563,7 @@ Section ofe.
      ty.(ty_own_val),
      ty.(ty_shr),
      ty.(ty_syn_type),
-     ty.(ty_has_op_type),
+     ty_has_op_type ty,
      ty.(ty_sidecond),
      ty.(ty_ghost_drop),
      ty.(ty_lfts),
@@ -555,7 +573,7 @@ Section ofe.
     {|
       ty_rt_inhabited := populate T_inh;
       ty_own_val := T_own_val;
-      ty_has_op_type := T_ot;
+      _ty_has_op_type := T_ot;
       ty_syn_type := T_syn_type;
       ty_shr := T_shr;
       ty_sidecond := T_sidecond;
@@ -610,10 +628,10 @@ Section ofe.
   Global Instance type_cofe : Cofe typeO.
   Proof.
     apply (iso_cofe_subtype' P type_pack type_unpack).
-    - by intros [].
+    - intros []; simpl; rewrite /type_unpack/=. rewrite ty_has_op_type_unfold. done.
     - split; [by destruct 1|].
       by intros [[[[[[[[]]]]]]]]; constructor.
-    - intros [[[[[[[[]]]]]]]] Hx; done.
+    - intros [[[[[[[[]]]]]]]] Hx; rewrite /type_unpack/=. rewrite ty_has_op_type_unfold; done.
     - repeat apply limit_preserving_and; repeat (apply limit_preserving_forall; intros ?).
       + apply bi.limit_preserving_emp_valid => n ty1 ty2. intro_T; f_equiv;
         [ apply T_own_val | f_equiv; rewrite T_syn_type; done].

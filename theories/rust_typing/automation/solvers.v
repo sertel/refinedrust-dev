@@ -2099,7 +2099,7 @@ Ltac solve_ty_has_op_type :=
       refine (ty_has_op_type_simplify_tac ty ot _ mc _ _);
       [simplify_ot | ];
       (*first [ assert_fails (is_var ty); rewrite /ty_has_op_type/= | idtac];*)
-      first [ assert_fails (is_var ty); rewrite /ty_has_op_type/= | idtac];
+      first [ assert_fails (is_var ty); rewrite ty_has_op_type_unfold/_ty_has_op_type/= | idtac];
       (* specific handling for a few cases *)
       match goal with
       | |- is_value_ot ?st (use_op_alg' ?st) ?mc =>

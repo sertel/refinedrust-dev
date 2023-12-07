@@ -107,7 +107,7 @@ Section rules.
     ⊢ typed_place π E L l (◁ alias_ptr_t) (#l2) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     iDestruct 1 as ((rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
-    iApply typed_place_ofty_access_val_owned; first done.
+    iApply typed_place_ofty_access_val_owned. { rewrite ty_has_op_type_unfold; done. }
     iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame "Hl2 HP". done.
   Qed.
   Global Instance typed_place_ofty_alias_ptr_owned_inst π E L l l2 bmin0 wl P :
@@ -128,7 +128,7 @@ Section rules.
     ⊢ typed_place π E L l (◁ alias_ptr_t) (#l2) bmin0 (Uniq κ γ) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     iDestruct 1 as (Hal (rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
-    iApply typed_place_ofty_access_val_uniq; first done. iSplitR; first done.
+    iApply typed_place_ofty_access_val_uniq. { rewrite ty_has_op_type_unfold; done. } iSplitR; first done.
     iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame. done.
   Qed.
   Global Instance typed_place_ofty_alias_ptr_uniq_inst π E L l l2 bmin0 κ γ P :
@@ -149,7 +149,7 @@ Section rules.
     ⊢ typed_place π E L l (◁ alias_ptr_t) (#l2) bmin0 (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     iDestruct 1 as (Hal (rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
-    iApply typed_place_ofty_access_val_shared; first done. iSplitR; first done.
+    iApply typed_place_ofty_access_val_shared. { rewrite ty_has_op_type_unfold; done. } iSplitR; first done.
     iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame. done.
   Qed.
   Global Instance typed_place_ofty_alias_ptr_shared_inst π E L l l2 bmin0 κ P :
