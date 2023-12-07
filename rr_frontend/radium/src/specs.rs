@@ -1933,14 +1933,16 @@ impl<'def> AbstractEnum<'def> {
     fn generate_lfts(&self) -> String {
         // TODO: probably should build this up modularly over the fields
 
-        let v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_lfts {})", p.ty_name)).collect();
-        format!("[] ++ {}", v.join(" ++ "))
+        let mut v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_lfts {})", p.ty_name)).collect();
+        v.push("[]".to_string());
+        format!("{}", v.join(" ++ "))
     }
 
     fn generate_wf_elctx(&self) -> String {
         // TODO: probably should build this up modularly over the fields
-        let v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_wf_E {})", p.ty_name)).collect();
-        format!("[] ++ {}", v.join(" ++ "))
+        let mut v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_wf_E {})", p.ty_name)).collect();
+        v.push("[]".to_string());
+        format!("{}", v.join(" ++ "))
     }
 
     fn generate_construct_enum(&self) -> String {

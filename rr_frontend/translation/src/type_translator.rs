@@ -347,17 +347,14 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
     /// Check if a variant given by a [DefId] is [std::marker::PhantomData].
     fn is_phantom_data(&self, did: DefId) -> Option<bool> {
-        let phantomdata_did = crate::utils::try_resolve_did(self.env.tcx(), &["std", "marker", "PhantomData"]);
-        if let Some(phantomdata_did) = phantomdata_did {
-            if phantomdata_did == did {
-                Some(true)
+        let ty: ty::Ty<'tcx> = self.env.tcx().type_of(did).instantiate_identity();
+        match ty.kind() {
+            ty::TyKind::Adt(def, _) => {
+                Some(def.is_phantom_data())
+            },
+            _ => {
+                None
             }
-            else {
-                Some(false)
-            }
-        }
-        else {
-            None
         }
     }
 
