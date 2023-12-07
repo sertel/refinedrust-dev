@@ -2114,17 +2114,24 @@ Ltac solve_ty_has_op_type :=
         match goal with
         | |- ∃ _, _ => eexists
         end
+      (* TODO: be consistent about whether we shelve or idtac *)
       | progress (split_and!; simpl; first [done | progress sidecond_hook | idtac])
+      | done
+      | sidecond_hook
       | shelve
       ])
-
-      (*repeat match goal with*)
-      (*| |- ∃ _, _ => eexists*)
-      (*end;*)
-      (*repeat (first [progress (split_and!; simpl; first [done | progress sidecond_hook | idtac]) | shelve])*)
-
-      (*repeat (first [progress (split_and!; simpl; first [done | sidecond_hook]) | shelve])*)
   end.
+
+(** Solver for goals of the form [ty_allows_reads ?ty] and [ty_allows_writes ?ty] *)
+Ltac solve_ty_allows :=
+  lazymatch goal with
+  | |- ty_allows_reads ?ty =>
+      unfold ty_allows_reads
+  | |- ty_allows_writes ?ty =>
+      unfold ty_allows_writes
+  end;
+  solve_ty_has_op_type.
+
 
 (** ** [bor_kind] solvers *)
 Section bor_kind_outlives.

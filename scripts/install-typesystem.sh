@@ -4,5 +4,6 @@
 # Inputs:
 # - REFINEDRUST_ROOT: the root directory of the RefinedRust checkout
 
+opam pin remove refinedrust
 opam pin add coq-lithium.dev $REFINEDRUST_ROOT -y
 opam pin add refinedrust.dev $REFINEDRUST_ROOT -y

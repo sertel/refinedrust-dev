@@ -858,6 +858,10 @@ Ltac sidecond_hook ::=
       solve_layout_wf
   | |- syn_type_compat _ _ =>
       solve_syn_type_compat
+  | |- ty_allows_reads _ =>
+      solve_ty_allows
+  | |- ty_allows_writes _ =>
+      solve_ty_allows
   | |- _ =>
       try solve [solve_layout_size | solve_layout_eq | solve_op_alg];
       try solve_layout_alg

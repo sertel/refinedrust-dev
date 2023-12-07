@@ -571,6 +571,37 @@ Section test.
   Abort.
 End test.
 
+(** ty_has_op_type *)
+(* TODO: we should have some regression tests here *)
+
+(** ty_allows_reads / ty_allows_writes *)
+Section test.
+  Context `{!typeGS Σ}.
+
+  Lemma ty_allows_reads_int :
+    ty_allows_reads (int i32).
+  Proof.
+    solve [unshelve solve_ty_allows; solve_goal].
+  Abort.
+  Lemma ty_allows_reads_struct_1 :
+    struct_layout_spec_is_layoutable (s1_spec (IntSynType i32)) →
+    ty_allows_reads (struct_t (s1_spec (IntSynType i32)) +[int i32; int i32]).
+  Proof.
+    intros. inv_layout_alg. unshelve solve_ty_allows.
+    (* TODO *)
+  Abort.
+
+  Lemma ty_allows_reads_struct_2 {T_rt} (T_ty : type T_rt) :
+    ty_allows_reads T_ty →
+    ty_allows_reads (struct_t (s1_spec (ty_syn_type T_ty)) +[T_ty; int i32]).
+  Proof.
+    intros. unshelve solve_ty_allows.
+    (* TODO *)
+  Abort.
+
+  (* TODO more tests *)
+End test.
+
 (** solve_interpret_rust_type *)
 Section test.
   Context `{!typeGS Σ}.
