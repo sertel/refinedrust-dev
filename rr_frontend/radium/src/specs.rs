@@ -2430,7 +2430,9 @@ pub struct FunctionSpec<'def> {
     /// Coq-level parameters the typing statement needs (bool is for implicit or not)
     pub coq_params: Vec<(CoqName, CoqType, bool)>,
     /// Function name
-    pub function_name : String,
+    pub function_name: String,
+    /// The name of the spec
+    pub spec_name: String,
 
     /// lifetime parameters (available in the typing proof)
     pub lifetimes: Vec<Lft>,
@@ -2530,7 +2532,7 @@ impl<'def> Display for FunctionSpec<'def> {
         write!(lft_pattern, ")")?;
 
 
-        write!(f, "Definition type_of_{} {} :=\n", self.function_name, self.format_coq_params().as_str())?;
+        write!(f, "Definition {} {} :=\n", self.spec_name, self.format_coq_params().as_str())?;
         write!(f, "  fn(∀ {} : {} | {} : {}, ({}); ", lft_pattern, self.lifetimes.len(), self.param.0, self.param.1, self.format_elctx().as_str())?;
         if self.args.len() == 0 {
             write!(f, "(λ π : thread_id, {}))\n", self.pre)?;
@@ -2766,7 +2768,7 @@ impl<'def> FunctionSpecBuilder<'def> {
     /// `name` is the designated name of the function.
     /// `code_params` are the parameters the code body needs to be provided (e.g., locations of
     /// other functions).
-    pub fn into_function_spec(self, name: &str) -> FunctionSpec<'def> {
+    pub fn into_function_spec(self, name: &str, spec_name: &str) -> FunctionSpec<'def> {
         // generate the parameters
         let parameter = Self::uncurry_typed_binders(&self.params);
         // generate the existential quantifier
@@ -2776,6 +2778,7 @@ impl<'def> FunctionSpecBuilder<'def> {
         let ret = self.ret.unwrap_or(TypeWithRef::make_unit());
         FunctionSpec {
             function_name: name.to_string(),
+            spec_name: spec_name.to_string(),
             coq_params: self.coq_params,
             lifetimes: self.lifetimes,
             param: parameter,

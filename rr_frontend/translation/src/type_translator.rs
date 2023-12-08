@@ -742,6 +742,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
     /// Get the spec for a built-in enum like std::option::Option.
     fn get_builtin_enum_spec(&self, did: DefId) -> Result<Option<radium::EnumSpec>, TranslationError> {
+        // TODO: find a more modular way to do this.
         let option_did = crate::utils::try_resolve_did(self.env.tcx(), &["std", "option", "Option"]);
         let option_spec = radium::EnumSpec {
             rfn_type: radium::CoqType::Literal("_".to_string()),
@@ -751,6 +752,13 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         };
 
         if let Some(option_did) = option_did {
+            if option_did == did {
+                return Ok(Some(option_spec));
+            }
+        }
+
+        let core_option_did = crate::utils::try_resolve_did(self.env.tcx(), &["core", "option", "Option"]);
+        if let Some(option_did) = core_option_did {
             if option_did == did {
                 return Ok(Some(option_spec));
             }

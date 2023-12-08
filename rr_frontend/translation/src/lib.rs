@@ -68,6 +68,8 @@ use mod_parser::ModuleAttrParser;
 use spec_parsers::crate_attr_parser as crate_parser;
 use crate_parser::CrateAttrParser;
 
+use rrconfig;
+
 
 /// Order struct defs in the order in which we should emit them for respecting dependencies.
 /// Complexity O(n^2), it's currently rather inefficient, but due to small numbers it should be fine.
@@ -147,7 +149,6 @@ fn order_struct_defs<'tcx>(env: &Environment<'tcx>, defs: &[DefId]) -> Vec<DefId
 pub struct VerificationCtxt<'tcx, 'rcx> {
     env: &'rcx Environment<'tcx>,
     procedure_registry: ProcedureScope<'rcx>,
-    spec_fn_ids: HashSet<DefId>,
     type_translator: &'rcx TypeTranslator<'rcx, 'tcx>,
     functions: &'rcx [LocalDefId],
     extra_imports: HashSet<radium::CoqPath>,
@@ -252,6 +253,17 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
+        // also write only-spec functions specs
+        for (_, spec) in self.procedure_registry.iter_only_spec() {
+            if spec.has_spec() {
+                spec_file.write(format!("{}", spec).as_bytes()).unwrap();
+                spec_file.write("\n\n".as_bytes()).unwrap();
+            }
+            else {
+                spec_file.write(format!("(* No specification provided for {} *)\n\n", spec.function_name).as_bytes()).unwrap();
+            }
+        }
+
         spec_file.write("End specs.".as_bytes()).unwrap();
     }
 
@@ -259,11 +271,13 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     fn write_proofs<F>(&self, file_path: F, stem: &str) where F : Fn(&str) -> std::path::PathBuf {
         // write proofs
         // each function gets a separate file in order to parallelize
-        for (_, fun) in self.procedure_registry.iter_code() {
+        for (did, fun) in self.procedure_registry.iter_code() {
             let path = file_path(&fun.name());
             let mut proof_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
 
-            if fun.spec.has_spec() {
+            let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
+
+            if fun.spec.has_spec() && mode.needs_proof() {
                 proof_file.write(format!("\
                     From caesium Require Import lang notation.\n\
                     From refinedrust Require Import typing shims.\n\
@@ -283,8 +297,11 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
                 proof_file.write("End proof.".as_bytes()).unwrap();
             }
-            else {
+            else if fun.spec.has_spec() {
                 proof_file.write(format!("(* No specification provided *)").as_bytes()).unwrap();
+            }
+            else {
+                proof_file.write(format!("(* Function is trusted *)").as_bytes()).unwrap();
             }
         }
     }
@@ -373,7 +390,8 @@ fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             Some(did) => {
                 // register as usual in the procedure registry
                 info!("registering shim for {:?}", path);
-                vcx.procedure_registry.register_function(&did, spec, name);
+                let meta = function_body::ProcedureMeta::new(spec.to_string(), name.to_string(), function_body::ProcedureMode::Shim);
+                vcx.procedure_registry.register_function(&did, meta);
             },
             _ => {
                 panic!("cannot find defid for shim {:?}", path);
@@ -385,64 +403,112 @@ fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
 /// Register functions of the crate in the procedure registry.
 fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     for &f in vcx.functions {
+        let mut mode = function_body::ProcedureMode::Prove;
+
         let attrs = vcx.env.get_attributes(f.to_def_id());
         let v = crate::utils::filter_tool_attrs(attrs);
+
         // check if this is a purely spec function; if so, skip.
-        if crate::utils::has_tool_attr(attrs, "only_spec") {
-            vcx.spec_fn_ids.insert(f.to_def_id());
-            continue;
-        }
         if crate::utils::has_tool_attr(attrs, "shim") {
             // TODO better error message
             let annot = get_shim_attrs(v.as_slice()).unwrap();
+
             info!("Registering shim: {:?} as spec: {}, code: {}", f.to_def_id(), annot.spec_name, annot.code_name);
-            vcx.procedure_registry.register_function(&f.to_def_id(), &annot.spec_name, &annot.code_name);
+            let meta = function_body::ProcedureMeta::new(annot.spec_name, annot.code_name, function_body::ProcedureMode::Shim);
+            vcx.procedure_registry.register_function(&f.to_def_id(), meta);
+
             continue;
         }
 
-        let fname = type_translator::strip_coq_ident(&vcx.env.get_item_name(f.to_def_id()));
+        if crate::utils::has_tool_attr(attrs, "trust_me") {
+            mode = function_body::ProcedureMode::TrustMe;
+        }
+        else if crate::utils::has_tool_attr(attrs, "only_spec") {
+            mode = function_body::ProcedureMode::OnlySpec;
+        }
+        else if crate::utils::has_tool_attr(attrs, "ignore") {
+            mode = function_body::ProcedureMode::Ignore;
+        }
 
+        let fname = type_translator::strip_coq_ident(&vcx.env.get_item_name(f.to_def_id()));
         let spec_name = format!("type_of_{}", fname);
-        vcx.procedure_registry.register_function(&f.to_def_id(), &spec_name, &fname);
+
+        let meta = function_body::ProcedureMeta::new(spec_name, fname, mode);
+
+        vcx.procedure_registry.register_function(&f.to_def_id(), meta);
     }
 }
 
 /// Translate functions of the crate, assuming they were previously registered.
 fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     for &f in vcx.functions {
-        let attrs = vcx.env.get_attributes(f.to_def_id());
-        if crate::utils::has_tool_attr(attrs, "shim") {
-            continue;
-        }
-        if crate::utils::has_tool_attr(attrs, "only_spec") {
-            continue;
-        }
-
         let proc = vcx.env.get_procedure(f.to_def_id());
-
         let fname = vcx.env.get_item_name(f.to_def_id());
+        let meta = vcx.procedure_registry.lookup_function(&f.to_def_id()).unwrap();
+
+        let attrs = vcx.env.get_attributes(f.to_def_id());
+
+        let mode = meta.get_mode();
+        if mode.is_shim() {
+            continue;
+        }
+        if mode.is_ignore() {
+            continue;
+        }
+
         info!("Translating function {}", fname);
 
-        let translate = || {
-            let translator = BodyTranslator::new(&vcx.env, &fname, proc, attrs, &vcx.type_translator, &vcx.procedure_registry, &vcx.spec_fn_ids)?;
-            translator.translate()
-        };
-        match translate() {
-            Ok(fun) => {
-                info!("Successfully translated {}", fname);
-                vcx.procedure_registry.provide_translated_function(&f.to_def_id(), fun);
-            },
-            Err(function_body::TranslationError::FatalError(err)) => {
-                error!("Encountered fatal cross-function error in translation: {:?}", err);
-                error!("Aborting...");
-                return;
-            },
-            Err(err) => {
-                warn!("Encountered error: {:?}", err);
-                warn!("Skipping function {}", fname);
+
+        let translator = BodyTranslator::new(&vcx.env, meta, proc, attrs, &vcx.type_translator, &vcx.procedure_registry);
+
+        if mode.is_only_spec() {
+            // Only generate a spec
+            match translator.and_then(|t| t.generate_spec()) {
+                Ok(spec) => {
+                    info!("Successfully generated spec for {}", fname);
+                    vcx.procedure_registry.provide_specced_function(&f.to_def_id(), spec);
+                },
+                Err(function_body::TranslationError::FatalError(err)) => {
+                    error!("Encountered fatal cross-function error in translation: {:?}", err);
+                    error!("Aborting...");
+                    return;
+                },
+                Err(err) => {
+                    warn!("Encountered error: {:?}", err);
+                    warn!("Skipping function {}", fname);
+                    if !rrconfig::skip_unsupported_features() {
+                        exit_with_error(&format!("Encountered error when translating function {}, stopping...", fname));
+                    }
+                }
+            }
+        }
+        else {
+            // Fully translate the function
+            match translator.and_then(|t| t.translate()) {
+                Ok(fun) => {
+                    info!("Successfully translated {}", fname);
+                    vcx.procedure_registry.provide_translated_function(&f.to_def_id(), fun);
+                },
+                Err(function_body::TranslationError::FatalError(err)) => {
+                    error!("Encountered fatal cross-function error in translation: {:?}", err);
+                    error!("Aborting...");
+                    return;
+                },
+                Err(err) => {
+                    warn!("Encountered error: {:?}", err);
+                    warn!("Skipping function {}", fname);
+                    if !rrconfig::skip_unsupported_features() {
+                        exit_with_error(&format!("Encountered error when translating function {}, stopping...", fname));
+                    }
+                }
             }
         }
     }
+}
+
+fn exit_with_error(s: &str) {
+    eprintln!("{s}");
+    std::process::exit(-1);
 }
 
 /// Get all functions and closures in the current crate that have attributes on them and are not
@@ -526,20 +592,16 @@ pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F)
     let procedure_registry = ProcedureScope::new();
 
     // first register names for all the procedures, to resolve mutual dependencies
-    let spec_fn_ids = HashSet::new();
-
     let mut vcx = VerificationCtxt {
         env,
         functions: functions.as_slice(),
         type_translator: &type_translator,
         procedure_registry,
-        spec_fn_ids,
         extra_imports: imports,
         coq_path_prefix: path_prefix,
     };
 
     register_functions(&mut vcx);
-    info!("found the following only_spec procedures, which will be ignored: {:?}", vcx.spec_fn_ids);
 
     register_shims(&mut vcx);
 
