@@ -1589,6 +1589,23 @@ Section simplify_layout_tac.
   Proof.
     rewrite /use_union_layout_alg' => -> //.
   Qed.
+
+  Lemma simplify_ot_layout ot ot' :
+    ot = ot' →
+    ot_layout ot = (ot_layout ot').
+  Proof.
+    intros ->; done.
+  Qed.
+
+  Lemma simplify_ot_layout_var T_st ly :
+    use_layout_alg T_st = Some ly →
+    ot_layout (use_op_alg' T_st) = ly.
+  Proof.
+    intros Hst.
+    rewrite /use_op_alg'.
+    apply syn_type_has_layout_op_alg in Hst as (ot & -> & <-).
+    done.
+  Qed.
 End simplify_layout_tac.
 
 (** Solve goals of the forms
@@ -1599,6 +1616,8 @@ End simplify_layout_tac.
   *)
 (* Declaration, definition is below. *)
 Ltac solve_layout_alg := idtac.
+
+Ltac solve_ot_eq := idtac.
 
 (* We assume a let-binding [H_ly] has been introduced into the context in which we can rewrite *)
 Ltac simplify_layout' H_ly :=
@@ -1615,6 +1634,16 @@ Ltac simplify_layout' H_ly :=
   | _ = use_union_layout_alg' ?uls =>
       erewrite (simplify_use_union_layout_alg' uls) in H_ly;
       [ | solve_layout_alg]
+  | _ = ot_layout (use_op_alg' ?st) =>
+      match st with
+      | ty_syn_type ?ty =>
+          is_var ty;
+          erewrite (simplify_ot_layout_var st) in H_ly;
+          [ | solve_layout_alg ]
+      | _ =>
+          erewrite (simplify_ot_layout (use_op_alg' st)) in H_ly;
+          [ | solve_ot_eq ]
+      end
   | _ => idtac
   end.
 (** Simplify a layout [ly] in the goal. *)
@@ -1639,6 +1668,7 @@ Ltac maybe_simplify_layout ly :=
   | use_struct_layout_alg' _ => simplify_layout_go ly
   | use_enum_layout_alg' _ => simplify_layout_go ly
   | use_union_layout_alg' _ => simplify_layout_go ly
+  | ot_layout _ => simplify_layout_go ly
   end.
 Ltac simplify_layout_goal :=
   repeat match goal with
@@ -1954,7 +1984,16 @@ Ltac simplify_optype ly :=
   end.
 
 (** Solve goals of the form [ot1 = ot2]. *)
-Ltac solve_ot_eq :=
+Ltac solve_ot_eq ::=
+  unfold_no_enrich;
+  (* simplify both sides *)
+  try match goal with
+  | |- ?ot1 = ?ot2 =>
+      assert_fails (is_evar ot1);
+      assert_fails (is_evar ot2);
+      simplify_optype ot1;
+      simplify_optype ot2
+  end;
   (* TODO? *)
   try reflexivity.
 
@@ -2051,6 +2090,7 @@ Section tac.
 End tac.
 
 Ltac simplify_ot :=
+  simpl;
   match goal with
   | |- (use_op_alg' ?st) = ?ot =>
       solve_op_alg
@@ -2058,47 +2098,27 @@ Ltac simplify_ot :=
       symmetry; solve_op_alg
   | |- _ => reflexivity
   end.
-(*
-Ltac solve_ty_has_op_type :=
-  lazymatch goal with
-  | |- ty_has_op_type ?ty ?ot ?mc =>
-      refine (ty_has_op_type_simplify_tac ty ot _ mc _ _);
-      [simplify_ot | ];
-      first [
-        assert_fails (is_var ty);
-        rewrite /ty_has_op_type/=
-      | idtac];
-      repeat (first [progress (split_and!; simpl; first [done | sidecond_hook]) | li_shelve_sidecond])
-  end.
- *)
-(*
-Ltac solve_ty_has_op_type :=
-  lazymatch goal with
-  | |- ty_has_op_type ?ty ?ot ?mc =>
-      refine (ty_has_op_type_simplify_tac ty ot _ mc _ _);
-      [simplify_ot | ];
-      (* specific handling for a few cases *)
-      match goal with
-      | |- is_value_ot ?st (use_op_alg' ?st) ?mc =>
-          refine (is_value_ot_use_op_alg _ _ _ _ _); [done | solve_layout_alg]
-      | |- is_array_ot _ _ _ _ => rewrite /is_array_ot; eexists _
-      | |- is_value_ot _ _ _ => rewrite /is_value_ot; eexists _
-      | |- _ =>
-          (* otherwise unfold *)
-          first [ assert_fails (is_var ty); rewrite /ty_has_op_type/= | idtac]
-      end;
-      repeat (first [progress (split_and!; simpl; first [done | sidecond_hook]) | shelve])
-  end.
- *)
 Arguments is_value_ot : simpl never.
 Arguments is_array_ot : simpl never.
 Arguments is_struct_ot : simpl never.
+Ltac solve_ty_has_op_type_step :=
+  first [
+    match goal with
+    | |- ∃ _, _ => eexists
+    end
+  | split_and!; simpl
+  | done
+  | sidecond_hook
+  | shelve
+  ].
+
 Ltac solve_ty_has_op_type :=
   lazymatch goal with
   | |- ty_has_op_type ?ty ?ot ?mc =>
+      (* simplify op_type *)
       refine (ty_has_op_type_simplify_tac ty ot _ mc _ _);
-      [simplify_ot | ];
-      (*first [ assert_fails (is_var ty); rewrite /ty_has_op_type/= | idtac];*)
+      [simplify_ot| ];
+      (* unfold *)
       first [ assert_fails (is_var ty); rewrite ty_has_op_type_unfold/_ty_has_op_type/= | idtac];
       (* specific handling for a few cases *)
       match goal with
@@ -2109,17 +2129,7 @@ Ltac solve_ty_has_op_type :=
            (*otherwise unfold *)
           hnf
       end;
-      repeat (
-      first [
-        match goal with
-        | |- ∃ _, _ => eexists
-        end
-      (* TODO: be consistent about whether we shelve or idtac *)
-      | progress (split_and!; simpl; first [done | progress sidecond_hook | idtac])
-      | done
-      | sidecond_hook
-      | shelve
-      ])
+      repeat solve_ty_has_op_type_step
   end.
 
 (** Solver for goals of the form [ty_allows_reads ?ty] and [ty_allows_writes ?ty] *)

@@ -538,7 +538,9 @@ Section test.
     use_op_alg (s2_spec T_st) = Some (StructOp s2_sl [PtrOp; StructOp s1_sl [use_op_alg' T_st; IntOp i32]]).
   Proof.
     intros. inv_layout_alg.
-    solve_op_alg; solve [fail].
+    solve_op_alg.
+    Unshelve. all: solve_goal.
+    all: solve [fail].
   Abort.
 
   Lemma solve_op_alg_test3 T_st T_ly :
@@ -587,16 +589,20 @@ Section test.
     struct_layout_spec_is_layoutable (s1_spec (IntSynType i32)) →
     ty_allows_reads (struct_t (s1_spec (IntSynType i32)) +[int i32; int i32]).
   Proof.
-    intros. inv_layout_alg. unshelve solve_ty_allows.
-    (* TODO *)
+    intros. inv_layout_alg.
+    unshelve solve_ty_allows; solve_goal.
+    all: solve [fail].
   Abort.
 
   Lemma ty_allows_reads_struct_2 {T_rt} (T_ty : type T_rt) :
     ty_allows_reads T_ty →
+    struct_layout_spec_is_layoutable (s1_spec (ty_syn_type T_ty)) →
+    syn_type_is_layoutable (ty_syn_type T_ty) →
     ty_allows_reads (struct_t (s1_spec (ty_syn_type T_ty)) +[T_ty; int i32]).
   Proof.
-    intros. unshelve solve_ty_allows.
-    (* TODO *)
+    intros. inv_layout_alg.
+    unshelve solve_ty_allows; solve_goal.
+    all: solve [fail].
   Abort.
 
   (* TODO more tests *)
