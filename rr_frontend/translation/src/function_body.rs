@@ -41,11 +41,75 @@ use crate::arg_folder::*;
  * To account for dependencies between functions, we may register translated names before we have
  * actually translated the function.
  */
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum ProcedureMode {
+    Prove,
+    OnlySpec,
+    TrustMe,
+    Shim,
+    Ignore,
+}
+impl ProcedureMode {
+    pub fn is_prove(&self) -> bool {
+        *self == Self::Prove
+    }
+    pub fn is_only_spec(&self) -> bool {
+        *self == Self::OnlySpec
+    }
+    pub fn is_trust_me(&self) -> bool {
+        *self == Self::TrustMe
+    }
+    pub fn is_shim(&self) -> bool {
+        *self == Self::Shim
+    }
+    pub fn is_ignore(&self) -> bool {
+        *self == Self::Ignore
+    }
+
+    pub fn needs_proof(&self) -> bool {
+        *self == Self::Prove
+    }
+
+    pub fn needs_def(&self) -> bool {
+        *self == Self::Prove || *self == Self::TrustMe
+    }
+}
+
+
+#[derive(Clone)]
+pub struct ProcedureMeta {
+    spec_name: String,
+    name: String,
+    mode: ProcedureMode,
+}
+
+impl ProcedureMeta {
+    pub fn new(spec_name: String, name: String, mode: ProcedureMode) -> Self {
+        Self {
+            spec_name,
+            name,
+            mode
+        }
+    }
+    pub fn get_spec_name(&self) -> &str {
+        &self.spec_name
+    }
+    pub fn get_name(&self) -> &str {
+        &self.name
+    }
+    pub fn get_mode(&self) -> ProcedureMode {
+        self.mode
+    }
+}
+
 pub struct ProcedureScope<'def> {
     /// maps the defid to (code_name, spec_name, name)
-    name_map: HashMap<DefId, (String, String)>,
+    name_map: HashMap<DefId, ProcedureMeta>,
     /// track the actually translated functions
     translated_functions: HashMap<DefId, radium::Function<'def>>,
+    /// track the functions with just a specification (rr::only_spec)
+    specced_functions: HashMap<DefId, radium::FunctionSpec<'def>>,
 }
 
 impl<'def> ProcedureScope<'def> {
@@ -53,34 +117,56 @@ impl<'def> ProcedureScope<'def> {
         Self {
             name_map: HashMap::new(),
             translated_functions: HashMap::new(),
+            specced_functions: HashMap::new(),
         }
+    }
+
+    pub fn lookup_function(&self, did: &DefId) -> Option<ProcedureMeta> {
+        self.name_map.get(did).cloned()
     }
 
     /// Lookup the Coq spec name for a function.
     pub fn lookup_function_spec_name(&self, did: &DefId) -> Option<&str> {
-        self.name_map.get(did).map(|(b, _)| &b[..])
+        self.name_map.get(did).map(|m| m.get_spec_name())
     }
 
     /// Lookup the name for a function.
     pub fn lookup_function_mangled_name(&self, did: &DefId) -> Option<&str> {
-        //info!("lookup up function {:?} in map {:?}", did, self.name_map);
-        self.name_map.get(did).map(|(_, c)| &c[..])
+        self.name_map.get(did).map(|m| m.get_name())
+    }
+
+    /// Lookup the mode for a function.
+    pub fn lookup_function_mode(&self, did: &DefId) -> Option<ProcedureMode> {
+        self.name_map.get(did).map(|m| m.get_mode())
     }
 
     /// Register a function.
-    pub fn register_function(&mut self, did: &DefId, spec_name: &str, name: &str) {
-        assert!(self.name_map.insert(*did, (spec_name.to_string(), name.to_string())).is_none());
+    pub fn register_function(&mut self, did: &DefId, meta: ProcedureMeta) {
+        assert!(self.name_map.insert(*did, meta).is_none());
     }
 
     /// Provide the code for a translated function.
     pub fn provide_translated_function(&mut self, did: &DefId, trf: radium::Function<'def>) {
-        assert!(self.name_map.get(did).is_some());
+        let meta = self.name_map.get(did).unwrap();
+        assert!(meta.get_mode().needs_def());
         assert!(self.translated_functions.insert(*did, trf).is_none());
+    }
+
+    /// Provide the specification for an only_spec function.
+    pub fn provide_specced_function(&mut self, did: &DefId, spec: radium::FunctionSpec<'def>) {
+        let meta = self.name_map.get(did).unwrap();
+        assert!(meta.get_mode().is_only_spec());
+        assert!(self.specced_functions.insert(*did, spec).is_none());
     }
 
     /// Iterate over the functions we have generated code for.
     pub fn iter_code(&self) -> std::collections::hash_map::Iter<'_, DefId, radium::Function<'def>> {
         self.translated_functions.iter()
+    }
+
+    /// Iterate over the functions we have generated only specs for.
+    pub fn iter_only_spec(&self) -> std::collections::hash_map::Iter<'_, DefId, radium::FunctionSpec<'def>> {
+        self.specced_functions.iter()
     }
 }
 
@@ -103,8 +189,6 @@ pub struct BodyTranslator<'a, 'def, 'tcx> {
     return_name: String,
     /// syntactic type of the thing to return
     return_synty: radium::SynType,
-    /// all the types used in this function
-    collected_types: HashSet<Ty<'tcx>>,
     /// all the other procedures used by this function, and:
     /// (code_loc_parameter_name, spec_name, type_inst, syntype_of_all_args)
     collected_procedures: HashMap<(DefId, FnGenericKey<'tcx>), (String, String, Vec<radium::Type<'def>>, Vec<radium::SynType>)>,
@@ -129,8 +213,6 @@ pub struct BodyTranslator<'a, 'def, 'tcx> {
     /// translator for types
     ty_translator: &'a TypeTranslator<'def, 'tcx>,
 
-    /// defids of purely spec fns.
-    spec_fns: &'a HashSet<DefId>,
     /// map of loop heads to their optional spec closure defid
     loop_specs: HashMap<BasicBlock, Option<DefId>>,
 
@@ -377,9 +459,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate the body of a function.
-    pub fn new(env: &'def Environment<'tcx>, fname: &str, proc: Procedure<'tcx>, attrs: &'a [Attribute], ty_translator: &'def TypeTranslator<'def, 'tcx>, proc_registry: &'a ProcedureScope<'def>, spec_fns: &'a HashSet<DefId>) -> Result<Self , TranslationError> {
-        let fname = strip_coq_ident(&fname);
-        let mut translated_fn = radium::FunctionBuilder::new(&fname);
+    pub fn new(env: &'def Environment<'tcx>, meta: ProcedureMeta, proc: Procedure<'tcx>, attrs: &'a [Attribute], ty_translator: &'def TypeTranslator<'def, 'tcx>, proc_registry: &'a ProcedureScope<'def>) -> Result<Self , TranslationError> {
+        let mut translated_fn = radium::FunctionBuilder::new(&meta.name, &meta.spec_name);
 
         // TODO can we avoid the leak
         let proc: &'def Procedure = &*Box::leak(Box::new(proc));
@@ -516,11 +597,6 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 checked_op_analyzer.analyze();
                 let checked_op_locals = checked_op_analyzer.results();
 
-                // we collect the types used for locals to generate the right requirements on refinements of mutable
-                // references
-                // TODO: remove
-                let mut collected_types = HashSet::new();
-
                 // map to translate between locals and the string names we use in radium::
                 let mut radium_name_map: HashMap<Local, String> = HashMap::new();
 
@@ -542,7 +618,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                     // check if the type is of a spec fn -- in this case, we can skip this temporary
                     if let TyKind::Closure(id, _) = ty.kind() {
-                        if spec_fns.contains(&id) {
+                        if proc_registry.lookup_function_mode(id).map_or(false, |m| m.is_ignore()) {
                             // this is a spec fn
                             info!("skipping local which has specfn closure type: {:?}", local);
                             continue;
@@ -570,29 +646,19 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                         }
                     }
 
-                    collected_types.insert(*ty);
                 }
                 // create the function
                 let return_name = opt_return_name?;
-
-                /*
-                info!("function uses the following types for its local computation");
-                for ty in collected_types.iter() {
-                    info!("{:?}", *ty);
-                }
-                info!("\n");
-                */
 
                 let t = BodyTranslator {env, proc, info,
                     variable_map: radium_name_map,
                     translated_fn,
                     return_name, return_synty,
-                    collected_types, inclusion_tracker,
+                    inclusion_tracker,
                     collected_procedures: HashMap::new(),
                     procedure_registry: proc_registry,
                     attrs,
                     local_lifetimes: Vec::new(),
-                    spec_fns,
                     bb_queue: Vec::new(),
                     processed_bbs: HashSet::new(),
                     ty_translator,
@@ -763,16 +829,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         universal_constraints
     }
 
-    /// Main translation function that actually does the translation and returns a radium::Function
-    /// if successful.
-    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
-        let loop_info = self.proc.loop_info();
-        info!("loop heads: {:?}", loop_info.loop_heads);
-        for (head, bodies) in loop_info.loop_bodies.iter() {
-            info!("loop {:?} -> {:?}", head, bodies);
-        }
-
-
+    /// Translation that only generates a specification.
+    pub fn generate_spec(mut self) -> Result<radium::FunctionSpec<'def>, TranslationError> {
         // add lifetime parameters to the map
         let initial_constraints = self.get_initial_universal_arg_constraints();
         info!("initial constraints: {:?}", initial_constraints);
@@ -782,6 +840,37 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         info!("univeral constraints: {:?}", universal_constraints);
         for (lft1, lft2) in universal_constraints.into_iter() {
             self.translated_fn.add_universal_lifetime_constraint(lft1, lft2).map_err(|e| TranslationError::UnknownError(e))?;
+        }
+
+        // process attributes
+        self.process_attrs()?;
+
+        self.ty_translator.leave_procedure();
+        Ok(self.translated_fn.into())
+    }
+
+    /// Main translation function that actually does the translation and returns a radium::Function
+    /// if successful.
+    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
+        // add lifetime parameters to the map
+        let initial_constraints = self.get_initial_universal_arg_constraints();
+        info!("initial constraints: {:?}", initial_constraints);
+
+        // add universal constraints
+        let universal_constraints = self.get_relevant_universal_constraints();
+        info!("univeral constraints: {:?}", universal_constraints);
+        for (lft1, lft2) in universal_constraints.into_iter() {
+            self.translated_fn.add_universal_lifetime_constraint(lft1, lft2).map_err(|e| TranslationError::UnknownError(e))?;
+        }
+
+        // process attributes
+        self.process_attrs()?;
+
+        // add loop info
+        let loop_info = self.proc.loop_info();
+        info!("loop heads: {:?}", loop_info.loop_heads);
+        for (head, bodies) in loop_info.loop_bodies.iter() {
+            info!("loop {:?} -> {:?}", head, bodies);
         }
 
         // translate the function's basic blocks
@@ -842,10 +931,6 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             let spec = self.parse_attributes_on_loop_spec_closure(head, did);
             self.translated_fn.register_loop_invariant(Self::make_bb_name(head), spec);
         }
-
-        // process attributes
-        self.process_attrs()?;
-
 
         // generate dependencies on other procedures.
         for (_, (loc_name, spec_name, params, sts)) in self.collected_procedures.iter() {
@@ -1684,7 +1769,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         // check if we should ignore this
         let local_type = self.get_type_of_local(&l)?;
         if let TyKind::Closure(did, _) = local_type.kind() {
-            Ok(self.spec_fns.contains(did).then(|| *did))
+            Ok(self.procedure_registry.lookup_function_mode(did).and_then(|m| if m.is_ignore() { Some(*did) } else { None } ))
         }
         else {
             Ok(None)

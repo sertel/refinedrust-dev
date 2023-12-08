@@ -1139,6 +1139,7 @@ impl<'def> Function<'def> {
 pub struct FunctionBuilder<'def> {
     pub code: FunctionCodeBuilder,
     pub spec: FunctionSpecBuilder<'def>,
+    spec_name: String,
 
     /// a sequence of other function names used by this function
     /// (code_loc_name, spec_name, type parameter instantiation)
@@ -1165,11 +1166,12 @@ pub struct FunctionBuilder<'def> {
 }
 
 impl<'def> FunctionBuilder<'def> {
-    pub fn new(name: &str) -> Self {
+    pub fn new(name: &str, spec_name: &str) -> Self {
         let code_builder = FunctionCodeBuilder::new();
         let spec_builder = FunctionSpecBuilder::new();
         FunctionBuilder {
             function_name: name.to_string(),
+            spec_name: spec_name.to_string(),
             other_functions: Vec::new(),
             rfn_types: Vec::new(),
             generic_types: Vec::new(),
@@ -1248,25 +1250,8 @@ impl<'def> FunctionBuilder<'def> {
             panic!("registered loop invariant multiple times");
         }
     }
-}
 
-impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
-    fn into(mut self) -> Function<'def> {
-
-        // generate location parameters for other functions used by this one.
-        let mut parameters: Vec<(CoqName, CoqType)> = self.other_functions.iter().map(|f_inst| (CoqName::Named(f_inst.0.to_string()), CoqType::Loc)).collect();
-
-        // add generic syntype parameters for generics that this function uses.
-        let mut gen_st_parameters = self.generic_types.iter().map(|(_, st)| (CoqName::Named(st.to_string()), CoqType::SynType)).collect();
-        parameters.append(&mut gen_st_parameters);
-
-        let code = FunctionCode {
-            stack_layout: self.code.stack_layout,
-            name: self.function_name.clone(),
-            basic_blocks: self.code.basic_blocks,
-            required_parameters: parameters,
-        };
-
+    fn add_generics_to_spec(&mut self) {
         // push generic type parameters to the spec builder
         for (names, st_name) in self.generic_types.iter() {
             // TODO(cleanup): this currently regenerates the names for ty + rt, instead of using
@@ -1291,8 +1276,30 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
             self.spec.add_precondition(read_precond).unwrap();
             self.spec.add_precondition(sc_precond).unwrap();
         }
+    }
+}
 
-        let spec = self.spec.into_function_spec(&self.function_name);
+
+
+impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
+    fn into(mut self) -> Function<'def> {
+
+        // generate location parameters for other functions used by this one.
+        let mut parameters: Vec<(CoqName, CoqType)> = self.other_functions.iter().map(|f_inst| (CoqName::Named(f_inst.0.to_string()), CoqType::Loc)).collect();
+
+        // add generic syntype parameters for generics that this function uses.
+        let mut gen_st_parameters = self.generic_types.iter().map(|(_, st)| (CoqName::Named(st.to_string()), CoqType::SynType)).collect();
+        parameters.append(&mut gen_st_parameters);
+
+        self.add_generics_to_spec();
+        let spec = self.spec.into_function_spec(&self.function_name, &self.spec_name);
+
+        let code = FunctionCode {
+            stack_layout: self.code.stack_layout,
+            name: self.function_name.clone(),
+            basic_blocks: self.code.basic_blocks,
+            required_parameters: parameters,
+        };
 
         Function {
             code, spec,
@@ -1302,5 +1309,12 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
             loop_invariants: self.loop_invariants,
             manual_tactics: self.tactics,
         }
+    }
+}
+
+impl<'def> Into<FunctionSpec<'def>> for FunctionBuilder<'def> {
+    fn into(mut self) -> FunctionSpec<'def> {
+        self.add_generics_to_spec();
+        self.spec.into_function_spec(&self.function_name, &self.spec_name)
     }
 }

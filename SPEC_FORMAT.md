@@ -35,6 +35,13 @@ Finally, the returns clause specifies a refinement (and optionally, a type) for 
 | `ensures` | specify a postcondition | multiple | `#[rr::ensures("⌜x > y⌝")]` |
 | `exists`  | specify an existential for the postcondition | multiple | `#[rr::exists("x" : "Z")]` |
 
+There are further attributes that influence the proof-checking behaviour:
+| Keyword   | Purpose                      | Properties | Example                          |
+|-----------|------------------------------|------------|----------------------------------|
+| `trust_me`  | generate and type-check the specification and code, but do not generate a proof | none   | `#[rr::trust_me]` |
+| `only_spec`  | only generate and type-check the specification, but do not generate the code | none   | `#[rr::only_spec]` |
+| `skip`  | ignore annotations on this function completely | none   | `#[rr::skip]` |
+
 
 ## Struct attributes
 | Keyword   | Purpose                      | Properties | Example                          |
