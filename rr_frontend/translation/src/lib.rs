@@ -308,19 +308,19 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         }
 
         // create output directory
-        let dir_str: String = if let Some(output) = rrconfig::output_dir() {
+        let base_dir_path: std::path::PathBuf = if let Some(output) = rrconfig::output_dir() {
             output
         } else {
             info!("No output directory specified, not writing files");
             return;
         };
 
-        let mut dir_path = std::path::PathBuf::from(&dir_str);
+        let mut dir_path = base_dir_path.clone();
         dir_path.push(&stem);
         let dir_path = dir_path.as_path();
         info!("outputting generated code to {}", dir_path.to_str().unwrap());
         if let Err(_) = fs::read_dir(dir_path) {
-            warn!("Output directory {} does not exist, creating directory", dir_str);
+            warn!("Output directory {:?} does not exist, creating directory", base_dir_path);
             fs::create_dir_all(dir_path).unwrap();
         }
 

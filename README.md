@@ -74,13 +74,19 @@ These include:
 
 | Option | Type | Configures |
 |--------|------|------------|
+| `work_dir` | Relative/absolue path | Determines the working directory. Other relative paths are interpreted relative to this one. |
 | `dump_borrowck_info` | Boolean | Dumps borrowck debug output in the log directory |
-| `output_dir` | Relative path | Determines the directory where the generated output files will be placed |
-| `log_dir` | Relative path | Determines the directory where logs and debug dumps will be placed if enabled |
+| `output_dir` | Relative/absolute path | Determines the directory where the generated output files will be placed |
+| `log_dir` | Relative/absolute path | Determines the directory where logs and debug dumps will be placed if enabled |
 | `shims` | Relative path | Determines the JSON file storing information about shims that RefinedRust uses |
 | `run_check` | Boolean | Automatically call the Coq type checker on the generated files |
+| `verify_deps` | Boolean | Verify dependencies or not |
+| `admit_proofs` | Boolean | Skip Coq's `Qed` check and instead run `Admitted` |
 
+The path to the config file can also be specified via the environment variable `RR_CONFIG`.
+Setting this variable will also change the `work_dir` (relative to which paths are interpreted) to the path of `RR_CONFIG`.
 
+Overrides for all settings can be specified in the environment via variables with the prefix `RR_`, e.g. `RR_SHIMS`, `RR_DUMP_BORROWCK_INFO`, etc.
 
 ## License
 We currently re-use code from the following projects:

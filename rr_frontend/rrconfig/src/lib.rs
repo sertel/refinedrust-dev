@@ -9,6 +9,9 @@ use std::env;
 use std::{sync::RwLock, path::PathBuf};
 use serde::Deserialize;
 use lazy_static::lazy_static;
+use path_clean::PathClean;
+
+use log::info;
 
 pub mod launch;
 pub mod arg_value;
@@ -18,6 +21,10 @@ lazy_static! {
     static ref SETTINGS: RwLock<Config> = RwLock::new({
         let mk_config = || {
             let mut builder = Config::builder();
+
+            // determine working dir
+            //let work_dir = std::env::current_dir().unwrap();
+            //let work_dir = work_dir.to_str().unwrap();
 
             // 1. Default values
             builder = builder.set_default("be_rustc", false)?
@@ -34,7 +41,8 @@ lazy_static! {
                 .set_default("no_verify", false)?
                 .set_default("cargo_path", "cargo")?
                 .set_default("cargo_command", "check")?
-                .set_default("admit_proofs", false)?;
+                .set_default("admit_proofs", false)?
+                .set_default("work_dir", ".")?;
 
             // 2. Override with the optional TOML file "RefinedRust.toml" (if there is any)
             builder = builder.add_source(
@@ -46,6 +54,12 @@ lazy_static! {
                 // Since this file is explicitly specified by the user, it would be
                 // nice to tell them if we cannot open it.
                 builder = builder.add_source(File::with_name(&file));
+
+                // set override for workdir to the config file path
+                let path_to_file = std::path::PathBuf::from(file);
+                let parent = path_to_file.parent().unwrap();
+                let filepath = parent.to_str().unwrap();
+                builder = builder.set_default("work_dir", filepath)?;
             }
 
             // 4. Override with env variables (`RR_QUIET`, ...)
@@ -63,6 +77,21 @@ lazy_static! {
 /// Generate a dump of the settings
 pub fn dump() -> String {
     format!("{:#?}", SETTINGS.read().unwrap())
+}
+
+/// Makes the path absolute with respect to the work_dir.
+fn make_path_absolute(path: &str) -> PathBuf {
+    // read the base path we set
+    let base_path: String = work_dir(); 
+
+    let path_buf = std::path::PathBuf::from(path);
+    if path_buf.is_absolute() {
+        path_buf
+    }
+    else {
+        let base_path_buf = std::path::PathBuf::from(base_path);
+        base_path_buf.join(path_buf).clean()
+    }
 }
 
 fn read_optional_setting<T>(name: &'static str) -> Option<T>
@@ -87,6 +116,10 @@ fn write_setting<T: Into<config::Value>>(key: &'static str, value: T) {
         .unwrap_or_else(|e| panic!("Failed to write setting {key} due to {e}"));
 }
 
+pub fn work_dir() -> String {
+    read_setting("work_dir")
+}
+
 /// Should we dump debug files?
 pub fn dump_debug_info() -> bool {
     read_setting("dump_debug_info")
@@ -99,7 +132,7 @@ pub fn dump_borrowck_info() -> bool {
 
 /// In which folder should we store log/dumps?
 pub fn log_dir() -> PathBuf {
-    PathBuf::from(read_setting::<String>("log_dir"))
+    make_path_absolute(&read_setting::<String>("log_dir"))
 }
 
 /// The hotword with which specification attributes should begin.
@@ -123,8 +156,8 @@ pub fn attribute_parser() -> String {
 }
 
 /// Which directory to write the generated Coq files to?
-pub fn output_dir() -> Option<String> {
-    read_optional_setting("output_dir")
+pub fn output_dir() -> Option<PathBuf> {
+    read_optional_setting("output_dir").map(|s: String| make_path_absolute(&s))
 }
 
 /// Whether to admit proofs of functions instead of running Qed. 
@@ -133,8 +166,8 @@ pub fn admit_proofs() -> bool {
 }
 
 /// Which file to read shims from?
-pub fn shim_file() -> Option<String> {
-    read_optional_setting("shims")
+pub fn shim_file() -> Option<PathBuf> {
+    read_optional_setting("shims").map(|s: String| make_path_absolute(&s))
 }
 
 /// Run the proof checker after generating the Coq code?
