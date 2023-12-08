@@ -1123,7 +1123,12 @@ impl<'def> Function<'def> {
 
         out.push_str(format!("{}Unshelve. all: try done; try apply: inhabitant; print_remaining_shelved_goal \"{}\".\n", indent, self.name()).as_str());
 
-        out.push_str("Qed.\n");
+        if rrconfig::admit_proofs() {
+            out.push_str("Admitted. (* admitted due to admit_proofs config flag *)\n");
+        }
+        else {
+            out.push_str("Qed.\n");
+        }
         out
     }
 }

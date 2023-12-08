@@ -1,5 +1,6 @@
 #![feature(box_patterns)]
 
+use rrconfig;
 
 pub mod code;
 pub mod specs;

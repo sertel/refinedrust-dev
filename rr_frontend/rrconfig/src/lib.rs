@@ -33,7 +33,8 @@ lazy_static! {
                 .set_default("verify_deps", false)?
                 .set_default("no_verify", false)?
                 .set_default("cargo_path", "cargo")?
-                .set_default("cargo_command", "check")?;
+                .set_default("cargo_command", "check")?
+                .set_default("admit_proofs", false)?;
 
             // 2. Override with the optional TOML file "RefinedRust.toml" (if there is any)
             builder = builder.add_source(
@@ -124,6 +125,11 @@ pub fn attribute_parser() -> String {
 /// Which directory to write the generated Coq files to?
 pub fn output_dir() -> Option<String> {
     read_optional_setting("output_dir")
+}
+
+/// Whether to admit proofs of functions instead of running Qed. 
+pub fn admit_proofs() -> bool {
+    read_setting("admit_proofs")
 }
 
 /// Which file to read shims from?
