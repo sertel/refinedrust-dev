@@ -444,6 +444,56 @@ Section call.
       tys []
     ⊢ typed_call π E L eκs v (v ◁ᵥ{π} l @ inline_function_ptr sta fn) vl tys T.
   Proof.
+    intros; iIntros "(%Heκs & %Hl & HT) Hv Htys" (Φ) "#CTX #HE HL Hna HΦ".
+    iDestruct "Hv" as (local_sts) "(-> & Hfn & %Halg & %Halgl)".
+
+    iAssert ⌜Forall2 has_layout_val vl (f_args fn).*2⌝%I as %Hall. {
+      iClear (Heκs lya) "Hfn HL Hna HΦ HT CTX HE".
+
+      iInduction (fn.(f_args)) as [|[? ly]] "IH" forall (vl tys Hl sta Halg).
+      { apply Forall2_nil_inv_r in Hl as ->. destruct vl => //=. }
+
+      apply Forall2_cons_inv_r in Hl as (? & ? & ? & ? & ->).
+      simplify_eq /=.
+
+      apply list_map_option_cons_inv_r in Halg as (st & ? & ? & Hlayout & ?).
+      simplify_eq /=.
+
+      destruct vl => //=.
+      iDestruct "Htys" as "[Hv Hvl]".
+      destruct x as (rt & (ty & r)).
+
+      iDestruct (ty_has_layout with "Hv") as "(%ly' & %Hlayout' & %)".
+
+      iDestruct ("IH" with "[//] [//] Hvl") as %?.
+      assert (ly = ly') as ->. {
+        eapply syn_type_has_layout_inj.
+        2: exact Hlayout'.
+        (* exact Hlayout. *)
+        admit.
+      }
+      iPureIntro. constructor => //=.
+    }
+
+    (* NOTE: wp_call_credits *)
+    iApply (wp_call with "Hfn") => //.
+    { apply val_to_of_loc. }
+
+    iIntros "!>" (lsa lsv Hlya) "Ha Hv Hcred".
+    move: Halg Hall Hlya Hl; move: {1 2 3 4}(fn.(f_args)) => alys Halg Hall Hlya Hl.
+
+    iInduction vl as [|v vl] "IH" forall (tys lsa alys Halg Halgl Hlya Hall Hl).
+    2: {
+      iDestruct (big_sepL2_cons_inv_r with "Ha") as (?? ->) "[Hmt Ha]".
+      iDestruct (big_sepL2_cons_inv_l with "Htys") as (?? ->) "[Hv' Htys]".
+      simplify_eq /=.
+
+      apply Forall2_cons_inv_l in Hl as (? & ? & ? & Hl & ->); simplify_eq /=.
+      apply Forall2_cons in Hall as [? Hall].
+      move: Hlya => /(Forall2_cons _ _ _ _)[??].
+
+      admit.
+    }
   Admitted.
 
   Definition type_call_inline_fnptr_inst := [instance type_call_inline_fnptr].
