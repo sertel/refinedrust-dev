@@ -482,15 +482,17 @@ Section judgments.
 
   (** Learn from a hypothesis on introduction with [introduce_with_hooks], defined below *)
   Class LearnFromHyp (P : iProp Σ) := {
-    learn_from_hyp_Q : Prop;
+    learn_from_hyp_Q : iProp Σ;
+    learn_from_hyp_pers :: Persistent (learn_from_hyp_Q);
     learn_from_hyp_proof :
-      ∀ F, ⌜lftE ⊆ F⌝ -∗ P ={F}=∗ P ∗ ⌜learn_from_hyp_Q⌝;
+      ∀ F, ⌜lftE ⊆ F⌝ -∗ P ={F}=∗ P ∗ learn_from_hyp_Q;
   }.
 
   Class LearnFromHypVal {rt} (ty : type rt) (r : rt) := {
-    learn_from_hyp_val_Q : Prop;
+    learn_from_hyp_val_Q : iProp Σ;
+    learn_from_hyp_val_pers :: Persistent (learn_from_hyp_val_Q);
     learn_from_hyp_val_proof :
-      ∀ F π v, ⌜lftE ⊆ F⌝ -∗ v ◁ᵥ{π} r @ ty ={F}=∗ v ◁ᵥ{π} r @ ty ∗ ⌜learn_from_hyp_val_Q⌝;
+      ∀ F π v, ⌜lftE ⊆ F⌝ -∗ v ◁ᵥ{π} r @ ty ={F}=∗ v ◁ᵥ{π} r @ ty ∗ learn_from_hyp_val_Q;
   }.
   Global Program Instance learn_hyp_val π v {rt} (ty : type rt) r :
     LearnFromHypVal ty r → LearnFromHyp (v ◁ᵥ{π} r @ ty) :=
@@ -499,29 +501,29 @@ Section judgments.
 
   Global Program Instance learn_hyp_place_owned π l {rt} (ty : type rt) r :
     LearnFromHypVal ty r → LearnFromHyp (l ◁ₗ[π, Owned false] #r @ (◁ ty))%I | 10 :=
-    λ H, {| learn_from_hyp_Q := learn_from_hyp_val_Q ∧ ∃ ly, (use_layout_alg (ty_syn_type ty)) = Some ly ∧ l `has_layout_loc` ly  |}.
+    λ H, {| learn_from_hyp_Q := learn_from_hyp_val_Q ∗ ∃ ly, ⌜use_layout_alg (ty_syn_type ty) = Some ly⌝ ∗ ⌜l `has_layout_loc` ly⌝ ∗ loc_in_bounds l 0 (ly_size ly) |}.
   Next Obligation.
-    intros π l rt ty r [Q HQ] F.
-    iIntros (?) "Hl".
+    intros π l rt ty r [Q ? HQ] F.
+    iIntros (?) "Hl". simpl.
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-    iDestruct "Hl" as "(%ly & %Halg & % & ? & ? & ? & %r' & -> & HT)".
+    iDestruct "Hl" as "(%ly & %Halg & % & ? & #Hlb & ? & %r' & -> & HT)".
     iMod (fupd_mask_mono with "HT") as "(%v & Hl & Hv)"; first done.
-    iMod (HQ with "[//] Hv") as "(Hv & %HQ')".
-    iSplitL. { iModIntro. iExists _. iFrame. iR. iR. iExists _. iR.
+    iMod (HQ with "[//] Hv") as "(Hv & #HQ')".
+    iSplitL. { iModIntro. iExists _. iFrame. iR. iR. iR. iExists _. iR.
       iModIntro. eauto 8 with iFrame. }
-    iModIntro. iPureIntro. split; first done.
-    exists ly. done.
+    iModIntro. iFrame "HQ'". iExists _. iFrame "Hlb". done.
   Qed.
 
   (* Lower-priority instance for other ownership modes and place types *)
   Global Program Instance learn_hyp_place_layout π l k {rt} (lt : ltype rt) r :
     LearnFromHyp (l ◁ₗ[π, k] r @ lt)%I | 20 :=
-    {| learn_from_hyp_Q := ∃ ly, (use_layout_alg (ltype_st lt)) = Some ly ∧ l `has_layout_loc` ly  |}.
+    {| learn_from_hyp_Q := ∃ ly, ⌜use_layout_alg (ltype_st lt) = Some ly⌝ ∗ ⌜l `has_layout_loc` ly⌝ ∗ loc_in_bounds l 0 (ly_size ly)  |}.
   Next Obligation.
     intros π l k rt lt r F.
     iIntros (?) "Hl".
     iPoseProof (ltype_own_has_layout with "Hl") as "(%ly & %Hst & %Hl)".
-    iModIntro. iFrame. iPureIntro. eauto.
+    iPoseProof (ltype_own_loc_in_bounds with "Hl") as "#Hlb"; first done.
+    iModIntro. iFrame. iExists _. iFrame "Hlb". iPureIntro. eauto.
   Qed.
 
   (** * Introduce a proposition containing tokens that we want to directly return *)
@@ -554,13 +556,13 @@ Section judgments.
 
   (* low priority base instances so that other more specialized instances trigger first *)
   Lemma introduce_with_hooks_base_learnable E L P T `{HP : LearnFromHyp P} :
-    (P -∗ ⌜learn_from_hyp_Q⌝ -∗ T L) ⊢
+    (P -∗ introduce_with_hooks E L (learn_from_hyp_Q) T) ⊢
     introduce_with_hooks E L P T.
   Proof.
     iIntros "HT" (F ?) "#HE HL HP".
     iMod (learn_from_hyp_proof with "[//] HP") as "(HP & Hlearn)".
-    iSpecialize ("HT" with "HP Hlearn").
-    iModIntro. iExists L. iFrame.
+    iMod ("HT" with "HP [] HE HL Hlearn") as "Ha"; first done.
+    done.
   Qed.
   Global Instance introduce_with_hooks_base_learnable_inst E L P `{!LearnFromHyp P} : IntroduceWithHooks E L P | 100 :=
     λ T, i2p (introduce_with_hooks_base_learnable E L P T).

@@ -1273,7 +1273,7 @@ Section lemmas.
   (** Learnable *)
   Global Program Instance learn_from_hyp_val_array {rt} (ty : type rt) xs len :
     LearnFromHypVal (array_t ty len) xs :=
-    {| learn_from_hyp_val_Q := length xs = len |}.
+    {| learn_from_hyp_val_Q := ⌜length xs = len⌝ |}.
   Next Obligation.
     iIntros (????????) "Hv".
     iPoseProof (array_t_rfn_length_eq with "Hv") as "%Hlen".

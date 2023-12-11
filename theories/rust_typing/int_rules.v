@@ -9,7 +9,7 @@ Section typing.
 
   Global Program Instance learn_from_hyp_val_int_unsigned it z `{Hu : TCDone (it.(it_signed) = false)} :
     LearnFromHypVal (int it) z :=
-    {| learn_from_hyp_val_Q := 0 ≤ z ≤ MaxInt it |}.
+    {| learn_from_hyp_val_Q := ⌜0 ≤ z ≤ MaxInt it⌝ |}.
   Next Obligation.
     iIntros (? z Hu ????) "Hv".
     rewrite /ty_own_val/=.
@@ -21,7 +21,7 @@ Section typing.
   Qed.
   Global Program Instance learn_from_hyp_val_int_signed it z `{Hs : TCDone (it.(it_signed) = true)} :
     LearnFromHypVal (int it) z :=
-    {| learn_from_hyp_val_Q := MinInt it ≤ z ≤ MaxInt it |}.
+    {| learn_from_hyp_val_Q := ⌜MinInt it ≤ z ≤ MaxInt it⌝ |}.
   Next Obligation.
     iIntros (? z Hs ????) "Hv".
     rewrite /ty_own_val/=.
