@@ -426,7 +426,7 @@ Section call.
     let lyv := fn.(f_local_vars).*2 in
 
     ⌜eκs = []⌝ ∗
-    ⌜Forall2 (λ '(existT _ (ty, _)) '(_, p), ty.(ty_has_op_type) (UntypedOp p) MCNone) tys fn.(f_args)⌝ ∗
+    ⌜Forall2 (λ '(existT _ (ty, _)) '(_, p), (ty_has_op_type ty) (UntypedOp p) MCNone) tys fn.(f_args)⌝ ∗
     foldr
       (λ '(existT _ (ty, r)) T lsa,
         ∀ l, l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty) -∗ T (lsa ++ [l]))
@@ -436,7 +436,7 @@ Section call.
         (λ lsv,
           ∀ (ϝ: lft),
           introduce_typed_stmt π E ((ϝ ⊑ₗ{ 0} []) :: L) ϝ fn lsa lsv lya lyv
-            (λ v,
+            (λ v llctx,
               find_in_context (FindVal v π)
                 (λ '(existT rt (ty, r)),
                   (v ◁ᵥ{π} r @ ty -∗ T L v rt ty r))))
