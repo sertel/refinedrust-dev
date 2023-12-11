@@ -526,6 +526,19 @@ Section judgments.
     iModIntro. iFrame. iExists _. iFrame "Hlb". iPureIntro. eauto.
   Qed.
 
+  Global Program Instance learn_hyp_loc_in_bounds l off1 off2 :
+    LearnFromHyp (loc_in_bounds l off1 off2)%I | 10 :=
+    {| learn_from_hyp_Q := ⌜(0 < l.2 - off1)%Z ∧ (l.2 + off2 ≤ MaxInt usize_t)%Z⌝ |}.
+  Next Obligation.
+    iIntros (l off1 off2 ? ?) "Hlb".
+    iPoseProof (loc_in_bounds_ptr_in_range with "Hlb") as "%Hinrange".
+    iFrame. iModIntro. iPureIntro.
+    move: Hinrange. rewrite /min_alloc_start.
+    split; first lia.
+    rewrite MaxInt_eq.
+    specialize (max_alloc_end_le_usize). lia.
+  Qed.
+
   (** * Introduce a proposition containing tokens that we want to directly return *)
   (* TODO also thread na tokens through here *)
   Definition introduce_with_hooks (E : elctx) (L : llctx) (P : iProp Σ) (T : llctx → iProp Σ) : iProp Σ :=

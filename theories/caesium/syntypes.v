@@ -19,7 +19,12 @@ Proof.
   intros Ha Hb. destruct (Nat.max_spec n1 n2) as [[Hle ->] | [Hle ->]]; lia.
 Qed.
 
-
+(* TODO move *)
+Lemma max_alloc_end_le_usize :
+  (max_alloc_end ≤ max_int usize_t)%Z.
+Proof.
+  unfold_common_caesium_defs. simpl. lia.
+Qed.
 
 Lemma mjoin_has_struct_layout sl vs :
   Forall2 (λ v ly, v `has_layout_val` ly) vs sl.(sl_members).*2 →
