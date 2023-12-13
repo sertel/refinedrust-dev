@@ -435,6 +435,7 @@ Fixpoint mem_cast (v : val) (ot : op_type) (st : (gset addr * heap_state)) : val
         else
           Some (val_of_loc (ProvAlloc None, a))
   | IntOp it => val_to_bytes v
+  | CharOp => if val_to_char v is Some _ then val_to_bytes v else None
   | BoolOp => if val_to_bool v is Some _ then val_to_bytes v else None
   (* The resize technically should not be necessary since mem_cast
   should only be called if the size is equal to the length of the
@@ -470,6 +471,11 @@ Proof.
     by repeat case_match.
   - by rewrite resize_length.
   - done.
+  - destruct (val_to_char v) => /=.
+    + destruct (val_to_bytes v) eqn:Hv => //=.
+      * move: Hv => /mapM_length. lia.
+      * by rewrite replicate_length.
+    + by rewrite replicate_length.
 Qed.
 
 Lemma mem_cast_id_loc l :
@@ -485,6 +491,11 @@ Lemma mem_cast_id_bool v b :
   val_to_bool v = Some b →
   mem_cast_id v BoolOp.
 Proof. move => Hb st. rewrite /mem_cast /= Hb. by erewrite val_to_bytes_id_bool. Qed.
+
+Lemma mem_cast_id_char v z :
+  val_to_char v = Some z →
+  mem_cast_id v CharOp.
+Proof. move => Hb st. rewrite /mem_cast /= Hb. by erewrite val_to_bytes_id_char. Qed.
 
 Lemma mem_cast_struct_reshape sl v st ots:
   length ots = length (field_names (sl_members sl)) →
@@ -530,7 +541,7 @@ Lemma mem_cast_idemp v ot st st' :
   mem_cast (mem_cast v ot st) ot st' = mem_cast v ot st.
 Proof.
   intros Hly Hwf.
-  induction ot as [ | | | sl ots IH | ] using op_type_recursor in v, Hly, Hwf|-*; simpl.
+  induction ot as [ | | | sl ots IH | | ] using op_type_recursor in v, Hly, Hwf|-*; simpl.
   - rewrite /mem_cast.
     destruct (val_to_bool v) as [b | ] eqn:Heq.
     + rewrite (val_to_bytes_id_bool _ b); last done. simpl.
@@ -599,6 +610,18 @@ Proof.
       rewrite drop_app'; first done.
       rewrite replicate_length//.
   - done.
+  - rewrite /mem_cast.
+    destruct (val_to_char v) as [z | ] eqn:Heq.
+    + rewrite (val_to_bytes_id_char _ z); last done. simpl.
+      rewrite Heq. simpl. rewrite (val_to_bytes_id_char _ z); done.
+    + rewrite replicate_length.
+      generalize (length v) as n. simpl.
+      clear.
+      intros n. case_match eqn:Heq1; last done.
+      destruct (val_to_bytes _) eqn:Heq; last done.
+      clear -Heq. simpl.
+      destruct n; simpl in Heq. { injection Heq as <-; done. }
+      done.
 Qed.
 
 Global Typeclasses Opaque mem_cast_id.

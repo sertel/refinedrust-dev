@@ -71,7 +71,8 @@ Section value.
     - iPureIntro. exists ot. split_and!; [ done | | | done].
       + specialize (is_memcast_val_has_layout_val' _ _ _ _ Hmc Hly) as Hly'.
         destruct ot'; simpl in Hot; try destruct Hot; subst;
-          [apply is_memcast_val_memcast; [done | by eapply use_op_alg_wf | done].. | done ].
+          [.. | done | ].
+        all: apply is_memcast_val_memcast; [done | by eapply use_op_alg_wf | done].
       + by apply has_layout_val_mem_cast.
     - iPureIntro.
       destruct ot'; simpl in Hot;

@@ -364,6 +364,23 @@ Section test.
     inv_layout_alg.
     eauto 10; solve[fail].
   Abort.
+
+  Lemma inv_test_name_collision {T_rt} (T_ty : type T_rt) U_st {U_rt} (U_ty : type U_rt) :
+    syn_type_is_layoutable T_st →
+    syn_type_is_layoutable (ty_syn_type T_ty) →
+    syn_type_is_layoutable U_st →
+    syn_type_is_layoutable (ty_syn_type U_ty) →
+    ty_syn_type T_ty = T_st →
+    ty_syn_type U_ty = U_st →
+    True.
+  Proof.
+    (* Regression test: This should not diverge. *)
+    intros []. inv_layout_alg.
+    intros []. inv_layout_alg.
+    intros []. inv_layout_alg.
+    intros []. inv_layout_alg.
+  Abort.
+
 End test.
 
 Section test.
@@ -570,6 +587,12 @@ Section test.
   Proof.
     intros. inv_layout_alg.
     solve_op_alg; solve[fail].
+  Abort.
+
+  Lemma solve_op_alg_test7 :
+    use_op_alg CharSynType = Some CharOp.
+  Proof.
+    solve_op_alg; solve [fail].
   Abort.
 End test.
 

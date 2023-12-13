@@ -383,7 +383,6 @@ Proof.
   apply val_of_Z_bool.
 Qed.
 
-
 Definition val_to_Z_ot (v : val) (ot : op_type) : option Z :=
   match ot with
   | IntOp it => val_to_Z v it
@@ -408,6 +407,20 @@ Proof.
   apply fmap_Some. eexists _. split; [|done]. by apply val_to_bool_iff_val_to_Z.
 Qed.
 
+Definition val_to_char (v : val) : option Z :=
+  z ← val_to_Z v char_it;
+  if decide (is_valid_char z) then Some z else None.
+Definition val_of_char (z : Z) :=
+  val_of_Z z char_it.
+
+Lemma val_to_char_length v z :
+  val_to_char v = Some z → length v = 4%nat.
+Proof.
+  rewrite /val_to_char.
+  intros (z' & Hv & Hvalid)%bind_Some.
+  apply val_to_Z_length in Hv. done.
+Qed.
+
 Lemma val_to_bytes_id v it n:
   val_to_Z v it = Some n →
   val_to_bytes v = Some v.
@@ -425,6 +438,17 @@ Proof.
   rewrite /val_to_bool. repeat case_match => //.
 Qed.
 
+Lemma val_to_bytes_id_char v z:
+  val_to_char v = Some z →
+  val_to_bytes v = Some v.
+Proof.
+  rewrite /val_to_char.
+  destruct (val_to_Z v char_it) eqn:Heq; last done.
+  simpl. repeat case_match => //.
+  intros [= ->].
+  by eapply val_to_bytes_id.
+Qed.
+
 Lemma val_to_bytes_idemp v v' :
   val_to_bytes v = Some v' →
   val_to_bytes v' = Some v'.
@@ -437,7 +461,6 @@ Proof.
   apply bind_Some in Hb as (v'' & Hb & [= <-]).
   apply IH in Hb. simpl. rewrite Hb. simpl. done.
 Qed.
-
 
 (** Rust: Erase provenance information from bytes. Needed to implement the EraseProv operation. *)
 Definition erase_prov (v : val) : val :=
@@ -480,4 +503,4 @@ Arguments erase_prov : simpl never.
 Arguments val_to_Z : simpl never.
 Arguments val_of_Z : simpl never.
 Arguments val_to_byte_prov : simpl never.
-Global Typeclasses Opaque val_to_Z val_of_Z val_of_bool val_to_bool val_to_byte_prov val_to_bytes provs_in_bytes.
+Global Typeclasses Opaque val_to_Z val_of_Z val_to_char val_of_char val_of_bool val_to_bool val_to_byte_prov val_to_bytes provs_in_bytes.

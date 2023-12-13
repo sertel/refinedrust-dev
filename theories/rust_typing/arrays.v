@@ -320,7 +320,7 @@ Section array.
   Qed.
   Next Obligation.
     iIntros (ty len ot mt st π r v Hot) "Hb".
-    destruct ot as [ | | | | ly']; [done.. | ].
+    destruct ot as [ | | | | ly' | ]; try done.
     destruct Hot as (ly0 & -> & Hot & Hwf).
     destruct mt; [done | done | done].
     (* TODO maybe the second case should really change once we support an ArrayOpType? *)
@@ -1273,7 +1273,7 @@ Section lemmas.
   (** Learnable *)
   Global Program Instance learn_from_hyp_val_array {rt} (ty : type rt) xs len :
     LearnFromHypVal (array_t ty len) xs :=
-    {| learn_from_hyp_val_Q := length xs = len |}.
+    {| learn_from_hyp_val_Q := ⌜length xs = len⌝ |}.
   Next Obligation.
     iIntros (????????) "Hv".
     iPoseProof (array_t_rfn_length_eq with "Hv") as "%Hlen".

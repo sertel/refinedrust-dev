@@ -9,7 +9,7 @@ Section typing.
 
   Global Program Instance learn_from_hyp_val_int_unsigned it z `{Hu : TCDone (it.(it_signed) = false)} :
     LearnFromHypVal (int it) z :=
-    {| learn_from_hyp_val_Q := 0 ≤ z ≤ MaxInt it |}.
+    {| learn_from_hyp_val_Q := ⌜0 ≤ z ≤ MaxInt it⌝ |}.
   Next Obligation.
     iIntros (? z Hu ????) "Hv".
     rewrite /ty_own_val/=.
@@ -21,7 +21,7 @@ Section typing.
   Qed.
   Global Program Instance learn_from_hyp_val_int_signed it z `{Hs : TCDone (it.(it_signed) = true)} :
     LearnFromHypVal (int it) z :=
-    {| learn_from_hyp_val_Q := MinInt it ≤ z ≤ MaxInt it |}.
+    {| learn_from_hyp_val_Q := ⌜MinInt it ≤ z ≤ MaxInt it⌝ |}.
   Next Obligation.
     iIntros (? z Hs ????) "Hv".
     rewrite /ty_own_val/=.
@@ -398,4 +398,31 @@ Section typing.
   Qed.
   Global Instance type_assert_bool_inst E L π b v : TypedAssert π E L v (bool_t) b :=
     λ s fn R ϝ, i2p (type_assert_bool E L π b s fn R v ϝ).
+
+
+  (** Char *)
+  Lemma type_char_val z π :
+    is_valid_char z → ⊢ i2v z char_it ◁ᵥ{π} z @ char_t.
+  Proof.
+    intros Hvalid.
+    specialize (is_valid_char_in_char_it _ Hvalid) as Hn.
+    move: Hn => /(val_of_Z_is_Some None) [v Hv].
+    move: (Hv) => /val_to_of_Z Hn.
+    rewrite /ty_own_val/=. iPureIntro.
+    rewrite /val_to_char.
+    apply bind_Some. exists z.
+    split.
+    - rewrite /i2v Hv/=//.
+    - rewrite decide_True; done.
+  Qed.
+
+  Lemma type_val_char z π (T : ∀ rt, type rt → rt → iProp Σ):
+    ⌜is_valid_char z⌝ ∗ T _ (char_t) z ⊢ typed_value (I2v z CharIt) π T.
+  Proof.
+    iIntros "[%Hn HT] #CTX".
+    iExists Z, (char_t), z. iFrame.
+    iApply type_char_val; last done.
+  Qed.
+  Global Instance type_val_char_inst n π : TypedValue (I2v n CharIt) π :=
+    λ T, i2p (type_val_char n π T).
 End typing.

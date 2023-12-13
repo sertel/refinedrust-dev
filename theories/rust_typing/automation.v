@@ -1027,7 +1027,8 @@ Ltac normalize_hook ::=
   normalize_autorewrite.
 
 Ltac after_intro_hook ::=
-  inv_layout_alg.
+  inv_layout_alg
+.
 
 (** Lithium hooks for [solve_goal]: called for remaining sideconditions *)
 Lemma unfold_int_elem_of_it (z : Z) (it : int_type) :

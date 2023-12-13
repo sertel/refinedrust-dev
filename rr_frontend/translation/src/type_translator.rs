@@ -740,28 +740,37 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         Ok(map)
     }
 
+    fn does_did_match(&self, did: DefId, path: &[&str]) -> bool {
+        let lookup_did =  crate::utils::try_resolve_did(self.env.tcx(), path);
+        if let Some(lookup_did) = lookup_did {
+            if lookup_did == did {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Get the spec for a built-in enum like std::option::Option.
     fn get_builtin_enum_spec(&self, did: DefId) -> Result<Option<radium::EnumSpec>, TranslationError> {
-        // TODO: find a more modular way to do this.
-        let option_did = crate::utils::try_resolve_did(self.env.tcx(), &["std", "option", "Option"]);
         let option_spec = radium::EnumSpec {
             rfn_type: radium::CoqType::Literal("_".to_string()),
             variant_patterns: vec![("None".to_string(), vec![], "-[]".to_string()),
                                    ("Some".to_string(), vec!["x".to_string()], "-[x]".to_string())],
 
         };
+        let enum_spec = radium::EnumSpec {
+            rfn_type: radium::CoqType::Literal("_".to_string()),
+            variant_patterns: vec![("inl".to_string(), vec!["x".to_string()], "-[x]".to_string()),
+                                   ("inr".to_string(), vec!["x".to_string()], "-[x]".to_string())],
+        };
 
-        if let Some(option_did) = option_did {
-            if option_did == did {
-                return Ok(Some(option_spec));
-            }
+        // TODO: find a more modular way to do this.
+        if self.does_did_match(did, &["std", "option", "Option"]) || self.does_did_match(did, &["core", "option", "Option"]) {
+            return Ok(Some(option_spec));
         }
 
-        let core_option_did = crate::utils::try_resolve_did(self.env.tcx(), &["core", "option", "Option"]);
-        if let Some(option_did) = core_option_did {
-            if option_did == did {
-                return Ok(Some(option_spec));
-            }
+        if self.does_did_match(did, &["std", "result", "Result"]) || self.does_did_match(did, &["core", "result", "Result"]) {
+            return Ok(Some(enum_spec));
         }
 
         Ok(None)
@@ -927,9 +936,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
     /// Translate type.
     pub fn translate_type(&self, ty : &Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
         match ty.kind() {
-            TyKind::Char => Err(TranslationError::UnsupportedType {description:
-                "RefinedRust does not support char".to_string()}),
-                //Ok(radium::Layout::CharLayout),
+            TyKind::Char => Ok(radium::Type::Char),
             TyKind::Int(it) => Ok(radium::Type::Int(
                 match it {
                     IntTy::I8 => radium::IntType::I8,

@@ -1,6 +1,6 @@
 From stdpp Require Export strings.
 From stdpp Require Import gmap list.
-From caesium Require Export base layout int_type loc.
+From caesium Require Export base layout int_type loc char.
 Set Default Proof Using "Type".
 
 Notation var_name := string (only parsing).
@@ -573,7 +573,8 @@ Inductive op_type : Set :=
 | IntOp (i : int_type)
 | PtrOp
 | StructOp (sl : struct_layout) (ots : list op_type)
-| UntypedOp (ly : layout).
+| UntypedOp (ly : layout)
+| CharOp.
 
 Definition ot_layout (ot : op_type) : layout :=
   match ot with
@@ -582,6 +583,7 @@ Definition ot_layout (ot : op_type) : layout :=
   | IntOp it => it_layout it
   | StructOp sl ots => sl
   | UntypedOp ly => ly
+  | CharOp => char_layout
   end.
 
 Lemma op_type_recursor (P : op_type → Type) :
@@ -590,9 +592,10 @@ Lemma op_type_recursor (P : op_type → Type) :
   P PtrOp →
   (∀ sl ots, list_is_list _ P ots → P (StructOp sl ots)) →
   (∀ ly, P (UntypedOp ly)) →
+  P CharOp →
   ∀ ot, P ot.
 Proof.
-  intros Hbool Hint Hptr Hstruct Huntyped.
+  intros Hbool Hint Hptr Hstruct Huntyped Hchar.
   refine (fix IH ot {struct ot} := _ ).
   destruct ot.
   - apply Hbool.
@@ -601,6 +604,7 @@ Proof.
   - apply Hstruct.
     by apply list_is_list_full.
   - apply Huntyped.
+  - apply Hchar.
 Qed.
 
 (* Well-formedness of op_types requires that [StructOp] has coherent op_types for every struct component *)

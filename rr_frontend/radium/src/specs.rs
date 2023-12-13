@@ -400,6 +400,7 @@ impl IntType {
 pub enum OpType {
     IntOp(IntType),
     BoolOp,
+    CharOp,
     PtrOp,
     // a term for the struct_layout, and optypes for the individual fields
     StructOp(CoqAppTerm<String>, Vec<OpType>),
@@ -411,6 +412,7 @@ impl Display for OpType {
         match self {
             Self::IntOp(it) => write!(f, "IntOp {}", it),
             Self::BoolOp => write!(f, "BoolOp"),
+            Self::CharOp => write!(f, "CharOp"),
             Self::PtrOp => write!(f, "PtrOp"),
             Self::StructOp(sl, ops) => {
                 write!(f, "StructOp {} [", sl)?;
@@ -457,6 +459,7 @@ pub static BOOL_REPR: IntType = IntType::U8;
 pub enum SynType {
     Int(IntType),
     Bool,
+    Char,
     Ptr,
     FnPtr,
     Untyped(Layout),
@@ -474,6 +477,7 @@ impl Display for SynType {
         match self {
             Self::Int(it) => write!(f, "IntSynType {}", it),
             Self::Bool => write!(f, "BoolSynType"),
+            Self::Char => write!(f, "CharSynType"),
             Self::Ptr => write!(f, "PtrSynType"),
             Self::FnPtr => write!(f, "FnPtrSynType"),
             Self::Untyped(ly) => write!(f, "UntypedSynType {}", ly),
@@ -492,6 +496,7 @@ impl SynType {
         match self {
             Self::Int(it) => Layout::IntLayout(*it),
             Self::Bool => Layout::BoolLayout,
+            Self::Char => Layout::CharLayout,
             Self::Ptr => Layout::PtrLayout,
             Self::FnPtr => Layout::PtrLayout,
             Self::Untyped(ly) => ly.clone(),
@@ -514,6 +519,7 @@ impl SynType {
         match self {
             Self::Int(it) => OpType::IntOp(*it),
             Self::Bool => OpType::BoolOp,
+            Self::Char => OpType::CharOp,
             Self::Ptr => OpType::PtrOp,
             Self::FnPtr => OpType::PtrOp,
             Self::Untyped(ly) => OpType::UntypedOp(ly.clone()),
@@ -598,6 +604,7 @@ pub enum Type<'def> {
     Var(usize),
     Int(IntType),
     Bool,
+    Char,
     MutRef(Box<Type<'def>>, Lft),
     ShrRef(Box<Type<'def>>, Lft),
     BoxType(Box<Type<'def>>),
@@ -623,6 +630,7 @@ impl<'def> Display for Type<'def> {
         match self {
             Self::Int(it) => write!(f, "(int {})", it),
             Self::Bool => write!(f, "bool_t"),
+            Self::Char => write!(f, "char_t"),
             Self::MutRef(ty, lft) => {
                 write!(f, "(mut_ref {} {})", ty, lft)
             },
@@ -668,6 +676,7 @@ impl<'def> Type<'def> {
         match self {
             Self::Int(_) => CoqType::Z,
             Self::Bool => CoqType::Bool,
+            Self::Char => CoqType::Z,
             Self::MutRef(box ty, _) =>
                 CoqType::Prod(vec![CoqType::PlaceRfn(Box::new (ty.get_rfn_type(env))), CoqType::Gname]),
             Self::ShrRef(box ty, _) =>
@@ -698,6 +707,7 @@ impl<'def> Type<'def> {
         match self {
             Self::Int(it) => SynType::Int(*it),
             Self::Bool => SynType::Bool,
+            Self::Char => SynType::Char,
             Self::MutRef(..) => SynType::Ptr,
             Self::ShrRef(..) => SynType::Ptr,
             Self::BoxType(..) => SynType::Ptr,
@@ -719,6 +729,7 @@ impl<'def> Type<'def> {
         match self {
             Self::Int(_) => (),
             Self::Bool => (),
+            Self::Char => (),
             Self::MutRef(box ty, lft) => {
                 s.insert(lft.to_string());
                 ty.get_ty_lfts(s)
@@ -752,6 +763,7 @@ impl<'def> Type<'def> {
         match self {
             Self::Int(_) => (),
             Self::Bool => (),
+            Self::Char => (),
             Self::MutRef(box ty, lft) => {
                 ty.get_ty_wf_elctx(s)
             },
@@ -836,12 +848,12 @@ impl TyOwnSpec {
     }
 
     pub fn fmt_owned(&self, tid: &str) -> String {
-        format!("{} ◁ₗ[{}, Owned {}] #{} @ (◁ {})",
+        format!("{} ◁ₗ[{}, Owned {}] #({}) @ (◁ {})",
                self.loc, tid, self.with_later, self.rfn, self.ty)
     }
 
     pub fn fmt_shared(&self, tid: &str, lft: &str) -> String {
-        format!("{} ◁ₗ[{}, Shared {}] #{} @ (◁ {})",
+        format!("{} ◁ₗ[{}, Shared {}] #({}) @ (◁ {})",
                self.loc, tid, lft, self.rfn, self.ty)
     }
 }
@@ -2236,7 +2248,7 @@ pub enum Layout {
     IntLayout(IntType),
     // size 1, similar to u8/i8
     BoolLayout,
-    // always 4 bytes
+    // size 4, similar to u32
     CharLayout,
     // guaranteed to have size 0 and alignment 1.
     UnitLayout,
@@ -2251,8 +2263,7 @@ impl Display for Layout {
         match self {
             Self::PtrLayout => write!(f, "void*"),
             Self::IntLayout(it) => write!(f, "(it_layout {})", it),
-            Self::BoolLayout => write!(f, "(it_layout {})", BOOL_REPR),
-            // TODO
+            Self::BoolLayout => write!(f, "bool_layout"),
             Self::CharLayout => write!(f, "char_layout"),
             Self::UnitLayout => write!(f, "(layout_of unit_sl)"),
             Self::Literal(n) => write!(f, "{}", n),

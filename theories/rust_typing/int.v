@@ -101,3 +101,48 @@ Global Hint Unfold bool_t : ty_unfold.
 Global Typeclasses Opaque bool_t.
 Notation "'bool'" := (bool_t) (only printing, format "'bool'") : printing_sugar.
 
+(** This represents the Rust char type. *)
+Section char.
+  Context `{!typeGS Σ}.
+
+  (* Separate definition such that we can make it typeclasses opaque later. *)
+  Program Definition char_t : type Z := {|
+    st_own tid z v := ⌜val_to_char v = Some z⌝;
+    st_syn_type := CharSynType;
+    st_has_op_type ot mt := is_char_ot ot;
+  |}%I.
+  Next Obligation.
+    iIntros (π z v Hv). iExists u32. iPureIntro. split; first done.
+    unfold has_layout_val. erewrite val_to_char_length; done.
+  Qed.
+  Next Obligation.
+    intros ot mt Hot. simpl in *. rewrite (is_char_ot_layout _ Hot). done.
+  Qed.
+  Next Obligation.
+    simpl. iIntros (ot mt st π r v Hot).
+    destruct mt.
+    - eauto.
+    - destruct ot; simpl in *; try done.
+      { subst; eauto. }
+      { iPureIntro. intros Hv. unfold mem_cast. rewrite Hv.
+        by erewrite val_to_bytes_id_char. }
+    - iApply (mem_cast_compat_char (λ v, _)); first done. eauto.
+  Qed.
+
+  Lemma char_own_val_eq v π z :
+    (v ◁ᵥ{π} z @ char_t)%I ≡ ⌜val_to_char v = Some z⌝%I.
+  Proof. done. Qed.
+
+  Global Instance char_timeless π l b:
+    Timeless (l ◁ᵥ{π} b @ char_t)%I.
+  Proof. apply _. Qed.
+
+  Global Instance char_copy : Copyable char_t.
+  Proof. apply _. Qed.
+End char.
+
+Global Hint Unfold char_t : ty_unfold.
+Global Typeclasses Opaque char_t.
+Notation "'char'" := (char_t) (only printing, format "'char'") : printing_sugar.
+
+
