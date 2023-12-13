@@ -479,20 +479,39 @@ Section call.
     iApply (wp_call with "Hfn") => //.
     { apply val_to_of_loc. }
 
-    iIntros "!>" (lsa lsv Hlya) "Ha Hv Hcred".
-    move: Halg Hall Hlya Hl; move: {1 2 3 4}(fn.(f_args)) => alys Halg Hall Hlya Hl.
+    iIntros "!>" (lsa lsv Hlya) "Hlsa Hlsv Hcred".
 
-    iInduction vl as [|v vl] "IH" forall (tys lsa alys Halg Halgl Hlya Hall Hl).
+    move: Halg Hall Hlya Hl.
+    move: {1 2 3 4}(fn.(f_args)) => alys Halg Hall Hlya Hl.
+
+    have: lsa = [] ++ lsa by done.
+    move: {1 5}([]) => lsa_.
+    move: {-2}(lsa) Hlya => lsa' Hlya Hr.
+
+    iInduction vl as [|v vl] "IH" forall (alys sta tys lsa lsa' lsa_ Hr Halg Halgl Hlya Hall Hl).
     2: {
-      iDestruct (big_sepL2_cons_inv_r with "Ha") as (?? ->) "[Hmt Ha]".
-      iDestruct (big_sepL2_cons_inv_l with "Htys") as (?? ->) "[Hv' Htys]".
-      simplify_eq /=.
+      iClear (Heκs l) "".
 
-      apply Forall2_cons_inv_l in Hl as (? & ? & ? & Hl & ->); simplify_eq /=.
+      iDestruct (big_sepL2_cons_inv_r with "Hlsa") as (l ls ->) "[Hl Hlsa]".
+      iDestruct (big_sepL2_cons_inv_l with "Htys") as ([? [ty r]] tys' ->) "[Hv Htys]".
+
+      apply Forall2_cons_inv_l in Hl as (t & ts & ? & Hl & ->).
+      replace (t :: ts).*2 with (t.2 :: ts.*2) in Hall, Hlya, Halg; last done.
+
+      apply list_map_option_cons_inv_r in Halg as (s & ss & -> & Hs & Hss).
       apply Forall2_cons in Hall as [? Hall].
-      move: Hlya => /(Forall2_cons _ _ _ _)[??].
+      apply Forall2_cons in Hlya as [? Hlya].
 
-      admit.
+      iSimpl in "HT".
+      iAssert (l ◁ₗ[π, Owned false] (# r) @ (◁ ty))%I with "[Hl Hv]" as "Hl".
+      { rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+        admit. }
+
+      iSpecialize ("HT" with "Hl").
+
+      iSpecialize ("IH" $! ts ss tys' ((lsa_ ++ [l]) ++ l :: ls) (l :: ls) (lsa_ ++ [l])); simplify_eq /=.
+      iApply ("IH" with "[//] [//] [//] [] [//] [//] HT Htys [$] Hna HΦ [Hlsa] Hlsv Hcred").
+      all: admit.
     }
   Admitted.
 
