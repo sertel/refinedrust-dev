@@ -832,8 +832,6 @@ Ltac sidecond_hook_list :=
 (* TODO : more sideconditions *)
 Ltac sidecond_hook ::=
   unfold_no_enrich;
-  (* To reduce duplicates between layout algs *)
-  simplify_eq/=;
   intros;
   match goal with
   | |- Forall ?P ?l =>

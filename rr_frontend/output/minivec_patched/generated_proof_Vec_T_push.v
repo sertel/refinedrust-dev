@@ -39,7 +39,7 @@ Proof.
   all: try (unfold_common_defs; solve_goal with (lia)).
 
   { 
-    move: H35. rewrite /size_of_array_in_bytes. 
+    move: H71. rewrite /size_of_array_in_bytes. 
     rewrite project_vec_els_length. 
     lia.
   } 
@@ -54,20 +54,20 @@ Proof.
   }
   {
     rewrite project_vec_els_insert_lt /=; [|lia].
-    apply (list_eq_split (length x3)).
+    apply (list_eq_split (length x4)).
     - rewrite take_insert; [|lia]. rewrite take_app_alt ?project_vec_els_length; [|lia].
       rewrite project_vec_els_take project_vec_els_take_r. f_equal; [lia|].
       rewrite take_app_le; [|lia]. rewrite take_ge; [done|lia].
     - rewrite drop_insert_le; [|lia]. rewrite drop_app_alt ?project_vec_els_length; [|lia].
       rewrite project_vec_els_drop. apply list_eq_singleton. split; solve_goal.
   }
-  { move: H35. rewrite /size_of_array_in_bytes. rewrite project_vec_els_length. simplify_layout_goal. nia. }
+  { move: H71. rewrite /size_of_array_in_bytes. rewrite project_vec_els_length. simplify_layout_goal. nia. }
   { nia. }
   {
     (* TODO *)
-    assert (x2 < length x3) as ?.
-    { specialize (H41 x2 ltac:(lia)).
-      apply lookup_lt_Some in H41.
+    assert (x3 < length x4) as ?.
+    { specialize (H79 x3 ltac:(lia)).
+      apply lookup_lt_Some in H79.
       lia. }
 
     rewrite project_vec_els_insert_lt /=; [|lia].
@@ -77,20 +77,20 @@ Proof.
   }
   { 
     (* TODO should get this in a different way *)
-    assert (x2 < length x3) as ?.
-    { specialize (H41 x2 ltac:(lia)).
-      apply lookup_lt_Some in H41.
+    assert (x3 < length x4) as ?.
+    { specialize (H79 x3 ltac:(lia)).
+      apply lookup_lt_Some in H79.
       lia. }
     nia. }
   {
     (* TODO we should get this in a different way *)
-    assert (x2 < length x3) as ?.
-    { specialize (H41 x2 ltac:(lia)).
-      apply lookup_lt_Some in H41.
+    assert (x3 < length x4) as ?.
+    { specialize (H79 x3 ltac:(lia)).
+      apply lookup_lt_Some in H79.
       lia. }
     (* I guess I want to know  that x2 < length x3. *)
     rewrite project_vec_els_insert_lt /=; [|lia].
-    apply (list_eq_split x2).
+    apply (list_eq_split x3).
     - rewrite take_insert; [|lia]. rewrite take_app_alt ?project_vec_els_length; [|lia].
       rewrite project_vec_els_take. f_equal. lia.
     - rewrite drop_insert_le; [|lia]. rewrite drop_app_alt ?project_vec_els_length; [|lia].
