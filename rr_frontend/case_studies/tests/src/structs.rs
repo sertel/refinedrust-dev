@@ -9,7 +9,7 @@ impl<T, U> Pair<T, U> {
 
     #[rr::params(x, y)]
     #[rr::args("x", "y")]
-    #[rr::returns("+[#x; #y]")]
+    #[rr::returns("-[#x; #y]")]
     pub fn new(x: T, y: U) -> Self {
         Self{x, y}
     }

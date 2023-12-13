@@ -61,6 +61,7 @@ Inductive IntType : Set :=
   | I8 | I16 | I32 | I64 | I128
   | U8 | U16 | U32 | U64 | U128
   | ISize | USize.
+Definition CharIt := U32.
 Definition IntType_to_it (I : IntType) : int_type :=
   match I with
   | I8 => i8
@@ -207,6 +208,8 @@ Inductive syn_type : Set :=
   | EnumSynType (en : string) (tag_it : IntType) (variant_list : list (string * syn_type)) (repr : enum_repr)
   (* unions *)
   | UnionSynType (un : string) (variant_list : list (string * syn_type)) (repr : union_repr)
+  (* char *)
+  | CharSynType
 .
 Canonical Structure syn_typeO := leibnizO syn_type.
 Global Instance syn_type_eq_dec : EqDecision syn_type.
@@ -241,6 +244,8 @@ Proof.
         cast_if_and (decide (un1 = un2))
           (List.list_eq_dec _ vars1 vars2)
         else right _
+    | CharSynType, CharSynType =>
+        left _
     | _, _ => right _
     end);
     try (clear go; abstract intuition congruence).
@@ -265,9 +270,10 @@ Lemma syn_type_strong_ind (P : syn_type → Prop) :
   (∀ (un : string) (variant_list : list (string * syn_type)) repr,
     Forall (λ '(_, st), P st) variant_list →
     P (UnionSynType un variant_list repr)) →
+  P CharSynType →
   ∀ s : syn_type, P s.
 Proof.
-  intros Hint Hbool Hptr Hfptr Hstruct Hunit Harray Huc Huntyped Henum Hunion.
+  intros Hint Hbool Hptr Hfptr Hstruct Hunit Harray Huc Huntyped Henum Hunion Hchar.
   refine (fix F (s : syn_type) : P s := _).
   destruct s.
   - apply Hint.
@@ -287,6 +293,7 @@ Proof.
   - apply Hunion.
     induction variant_list as [ | [f st] H IH]; first done.
     econstructor; first apply F. apply IH.
+  - apply Hchar.
 Qed.
 
 Record struct_layout_spec : Set := mk_sls
@@ -422,7 +429,7 @@ Lemma ly_align_in_bounds_1 ly :
   ly_align_log ly = 0%nat → ly_align_in_bounds ly.
 Proof.
   rewrite /ly_align_in_bounds/ly_align => ->.
-  unfold_common_caesium_defs. simpl; nia.
+  unfold_common_caesium_defs. simpl. nia.
 Qed.
 
 Lemma ly_align_log_in_u8 ly :
@@ -478,6 +485,7 @@ Fixpoint use_layout_alg `{!LayoutAlg} (synty : syn_type) : option layout :=
         Some (it_layout it)
       else None
   | BoolSynType => Some (it_layout u8)
+  | CharSynType => Some (char_layout)
   | PtrSynType => Some void*
   | FnPtrSynType => Some void*
   | StructSynType sn fields repr =>
@@ -819,6 +827,15 @@ Lemma syn_type_has_layout_bool `{!LayoutAlg} ly :
   ly = it_layout u8 → syn_type_has_layout BoolSynType ly.
 Proof. intros -> => //. Qed.
 
+Lemma syn_type_has_layout_char_inv `{!LayoutAlg} ly :
+  syn_type_has_layout CharSynType ly → ly = char_layout.
+Proof.
+  rewrite /syn_type_has_layout /use_layout_alg => [= <-] //.
+Qed.
+Lemma syn_type_has_layout_char `{!LayoutAlg} ly :
+  ly = char_layout → syn_type_has_layout CharSynType ly.
+Proof. intros -> => //. Qed.
+
 Lemma syn_type_has_layout_ptr_inv `{!LayoutAlg} ly :
   syn_type_has_layout PtrSynType ly → ly = void*.
 Proof. rewrite /syn_type_has_layout /use_layout_alg => [= <-] //. Qed.
@@ -1093,6 +1110,7 @@ Proof.
   - naive_solver.
   - by eapply struct_layout_alg_wf.
   - by eapply union_layout_alg_wf.
+  - apply char_layout_wf.
 Qed.
 
 (** Size limits: object size should be limited by isize *)
@@ -1118,6 +1136,7 @@ Proof.
   - match goal with | H : union_layout |- _ => rename H into ul end.
     specialize (ul_size ul) as Hsz.
     rewrite /ly_size /= MaxInt_eq. lia.
+  - rewrite MaxInt_eq. done.
 Qed.
 
 Lemma use_struct_layout_alg_size `{!LayoutAlg} sls sl :
@@ -1220,7 +1239,7 @@ Lemma use_layout_alg_align `{!LayoutAlg} st ly :
   use_layout_alg st = Some ly →
   ly_align_in_bounds ly.
 Proof.
-  induction st as [ it | | | | sn fields repr IH | | st IH len | st IH | ly' | en tag_it variant_list repr IH | un variant_list repr IH ] using syn_type_strong_ind in ly |-*; rewrite /use_layout_alg => ?; simplify_option_eq; fold use_layout_alg in *;
+  induction st as [ it | | | | sn fields repr IH | | st IH len | st IH | ly' | en tag_it variant_list repr IH | un variant_list repr IH | ] using syn_type_strong_ind in ly |-*; rewrite /use_layout_alg => ?; simplify_option_eq; fold use_layout_alg in *;
       rewrite /ly_align_in_bounds.
   - rewrite /ly_align/it_layout/=.
     revert select (ly_size _ ≤ _). rewrite /ly_size/=/bytes_per_int => Ha.
@@ -1288,6 +1307,8 @@ Proof.
     inversion IH as [ | ? ? Hx IH1]; subst.
     specialize (Hx _ Halg).
     econstructor; first done. eapply IH'; done.
+  - (* char *)
+    done.
 Qed.
 
 Lemma syn_type_has_layout_make_untyped `{!LayoutAlg} st ly ly' :
@@ -1388,6 +1409,7 @@ Fixpoint use_op_alg `{!LayoutAlg} (st : syn_type) : option op_type :=
   match st with
   | IntSynType it => Some $ IntOp it
   | BoolSynType => Some BoolOp
+  | CharSynType => Some CharOp
   | PtrSynType => Some PtrOp
   | FnPtrSynType => Some PtrOp
   | StructSynType name fields repr =>
@@ -1443,6 +1465,10 @@ Proof. intros ->. done. Qed.
 Lemma use_op_alg_bool `{!LayoutAlg} ot :
   ot = BoolOp →
   use_op_alg BoolSynType = Some ot.
+Proof. intros ->. done. Qed.
+Lemma use_op_alg_char `{!LayoutAlg} ot :
+  ot = CharOp →
+  use_op_alg CharSynType = Some ot.
 Proof. intros ->. done. Qed.
 Lemma use_op_alg_ptr `{!LayoutAlg} ot :
   ot = PtrOp →
@@ -1551,7 +1577,7 @@ Lemma syn_type_has_layout_op_alg `{!LayoutAlg} st ly :
   syn_type_has_layout st ly →
   ∃ ot, use_op_alg st = Some ot ∧ ot_layout ot = ly.
 Proof.
-  induction st as [ it | | | | sn fields IH | | st IH len | st IH | ly' | en tag_it variant_list IH | un variant_list IH ] using syn_type_strong_ind in ly |-*.
+  induction st as [ it | | | | sn fields IH | | st IH len | st IH | ly' | en tag_it variant_list IH | un variant_list IH | ] using syn_type_strong_ind in ly |-*.
   - intros [-> ?]%syn_type_has_layout_int_inv.
     exists (IntOp it). split; last done. done.
   - intros ->%syn_type_has_layout_bool_inv.
@@ -1603,13 +1629,15 @@ Proof.
   - intros (variant_lys & ul & -> & Halg & Hvariants)%syn_type_has_layout_union_inv.
     eapply (use_union_layout_alg_op_alg (mk_uls _ _ _)).
     eapply use_union_layout_alg_Some; done.
+  - intros ->%syn_type_has_layout_char_inv.
+    exists CharOp. split; last done. done.
 Qed.
 
 Lemma use_op_alg_wf `{!LayoutAlg} st ot :
   use_op_alg st = Some ot →
   op_type_wf ot.
 Proof.
-  induction st as [ | | | | sn fields repr IH | | | | | en tag_it variants repr IH | un variants repr IH ] in ot |-* using syn_type_strong_ind; rewrite /use_op_alg; simpl; fold use_op_alg; try naive_solver.
+  induction st as [ | | | | sn fields repr IH | | | | | en tag_it variants repr IH | un variants repr IH | ] in ot |-* using syn_type_strong_ind; rewrite /use_op_alg; simpl; fold use_op_alg; try naive_solver.
   - intros (sl & Halg & Hfields)%bind_Some.
     apply bind_Some in Hfields as (ots & Hots & [= <-]). simpl.
     apply use_struct_layout_alg_inv in Halg as (field_lys & Halg & Hfields).

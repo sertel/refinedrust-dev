@@ -591,6 +591,15 @@ Section judgments.
   Global Instance introduce_with_hooks_base_inst E L P : IntroduceWithHooks E L P | 101 :=
     λ T, i2p (introduce_with_hooks_base E L P T).
 
+  Lemma introduce_with_hooks_direct E L P T :
+    (P -∗ T L) ⊢
+    introduce_with_hooks E L (introduce_direct P) T.
+  Proof.
+    iApply introduce_with_hooks_base.
+  Qed.
+  Global Instance introduce_with_hooks_direct_inst E L P : IntroduceWithHooks E L (introduce_direct P) | 1 :=
+    λ T, i2p (introduce_with_hooks_direct E L P T).
+
   (** credit related instances *)
   Lemma introduce_with_hooks_credits E L n T :
     find_in_context (FindCreditStore) (λ '(c, a),

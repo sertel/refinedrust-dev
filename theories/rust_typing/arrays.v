@@ -320,7 +320,7 @@ Section array.
   Qed.
   Next Obligation.
     iIntros (ty len ot mt st π r v Hot) "Hb".
-    destruct ot as [ | | | | ly']; [done.. | ].
+    destruct ot as [ | | | | ly' | ]; try done.
     destruct Hot as (ly0 & -> & Hot & Hwf).
     destruct mt; [done | done | done].
     (* TODO maybe the second case should really change once we support an ArrayOpType? *)

@@ -462,7 +462,7 @@ Section enum.
   Next Obligation.
     rewrite /is_enum_ot. simpl.
     intros rt en ot mt Hot.
-    destruct ot as [ | | | | ly]; try done.
+    destruct ot as [ | | | | ly| ]; try done.
     destruct Hot as (el & Halg & ->).
     simpl. by apply use_enum_layout_alg_Some_inv.
   Qed.
@@ -538,7 +538,7 @@ Section enum.
 
     iApply (ty_memcast_compat _ _ _ MCCopy with "Ha").
     rewrite ty_has_op_type_unfold. simpl. rewrite /is_struct_ot/=. split; first done.
-    destruct ot as [ | | | | ly']; [done.. | ].
+    destruct ot as [ | | | | ly' | ]; try done.
     rewrite ty_has_op_type_unfold.
     rewrite /is_enum_ot in Hot.
     destruct Hot as (el & Hel & ->).

@@ -220,11 +220,11 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
      */
     // compile these just once, not for every invocation of the method
     lazy_static! {
-        static ref RE_RT_OF: Regex = Regex::new(r"([^{]|^)\{\s*rt_of\s+([[:alpha:]])\s*\}([^}]|$)").unwrap();
-        static ref RE_ST_OF: Regex = Regex::new(r"([^{]|^)\{\s*st_of\s+([[:alpha:]])\s*\}([^}]|$)").unwrap();
-        static ref RE_LY_OF: Regex = Regex::new(r"([^{]|^)\{\s*ly_of\s+([[:alpha:]])\s*\}([^}]|$)").unwrap();
-        static ref RE_TY_OF: Regex = Regex::new(r"([^{]|^)\{\s*([[:alpha:]])\s*\}([^}]|$)").unwrap();
-        static ref RE_LFT_OF: Regex = Regex::new(r"([^{]|^)\{\s*'([[:alpha:]])\s*\}([^}]|$)").unwrap();
+        static ref RE_RT_OF: Regex = Regex::new(r"([^{]|^)\{\s*rt_of\s+([[:alpha:]])\s*\}").unwrap();
+        static ref RE_ST_OF: Regex = Regex::new(r"([^{]|^)\{\s*st_of\s+([[:alpha:]])\s*\}").unwrap();
+        static ref RE_LY_OF: Regex = Regex::new(r"([^{]|^)\{\s*ly_of\s+([[:alpha:]])\s*\}").unwrap();
+        static ref RE_TY_OF: Regex = Regex::new(r"([^{]|^)\{\s*([[:alpha:]])\s*\}").unwrap();
+        static ref RE_LFT_OF: Regex = Regex::new(r"([^{]|^)\{\s*'([[:alpha:]])\s*\}").unwrap();
         static ref RE_LIT: Regex = Regex::new(r"\{(\{.*\})\}").unwrap();
     }
 
@@ -246,7 +246,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         match param {
             Some(param) => {
                 literal_tyvars.insert(param.clone());
-                format!("{}{}{}", &c[1], &param.rt_name, &c[3])
+                format!("{}{}", &c[1], &param.rt_name)
             },
             None => format!("ERR"),
     }});
@@ -257,7 +257,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         match param {
             Some(param) => {
                 literal_tyvars.insert(param.clone());
-                format!("{}(ty_syn_type {}){}", &c[1], &param.ty_name, &c[3])
+                format!("{}(ty_syn_type {})", &c[1], &param.ty_name)
             },
             None => "ERR".to_string(),
     }});
@@ -267,7 +267,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         match param {
             Some(param) => {
                 literal_tyvars.insert(param.clone());
-                format!("{}(use_layout_alg' (ty_syn_type {})){}", &c[1], &param.ty_name, &c[3])
+                format!("{}(use_layout_alg' (ty_syn_type {}))", &c[1], &param.ty_name)
             },
             None => "ERR".to_string(),
     }});
@@ -277,7 +277,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         match param {
             Some(param) => {
                 literal_tyvars.insert(param.clone());
-                format!("{}{}{}", &c[1], &param.ty_name, &c[3])
+                format!("{}{}", &c[1], &param.ty_name)
             },
             None => format!("ERR"),
     }});
@@ -287,7 +287,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         match lft {
             Some(lft) => {
                 literal_lfts.insert(lft.clone());
-                format!("{}{}{}", &c[1], lft, &c[3])
+                format!("{}{}", &c[1], lft)
             },
             None => "ERR".to_string(),
         }

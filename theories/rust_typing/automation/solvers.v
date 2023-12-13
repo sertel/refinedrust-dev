@@ -1839,6 +1839,9 @@ Ltac solve_layout_alg ::=
   | |- syn_type_has_layout BoolSynType ?ly =>
       refine (syn_type_has_layout_bool _ _);
       [solve_layout_eq ]
+  | |- syn_type_has_layout CharSynType ?ly =>
+      refine (syn_type_has_layout_char _ _);
+      [solve_layout_eq ]
   | |- syn_type_has_layout PtrSynType ?ly =>
       refine (syn_type_has_layout_ptr _ _);
       [solve_layout_eq ]
@@ -2029,6 +2032,9 @@ Ltac solve_op_alg ::=
       [ solve_ot_eq ]
   | |- use_op_alg BoolSynType = Some ?ot =>
       refine (use_op_alg_bool _ _);
+      [solve_ot_eq ]
+  | |- use_op_alg CharSynType = Some ?ot =>
+      refine (use_op_alg_char _ _);
       [solve_ot_eq ]
   | |- use_op_alg PtrSynType = Some ?ot =>
       refine (use_op_alg_ptr _ _);
@@ -2252,6 +2258,15 @@ Ltac simplify_struct_layout_alg H :=
   end.
 *)
 
+Ltac assert_is_atomic_st st :=
+  first [is_var st | match st with | ty_syn_type ?T => is_var T end].
+Ltac assert_is_atomic_sls sls :=
+  is_var sls.
+Ltac assert_is_atomic_els els :=
+  is_var els.
+Ltac assert_is_atomic_uls uls :=
+  is_var uls.
+
 Ltac simplify_layout_alg := fail "impl simplify_layout_alg".
 Ltac inv_multi_fields_rec Hrec :=
   simpl in Hrec;
@@ -2295,15 +2310,19 @@ Tactic Notation "rename_layouts" "in" hyp(H) "with" tactic(cont) :=
       rename H into H_n;
       cont H_n)))
   | use_layout_alg ?T = Some ?ly =>
-      is_var T; is_var ly;
-      let st_name := constr:(ident_to_string! T) in
-      let ly_name := eval cbv in (append st_name "_ly") in
-      let H_name := eval cbv in (append st_name "_alg") in
-      string_to_ident_cps ly_name ltac:(fun ly_n =>
-      string_to_ident_cps H_name ltac:(fun H_n =>
-      rename ly into ly_n;
-      rename H into H_n;
-      cont H_n))
+      assert_is_atomic_st T;
+      is_var ly;
+      first [
+        is_var T;
+        let st_name := constr:(ident_to_string! T) in
+        let ly_name := eval cbv in (append st_name "_ly") in
+        let H_name := eval cbv in (append st_name "_alg") in
+        string_to_ident_cps ly_name ltac:(fun ly_n =>
+        string_to_ident_cps H_name ltac:(fun H_n =>
+        rename ly into ly_n;
+        rename H into H_n;
+        cont H_n))
+      | cont H]
   end.
 Tactic Notation "rename_layouts" "in" hyp(H) :=
   rename_layouts in H with (fun x => idtac).
@@ -2401,14 +2420,6 @@ Ltac postprocess_new_union_assum H Halg :=
     ]
   end.
 
-Ltac assert_is_atomic_st st :=
-  first [is_var st | match st with | ty_syn_type ?T => is_var T end].
-Ltac assert_is_atomic_sls sls :=
-  is_var sls.
-Ltac assert_is_atomic_els els :=
-  is_var els.
-Ltac assert_is_atomic_uls uls :=
-  is_var uls.
 
 Ltac simplify_layout_alg H ::=
   simpl in H;
@@ -2448,7 +2459,8 @@ Ltac simplify_layout_alg H ::=
   match type of H with
   (* Handle atomic alg applications *)
   | use_layout_alg ?st = Some _ =>
-      assert_is_atomic_st st;
+      (*assert_is_atomic_st st;*)
+      is_var st;
       first [
         (* if this is a duplicate, remove it *)
         match goal with
@@ -2462,6 +2474,9 @@ Ltac simplify_layout_alg H ::=
         (* stop exploiting this further to prevent divergence *)
         rename_layouts in H with (fun H_n => apply dont_enrich in H_n)
       ]
+  | use_layout_alg (ty_syn_type ?ty) = Some _ =>
+      is_var ty;
+      apply dont_enrich in H
   | use_struct_layout_alg ?sls = Some _ =>
       (* don't do anything *)
       assert_is_atomic_sls sls;
@@ -2488,6 +2503,8 @@ Ltac simplify_layout_alg H ::=
       apply syn_type_has_layout_int_inv in H as (? & ?)
   | use_layout_alg (BoolSynType) = Some _ =>
       apply syn_type_has_layout_bool_inv in H
+  | use_layout_alg (CharSynType) = Some _ =>
+      apply syn_type_has_layout_char_inv in H
   | use_layout_alg PtrSynType = Some _ =>
       apply syn_type_has_layout_ptr_inv in H
   | use_layout_alg FnPtrSynType = Some _ =>
@@ -2575,6 +2592,23 @@ Ltac simplify_layout_alg H ::=
   end;
   simplify_eq.
 
+Lemma remove_generic_layout_duplicate `{!typeGS Σ} {T_rt} (T_ty : type T_rt) ly1 ly2 :
+  NO_ENRICH (use_layout_alg (ty_syn_type T_ty) = Some ly1) →
+  NO_ENRICH (use_layout_alg (ty_syn_type T_ty) = Some ly2) →
+  ly2 = ly1.
+Proof.
+  intros Ha Hb. by eapply syn_type_has_layout_inj.
+Qed.
+Ltac remove_duplicate_layout_assumptions :=
+  repeat match goal with
+  | H : NO_ENRICH (use_layout_alg (ty_syn_type ?T_ty) = Some ?Hly1),
+      H2 : NO_ENRICH (use_layout_alg (ty_syn_type ?T_ty) = Some ?Hly2) |- _ =>
+    is_var Hly1;
+    is_var Hly2;
+    is_var T_ty;
+    specialize (remove_generic_layout_duplicate _ _ _ H H2) as ->;
+    clear H2
+  end.
 
 Ltac inv_layout_alg :=
   repeat match goal with
@@ -2609,7 +2643,7 @@ Ltac inv_layout_alg :=
       rewrite /union_layout_spec_has_layout in H
   | H : use_union_layout_alg _ = Some _ |- _ =>
       progress (simplify_layout_alg H)
-  end.
-  (*unfold_no_enrich.*)
+  end;
+  remove_duplicate_layout_assumptions.
 Global Arguments syn_type_has_layout : simpl never.
 

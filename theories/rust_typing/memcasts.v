@@ -19,9 +19,10 @@ Definition is_int_ot (ot : op_type) (it : int_type) : Prop :=
     | UntypedOp ly => ly = it_layout it ∧ (ly_size it ≤ MaxInt isize_t)%Z
     | _ => False
   end.
-(* TODO: ideally, BoolOp should also garble up all the other bits of the read value, as Rust will use the 7 excess bits of bool for niche optimizations *)
 Definition is_bool_ot (ot : op_type) : Prop :=
   match ot with | BoolOp => True | UntypedOp ly => ly = it_layout u8 | _ => False end.
+Definition is_char_ot (ot : op_type) : Prop :=
+  match ot with | CharOp => True | UntypedOp ly => ly = it_layout u32 | _ => False end.
 Definition is_ptr_ot (ot : op_type) : Prop :=
   match ot with | PtrOp => True | UntypedOp ly => ly = void* | _ => False end.
 Definition is_unit_ot (ot : op_type) : Prop :=
@@ -40,6 +41,10 @@ Qed.
 
 Lemma is_bool_ot_layout ot :
   is_bool_ot ot → ot_layout ot = it_layout u8.
+Proof. destruct ot => //. Qed.
+
+Lemma is_char_ot_layout ot :
+  is_char_ot ot → ot_layout ot = it_layout u32.
 Proof. destruct ot => //. Qed.
 
 Lemma is_ptr_ot_layout ot:
@@ -82,6 +87,16 @@ Section optypes.
     destruct ot => //; simplify_eq/=.
     - intros _.  etrans; [done|]. iPureIntro => -[??]. by apply: mem_cast_id_bool.
     - intros ->. etrans; [done|]. iPureIntro => -[??]. simpl. done.
+  Qed.
+
+  Lemma mem_cast_compat_char (P : val → iProp Σ) v ot :
+    is_char_ot ot →
+    (P v ⊢ ⌜∃ b, val_to_char v = Some b⌝) →
+    (P v ⊢ ⌜mem_cast_id v ot⌝).
+  Proof.
+    destruct ot => //; simplify_eq/=.
+    - intros ->. etrans; [done|]. iPureIntro => -[??]. simpl. done.
+    - intros _.  etrans; [done|]. iPureIntro => -[??]. by apply: mem_cast_id_char.
   Qed.
 
   Lemma mem_cast_compat_loc (P : val → iProp Σ) v ot :

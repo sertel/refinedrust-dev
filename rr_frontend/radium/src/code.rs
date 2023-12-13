@@ -53,6 +53,7 @@ pub enum RustType {
     TyVar(String),
     Int(IntType),
     Bool,
+    Char,
     Unit,
     MutRef(Box<RustType>, Lft),
     ShrRef(Box<RustType>, Lft),
@@ -79,6 +80,9 @@ impl Display for RustType {
             },
             Self::Bool => {
                 write!(f, "RSTBool")
+            },
+            Self::Char => {
+                write!(f, "RSTChar")
             },
             Self::Unit => {
                 write!(f, "RSTUnit")
@@ -121,6 +125,7 @@ impl RustType {
             },
             Type::Int(it) => Self::Int(it.clone()),
             Type::Bool => Self::Bool,
+            Type::Char => Self::Char,
             Type::MutRef(ty, lft) => {
                 let ty = Self::of_type(ty, env);
                 Self::MutRef(Box::new(ty), lft.clone())

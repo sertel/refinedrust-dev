@@ -1010,7 +1010,7 @@ Proof.
       { simp_ltypes. solve_layout_alg. }
       simpl.
       unfold_no_enrich. inv_layout_alg.
-      rename select (ly_size T_st_ly = _) into Hsz. rewrite Hsz. iFrame "Hlb".
+      rename select (ly_size _ = 0%nat) into Hsz. rewrite Hsz. iFrame "Hlb".
       iFrame. iExists tt. iR. iNext.
       rewrite ltype_own_ofty_unfold/lty_of_ty_own.
       iDestruct "H_pts" as "(%ly & % & % & _ & _ & _ & %r' & <- & >(%v2 & Hpt & Hb))".
@@ -1027,6 +1027,7 @@ Proof.
     iIntros (?) "#CTX #HE HL Hna Hcont".
     rewrite /Box.
     unfold_no_enrich. inv_layout_alg.
+    match goal with | H: Z.of_nat (ly_size ?Hly) ≠ 0%Z |- _ => rename Hly into T_st_ly end.
     have: (Z.of_nat $ ly_size T_st_ly) ∈ usize_t by done.
     efeed pose proof (ly_align_log_in_usize T_st_ly) as Ha; first done.
     move: Ha. rewrite int_elem_of_it_iff int_elem_of_it_iff.
@@ -1045,7 +1046,7 @@ Proof.
     iPoseProof ("Hstore" with "Hat1") as "Hstore".
     iApply ("Hcont" $! _ _ _ (box (uninit (ty_syn_type T))) (PlaceIn ()) with "HL Hna [Hfree Hl Hcred Hat]").
     { iExists _, _. iSplitR; first done. iSplitR; first done.
-      match goal with | H : use_layout_alg (ty_syn_type T) = Some ?ly |- _ => rename ly into T_ly; rename H into H_T end.
+      match goal with | H : NO_ENRICH (use_layout_alg (ty_syn_type T) = Some ?ly) |- _ => rename ly into T_ly; rename H into H_T end.
       iR.
       iPoseProof (heap_mapsto_loc_in_bounds with "Hl") as "#Hlb".
       rewrite replicate_length. iFrame "Hlb". simpl. iSplitR; first done. iFrame.

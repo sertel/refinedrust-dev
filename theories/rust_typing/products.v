@@ -466,7 +466,7 @@ Section structs.
     iIntros (rts sls tys ot mt st π r v Hot).
     apply (mem_cast_compat_Untyped) => ?.
     iIntros "(%sl & %Halg & %Hlen & %Hsl & Hmem)".
-    destruct Hot as [? Hot]. destruct ot as [ | | | sl' ots | ]; try done.
+    destruct Hot as [? Hot]. destruct ot as [ | | | sl' ots | | ]; try done.
     destruct Hot as (? & Halg' & Hlen_ots & Hot%Forall_fold_right).
     assert (sl' = sl) as ->. { by eapply struct_layout_spec_has_layout_inj. }
     destruct mt.
@@ -542,7 +542,7 @@ Section structs.
     - done.
     - move => ot mt /=. rewrite ty_has_op_type_unfold/= /is_struct_ot. rewrite !fmap_length !hzipl_length.
       apply and_proper => Hsl.
-      destruct ot as [ | | | sl ots | ly ] => //=.
+      destruct ot as [ | | | sl ots | ly | ] => //=.
       + f_equiv. apply and_proper => Halg. apply and_proper => Hots. rewrite -!Forall_fold_right.
         erewrite <-struct_layout_spec_has_layout_fields_length in Hsl; last done.
         rewrite -field_members_length in Hsl.

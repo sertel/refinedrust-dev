@@ -4,3 +4,4 @@
 
 mod enums;
 mod structs;
+mod char;

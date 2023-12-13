@@ -832,6 +832,8 @@ Ltac sidecond_hook_list :=
 (* TODO : more sideconditions *)
 Ltac sidecond_hook ::=
   unfold_no_enrich;
+  (* To reduce duplicates between layout algs *)
+  simplify_eq/=;
   intros;
   match goal with
   | |- Forall ?P ?l =>
@@ -1027,7 +1029,8 @@ Ltac normalize_hook ::=
   normalize_autorewrite.
 
 Ltac after_intro_hook ::=
-  inv_layout_alg.
+  inv_layout_alg
+.
 
 (** Lithium hooks for [solve_goal]: called for remaining sideconditions *)
 Lemma unfold_int_elem_of_it (z : Z) (it : int_type) :

@@ -56,6 +56,7 @@ mod base;
 mod type_translator;
 mod inclusion_tracker;
 mod arg_folder;
+mod enum_generator;
 
 use environment::Environment;
 use function_body::BodyTranslator;
