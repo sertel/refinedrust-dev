@@ -2647,3 +2647,11 @@ Ltac inv_layout_alg :=
   remove_duplicate_layout_assumptions.
 Global Arguments syn_type_has_layout : simpl never.
 
+
+(** Solve [Inhabited] instances for inductives, used for enum declarations.
+   We assume that arguments of inductive constructors have already been proved inhabited. *)
+Ltac solve_inhabited :=
+  repeat match goal with
+  | |- Inhabited ?X =>
+      first [apply _ | refine (populate _); econstructor; eapply inhabitant]
+  end.

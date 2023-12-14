@@ -1142,3 +1142,22 @@ Section test.
     solve_bor_kind_outlives; solve [fail].
   Abort.
 End test.
+
+
+(** solve_inhabited *)
+Section test.
+  Context (T : Type) `{!Inhabited T}.
+  Inductive inh_test1 :=
+  | None
+  | Some (x : T).
+
+  Instance: Inhabited inh_test1.
+  Proof. solve_inhabited; done. Abort.
+
+  Inductive inh_test2 :=
+  | inA (x : nat)
+  | inB (y : Z).
+
+  Instance: Inhabited inh_test2.
+  Proof. solve_inhabited; done. Abort.
+End test.
