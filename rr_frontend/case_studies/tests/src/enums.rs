@@ -40,16 +40,46 @@ impl<T, U> Result<T, U> {
 
 #[repr(u8)]
 #[rr::refined_by("sizes")]
-enum sizes {
+enum Sizes {
     #[rr::pattern("Sz1")]
     Sz1 = 2,
     #[rr::pattern("Sz2")]
     Sz2,
 }
 
-impl sizes {
+impl Sizes {
     #[rr::returns("Sz1")]
     pub fn new() -> Self {
         Self::Sz1
     }
 }
+
+
+enum Anon {
+    ABitAnon,
+    ReallyAnon
+}
+
+impl Anon {
+    // TODO: should have a way to escape and interpret this name by writing {anon::ABitAnon}
+    #[rr::returns("enums_Anon_ABitAnon")]
+    pub fn new() -> Self {
+        Self::ABitAnon
+    }
+}
+
+enum Anon2<T> {
+    ABitAnon(T),
+    ReallyAnon
+}
+
+impl<T> Anon2<T> {
+    // TODO: should have a way to escape and interpret this name by writing {anon::ABitAnon}
+    #[rr::params("x")]
+    #[rr::args("x")]
+    #[rr::returns("enums_Anon2_ABitAnon -[#x]")]
+    pub fn new(x: T) -> Self {
+        Self::ABitAnon(x)
+    }
+}
+

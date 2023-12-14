@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use log::info;
+use log::{trace, info};
 
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty as ty;
@@ -776,6 +776,60 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         Ok(None)
     }
 
+    /// Given a Rust enum which has already been registered and whose fields have been translated, generate a corresponding Coq Inductive as well as an EnumSpec.
+    fn generate_enum_spec(&self, def: ty::AdtDef<'tcx>, enum_name: &str) -> (radium::CoqInductive, radium::EnumSpec) {
+        trace!("Generating Inductive for enum {:?}", def);
+
+        let mut variants: Vec<radium::CoqVariant> = Vec::new();
+        let mut variant_patterns = Vec::new();
+
+        for v in def.variants().iter() {
+            let registry = self.variant_registry.borrow();
+            let (variant_name, coq_def, variant_def, _) = registry.get(&v.def_id).unwrap();
+            let coq_def = coq_def.borrow();
+            let coq_def = coq_def.as_ref().unwrap();
+            let refinement_type = coq_def.plain_rt_def_name();
+
+            let variant_args;
+            let variant_arg_binders;
+            let variant_rfn;
+            // simple optimization: if the variant has no fields, also this constructor gets no arguments
+            if variant_def.fields.is_empty() {
+                variant_args = vec![];
+                variant_arg_binders = vec![];
+                variant_rfn = "-[]".to_string();
+            }
+            else {
+                variant_args = vec![(radium::CoqName::Unnamed, radium::CoqType::Literal(refinement_type.to_string()))];
+                variant_arg_binders = vec!["x".to_string()];
+                variant_rfn = "x".to_string();
+            }
+            let variant_def = radium::CoqVariant {
+                name: variant_name.to_string(),
+                params: radium::CoqParamList(variant_args),
+            };
+
+            variants.push(variant_def);
+            variant_patterns.push((variant_name.to_string(), variant_arg_binders, variant_rfn));
+        }
+
+        // We assume the generated Inductive def is placed in a context where the generic types are in scope.
+        let inductive = radium::CoqInductive {
+            name: enum_name.to_string(),
+            parameters: radium::CoqParamList(vec![]),
+            variants,
+        };
+
+        let enum_spec = radium::EnumSpec {
+            rfn_type: radium::CoqType::Literal(enum_name.to_string()),
+            variant_patterns,
+        };
+
+        info!("Generated inductive for {:?}: {:?}", def, inductive);
+
+        (inductive, enum_spec)
+    }
+
     /// Register an enum ADT
     fn register_enum(&self, def: ty::AdtDef<'tcx>) -> Result<(), TranslationError> {
         if let Some(_) = self.enum_registry.borrow().get(&def.did()) {
@@ -898,11 +952,12 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
         // parse annotations for enum type
         let enum_spec;
+        let mut inductive_decl = None;
         let builtin_spec = self.get_builtin_enum_spec(def.did())?;
         if let Some(spec) = builtin_spec {
             enum_spec = spec;
         }
-        else {
+        else if self.env.has_tool_attribute(def.did(), "refined_by") {
             let attributes = self.env.get_attributes(def.did());
             let attributes = crate::utils::filter_tool_attrs(attributes);
 
@@ -912,6 +967,12 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             let mut parser = VerboseEnumSpecParser::new();
             enum_spec = parser.parse_enum_spec("", &attributes, &variant_attrs, &ty_param_defs, &lft_params)
                 .map_err(|err| TranslationError::FatalError(err))?;
+        }
+        else {
+            // generate a specification
+            let decl;
+            (decl, enum_spec) = self.generate_enum_spec(def, &enum_name);
+            inductive_decl = Some(decl);
         }
 
         let mut enum_builder = radium::EnumBuilder::new(enum_name, ty_param_defs, st_params, translated_it, repr_opt);
@@ -923,7 +984,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             enum_builder.add_variant(&variant_name, variant_ref, variant_masks.remove(&v.def_id).unwrap(), *discriminant);
         }
 
-        let enum_def = enum_builder.finish(enum_spec);
+        let enum_def = enum_builder.finish(inductive_decl, enum_spec);
         // finalize the definition
         {
             let mut enum_def_ref = enum_def_init.borrow_mut();

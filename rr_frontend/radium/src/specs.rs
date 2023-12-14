@@ -11,59 +11,9 @@ use std::fmt::{Formatter, Display};
 use std::fmt as fmt;
 use std::fmt::Write;
 use std::cell::RefCell;
+pub use crate::coq::*;
 
-/// Represents a Coq path of the form
-/// `From A.B.C Import D`
-#[derive(Hash, Clone, Debug, Eq, PartialEq)]
-pub struct CoqPath {
-    pub path: Option<String>,
-    pub module: String,
-}
-
-impl fmt::Display for CoqPath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.path {
-            None => write!(f, "Require Import {}.\n", self.module),
-            Some(ref path) => write!(f, "From {} Require Import {}.\n", path, self.module),
-        }
-    }
-}
-
-
-/// Represents an application of a term to an rhs.
-/// (commonly used for layouts and instantiating them with generics).
-#[derive(Hash, Clone, Debug, Eq, PartialEq)]
-pub struct CoqAppTerm<T> {
-    pub(crate) lhs: T,
-    pub(crate) rhs: Vec<String>,
-}
-
-impl<T> CoqAppTerm<T> {
-    pub fn new(lhs: T, rhs: Vec<String>) -> Self {
-        Self {lhs, rhs}
-    }
-
-    pub fn new_lhs(lhs : T) -> Self {
-        Self {lhs, rhs: Vec::new()}
-    }
-}
-
-impl<T> fmt::Display for CoqAppTerm<T> where T: Display {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.rhs.len() == 0 {
-            write!(f, "{}", self.lhs)
-        }
-        else {
-            write!(f, "({}", self.lhs)?;
-            for r in self.rhs.iter() {
-                write!(f, " {}", r)?;
-            }
-            write!(f, ")")
-        }
-    }
-}
-
-
+use indent_write::fmt::IndentWriter;
 
 #[derive(Clone, Debug, PartialEq)]
 /// Encodes a RR type with an accompanying refinement.
@@ -93,208 +43,7 @@ impl<'def> TypeWithRef<'def> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum CoqType {
-    /// free variable that is bound, e.g., by a surrounding struct definition
-    Var(usize),
-    /// literal types that are not contained in the grammar
-    Literal(String),
-    /// Placeholder that should be inferred by Coq if possible
-    Infer,
-    /// Coq type `lft`
-    Lft,
-    /// Coq type `loc`
-    Loc,
-    /// Coq type `layout`
-    Layout,
-    /// Coq type `syn_type`
-    SynType,
-    /// Coq type `struct_layout`
-    StructLayout,
-    /// Coq type `Type`
-    Type,
-    /// Coq type `type rt`
-    Ttype(Box<CoqType>),
-    /// Coq type `rtype`
-    Rtype,
-    /// the unit type
-    Unit,
-    /// the type of integers
-    Z,
-    /// the type of booleans
-    Bool,
-    /// product types
-    Prod(Vec<CoqType>),
-    /// place_rfn
-    PlaceRfn(Box<CoqType>),
-    /// gname
-    Gname,
-    /// a plist with a given type constructor over a list of types
-    PList(String, Vec<CoqType>),
-}
-impl Display for CoqType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Self::Infer => write!(f, "_"),
-            Self::Literal(s) => write!(f, "{}", s),
-            Self::Lft => write!(f, "lft"),
-            Self::Loc => write!(f, "loc"),
-            Self::Layout => write!(f, "layout"),
-            Self::SynType => write!(f, "syn_type"),
-            Self::StructLayout => write!(f, "struct_layout"),
-            Self::Type => write!(f, "Type"),
-            Self::Ttype(box t) => write!(f, "(type {})", t),
-            Self::Rtype => write!(f, "rtype"),
-            Self::Unit => write!(f, "unit"),
-            Self::Z => write!(f, "Z"),
-            Self::Bool => write!(f, "bool"),
-            Self::Prod(v) => {
-                if v.len() == 0 {
-                    write!(f, "unit")
-                }
-                else if v.len() == 1 {
-                    v[0].fmt(f)
-                }
-                else {
-                    write!(f, "(")?;
-                    let mut need_sep = false;
-                    for t in v.iter() {
-                        if need_sep {
-                            write!(f, " * ")?;
-                        }
-                        need_sep = true;
 
-                        t.fmt(f)?;
-                    }
-                    write!(f, ")%type")
-                }
-            },
-            Self::PlaceRfn(box t) => {
-                write!(f, "(place_rfn {})", t)
-            },
-            Self::Gname => write!(f, "gname"),
-            Self::Var(i) => write!(f, "#{}", i),
-            Self::PList(cons, tys) => {
-                write!(f, "plist {} [", cons)?;
-                let mut needs_sep = false;
-                for ty in tys.iter() {
-                    if needs_sep {
-                        write!(f, "; ")?;
-                    }
-                    needs_sep = true;
-                    write!(f, "{} : Type", ty)?;
-                }
-                write!(f, "]")
-            },
-        }
-    }
-}
-
-impl CoqType {
-    /// Check if the CoqType contains a free variable `Var(i)`.
-    pub fn is_closed(&self) -> bool {
-        match self {
-            Self::Var(_) => false,
-            Self::Prod(v) => {
-                for t in v.iter() {
-                    if !t.is_closed() {
-                        return false;
-                    }
-                }
-                return true;
-            },
-            Self::PList(_, tys) => {
-                for t in tys.iter() {
-                    if !t.is_closed() {
-                        return false;
-                    }
-                }
-                return true;
-            },
-            Self::Ttype(box ty) => {
-                ty.is_closed()
-            },
-            Self::PlaceRfn(t) => t.is_closed(),
-            Self::Literal(..) => true,
-            Self::Infer => true,
-            Self::Lft => true,
-            Self::Loc => true,
-            Self::Layout => true,
-            Self::SynType => true,
-            Self::StructLayout => true,
-            Self::Type => true,
-            Self::Rtype => true,
-            Self::Unit => true,
-            Self::Z => true,
-            Self::Bool => true,
-            Self::Gname => true,
-        }
-    }
-
-    /// Substitute variables `Var` according to the given substitution (variable `i` is mapped to
-    /// index `i` in the vector).
-    /// The types in `substi` should not contain variables themselves, as this substitution
-    /// operation is capture-incurring!
-    pub fn subst(&mut self, substi: &Vec<CoqType>) {
-        match self {
-            Self::Ttype(box t) => t.subst(substi),
-            Self::Prod(v) => {
-                for t in v.iter_mut() {
-                    t.subst(substi);
-                }
-
-            },
-            Self::PList(_, tys) => {
-                for t in tys.iter_mut() {
-                    t.subst(substi);
-                }
-            },
-            Self::PlaceRfn(box t) => {
-                t.subst(substi);
-            },
-            Self::Gname => (),
-            Self::Var(i) => {
-                if let Some(ta) = substi.get(*i) {
-                    assert!(ta.is_closed());
-                    *self = ta.clone();
-                }
-            },
-            Self::Literal(..) => (),
-            Self::Infer => (),
-            Self::Lft => (),
-            Self::Loc => (),
-            Self::Layout => (),
-            Self::SynType => (),
-            Self::StructLayout => (),
-            Self::Type => (),
-            Self::Rtype => (),
-            Self::Unit => (),
-            Self::Z => (),
-            Self::Bool => (),
-        }
-    }
-}
-
-
-
-
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum CoqName {
-    Named(String),
-    Unnamed,
-}
-impl Display for CoqName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Self::Named(s) => write!(f, "{}", s),
-            Self::Unnamed => write!(f, "_"),
-        }
-    }
-}
-
-/// A Coq pattern, e.g., "x" or "'(x, y)".
-pub type CoqPattern = String;
 
 pub type Lft = String;
 
@@ -1779,6 +1528,9 @@ pub struct AbstractEnum<'def> {
     /// the representation of the enum
     repr: EnumRepr,
 
+    /// an optional declaration of a Coq inductive for this enum
+    optional_inductive_def: Option<CoqInductive>,
+
     /// name of the plain enum type (without additional invariants)
     plain_ty_name: String,
     /// name of the enum_layout_spec definition
@@ -1962,7 +1714,7 @@ impl<'def> AbstractEnum<'def> {
         let indent = "  ";
 
         for ((tag, s, mask, _), (pat, args, res)) in self.variants.iter().zip(self.spec.variant_patterns.iter()) {
-            write!(out, "{indent}Global Program Instance construct_enum_{tag} {} ", args.join(" ")).unwrap();
+            write!(out, "{indent}Global Program Instance construct_enum_{}_{tag} {} ", self.name, args.join(" ")).unwrap();
 
             // add st constraints on params
             let mut sls_app = Vec::new();
@@ -2023,6 +1775,30 @@ impl<'def> AbstractEnum<'def> {
                 write!(out, "{}\n", inv_def).unwrap();
             }
         }
+
+        // write the Coq inductive, if applicable
+        if let Some(ref ind) = self.optional_inductive_def {
+            let mut assertions = CoqTopLevelAssertions::empty();
+
+            assertions.push(CoqTopLevelAssertion::Comment(format!("auto-generated representation of {}", ind.name)));
+            // TODO don't clone
+            assertions.push(CoqTopLevelAssertion::InductiveDecl(ind.clone()));
+            // prove that it is inhabited
+            let instance_decl = CoqInstanceDecl {
+                name: None,
+                params: CoqParamList::empty(),
+                ty: CoqType::Literal(format!("Inhabited {}", ind.name)),
+                body: CoqDefBody::Script(CoqProofScript(
+                        vec![CoqProofItem::Literal(format!("solve_inhabited"))]),
+                        CoqProofScriptTerminator::Qed),
+            };
+            assertions.push(CoqTopLevelAssertion::InstanceDecl(instance_decl));
+
+            let mut code_fmt = IndentWriter::new(BASE_INDENT, &mut out);
+            write!(code_fmt, "\n").unwrap();
+            write!(code_fmt, "{assertions}").unwrap();
+        }
+
 
         // build the els term applied to generics
         // generate terms to apply the sls app to
@@ -2096,7 +1872,7 @@ pub struct EnumBuilder<'def> {
 
 impl<'def> EnumBuilder<'def> {
     /// Finish building the enum type and generate an abstract enum definition.
-    pub fn finish(self, spec: EnumSpec) -> AbstractEnum<'def> {
+    pub fn finish(self, optional_inductive_def: Option<CoqInductive>, spec: EnumSpec) -> AbstractEnum<'def> {
         let els_def_name: String = format!("{}_els", &self.name);
         let plain_ty_name: String = format!("{}_ty", &self.name);
         let enum_def_name: String = format!("{}_enum", &self.name);
@@ -2108,6 +1884,7 @@ impl<'def> EnumBuilder<'def> {
             els_def_name,
             enum_def_name,
             spec,
+            optional_inductive_def,
             ty_params: self.ty_params,
             st_params: self.st_params,
             discriminant_type: self.discriminant_type,
