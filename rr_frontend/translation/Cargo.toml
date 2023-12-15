@@ -15,6 +15,7 @@ lazy_static = "1.4.0"
 typed-arena = "2.0.1"
 serde_json = "1.0"
 serde = {version = "1.0.130", features = ["derive"]}
+topological-sort = "0.2.2"
 
 analysis = { path = "../analysis" }
 radium = { path = "../radium" }

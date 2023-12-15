@@ -2308,7 +2308,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 match *kind {
                     box mir::AggregateKind::Tuple => {
-                        let struct_use = self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r))?;
+                        let struct_use = self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r), None)?;
                         let sl = struct_use.generate_struct_layout_spec_term();
                         let initializers: Vec<_> = translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
                         Ok(radium::Expr::StructInitE {
@@ -2321,7 +2321,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                         if adt_def.is_struct() {
                             let variant = adt_def.variant(variant);
-                            let struct_use = self.ty_translator.generate_struct_use(variant.def_id, args)?;
+                            let struct_use = self.ty_translator.generate_struct_use(variant.def_id, args, None)?;
                             if struct_use.is_unit() {
                                 Ok(radium::Expr::Literal(radium::Literal::LitZST))
                             }
@@ -2338,13 +2338,13 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                         }
                         else if adt_def.is_enum() {
                             let variant_def = adt_def.variant(variant);
-                            let struct_use = self.ty_translator.generate_enum_variant_use(did, variant, args)?;
+                            let struct_use = self.ty_translator.generate_enum_variant_use(did, variant, args, None)?;
                             let sl = struct_use.generate_struct_layout_spec_term();
                             let initializers: Vec<_> = translated_ops.into_iter().zip(variant_def.fields.iter()).map(|(o, field)| {
                                     (field.name.to_string(), o)
                                 }).collect();
                             let variant_e = radium::Expr::StructInitE { sls: radium::CoqAppTerm::new_lhs(sl), components: initializers};
-                            let enum_use = self.ty_translator.generate_enum_use(adt_def, args)?;
+                            let enum_use = self.ty_translator.generate_enum_use(adt_def, args, None)?;
                             let els = enum_use.generate_enum_layout_spec_term();
 
                             let scope = self.ty_translator.generic_scope.borrow();
@@ -2654,7 +2654,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 },
                 ProjectionElem::Field(f, _) => {
                     // `t` is the type of the field we are accessing!
-                    let struct_use = self.ty_translator.generate_structlike_use(&cur_ty.ty, cur_ty.variant_index)?;
+                    let struct_use = self.ty_translator.generate_structlike_use(&cur_ty.ty, cur_ty.variant_index, None)?;
                     let struct_sls = struct_use.generate_struct_layout_spec_term();
 
                     let name = self.ty_translator.get_field_name_of(f, cur_ty.ty, cur_ty.variant_index.map(|a| a.as_usize()))?;

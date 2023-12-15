@@ -68,8 +68,36 @@ use mod_parser::ModuleAttrParser;
 use spec_parsers::crate_attr_parser as crate_parser;
 use crate_parser::CrateAttrParser;
 
+use topological_sort::TopologicalSort;
+
 use rrconfig;
 
+/// Order ADT definitions topologically.
+fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
+    let mut topo = TopologicalSort::new();
+    let mut defs = HashSet::new();
+
+    for (did, referenced_dids) in deps.iter() {
+        defs.insert(did);
+        topo.insert(*did);
+        for did2 in referenced_dids.iter() {
+            topo.add_dependency(*did2, *did);
+        }
+    }
+
+    let mut defn_order = Vec::new();
+    while !topo.is_empty() {
+        let next = topo.pop_all();
+        if next.is_empty() {
+            // dependency cycle detected
+            panic!("RefinedRust does not currently support mutually recursive types");
+        }
+        // only track actual definitions
+        defn_order.extend(next.into_iter().filter(|x| { defs.contains(&x) }));
+    }
+
+    defn_order
+}
 
 /// Order struct defs in the order in which we should emit them for respecting dependencies.
 /// Complexity O(n^2), it's currently rather inefficient, but due to small numbers it should be fine.
@@ -178,12 +206,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // we need to do a bit of work to order them right
         let struct_defs = self.type_translator.get_struct_defs();
         let enum_defs = self.type_translator.get_enum_defs();
+        let adt_deps = self.type_translator.get_adt_deps();
 
-        let mut dids: Vec<_> = struct_defs.iter().map(|(did, _)| *did).collect();
-        for did in enum_defs.iter().map(|(did, _)| *did) {
-            dids.push(did);
-        }
-        let ordered = order_struct_defs(&self.env, &dids);
+        let ordered = order_adt_defs(adt_deps);
+        info!("ordered ADT defns: {:?}", ordered);
 
         for did in ordered.iter() {
             if let Some(su_ref) = struct_defs.get(did) {
