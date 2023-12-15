@@ -170,29 +170,12 @@ impl<'def> ProcedureScope<'def> {
     }
 }
 
-
-/**
- * Struct that keeps track of all information necessary to translate a MIR Body to a radium::Function.
- * `'a` is the lifetime of the translator and ends after translation has finished.
- * `'def` is the lifetime of the generated code (the code may refer to struct defs).
- * `'tcx' is the lifetime of the rustc tctx.
- */
-pub struct BodyTranslator<'a, 'def, 'tcx> {
+pub struct FunctionTranslator<'a, 'def, 'tcx> {
     env: &'def Environment<'tcx>,
     /// this needs to be annotated with the right borrowck things
     proc: &'def Procedure<'tcx>,
-    /// maps locals to variable names
-    variable_map: HashMap<Local, String>,
     /// the Caesium function buildder
     translated_fn: radium::FunctionBuilder<'def>,
-    /// name of the return variable
-    return_name: String,
-    /// syntactic type of the thing to return
-    return_synty: radium::SynType,
-    /// all the other procedures used by this function, and:
-    /// (code_loc_parameter_name, spec_name, type_inst, syntype_of_all_args)
-    collected_procedures: HashMap<(DefId, FnGenericKey<'tcx>), (String, String, Vec<radium::Type<'def>>, Vec<radium::SynType>)>,
-
     /// tracking lifetime inclusions for the generation of lifetime inclusions
     inclusion_tracker: InclusionTracker<'a, 'tcx>,
 
@@ -202,262 +185,17 @@ pub struct BodyTranslator<'a, 'def, 'tcx> {
     attrs: &'a[Attribute],
     /// polonius info for this function
     info: &'a PoloniusInfo<'a, 'tcx>,
-    /// local lifetimes: the LHS is the lifetime name, the RHS are the super lifetimes
-    local_lifetimes: Vec<(radium::specs::Lft, Vec<radium::specs::Lft>)>,
-    /// data structures for tracking which basic blocks still need to be translated
-    /// (we only translate the basic blocks which are actually reachable, in particular when
-    /// skipping unwinding)
-    bb_queue: Vec<BasicBlock>,
-    /// set of already processed blocks
-    processed_bbs: HashSet<BasicBlock>,
     /// translator for types
     ty_translator: &'a TypeTranslator<'def, 'tcx>,
-
-    /// map of loop heads to their optional spec closure defid
-    loop_specs: HashMap<BasicBlock, Option<DefId>>,
-
-    /// relevant locals: (local, name, type)
-    fn_locals: Vec<(Local, String, radium::Type<'def>)>,
 
     /// inputs of the function, with both early and late bound regions substituted with their
     /// Polonius ReVar
     inputs: Vec<Ty<'tcx>>,
     /// output of the function, similarly with substituted regions
     output: Ty<'tcx>,
-
-    /// result temporaries of checked ops that we rewrite
-    /// we assume that this place is typed at (result_type, bool)
-    /// and rewrite accesses to the first component to directly use the place,
-    /// while rewriting accesses to the second component to true.
-    /// TODO: once we handle panics properly, we should use a different translation.
-    /// NOTE: we only rewrite for uses, as these are the only places these are used.
-    checked_op_temporaries: HashMap<Local, Ty<'tcx>>,
 }
 
-impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
-
-    /// Generate a unique string identifier for a basic block.
-    /// This function is deterministic, so subsequent calls with the same `BasicBlock` will always
-    /// generate the same name.
-    fn make_bb_name(bb_idx: &BasicBlock) -> String {
-        // NOTE: initial bb name needs to line up with radium::FunctionCode::initial_bb!
-        let mut bb_name = "_bb".to_string();
-        bb_name.push_str(&bb_idx.index().to_string());
-        bb_name
-    }
-
-    /// Generate a string identifier for a Local.
-    /// Tries to find the Rust source code name of the local,
-    /// otherwise simply enumerates.
-    /// This function is deterministic, so subsequent calls with the same `Local` will always
-    /// generate the same name.
-    fn make_local_name(mir_body: &Body<'tcx>, local: &Local) -> String {
-        if let Some(mir_name) = Self::find_name_for_local(mir_body, local) {
-            strip_coq_ident(&mir_name)
-        }
-        else {
-            let mut name = "__".to_string();
-            name.push_str(&local.index().to_string());
-            name
-        }
-    }
-
-    /// Find a source name for a local of a MIR body, if possible.
-    fn find_name_for_local(body : &mir::Body<'tcx>, local : &mir::Local) -> Option<String> {
-        let debug_info = &body.var_debug_info;
-        for dbg in debug_info {
-            let name = &dbg.name;
-            let val = &dbg.value;
-            match *val {
-                VarDebugInfoContents::Place(l) => {
-                    // TODO: make sure that l.projection is empty?
-                    if l.local == *local {
-                        return Some(name.as_str().to_string());
-                    }
-                },
-                VarDebugInfoContents::Const(_) => {
-                    // is this case used when constant propagation happens during MIR construction?
-                },
-            }
-        }
-
-        return None;
-    }
-
-    /// Generate a key for generics to index into our map of other required procedures.
-    fn generate_procedure_inst_key(&self, ty_params: ty::GenericArgsRef<'tcx>) -> Result<FnGenericKey<'tcx>, TranslationError> {
-        // erase parameters to their syntactic types
-        let mut key = Vec::new();
-        let mut region_eraser = TyRegionEraseFolder::new(self.env.tcx());
-        for p in ty_params.iter() {
-            match p.unpack() {
-                ty::GenericArgKind::Lifetime(_) => {
-                    // lifetimes are not relevant here
-                },
-                ty::GenericArgKind::Type(t) => {
-                    // TODO: this should erase to the syntactic type.
-                    // Is erasing regions enough for that?
-                    let t_erased = t.fold_with(&mut region_eraser);
-                    key.push(t_erased);
-                },
-                ty::GenericArgKind::Const(_c) => {
-                    return Err(TranslationError::UnsupportedFeature{description:
-                        "RefinedRust does not support const generics".to_string()})
-                },
-            }
-        }
-        Ok(key)
-    }
-
-    /// Internally register that we have used a procedure with a particular instantiation of generics, and return the code parameter name.
-    fn register_use_procedure(&mut self, did: &DefId, ty_params: ty::GenericArgsRef<'tcx>) -> Result<String, TranslationError> {
-        let key = self.generate_procedure_inst_key(ty_params)?;
-
-        let tup = (*did, key);
-        if let Some((n, ..)) = self.collected_procedures.get(&tup) {
-            Ok(format!("{}", n))
-        }
-        else {
-            // lookup the name in the procedure registry
-
-            let name = self.procedure_registry.lookup_function_mangled_name(did).ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
-            let spec_name = self.procedure_registry.lookup_function_spec_name(did).ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
-
-            let mut mangled_name = name.to_string();
-            let mut translated_params = Vec::new();
-            let generic_env = &*self.ty_translator.generic_scope.borrow();
-
-            // TODO: maybe come up with some better way to generate names
-            for p in tup.1.iter() {
-                mangled_name.push_str(format!("_{}", p).as_str());
-
-                let mut translated_ty = self.ty_translator.translate_type(p)?;
-                // we need to substitute in the variables according to the function scope
-                translated_ty.subst(generic_env.as_slice());
-
-                translated_params.push(translated_ty);
-            }
-            let mangled_name = strip_coq_ident(&mangled_name);
-
-            // also gather all the layouts of the arguments.
-            let full_ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(*did);
-            let full_ty: Ty<'tcx> = full_ty.instantiate_identity();
-            let sig = full_ty.fn_sig(self.env.tcx());
-
-            let inputs = sig.inputs().skip_binder();
-            let mut syntypes = Vec::new();
-            //info!("substs: {:?}, inputs {:?} ", ty_params, inputs);
-            for i in inputs.iter() {
-                // need to wrap it, because there's no Subst instance for Ty
-                let i = ty::EarlyBinder::bind(*i);
-                let ty = i.instantiate(self.env.tcx(), ty_params);
-                let t = self.ty_translator.translate_type_to_syn_type(&ty)?;
-                syntypes.push(t);
-            }
-
-            let loc_name = format!("{}_loc", mangled_name);
-            info!("Registered procedure instance {} of {:?} with {:?} and layouts {:?}", mangled_name, did, translated_params, syntypes);
-            self.collected_procedures.insert(tup, (loc_name.clone(), spec_name.to_string(), translated_params, syntypes));
-            Ok(loc_name)
-        }
-    }
-
-    pub fn dump_body(body: &Body) {
-        // TODO: print to file
-        let basic_blocks = &body.basic_blocks;
-        for (bb_idx, bb) in basic_blocks.iter_enumerated() {
-            Self::dump_basic_block(&bb_idx, bb);
-        };
-    }
-
-    fn compute_regions_of_function(tcx: ty::TyCtxt<'tcx>, did: DefId) {
-        let ty: ty::EarlyBinder<Ty<'tcx>> = tcx.type_of(did);
-        let ty = ty.instantiate_identity();
-        let (sig, substs) = match ty.kind() {
-            TyKind::FnDef(_def, args) => {
-                assert!(ty.is_fn());
-                let sig = ty.fn_sig(tcx);
-                (sig, args)
-            }
-            _ => panic!("can not handle non-fns")
-        };
-
-        let mut universal_lifetimes = Vec::new();
-        let mut user_lifetime_names = Vec::new();
-
-        // we create a substitution that replaces early bound regions with their Polonius
-        // region variables
-        let mut subst_early_bounds: Vec<ty::GenericArg<'tcx>> = Vec::new();
-        let mut num_early_bounds = 0;
-        for a in substs.iter() {
-            match a.unpack() {
-                ty::GenericArgKind::Lifetime(r) => {
-                    // skip over 0 = static
-                    let revar = ty::Region::new_var(tcx, ty::RegionVid::from_u32(num_early_bounds + 1));
-                    num_early_bounds += 1;
-                    subst_early_bounds.push(ty::GenericArg::from(revar));
-
-                    match *r {
-                        ty::RegionKind::ReEarlyBound(r) => {
-                            universal_lifetimes.push(strip_coq_ident(&format!("ulft_{}", r.name.to_string())));
-                            user_lifetime_names.push(Some(strip_coq_ident(r.name.as_str())));
-                        },
-                        _ => {
-                            universal_lifetimes.push(format!("ulft{}", num_early_bounds));
-                            user_lifetime_names.push(None);
-                        },
-                    }
-                    //println!("early region {}", r);
-                },
-                _ => {
-                    subst_early_bounds.push(a);
-                },
-            }
-        }
-        let subst_early_bounds = tcx.mk_args(&subst_early_bounds);
-
-        // add names for late bound region variables
-        let mut num_late_bounds = 0;
-        for b in sig.bound_vars().iter() {
-            match b {
-                ty::BoundVariableKind::Region(r) => {
-                    match r {
-                        ty::BoundRegionKind::BrNamed(_, sym) => {
-                            universal_lifetimes.push(strip_coq_ident(&format!("ulft_{}", sym.to_string())));
-                            user_lifetime_names.push(Some(strip_coq_ident(sym.as_str())));
-                        },
-                        ty::BoundRegionKind::BrAnon(_) => {
-                            universal_lifetimes.push(format!("ulft{}", num_early_bounds + num_late_bounds + 1));
-                            user_lifetime_names.push(None);
-                        },
-                        _ => (),
-                    }
-                    num_late_bounds += 1;
-                },
-                _ => (),
-            }
-        }
-
-        // replace late-bound region variables by re-enumerating them in the same way as the MIR
-        // type checker does (that this happens in the same way is important to make the names
-        // line up!)
-        let mut next_index = num_early_bounds + 1; // skip over one additional due to static
-        let mut folder =
-            |_| {
-                let cur_index = next_index;
-                next_index += 1;
-                ty::Region::new_var(tcx,ty::RegionVid::from_u32(cur_index))
-            };
-        let (late_sig, _late_region_map) = tcx.replace_late_bound_regions(sig, &mut folder);
-
-        let inputs: Vec<_> = late_sig.inputs().iter().map(|ty| {
-            ty_instantiate(*ty, tcx, subst_early_bounds) }).collect();
-        let output = ty_instantiate(late_sig.output(), tcx, subst_early_bounds);
-
-        // TODO continue the refactor for pulling this out.
-        // Then try to fix issue with stuff
-    }
-
+impl<'a, 'def : 'a, 'tcx : 'def> FunctionTranslator<'a, 'def, 'tcx> {
     /// Translate the body of a function.
     pub fn new(env: &'def Environment<'tcx>, meta: ProcedureMeta, proc: Procedure<'tcx>, attrs: &'a [Attribute], ty_translator: &'def TypeTranslator<'def, 'tcx>, proc_registry: &'a ProcedureScope<'def>) -> Result<Self , TranslationError> {
         let mut translated_fn = radium::FunctionBuilder::new(&meta.name, &meta.spec_name);
@@ -465,10 +203,6 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         // TODO can we avoid the leak
         let proc: &'def Procedure = &*Box::leak(Box::new(proc));
 
-        let mut return_synty = radium::SynType::Unit; // default
-        let body = proc.get_mir();
-        // dump debug info
-        Self::dump_body(body);
 
         let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
         let ty = ty.instantiate_identity();
@@ -591,81 +325,13 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                     }
                 }
 
-                // analyze which locals are used for the result of checked-ops, because we will
-                // override their types (eliminating the tuples)
-                let mut checked_op_analyzer = CheckedOpLocalAnalysis::new(env.tcx(), body);
-                checked_op_analyzer.analyze();
-                let checked_op_locals = checked_op_analyzer.results();
-
-                // map to translate between locals and the string names we use in radium::
-                let mut radium_name_map: HashMap<Local, String> = HashMap::new();
-
-                let local_decls = &body.local_decls;
-                info!("Have {} local decls\n", local_decls.len());
-
-                let mut fn_locals = Vec::new();
-                let mut opt_return_name = Err(TranslationError::UnknownError("could not find local for return value".to_string()));
-                // go over local_decls and create the right radium:: stack layout
-                for (local, local_decl) in local_decls.iter_enumerated() {
-                    let kind = body.local_kind(local);
-                    let ty : &Ty<'tcx>;
-                    if let Some(rewritten_ty) = checked_op_locals.get(&local) {
-                        ty = rewritten_ty;
-                    }
-                    else {
-                        ty = &local_decl.ty;
-                    }
-
-                    // check if the type is of a spec fn -- in this case, we can skip this temporary
-                    if let TyKind::Closure(id, _) = ty.kind() {
-                        if proc_registry.lookup_function_mode(id).map_or(false, |m| m.is_ignore()) {
-                            // this is a spec fn
-                            info!("skipping local which has specfn closure type: {:?}", local);
-                            continue;
-                        }
-                    }
-
-                    // type:
-                    let tr_ty = ty_translator.translate_type(ty)?;
-                    let mut st = tr_ty.get_syn_type();
-                    st.subst(ty_translator.synty_scope.borrow().as_ref());
-
-                    let name = Self::make_local_name(body, &local);
-                    radium_name_map.insert(local, name.to_string());
-
-                    fn_locals.push((local, name.clone(), tr_ty));
-
-                    match kind {
-                        LocalKind::Arg => translated_fn.code.add_argument(&name, st),
-                        //LocalKind::Var => translated_fn.code.add_local(&name, st),
-                        LocalKind::Temp => translated_fn.code.add_local(&name, st),
-                        LocalKind::ReturnPointer => {
-                            return_synty = st.clone();
-                            translated_fn.code.add_local(&name, st);
-                            opt_return_name = Ok(name);
-                        }
-                    }
-
-                }
-                // create the function
-                let return_name = opt_return_name?;
-
-                let t = BodyTranslator {env, proc, info,
-                    variable_map: radium_name_map,
+                let t = Self {env, proc, info,
                     translated_fn,
-                    return_name, return_synty,
                     inclusion_tracker,
-                    collected_procedures: HashMap::new(),
                     procedure_registry: proc_registry,
                     attrs,
-                    local_lifetimes: Vec::new(),
-                    bb_queue: Vec::new(),
-                    processed_bbs: HashSet::new(),
                     ty_translator,
-                    loop_specs: HashMap::new(),
-                    fn_locals,
                     inputs, output,
-                    checked_op_temporaries: checked_op_locals,
                 };
                 Ok(t)
             },
@@ -675,125 +341,6 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    /// Parse and process attributes of this function.
-    pub fn process_attrs(&mut self) -> Result<(), TranslationError> {
-        let a = self.attrs;
-        let v = crate::utils::filter_tool_attrs(a);
-        let inputs = &self.inputs;
-        let output = &self.output;
-
-        info!("inputs: {:?}, output: {:?}", inputs, output);
-        let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
-        let generic_env = &*self.ty_translator.generic_scope.borrow();
-        for arg in inputs.iter() {
-            let mut translated: radium::Type<'def> = self.ty_translator.translate_type(arg)?;
-            translated.subst(generic_env.as_slice());
-            translated_arg_types.push(translated);
-        }
-        let mut translated_ret_type: radium::Type<'def> = self.ty_translator.translate_type(output)?;
-        translated_ret_type.subst(generic_env.as_slice());
-        info!("translated function type: {:?} → {}", translated_arg_types, translated_ret_type);
-
-        let rfnty_scope = self.ty_translator.rfnty_scope.borrow();
-
-        let parser = rrconfig::attribute_parser();
-        match parser.as_str() {
-            "verbose" => {
-                let mut parser: VerboseFunctionSpecParser<'_, 'def> = VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, &rfnty_scope);
-                parser.parse_function_spec(v.as_slice(), &mut self.translated_fn).map_err(|e| TranslationError::AttributeError(e))?;
-                Ok(())
-            },
-            _ => {
-                Err(TranslationError::UnknownAttributeParser(parser))
-            },
-        }
-    }
-
-    /// Dump a basic block as info debug output.
-    fn dump_basic_block(bb_idx: &BasicBlock, bb: &BasicBlockData) {
-        info!("Basic block {:?}:", bb_idx);
-        let mut i = 0;
-        for s in &bb.statements {
-            info!("{}\t{:?}", i, s);
-            i += 1;
-        }
-        info!("{}\t{:?}", i, bb.terminator());
-    }
-
-
-    /// Enqueues a basic block for processing, if it has not already been processed,
-    /// and marks it as having been processed.
-    fn enqueue_basic_block(&mut self, bb: BasicBlock) {
-        if !self.processed_bbs.contains(&bb) {
-            self.bb_queue.push(bb);
-            self.processed_bbs.insert(bb);
-        }
-    }
-
-    /// Determine initial constraints between universal regions and local place regions.
-    /// Returns an initial mapping for the name _map that initializes place regions of arguments
-    /// with universals.
-    fn get_initial_universal_arg_constraints(&mut self) -> Vec<(info::AtomicRegion, info::AtomicRegion)> {
-        // Polonius generates a base subset constraint uregion ⊑ pregion.
-        // We turn that into pregion = uregion, as we do strong updates at the top-level.
-        let info = &self.info;
-        let input_facts = &info.borrowck_in_facts;
-        let subset_base = &input_facts.subset_base;
-
-        let root_location = Location {block: BasicBlock::from_u32(0), statement_index: 0};
-        let root_point = self.info.interner.get_point_index(&facts::Point {location: root_location, typ: facts::PointType::Start});
-
-        let mut initial_arg_mapping = Vec::new();
-        for (r1, r2, _) in subset_base.iter() {
-            let r1_kind = self.info.get_region_kind(*r1);
-            if let info::RegionKind::Universal(info::UniversalRegionKind::Local) = r1_kind {
-                // this is a constraint we care about here, add it
-                if !self.inclusion_tracker.check_inclusion(*r1, *r2, root_point) {
-                    self.inclusion_tracker.add_static_inclusion(*r1, *r2, root_point);
-                    self.inclusion_tracker.add_static_inclusion(*r2, *r1, root_point);
-                    let lft1 = info::AtomicRegion::Universal(info::UniversalRegionKind::Local, *r1);
-                    let lft2 = info::AtomicRegion::PlaceRegion(*r2);
-                    initial_arg_mapping.push((lft1, lft2));
-                }
-            }
-        }
-        initial_arg_mapping
-    }
-
-    // TODO refactor/ move
-    fn to_universal_lft(&self, k: info::UniversalRegionKind, r: Region) -> radium::UniversalLft {
-        match k {
-            info::UniversalRegionKind::Function => radium::UniversalLft::Function,
-            info::UniversalRegionKind::Static => radium::UniversalLft::Static,
-            info::UniversalRegionKind::Local => {
-                radium::UniversalLft::Local(self.ty_translator.lookup_universal_lifetime(r).unwrap())
-            },
-            info::UniversalRegionKind::External => {
-                radium::UniversalLft::External(self.ty_translator.lookup_universal_lifetime(r).unwrap())
-            }
-        }
-    }
-
-    /// Format an atomic region, using the naming info for universal lifetimes available in the current context.
-    fn format_atomic_region(&self, r: &info::AtomicRegion) -> String {
-        match r {
-            info::AtomicRegion::Loan(_, r) => {
-                format!("llft{}", r.index())
-            },
-            info::AtomicRegion::Universal(_, r) => {
-                match self.ty_translator.lookup_universal_lifetime(*r) {
-                    Some(s) => s,
-                    None => format!("ulft{}", r.index()),
-                }
-            },
-            info::AtomicRegion::PlaceRegion(r) => {
-                format!("plft{}", r.index())
-            },
-            info::AtomicRegion::Unknown(r) => {
-                format!("lft{}", r.index())
-            },
-        }
-    }
 
     /// Filter the "interesting" constraints between universal lifetimes that need to hold
     /// (this does not include the constraints that need to hold for all universal lifetimes,
@@ -829,12 +376,56 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         universal_constraints
     }
 
+    /// Parse and process attributes of this function.
+    fn process_attrs(&mut self) -> Result<(), TranslationError> {
+        let a = self.attrs;
+        let v = crate::utils::filter_tool_attrs(a);
+        let inputs = &self.inputs;
+        let output = &self.output;
+
+        info!("inputs: {:?}, output: {:?}", inputs, output);
+        let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
+        let generic_env = &*self.ty_translator.generic_scope.borrow();
+        for arg in inputs.iter() {
+            let mut translated: radium::Type<'def> = self.ty_translator.translate_type(arg)?;
+            translated.subst(generic_env.as_slice());
+            translated_arg_types.push(translated);
+        }
+        let mut translated_ret_type: radium::Type<'def> = self.ty_translator.translate_type(output)?;
+        translated_ret_type.subst(generic_env.as_slice());
+        info!("translated function type: {:?} → {}", translated_arg_types, translated_ret_type);
+
+        let rfnty_scope = self.ty_translator.rfnty_scope.borrow();
+
+        let parser = rrconfig::attribute_parser();
+        match parser.as_str() {
+            "verbose" => {
+                let mut parser: VerboseFunctionSpecParser<'_, 'def> = VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, &rfnty_scope);
+                parser.parse_function_spec(v.as_slice(), &mut self.translated_fn).map_err(|e| TranslationError::AttributeError(e))?;
+                Ok(())
+            },
+            _ => {
+                Err(TranslationError::UnknownAttributeParser(parser))
+            },
+        }
+    }
+
+    // TODO refactor/ move
+    fn to_universal_lft(&self, k: info::UniversalRegionKind, r: Region) -> radium::UniversalLft {
+        match k {
+            info::UniversalRegionKind::Function => radium::UniversalLft::Function,
+            info::UniversalRegionKind::Static => radium::UniversalLft::Static,
+            info::UniversalRegionKind::Local => {
+                radium::UniversalLft::Local(self.ty_translator.lookup_universal_lifetime(r).unwrap())
+            },
+            info::UniversalRegionKind::External => {
+                radium::UniversalLft::External(self.ty_translator.lookup_universal_lifetime(r).unwrap())
+            }
+        }
+    }
+
     /// Translation that only generates a specification.
     pub fn generate_spec(mut self) -> Result<radium::FunctionSpec<'def>, TranslationError> {
-        // add lifetime parameters to the map
-        let initial_constraints = self.get_initial_universal_arg_constraints();
-        info!("initial constraints: {:?}", initial_constraints);
-
         // add universal constraints
         let universal_constraints = self.get_relevant_universal_constraints();
         info!("univeral constraints: {:?}", universal_constraints);
@@ -849,13 +440,45 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         Ok(self.translated_fn.into())
     }
 
-    /// Main translation function that actually does the translation and returns a radium::Function
-    /// if successful.
-    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
-        // add lifetime parameters to the map
-        let initial_constraints = self.get_initial_universal_arg_constraints();
-        info!("initial constraints: {:?}", initial_constraints);
+    /// Generate a string identifier for a Local.
+    /// Tries to find the Rust source code name of the local,
+    /// otherwise simply enumerates.
+    /// This function is deterministic, so subsequent calls with the same `Local` will always
+    /// generate the same name.
+    fn make_local_name(mir_body: &Body<'tcx>, local: &Local) -> String {
+        if let Some(mir_name) = Self::find_name_for_local(mir_body, local) {
+            strip_coq_ident(&mir_name)
+        }
+        else {
+            let mut name = "__".to_string();
+            name.push_str(&local.index().to_string());
+            name
+        }
+    }
 
+    /// Find a source name for a local of a MIR body, if possible.
+    fn find_name_for_local(body : &mir::Body<'tcx>, local : &mir::Local) -> Option<String> {
+        let debug_info = &body.var_debug_info;
+        for dbg in debug_info {
+            let name = &dbg.name;
+            let val = &dbg.value;
+            match *val {
+                VarDebugInfoContents::Place(l) => {
+                    // TODO: make sure that l.projection is empty?
+                    if l.local == *local {
+                        return Some(name.as_str().to_string());
+                    }
+                },
+                VarDebugInfoContents::Const(_) => {
+                    // is this case used when constant propagation happens during MIR construction?
+                },
+            }
+        }
+
+        return None;
+    }
+
+    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
         // add universal constraints
         let universal_constraints = self.get_relevant_universal_constraints();
         info!("univeral constraints: {:?}", universal_constraints);
@@ -865,6 +488,170 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         // process attributes
         self.process_attrs()?;
+
+        let body = self.proc.get_mir();
+
+        // analyze which locals are used for the result of checked-ops, because we will
+        // override their types (eliminating the tuples)
+        let mut checked_op_analyzer = CheckedOpLocalAnalysis::new(self.env.tcx(), body);
+        checked_op_analyzer.analyze();
+        let checked_op_locals = checked_op_analyzer.results();
+
+        // map to translate between locals and the string names we use in radium::
+        let mut radium_name_map: HashMap<Local, String> = HashMap::new();
+
+        let local_decls = &body.local_decls;
+        info!("Have {} local decls\n", local_decls.len());
+
+        let mut return_synty = radium::SynType::Unit; // default
+        let mut fn_locals = Vec::new();
+        let mut opt_return_name = Err(TranslationError::UnknownError("could not find local for return value".to_string()));
+        // go over local_decls and create the right radium:: stack layout
+        for (local, local_decl) in local_decls.iter_enumerated() {
+            let kind = body.local_kind(local);
+            let ty : &Ty<'tcx>;
+            if let Some(rewritten_ty) = checked_op_locals.get(&local) {
+                ty = rewritten_ty;
+            }
+            else {
+                ty = &local_decl.ty;
+            }
+
+            // check if the type is of a spec fn -- in this case, we can skip this temporary
+            if let TyKind::Closure(id, _) = ty.kind() {
+                if self.procedure_registry.lookup_function_mode(id).map_or(false, |m| m.is_ignore()) {
+                    // this is a spec fn
+                    info!("skipping local which has specfn closure type: {:?}", local);
+                    continue;
+                }
+            }
+
+            // type:
+            let tr_ty = self.ty_translator.translate_type(ty)?;
+            let mut st = tr_ty.get_syn_type();
+            st.subst(self.ty_translator.synty_scope.borrow().as_ref());
+
+            let name = Self::make_local_name(body, &local);
+            radium_name_map.insert(local, name.to_string());
+
+            fn_locals.push((local, name.clone(), tr_ty));
+
+            match kind {
+                LocalKind::Arg => self.translated_fn.code.add_argument(&name, st),
+                //LocalKind::Var => translated_fn.code.add_local(&name, st),
+                LocalKind::Temp => self.translated_fn.code.add_local(&name, st),
+                LocalKind::ReturnPointer => {
+                    return_synty = st.clone();
+                    self.translated_fn.code.add_local(&name, st);
+                    opt_return_name = Ok(name);
+                }
+            }
+
+        }
+        // create the function
+        let return_name = opt_return_name?;
+
+        let translator = BodyTranslator {
+            env: self.env,
+            proc: self.proc,
+            info: self.info,
+            variable_map: radium_name_map,
+            translated_fn: self.translated_fn,
+            return_name,
+            return_synty,
+            inclusion_tracker: self.inclusion_tracker,
+            collected_procedures: HashMap::new(),
+            procedure_registry: self.procedure_registry,
+            attrs: self.attrs,
+            local_lifetimes: Vec::new(),
+            bb_queue: Vec::new(),
+            processed_bbs: HashSet::new(),
+            ty_translator: self.ty_translator,
+            loop_specs: HashMap::new(),
+            fn_locals,
+            inputs: self.inputs,
+            output: self.output,
+            checked_op_temporaries: checked_op_locals,
+        };
+        translator.translate()
+    }
+}
+
+/**
+ * Struct that keeps track of all information necessary to translate a MIR Body to a radium::Function.
+ * `'a` is the lifetime of the translator and ends after translation has finished.
+ * `'def` is the lifetime of the generated code (the code may refer to struct defs).
+ * `'tcx' is the lifetime of the rustc tctx.
+ */
+struct BodyTranslator<'a, 'def, 'tcx> {
+    env: &'def Environment<'tcx>,
+    /// this needs to be annotated with the right borrowck things
+    proc: &'def Procedure<'tcx>,
+    /// maps locals to variable names
+    variable_map: HashMap<Local, String>,
+    /// the Caesium function buildder
+    translated_fn: radium::FunctionBuilder<'def>,
+    /// name of the return variable
+    return_name: String,
+    /// syntactic type of the thing to return
+    return_synty: radium::SynType,
+    /// all the other procedures used by this function, and:
+    /// (code_loc_parameter_name, spec_name, type_inst, syntype_of_all_args)
+    collected_procedures: HashMap<(DefId, FnGenericKey<'tcx>), (String, String, Vec<radium::Type<'def>>, Vec<radium::SynType>)>,
+
+    /// tracking lifetime inclusions for the generation of lifetime inclusions
+    inclusion_tracker: InclusionTracker<'a, 'tcx>,
+
+    /// registry of other procedures
+    procedure_registry: &'a ProcedureScope<'def>,
+    /// attributes on this function
+    attrs: &'a[Attribute],
+    /// polonius info for this function
+    info: &'a PoloniusInfo<'a, 'tcx>,
+    /// local lifetimes: the LHS is the lifetime name, the RHS are the super lifetimes
+    local_lifetimes: Vec<(radium::specs::Lft, Vec<radium::specs::Lft>)>,
+    /// data structures for tracking which basic blocks still need to be translated
+    /// (we only translate the basic blocks which are actually reachable, in particular when
+    /// skipping unwinding)
+    bb_queue: Vec<BasicBlock>,
+    /// set of already processed blocks
+    processed_bbs: HashSet<BasicBlock>,
+    /// translator for types
+    ty_translator: &'a TypeTranslator<'def, 'tcx>,
+
+    /// map of loop heads to their optional spec closure defid
+    loop_specs: HashMap<BasicBlock, Option<DefId>>,
+
+    /// relevant locals: (local, name, type)
+    fn_locals: Vec<(Local, String, radium::Type<'def>)>,
+
+    /// inputs of the function, with both early and late bound regions substituted with their
+    /// Polonius ReVar
+    inputs: Vec<Ty<'tcx>>,
+    /// output of the function, similarly with substituted regions
+    output: Ty<'tcx>,
+
+    /// result temporaries of checked ops that we rewrite
+    /// we assume that this place is typed at (result_type, bool)
+    /// and rewrite accesses to the first component to directly use the place,
+    /// while rewriting accesses to the second component to true.
+    /// TODO: once we handle panics properly, we should use a different translation.
+    /// NOTE: we only rewrite for uses, as these are the only places these are used.
+    checked_op_temporaries: HashMap<Local, Ty<'tcx>>,
+}
+
+impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
+
+    /// Main translation function that actually does the translation and returns a radium::Function
+    /// if successful.
+    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
+        let body = self.proc.get_mir();
+        // dump debug info
+        Self::dump_body(body);
+
+        // add lifetime parameters to the map
+        let initial_constraints = self.get_initial_universal_arg_constraints();
+        info!("initial constraints: {:?}", initial_constraints);
 
         // add loop info
         let loop_info = self.proc.loop_info();
@@ -939,6 +726,265 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         self.ty_translator.leave_procedure();
         Ok(self.translated_fn.into())
+    }
+
+    /// Determine initial constraints between universal regions and local place regions.
+    /// Returns an initial mapping for the name _map that initializes place regions of arguments
+    /// with universals.
+    fn get_initial_universal_arg_constraints(&mut self) -> Vec<(info::AtomicRegion, info::AtomicRegion)> {
+        // Polonius generates a base subset constraint uregion ⊑ pregion.
+        // We turn that into pregion = uregion, as we do strong updates at the top-level.
+        let info = &self.info;
+        let input_facts = &info.borrowck_in_facts;
+        let subset_base = &input_facts.subset_base;
+
+        let root_location = Location {block: BasicBlock::from_u32(0), statement_index: 0};
+        let root_point = self.info.interner.get_point_index(&facts::Point {location: root_location, typ: facts::PointType::Start});
+
+        let mut initial_arg_mapping = Vec::new();
+        for (r1, r2, _) in subset_base.iter() {
+            let r1_kind = self.info.get_region_kind(*r1);
+            if let info::RegionKind::Universal(info::UniversalRegionKind::Local) = r1_kind {
+                // this is a constraint we care about here, add it
+                if !self.inclusion_tracker.check_inclusion(*r1, *r2, root_point) {
+                    self.inclusion_tracker.add_static_inclusion(*r1, *r2, root_point);
+                    self.inclusion_tracker.add_static_inclusion(*r2, *r1, root_point);
+                    let lft1 = info::AtomicRegion::Universal(info::UniversalRegionKind::Local, *r1);
+                    let lft2 = info::AtomicRegion::PlaceRegion(*r2);
+                    initial_arg_mapping.push((lft1, lft2));
+                }
+            }
+        }
+        initial_arg_mapping
+    }
+
+
+    /// Generate a unique string identifier for a basic block.
+    /// This function is deterministic, so subsequent calls with the same `BasicBlock` will always
+    /// generate the same name.
+    fn make_bb_name(bb_idx: &BasicBlock) -> String {
+        // NOTE: initial bb name needs to line up with radium::FunctionCode::initial_bb!
+        let mut bb_name = "_bb".to_string();
+        bb_name.push_str(&bb_idx.index().to_string());
+        bb_name
+    }
+
+
+    /// Generate a key for generics to index into our map of other required procedures.
+    fn generate_procedure_inst_key(&self, ty_params: ty::GenericArgsRef<'tcx>) -> Result<FnGenericKey<'tcx>, TranslationError> {
+        // erase parameters to their syntactic types
+        let mut key = Vec::new();
+        let mut region_eraser = TyRegionEraseFolder::new(self.env.tcx());
+        for p in ty_params.iter() {
+            match p.unpack() {
+                ty::GenericArgKind::Lifetime(_) => {
+                    // lifetimes are not relevant here
+                },
+                ty::GenericArgKind::Type(t) => {
+                    // TODO: this should erase to the syntactic type.
+                    // Is erasing regions enough for that?
+                    let t_erased = t.fold_with(&mut region_eraser);
+                    key.push(t_erased);
+                },
+                ty::GenericArgKind::Const(_c) => {
+                    return Err(TranslationError::UnsupportedFeature{description:
+                        "RefinedRust does not support const generics".to_string()})
+                },
+            }
+        }
+        Ok(key)
+    }
+
+    /// Internally register that we have used a procedure with a particular instantiation of generics, and return the code parameter name.
+    fn register_use_procedure(&mut self, did: &DefId, ty_params: ty::GenericArgsRef<'tcx>) -> Result<String, TranslationError> {
+        let key = self.generate_procedure_inst_key(ty_params)?;
+
+        let tup = (*did, key);
+        if let Some((n, ..)) = self.collected_procedures.get(&tup) {
+            Ok(format!("{}", n))
+        }
+        else {
+            // lookup the name in the procedure registry
+
+            let name = self.procedure_registry.lookup_function_mangled_name(did).ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
+            let spec_name = self.procedure_registry.lookup_function_spec_name(did).ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
+
+            let mut mangled_name = name.to_string();
+            let mut translated_params = Vec::new();
+            let generic_env = &*self.ty_translator.generic_scope.borrow();
+
+            // TODO: maybe come up with some better way to generate names
+            for p in tup.1.iter() {
+                mangled_name.push_str(format!("_{}", p).as_str());
+
+                let mut translated_ty = self.ty_translator.translate_type(p)?;
+                // we need to substitute in the variables according to the function scope
+                translated_ty.subst(generic_env.as_slice());
+
+                translated_params.push(translated_ty);
+            }
+            let mangled_name = strip_coq_ident(&mangled_name);
+
+            // also gather all the layouts of the arguments.
+            let full_ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(*did);
+            let full_ty: Ty<'tcx> = full_ty.instantiate_identity();
+            let sig = full_ty.fn_sig(self.env.tcx());
+
+            let inputs = sig.inputs().skip_binder();
+            let mut syntypes = Vec::new();
+            //info!("substs: {:?}, inputs {:?} ", ty_params, inputs);
+            for i in inputs.iter() {
+                // need to wrap it, because there's no Subst instance for Ty
+                let i = ty::EarlyBinder::bind(*i);
+                let ty = i.instantiate(self.env.tcx(), ty_params);
+                let t = self.ty_translator.translate_type_to_syn_type(&ty)?;
+                syntypes.push(t);
+            }
+
+            let loc_name = format!("{}_loc", mangled_name);
+            info!("Registered procedure instance {} of {:?} with {:?} and layouts {:?}", mangled_name, did, translated_params, syntypes);
+            self.collected_procedures.insert(tup, (loc_name.clone(), spec_name.to_string(), translated_params, syntypes));
+            Ok(loc_name)
+        }
+    }
+
+    fn dump_body(body: &Body) {
+        // TODO: print to file
+        let basic_blocks = &body.basic_blocks;
+        for (bb_idx, bb) in basic_blocks.iter_enumerated() {
+            Self::dump_basic_block(&bb_idx, bb);
+        };
+    }
+
+    fn compute_regions_of_function(tcx: ty::TyCtxt<'tcx>, did: DefId) {
+        let ty: ty::EarlyBinder<Ty<'tcx>> = tcx.type_of(did);
+        let ty = ty.instantiate_identity();
+        let (sig, substs) = match ty.kind() {
+            TyKind::FnDef(_def, args) => {
+                assert!(ty.is_fn());
+                let sig = ty.fn_sig(tcx);
+                (sig, args)
+            }
+            _ => panic!("can not handle non-fns")
+        };
+
+        let mut universal_lifetimes = Vec::new();
+        let mut user_lifetime_names = Vec::new();
+
+        // we create a substitution that replaces early bound regions with their Polonius
+        // region variables
+        let mut subst_early_bounds: Vec<ty::GenericArg<'tcx>> = Vec::new();
+        let mut num_early_bounds = 0;
+        for a in substs.iter() {
+            match a.unpack() {
+                ty::GenericArgKind::Lifetime(r) => {
+                    // skip over 0 = static
+                    let revar = ty::Region::new_var(tcx, ty::RegionVid::from_u32(num_early_bounds + 1));
+                    num_early_bounds += 1;
+                    subst_early_bounds.push(ty::GenericArg::from(revar));
+
+                    match *r {
+                        ty::RegionKind::ReEarlyBound(r) => {
+                            universal_lifetimes.push(strip_coq_ident(&format!("ulft_{}", r.name.to_string())));
+                            user_lifetime_names.push(Some(strip_coq_ident(r.name.as_str())));
+                        },
+                        _ => {
+                            universal_lifetimes.push(format!("ulft{}", num_early_bounds));
+                            user_lifetime_names.push(None);
+                        },
+                    }
+                    //println!("early region {}", r);
+                },
+                _ => {
+                    subst_early_bounds.push(a);
+                },
+            }
+        }
+        let subst_early_bounds = tcx.mk_args(&subst_early_bounds);
+
+        // add names for late bound region variables
+        let mut num_late_bounds = 0;
+        for b in sig.bound_vars().iter() {
+            match b {
+                ty::BoundVariableKind::Region(r) => {
+                    match r {
+                        ty::BoundRegionKind::BrNamed(_, sym) => {
+                            universal_lifetimes.push(strip_coq_ident(&format!("ulft_{}", sym.to_string())));
+                            user_lifetime_names.push(Some(strip_coq_ident(sym.as_str())));
+                        },
+                        ty::BoundRegionKind::BrAnon(_) => {
+                            universal_lifetimes.push(format!("ulft{}", num_early_bounds + num_late_bounds + 1));
+                            user_lifetime_names.push(None);
+                        },
+                        _ => (),
+                    }
+                    num_late_bounds += 1;
+                },
+                _ => (),
+            }
+        }
+
+        // replace late-bound region variables by re-enumerating them in the same way as the MIR
+        // type checker does (that this happens in the same way is important to make the names
+        // line up!)
+        let mut next_index = num_early_bounds + 1; // skip over one additional due to static
+        let mut folder =
+            |_| {
+                let cur_index = next_index;
+                next_index += 1;
+                ty::Region::new_var(tcx,ty::RegionVid::from_u32(cur_index))
+            };
+        let (late_sig, _late_region_map) = tcx.replace_late_bound_regions(sig, &mut folder);
+
+        let inputs: Vec<_> = late_sig.inputs().iter().map(|ty| {
+            ty_instantiate(*ty, tcx, subst_early_bounds) }).collect();
+        let output = ty_instantiate(late_sig.output(), tcx, subst_early_bounds);
+
+        // TODO continue the refactor for pulling this out.
+        // Then try to fix issue with stuff
+    }
+
+    /// Dump a basic block as info debug output.
+    fn dump_basic_block(bb_idx: &BasicBlock, bb: &BasicBlockData) {
+        info!("Basic block {:?}:", bb_idx);
+        let mut i = 0;
+        for s in &bb.statements {
+            info!("{}\t{:?}", i, s);
+            i += 1;
+        }
+        info!("{}\t{:?}", i, bb.terminator());
+    }
+
+
+    /// Enqueues a basic block for processing, if it has not already been processed,
+    /// and marks it as having been processed.
+    fn enqueue_basic_block(&mut self, bb: BasicBlock) {
+        if !self.processed_bbs.contains(&bb) {
+            self.bb_queue.push(bb);
+            self.processed_bbs.insert(bb);
+        }
+    }
+
+
+    /// Format an atomic region, using the naming info for universal lifetimes available in the current context.
+    fn format_atomic_region(&self, r: &info::AtomicRegion) -> String {
+        match r {
+            info::AtomicRegion::Loan(_, r) => {
+                format!("llft{}", r.index())
+            },
+            info::AtomicRegion::Universal(_, r) => {
+                match self.ty_translator.lookup_universal_lifetime(*r) {
+                    Some(s) => s,
+                    None => format!("ulft{}", r.index()),
+                }
+            },
+            info::AtomicRegion::PlaceRegion(r) => {
+                format!("plft{}", r.index())
+            },
+            info::AtomicRegion::Unknown(r) => {
+                format!("lft{}", r.index())
+            },
+        }
     }
 
     /// Parse the attributes on spec closure `did` as loop annotations and add it as an invariant
@@ -1437,8 +1483,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 }
 
-                // translate the arguments
                 let func_expr = self.translate_operand(func, false)?;
+                // translate the arguments
                 let mut translated_args = Vec::new();
                 for arg in args.iter() {
                     // to_ty is the type the function expects

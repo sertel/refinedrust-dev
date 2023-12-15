@@ -58,7 +58,7 @@ mod inclusion_tracker;
 mod arg_folder;
 
 use environment::Environment;
-use function_body::BodyTranslator;
+use function_body::FunctionTranslator;
 use type_translator::TypeTranslator;
 use function_body::ProcedureScope;
 
@@ -297,7 +297,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
                 proof_file.write("End proof.".as_bytes()).unwrap();
             }
-            else if fun.spec.has_spec() {
+            else if !fun.spec.has_spec() {
                 proof_file.write(format!("(* No specification provided *)").as_bytes()).unwrap();
             }
             else {
@@ -459,7 +459,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         info!("Translating function {}", fname);
 
 
-        let translator = BodyTranslator::new(&vcx.env, meta, proc, attrs, &vcx.type_translator, &vcx.procedure_registry);
+        let translator = FunctionTranslator::new(&vcx.env, meta, proc, attrs, &vcx.type_translator, &vcx.procedure_registry);
 
         if mode.is_only_spec() {
             // Only generate a spec
