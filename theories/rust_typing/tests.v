@@ -635,7 +635,9 @@ Section test.
     ty_allows_reads (struct_t (s1_spec (ty_syn_type T_ty)) +[T_ty; int i32]).
   Proof.
     intros. inv_layout_alg.
-    unshelve solve_ty_allows; solve_goal.
+    solve_ty_allows.
+    Unshelve.
+    all: solve_goal.
     all: solve [fail].
   Abort.
 

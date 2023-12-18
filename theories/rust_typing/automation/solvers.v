@@ -2012,85 +2012,110 @@ Ltac solve_ot_eq ::=
   try reflexivity.
 
 (** Solve goals of the form [Forall2 _ xs ?fields], by instantiating [?fields]. *)
+Ltac assert_is_atomic_st st :=
+  first [is_var st | match st with | ty_syn_type ?T => is_var T end].
+Ltac assert_is_atomic_sls sls :=
+  is_var sls.
+Ltac assert_is_atomic_els els :=
+  is_var els.
+Ltac assert_is_atomic_uls uls :=
+  is_var uls.
+
 (* Definition below. *)
 Ltac solve_op_alg_forall :=
   idtac.
 
-Ltac solve_op_alg ::=
+Ltac solve_op_alg_prepare :=
   (* normalize goal *)
   lazymatch goal with
   | |- use_op_alg ?st = Some ?ot => idtac
   | |- use_op_alg' ?st = ?ot => refine (use_op_alg'_ot_tac st ot _)
-  end;
-  try match goal with
-  | |- use_op_alg ?st = Some ?op =>
-      match st with
-      | ty_syn_type _ => idtac
-      | _ =>
-        let st_eval := eval hnf in st in
-        change_no_check st with st_eval
-      end
-      (*simplify_optype op*)
-  end;
+  end.
+
+Ltac solve_op_alg_core_step :=
+  (* TODO: needed? *)
   try eassumption;
+  (* Revert to deriving it from layout algorithms for atomics *)
+  try lazymatch goal with
+    | |- use_op_alg ?st = Some ?ot =>
+      assert_is_atomic_st st;
+      refine (use_op_alg_tyvar_tac st _ _ _);
+      [solve_layout_alg | solve_ot_eq]
+  end;
+  (* Unfold *)
+  try lazymatch goal with
+  | |- Forall2 use_op_alg_struct_pred ?fields ?fields' =>
+      let fields_eval := eval hnf in fields in
+      change_no_check fields with fields_eval
+  | |- use_op_alg ?st = Some ?op =>
+      let st_eval := eval hnf in st in
+      change_no_check st with st_eval
+  end;
   (* match on st *)
   lazymatch goal with
-    | |- use_op_alg ?st = Some (use_op_alg' ?st) =>
-      refine (use_op_alg_tyvar_tac st _ _ _);
-      [solve_layout_alg | reflexivity]
+  | |- Forall2 use_op_alg_struct_pred [] ?fields' =>
+      econstructor
+  | |- Forall2 use_op_alg_struct_pred (?f :: ?fields) ?fields' =>
+    econstructor; [ unfold use_op_alg_struct_pred | ]
   | |- use_op_alg (IntSynType ?it) = Some ?ot =>
-      refine (use_op_alg_int _ _ _);
+      notypeclasses refine (use_op_alg_int _ _ _);
       [ solve_ot_eq ]
   | |- use_op_alg BoolSynType = Some ?ot =>
-      refine (use_op_alg_bool _ _);
+      notypeclasses refine (use_op_alg_bool _ _);
       [solve_ot_eq ]
   | |- use_op_alg CharSynType = Some ?ot =>
-      refine (use_op_alg_char _ _);
+      notypeclasses refine (use_op_alg_char _ _);
       [solve_ot_eq ]
   | |- use_op_alg PtrSynType = Some ?ot =>
-      refine (use_op_alg_ptr _ _);
+      notypeclasses refine (use_op_alg_ptr _ _);
       [solve_ot_eq ]
   | |- use_op_alg FnPtrSynType = Some ?ot =>
-      refine (use_op_alg_fnptr _ _);
+      notypeclasses refine (use_op_alg_fnptr _ _);
       [solve_ot_eq ]
   | |- use_op_alg (StructSynType ?name ?fields ?repr) = Some ?ot =>
-      refine (use_op_alg_struct name fields _ _ _ _  _ _ _);
-      [solve_op_alg_forall | solve_layout_alg | solve_ot_eq ]
+      notypeclasses refine (use_op_alg_struct name fields _ _ _ _  _ _ _);
+      [ | solve_layout_alg | solve_ot_eq ]
   | |- use_op_alg UnitSynType = Some ?ot =>
-      refine (use_op_alg_unit _ _);
+      notypeclasses refine (use_op_alg_unit _ _);
       [solve_ot_eq ]
   | |- use_op_alg (ArraySynType ?st ?len) = Some ?ot =>
       fail 1000 "implement solve_op_alg for ArraySynType"
   | |- use_op_alg (UnsafeCell ?st) = Some ?ot =>
-      refine (use_op_alg_unsafecell st _ _);
-      [solve_op_alg ]
+      notypeclasses refine (use_op_alg_unsafecell st _ _);
+      [ ]
   | |- use_op_alg (UntypedSynType ?ly) = Some ?ot =>
       simplify_layout ly;
-      refine (use_op_alg_untyped _ ot _);
+      notypeclasses refine (use_op_alg_untyped _ ot _);
       [solve_ot_eq ]
   | |- use_op_alg (EnumSynType ?name ?it ?fields ?repr) = Some ?ot =>
-        refine (use_op_alg_enum _ _ _ _ _ _ _ _);
-        [solve_layout_alg | solve_ot_eq]
+      notypeclasses refine (use_op_alg_enum _ _ _ _ _ _ _ _);
+      [solve_layout_alg | solve_ot_eq]
   | |- use_op_alg (UnionSynType ?name ?fields ?repr) = Some ?ot =>
-        refine (use_op_alg_union _ _ _ _ _ _ _);
-        [solve_layout_alg | solve_ot_eq]
+      notypeclasses refine (use_op_alg_union _ _ _ _ _ _ _);
+      [solve_layout_alg | solve_ot_eq]
   | |- use_op_alg (ty_syn_type _) = Some ?ot =>
-      refine (use_op_alg_tyvar_tac (ty_syn_type _) ot _ _);
+      notypeclasses refine (use_op_alg_tyvar_tac (ty_syn_type _) ot _ _);
       [solve_layout_alg | solve_ot_eq]
   | |- use_op_alg ?st = Some ?ot =>
       is_var st;
-      refine (use_op_alg_tyvar_tac st ot _ _);
+      notypeclasses refine (use_op_alg_tyvar_tac st ot _ _);
       [solve_layout_alg | solve_ot_eq]
   end.
 
+Ltac solve_op_alg_core :=
+  repeat solve_op_alg_core_step.
+Ltac solve_op_alg ::=
+  solve_op_alg_prepare;
+  solve_op_alg_core.
+
 Ltac solve_op_alg_forall ::=
   simpl;
-  match goal with
+  lazymatch goal with
   | |- Forall2 use_op_alg_struct_pred [] ?fields' =>
       econstructor
   | |- Forall2 use_op_alg_struct_pred (?f :: ?fields) ?fields' =>
     econstructor;
-    [ simpl; solve_op_alg
+    [ simpl; solve_op_alg_core
     | solve_op_alg_forall]
   end.
 
@@ -2118,7 +2143,7 @@ Ltac simplify_ot :=
 Arguments is_value_ot : simpl never.
 Arguments is_array_ot : simpl never.
 Arguments is_struct_ot : simpl never.
-Ltac solve_ty_has_op_type_step :=
+Ltac solve_ty_has_op_type_core_step :=
   first [
     match goal with
     | |- ∃ _, _ => eexists
@@ -2128,8 +2153,10 @@ Ltac solve_ty_has_op_type_step :=
   | sidecond_hook
   | shelve
   ].
+Ltac solve_ty_has_op_type_core :=
+  repeat solve_ty_has_op_type_core_step.
 
-Ltac solve_ty_has_op_type :=
+Ltac solve_ty_has_op_type_prepare :=
   lazymatch goal with
   | |- ty_has_op_type ?ty ?ot ?mc =>
       (* simplify op_type *)
@@ -2138,16 +2165,18 @@ Ltac solve_ty_has_op_type :=
       (* unfold *)
       first [ assert_fails (is_var ty); rewrite ty_has_op_type_unfold/_ty_has_op_type/= | idtac];
       (* specific handling for a few cases *)
-      match goal with
+      lazymatch goal with
       | |- is_value_ot ?st (use_op_alg' ?st) ?mc =>
           refine (is_value_ot_use_op_alg _ _ _ _ _); [done | solve_layout_alg]
       | |- is_value_ot _ _ _ => rewrite /is_value_ot; eexists _
       | |- _ =>
            (*otherwise unfold *)
           hnf
-      end;
-      repeat solve_ty_has_op_type_step
+      end
   end.
+Ltac solve_ty_has_op_type :=
+  solve_ty_has_op_type_prepare;
+  solve_ty_has_op_type_core.
 
 (** Solver for goals of the form [ty_allows_reads ?ty] and [ty_allows_writes ?ty] *)
 Ltac solve_ty_allows :=
@@ -2268,15 +2297,6 @@ Ltac simplify_struct_layout_alg H :=
     simplify_struct_layout_alg Heq
   end.
 *)
-
-Ltac assert_is_atomic_st st :=
-  first [is_var st | match st with | ty_syn_type ?T => is_var T end].
-Ltac assert_is_atomic_sls sls :=
-  is_var sls.
-Ltac assert_is_atomic_els els :=
-  is_var els.
-Ltac assert_is_atomic_uls uls :=
-  is_var uls.
 
 Ltac simplify_layout_alg := fail "impl simplify_layout_alg".
 Ltac inv_multi_fields_rec Hrec :=
