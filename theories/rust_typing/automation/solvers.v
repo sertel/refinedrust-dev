@@ -1826,7 +1826,9 @@ Ltac solve_layout_alg_prepare :=
   end.
 
 Ltac solve_layout_alg_core_step :=
+  (* For primitive goals for which we have an assumption in the context *)
   try eassumption;
+  (* Simplify *)
   try match goal with
   | |- syn_type_has_layout ?st ?ly =>
       let st_eval := eval hnf in st in
@@ -1859,10 +1861,10 @@ Ltac solve_layout_alg_core_step :=
       [solve_layout_eq ]
   | |- syn_type_has_layout (StructSynType ?name ?fields ?repr) ?ly =>
       notypeclasses refine (syn_type_has_layout_struct_tac name fields _ repr _ _  _ _ _);
-      [| eassumption | solve_layout_eq]
+      [| | solve_layout_eq]
   | |- struct_layout_spec_has_layout ?sls ?sl =>
       notypeclasses refine (struct_layout_spec_has_layout_tac sls _ sl _ _ _ _);
-      [| eassumption | solve_layout_eq]
+      [| | solve_layout_eq]
   | |- syn_type_has_layout UnitSynType ?ly =>
       notypeclasses refine (syn_type_has_layout_unit _ _);
       [solve_layout_eq ]
@@ -1886,16 +1888,16 @@ Ltac solve_layout_alg_core_step :=
       end
   | |- syn_type_has_layout (EnumSynType ?name ?it ?variants ?repr) ?ly =>
       notypeclasses refine (syn_type_has_layout_enum_tac name variants _ it _ _ _ _ _ _ _ _ _ _ _ _ );
-      [| refine eq_refl | refine eq_refl | eassumption | eassumption | solve_layout_eq]
+      [| refine eq_refl | refine eq_refl | | | solve_layout_eq]
   | |- enum_layout_spec_has_layout ?els ?el =>
       notypeclasses refine (enum_layout_spec_has_layout_tac els _ _ _ _ _ _ _ _ _ _ _ _ );
-      [| refine eq_refl | refine eq_refl | eassumption | eassumption | solve_layout_eq]
+      [| refine eq_refl | refine eq_refl | | | solve_layout_eq]
   | |- syn_type_has_layout (UnionSynType ?name ?variants ?repr) ?ly =>
       notypeclasses refine (syn_type_has_layout_union_tac name variants _ _ _ _ _ _ _ );
-      [| eassumption | solve_layout_eq]
+      [| | solve_layout_eq]
   | |- union_layout_spec_has_layout ?uls ?ul =>
       notypeclasses refine (union_layout_spec_has_layout_tac uls _ _ _ _ _ _);
-      [| eassumption | solve_layout_eq]
+      [| | solve_layout_eq]
   end.
 
 Ltac solve_layout_alg_core :=

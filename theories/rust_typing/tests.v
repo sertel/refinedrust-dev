@@ -529,6 +529,17 @@ Section test.
     intros. inv_layout_alg.
     solve_layout_alg; solve[fail].
   Abort.
+
+  Lemma solve_layout_alg_test11 ly :
+    use_layout_alg (std_option_Option_els T_st) = Some ly →
+    use_layout_alg (std_option_Option_els (IntSynType u32)) = Some ly →
+    syn_type_is_layoutable (std_option_Option_els T_st) ∧ syn_type_is_layoutable (std_option_Option_els (IntSynType u32)).
+  Proof.
+    intros. inv_layout_alg.
+    split; solve_layout_alg.
+    Unshelve. solve_goal.
+    all: solve[fail].
+  Abort.
 End test.
 
 (** solve_op_alg *)
