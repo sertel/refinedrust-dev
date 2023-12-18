@@ -1449,7 +1449,7 @@ Section solve_layout_alg_tac.
   Local Definition syn_type_has_layout_multi_pred : (var_name * syn_type) → (var_name * layout) → Prop :=
     λ '(field_name, field_spec) res,
       ∃ field_name2 field_ly,
-      use_layout_alg field_spec = Some field_ly ∧ field_name = field_name2 ∧ res = (field_name2, field_ly).
+      syn_type_has_layout field_spec field_ly ∧ field_name = field_name2 ∧ res = (field_name2, field_ly).
 
   (* structs *)
   Lemma syn_type_has_layout_struct_tac name fields fields' repr ly ly' :
@@ -1547,15 +1547,15 @@ Section solve_layout_alg_tac.
     - rewrite /use_layout_alg' Hst //.
     - rewrite /use_layout_alg' Hst//.
   Qed.
-  Lemma syn_type_has_layout_untyped_struct_alg_tac sls sl ly' :
+  Lemma syn_type_has_layout_untyped_struct_alg_tac (sls : struct_layout_spec) sl ly' :
     ly' = sl →
-    struct_layout_spec_has_layout sls sl →
+    syn_type_has_layout sls sl →
     syn_type_has_layout (UntypedSynType (use_struct_layout_alg' sls)) ly'.
   Proof.
-    intros -> Hst. eapply (syn_type_has_layout_make_untyped sls).
-    - rewrite /use_struct_layout_alg' Hst //.
-    - rewrite /use_struct_layout_alg' Hst.
-      by apply use_struct_layout_alg_Some_inv.
+    intros -> Hst.
+    rewrite /use_struct_layout_alg'.
+    specialize (use_layout_alg_struct_Some_inv _ _  Hst) as (sl' & -> & <-).
+    eapply (syn_type_has_layout_make_untyped sls); done.
   Qed.
 End solve_layout_alg_tac.
 
@@ -1747,7 +1747,7 @@ Ltac solve_ly_align_ib :=
       [solve_layout_alg]
   | |- _ => idtac
   end;
-  first [eassumption | done | shelve].
+  try first [eassumption | done ].
 
 (** Solve equalities and inequalities involving [ly_size]. *)
 Ltac solve_layout_size :=
@@ -1799,7 +1799,11 @@ Global Arguments enum_layout_spec_is_layoutable : simpl never.
 Global Arguments struct_layout_spec_is_layoutable : simpl never.
 Global Arguments union_layout_spec_is_layoutable : simpl never.
 
-Ltac solve_layout_alg ::=
+Ltac solve_layout_alg_prepare :=
+  try match goal with
+  | |- syn_type_has_layout ?st ?ly =>
+      simplify_layout ly
+  end;
   unfold_no_enrich;
   (* normalize goal *)
   lazymatch goal with
@@ -1819,87 +1823,92 @@ Ltac solve_layout_alg ::=
   | |- use_union_layout_alg ?uls = ?Some ?ul => refine (use_union_layout_alg_layout_tac _ _ _)
   | |- union_layout_spec_has_layout ?uls ?ul => idtac
   | |- union_layout_spec_is_layoutable ?uls => eexists; refine (use_union_layout_alg_layout_tac _ _ _)
-  end;
-  try match goal with
-  | |- syn_type_has_layout ?st ?ly =>
-      match st with
-      | ty_syn_type ?T => is_var T
-      | _ =>
-        let st_eval := eval hnf in st in
-        change_no_check st with st_eval
-      end;
-      simplify_layout ly
-  end;
-  try eassumption;
-  (* match on st *)
-  lazymatch goal with
-  | |- syn_type_has_layout (IntSynType ?it) ?ly =>
-      refine (syn_type_has_layout_int _ _ _ _);
-      [ solve_layout_eq | solve_layout_size; shelve ]
-  | |- syn_type_has_layout BoolSynType ?ly =>
-      refine (syn_type_has_layout_bool _ _);
-      [solve_layout_eq ]
-  | |- syn_type_has_layout CharSynType ?ly =>
-      refine (syn_type_has_layout_char _ _);
-      [solve_layout_eq ]
-  | |- syn_type_has_layout PtrSynType ?ly =>
-      refine (syn_type_has_layout_ptr _ _);
-      [solve_layout_eq ]
-  | |- syn_type_has_layout FnPtrSynType ?ly =>
-      refine (syn_type_has_layout_fnptr _ _);
-      [solve_layout_eq ]
-  | |- syn_type_has_layout (StructSynType ?name ?fields ?repr) ?ly =>
-      refine (syn_type_has_layout_struct_tac name fields _ repr _ _  _ _ _);
-      [solve_layout_alg_forall | eassumption | solve_layout_eq]
-  | |- struct_layout_spec_has_layout ?sls ?sl =>
-      refine (struct_layout_spec_has_layout_tac sls _ sl _ _ _ _);
-      [solve_layout_alg_forall | eassumption | solve_layout_eq]
-  | |- syn_type_has_layout UnitSynType ?ly =>
-      refine (syn_type_has_layout_unit _ _);
-      [solve_layout_eq ]
-  | |- syn_type_has_layout (ArraySynType ?st ?len) ?ly =>
-      refine (syn_type_has_layout_array st len _ ly _ _ _);
-      [ solve_layout_eq | solve_layout_alg | solve_layout_size; shelve ]
-  | |- syn_type_has_layout (UnsafeCell ?st) ?ly =>
-      refine (syn_type_has_layout_unsafecell st ly _);
-      [solve_layout_alg ]
-  | |- syn_type_has_layout (UntypedSynType ?ly) ?ly' =>
-      match ly with
-      | use_layout_alg' ?st' =>
-          refine (syn_type_has_layout_untyped_alg_tac st' _ ly' _ _);
-            [solve_layout_eq | solve_layout_alg]
-      | use_struct_layout_alg' ?sls' =>
-          refine (syn_type_has_layout_untyped_struct_alg_tac sls' _ ly' _ _);
-            [solve_layout_eq | solve_layout_alg]
-      | _ =>
-          refine (syn_type_has_layout_untyped ly ly' _ _ _ _);
-            [solve_layout_eq | solve_layout_wf | solve_layout_size; shelve | solve_ly_align_ib ]
-      end
-  | |- syn_type_has_layout (EnumSynType ?name ?it ?variants ?repr) ?ly =>
-      refine (syn_type_has_layout_enum_tac name variants _ it _ _ _ _ _ _ _ _ _ _ _ _ );
-      [solve_layout_alg_forall | reflexivity | reflexivity | eassumption | eassumption | solve_layout_eq]
-  | |- enum_layout_spec_has_layout ?els ?el =>
-      refine (enum_layout_spec_has_layout_tac els _ _ _ _ _ _ _ _ _ _ _ _ );
-      [solve_layout_alg_forall | reflexivity | reflexivity | eassumption | eassumption | solve_layout_eq]
-  | |- syn_type_has_layout (UnionSynType ?name ?variants ?repr) ?ly =>
-      refine (syn_type_has_layout_union_tac name variants _ _ _ _ _ _ _ );
-      [solve_layout_alg_forall | eassumption | solve_layout_eq]
-  | |- union_layout_spec_has_layout ?uls ?ul =>
-      refine (union_layout_spec_has_layout_tac uls _ _ _ _ _ _);
-      [solve_layout_alg_forall | eassumption | solve_layout_eq]
   end.
 
-Ltac solve_layout_alg_forall ::=
-  unfold_no_enrich;
-  simpl;
-  match goal with
+Ltac solve_layout_alg_core_step :=
+  try eassumption;
+  try match goal with
+  | |- syn_type_has_layout ?st ?ly =>
+      let st_eval := eval hnf in st in
+      change_no_check st with st_eval
+  | |- Forall2 syn_type_has_layout_multi_pred ?fields ?fields' =>
+      let fields_eval := eval hnf in fields in
+      change_no_check fields with fields_eval
+  end;
+  (* match on st *)
+  lazymatch goal with
   | |- Forall2 syn_type_has_layout_multi_pred [] ?fields' =>
       econstructor
   | |- Forall2 syn_type_has_layout_multi_pred (?f :: ?fields) ?fields' =>
     econstructor;
-    [ eexists _, _; split_and!; [ solve_layout_alg | reflexivity | reflexivity]
-    | solve_layout_alg_forall]
+    [ eexists _, _; split_and!; [ | refine eq_refl | refine eq_refl] | ]
+  | |- syn_type_has_layout (IntSynType ?it) ?ly =>
+      notypeclasses refine (syn_type_has_layout_int _ _ _ _);
+      [ solve_layout_eq | solve_layout_size; shelve ]
+  | |- syn_type_has_layout BoolSynType ?ly =>
+      notypeclasses refine (syn_type_has_layout_bool _ _);
+      [solve_layout_eq ]
+  | |- syn_type_has_layout CharSynType ?ly =>
+      notypeclasses refine (syn_type_has_layout_char _ _);
+      [solve_layout_eq ]
+  | |- syn_type_has_layout PtrSynType ?ly =>
+      notypeclasses refine (syn_type_has_layout_ptr _ _);
+      [solve_layout_eq ]
+  | |- syn_type_has_layout FnPtrSynType ?ly =>
+      notypeclasses refine (syn_type_has_layout_fnptr _ _);
+      [solve_layout_eq ]
+  | |- syn_type_has_layout (StructSynType ?name ?fields ?repr) ?ly =>
+      notypeclasses refine (syn_type_has_layout_struct_tac name fields _ repr _ _  _ _ _);
+      [| eassumption | solve_layout_eq]
+  | |- struct_layout_spec_has_layout ?sls ?sl =>
+      notypeclasses refine (struct_layout_spec_has_layout_tac sls _ sl _ _ _ _);
+      [| eassumption | solve_layout_eq]
+  | |- syn_type_has_layout UnitSynType ?ly =>
+      notypeclasses refine (syn_type_has_layout_unit _ _);
+      [solve_layout_eq ]
+  | |- syn_type_has_layout (ArraySynType ?st ?len) ?ly =>
+      notypeclasses refine (syn_type_has_layout_array st len _ ly _ _ _);
+      [ solve_layout_eq | | solve_layout_size; shelve ]
+  | |- syn_type_has_layout (UnsafeCell ?st) ?ly =>
+      notypeclasses refine (syn_type_has_layout_unsafecell st ly _);
+      []
+  | |- syn_type_has_layout (UntypedSynType ?ly) ?ly' =>
+      lazymatch ly with
+      | use_layout_alg' ?st' =>
+          notypeclasses refine (syn_type_has_layout_untyped_alg_tac st' _ ly' _ _);
+            [solve_layout_eq | ]
+      | use_struct_layout_alg' ?sls' =>
+          notypeclasses refine (syn_type_has_layout_untyped_struct_alg_tac sls' _ ly' _ _);
+            [solve_layout_eq | ]
+      | _ =>
+          notypeclasses refine (syn_type_has_layout_untyped ly ly' _ _ _ _);
+            [solve_layout_eq | solve_layout_wf; shelve | solve_layout_size; shelve | solve_ly_align_ib; shelve ]
+      end
+  | |- syn_type_has_layout (EnumSynType ?name ?it ?variants ?repr) ?ly =>
+      notypeclasses refine (syn_type_has_layout_enum_tac name variants _ it _ _ _ _ _ _ _ _ _ _ _ _ );
+      [| refine eq_refl | refine eq_refl | eassumption | eassumption | solve_layout_eq]
+  | |- enum_layout_spec_has_layout ?els ?el =>
+      notypeclasses refine (enum_layout_spec_has_layout_tac els _ _ _ _ _ _ _ _ _ _ _ _ );
+      [| refine eq_refl | refine eq_refl | eassumption | eassumption | solve_layout_eq]
+  | |- syn_type_has_layout (UnionSynType ?name ?variants ?repr) ?ly =>
+      notypeclasses refine (syn_type_has_layout_union_tac name variants _ _ _ _ _ _ _ );
+      [| eassumption | solve_layout_eq]
+  | |- union_layout_spec_has_layout ?uls ?ul =>
+      notypeclasses refine (union_layout_spec_has_layout_tac uls _ _ _ _ _ _);
+      [| eassumption | solve_layout_eq]
   end.
+
+Ltac solve_layout_alg_core :=
+  repeat solve_layout_alg_core_step.
+Ltac solve_layout_alg ::=
+  solve_layout_alg_prepare;
+  solve[solve_layout_alg_core].
+
+Ltac solve_layout_alg_forall ::=
+  unfold_no_enrich;
+  simpl;
+  solve_layout_alg_core
+  .
 
 Ltac solve_compute_layout ::=
   unfold_no_enrich;
@@ -1926,7 +1935,7 @@ Global Arguments syn_type_compat : simpl never.
 
 Ltac solve_syn_type_compat :=
   unfold_no_enrich;
-  match goal with
+  lazymatch goal with
   | |- syn_type_compat ?st ?st =>
       refine (syn_type_compat_refl _)
   | |- syn_type_compat ?st1 (UntypedSynType ?ly2) =>
