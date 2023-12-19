@@ -2468,9 +2468,6 @@ Ltac simplify_layout_alg_prepare H :=
       unfold syn_type_of_sls, syn_type_of_els, syn_type_of_uls in H
   end.
 
-Ltac dont_enrich H :=
-  apply dont_enrich in H.
-
 Ltac simplify_layout_alg H ::=
   simplify_layout_alg_prepare H;
   (* simplify head *)
@@ -2534,7 +2531,7 @@ Ltac simplify_layout_alg H ::=
           simplify_eq;
           try postprocess_new_struct_assum H Halg;
           (*clear H*)
-          dont_enrich H
+          enter_cache H
         ]
 
     | use_enum_layout_alg ?els = Some _ =>
@@ -2557,7 +2554,7 @@ Ltac simplify_layout_alg H ::=
           simplify_eq;
           try postprocess_new_struct_assum H Halg_sl;
           (*clear H*)
-          dont_enrich H
+          enter_cache H
         ]
 
     | use_union_layout_alg ?uls = Some _ =>
@@ -2577,7 +2574,7 @@ Ltac simplify_layout_alg H ::=
           simplify_eq;
           try postprocess_new_union_assum H Halg_ul;
           (*clear H*)
-          dont_enrich H
+          enter_cache H
         ]
 
     | use_layout_alg (IntSynType ?it) = Some _ =>
@@ -2601,7 +2598,7 @@ Ltac simplify_layout_alg H ::=
         (* NOTE: this has a [try] in front because some of the [simplify_eq] in [inv_multi_fields] may already have taken the [Halg] away -- then this will fail and cause huge pain. *)
         try postprocess_new_struct_assum H Halg;
         (*clear H*)
-        dont_enrich H
+        enter_cache H
 
 
     | use_layout_alg UnitSynType = Some _ =>
@@ -2630,7 +2627,7 @@ Ltac simplify_layout_alg H ::=
         simplify_eq;
         try postprocess_new_struct_assum H Halg_sl;
         (*clear H*)
-        dont_enrich H
+        enter_cache H
 
 
     | use_layout_alg (UnionSynType _ ?variants ?repr) = Some _ =>
@@ -2642,7 +2639,7 @@ Ltac simplify_layout_alg H ::=
         simplify_eq;
         try postprocess_new_union_assum H Halg_ul;
         (*clear H*)
-        dont_enrich H
+        enter_cache H
 
     | use_layout_alg _ = Some _ =>
         idtac
@@ -2650,13 +2647,16 @@ Ltac simplify_layout_alg H ::=
   ];
   simplify_eq.
 
-Lemma remove_generic_layout_duplicate `{!typeGS Σ} {T_rt} (T_ty : type T_rt) ly1 ly2 :
-  NO_ENRICH (use_layout_alg (ty_syn_type T_ty) = Some ly1) →
-  NO_ENRICH (use_layout_alg (ty_syn_type T_ty) = Some ly2) →
-  ly2 = ly1.
-Proof.
-  intros Ha Hb. by eapply syn_type_has_layout_inj.
-Qed.
+Section remove_duplicates.
+  Lemma remove_generic_layout_duplicate `{!typeGS Σ} {T_rt} (T_ty : type T_rt) ly1 ly2 :
+    NO_ENRICH (use_layout_alg (ty_syn_type T_ty) = Some ly1) →
+    NO_ENRICH (use_layout_alg (ty_syn_type T_ty) = Some ly2) →
+    ly2 = ly1.
+  Proof.
+    intros Ha Hb. by eapply syn_type_has_layout_inj.
+  Qed.
+End remove_duplicates.
+
 Ltac remove_duplicate_layout_assumptions :=
   repeat match goal with
   | H : NO_ENRICH (use_layout_alg (ty_syn_type ?T_ty) = Some ?Hly1),
@@ -2705,6 +2705,14 @@ Ltac inv_layout_alg :=
   remove_duplicate_layout_assumptions.
 Global Arguments syn_type_has_layout : simpl never.
 
+(** Override the [enter_cache_hook] to check for duplicate layout assumptions first *)
+Section remove_duplicates.
+
+End remove_duplicates.
+
+Ltac enter_cache_hook H cont :=
+  (* TODO *)
+  cont H.
 
 (** Solve [Inhabited] instances for inductives, used for enum declarations.
    We assume that arguments of inductive constructors have already been proved inhabited. *)
