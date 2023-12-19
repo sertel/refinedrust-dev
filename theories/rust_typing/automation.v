@@ -50,7 +50,7 @@ Ltac solve_protected_eq_hook ::=
 Ltac can_solve_hook ::= first [
   match goal with
   | |- _ ≠ _ => discriminate
-  end | solve_goal].
+  end | open_cache; solve_goal].
 
 Ltac liTrace_hook info ::=
   add_case_distinction_info info.
@@ -832,6 +832,7 @@ Ltac sidecond_hook_list :=
 (* TODO : more sideconditions *)
 Ltac sidecond_hook ::=
   unfold_no_enrich;
+  open_cache;
   intros;
   match goal with
   | |- Forall ?P ?l =>
@@ -1006,6 +1007,9 @@ Global Typeclasses Opaque find_in_context.
 Global Arguments ty_lfts : simpl nomatch.
 Global Arguments ty_wf_E : simpl nomatch.
 
+Global Arguments layout_of : simpl never.
+(*Global Arguments ly_size : simpl never.*)
+
 Global Arguments plist : simpl never.
 
 Global Typeclasses Opaque Rel2.
@@ -1030,6 +1034,42 @@ Ltac after_intro_hook ::=
   inv_layout_alg
 .
 
+Ltac enter_cache_hook H cont ::=
+  first [
+    lazymatch type of H with
+    | use_layout_alg ?st = Some ?ly1 =>
+        lazymatch goal with
+        | H2: CACHED (use_layout_alg st = Some ?ly2) |- _ =>
+          specialize (enter_cache_resolve_layout_alg_dup _ _ _ H H2) as ?;
+          clear H
+        end
+    | use_struct_layout_alg ?sls = Some ?ly1 =>
+        lazymatch goal with
+        | H2: CACHED (use_struct_layout_alg sls = Some ?ly2) |- _ =>
+          specialize (enter_cache_resolve_struct_layout_alg_dup _ _ _ H H2) as ?;
+          clear H
+        end
+    | use_enum_layout_alg ?els = Some ?ly1 =>
+        lazymatch goal with
+        | H2: CACHED (use_enum_layout_alg els = Some ?ly2) |- _ =>
+          specialize (enter_cache_resolve_enum_layout_alg_dup _ _ _ H H2) as ?;
+          clear H
+        end
+    | use_union_layout_alg ?uls = Some ?ly1 =>
+        lazymatch goal with
+        | H2: CACHED (use_union_layout_alg uls = Some ?ly2) |- _ =>
+          specialize (enter_cache_resolve_union_layout_alg_dup _ _ _ H H2) as ?;
+          clear H
+        end
+    | ?ty =>
+        lazymatch goal with
+        | H2 : CACHED ty |- _ =>
+            clear H
+        end
+    end;
+    simplify_eq
+  | cont H].
+
 (** Lithium hooks for [solve_goal]: called for remaining sideconditions *)
 Lemma unfold_int_elem_of_it (z : Z) (it : int_type) :
   z ∈ it = (MinInt it ≤ z ∧ z ≤ MaxInt it)%Z.
@@ -1045,6 +1085,7 @@ Ltac solve_goal_normalized_prepare_hook ::=
   autounfold in *;
   simplify_layout_assum;
   simplify_layout_goal;
+  open_cache;
   augment_context;
   unfold_no_enrich;
   simpl in *;

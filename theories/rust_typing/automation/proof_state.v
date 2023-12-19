@@ -43,6 +43,56 @@ Ltac unfold_no_enrich :=
   | H : context[NO_ENRICH ?a] |- _ => unfold NO_ENRICH in H
   end.
 
+(** Sidecondition caching *)
+
+(** Design decisions:
+   - How do we represent the cache?
+
+     Should we just have an opaque marker that we unfold?
+     => Go with this for now.
+
+     Should we pack stuff into a special list or so?
+     + This would be reflected directly in the proof term and not easily go away
+     + Might be more efficient for matching when we don't need it.
+
+   - Have tactics for entering things into the cache, for adding the cache to the context, etc.
+    invariant: no duplicates in the cache.
+
+
+ *)
+Definition CACHED {A : Type} (a : A) := a.
+Global Typeclasses Opaque CACHED.
+Arguments CACHED : simpl never.
+Notation "'CACHED'" := (CACHED _) (only printing).
+Lemma enter_cache {A} : A → CACHED A.
+Proof. apply CACHED. Defined.
+
+Ltac open_cache :=
+  repeat match goal with
+  | H : context[CACHED ?a] |- _ => unfold CACHED in H
+  end.
+
+
+(** Hook to process an assumption [H] before entering it into the cache. *)
+Ltac enter_cache_hook H cont :=
+  cont H.
+Ltac enter_cache H :=
+  enter_cache_hook H ltac:(fun Hn => apply enter_cache in Hn).
+(** Unsafe version that bypasses the hooks *)
+Ltac enter_cache_unsafe H :=
+  apply enter_cache in H.
+
+Ltac specialize_cache T :=
+  let Hn := fresh in
+  specialize T as Hn;
+  enter_cache Hn.
+Ltac assert_is_not_cached H :=
+  lazymatch type of H with
+  | CACHED _ => fail
+  | _ => idtac
+  end.
+
+(** Case distinctions *)
 Ltac add_case_distinction_info info :=
   let Hcase := fresh "HCASE" in
   have Hcase := (() : (CASE_DISTINCTION_INFO info))
@@ -55,8 +105,10 @@ Ltac add_case_distinction_info info :=
 Ltac clear_unused_vars :=
   repeat match goal with
          | H : ?T |- _ =>
-           (* Keep current location and case distinction info. *)
            lazymatch T with
+           (* Keep cache *)
+           | CACHED _ => fail
+           (* Keep current location and case distinction info. *)
            (*| CURRENT_LOCATION _ _ => fail*)
            (*| CASE_DISTINCTION_INFO _ _ _ => fail*)
            | _ => idtac
@@ -176,40 +228,3 @@ Ltac print_remaining_shelved_goal fn :=
   idtac "Shelved goal remaining in " fn "!";
   print_goal; admit.
 
-
-(** Sidecondition caching *)
-
-(** Design decisions:
-   - How do we represent the cache?
-
-     Should we just have an opaque marker that we unfold?
-     => Go with this for now.
-
-     Should we pack stuff into a special list or so?
-     + This would be reflected directly in the proof term and not easily go away
-     + Might be more efficient for matching when we don't need it.
-
-   - Have tactics for entering things into the cache, for adding the cache to the context, etc.
-    invariant: no duplicates in the cache.
-
-
- *)
-
-Definition CACHED {A} (a : A) := a.
-Global Typeclasses Opaque CACHED.
-Arguments CACHED : simpl never.
-Notation "'CACHED'" := (CACHED _) (only printing).
-Lemma enter_cache {A} : A → CACHED A.
-Proof. apply CACHED. Defined.
-
-Ltac open_cache :=
-  repeat match goal with
-  | H : context[CACHED ?a] |- _ => unfold CACHED in H
-  end.
-
-
-(** Hook to process an assumption [H] before entering it into the cache. *)
-Ltac enter_cache_hook H cont :=
-  cont H.
-Ltac enter_cache H :=
-  enter_cache_hook H ltac:(fun Hn => apply enter_cache in Hn).

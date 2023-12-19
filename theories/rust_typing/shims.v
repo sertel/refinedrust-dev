@@ -103,7 +103,7 @@ Proof.
   start_function "mem_size_of" ( () ) ( () ).
   repeat liRStep.
   Unshelve.
-  all: unshelve_sidecond; solve_goal.
+  all: unshelve_sidecond; open_cache; solve_goal.
 Qed.
 
 (** mem::align_of *)
@@ -353,7 +353,7 @@ Proof.
   intros ls_dst ls_src.
   repeat liRStep; liShow.
   Unshelve. all: unshelve_sidecond; sidecond_hook.
-  Unshelve. all: unfold_common_defs; solve_goal.
+  Unshelve. all: unfold_common_defs; try solve_goal.
 Qed.
 
 
@@ -1046,7 +1046,7 @@ Proof.
     iPoseProof ("Hstore" with "Hat1") as "Hstore".
     iApply ("Hcont" $! _ _ _ (box (uninit (ty_syn_type T))) (PlaceIn ()) with "HL Hna [Hfree Hl Hcred Hat]").
     { iExists _, _. iSplitR; first done. iSplitR; first done.
-      match goal with | H : NO_ENRICH (use_layout_alg (ty_syn_type T) = Some ?ly) |- _ => rename ly into T_ly; rename H into H_T end.
+      match goal with | H : CACHED (use_layout_alg (ty_syn_type T) = Some ?ly) |- _ => rename ly into T_ly; rename H into H_T end.
       iR.
       iPoseProof (heap_mapsto_loc_in_bounds with "Hl") as "#Hlb".
       rewrite replicate_length. iFrame "Hlb". simpl. iSplitR; first done. iFrame.
@@ -1197,7 +1197,6 @@ Proof.
   init_tyvars ∅.
   init_lfts ∅.
   repeat liRStep; liShow.
-
   Unshelve. all: unshelve_sidecond; sidecond_hook.
   Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; unsolved_sidecond_hook.
   Unshelve. all: by apply alloc_array_layout_wf.

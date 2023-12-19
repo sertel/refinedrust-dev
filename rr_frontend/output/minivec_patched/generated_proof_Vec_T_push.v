@@ -32,18 +32,23 @@ Proof.
   Unshelve. all: unshelve_sidecond; sidecond_hook.
 
   Unshelve.
-  all: rename select (length (project_vec_els _ _) < _) into Hels; rewrite project_vec_els_length in Hels.
+  all: rename select (length (project_vec_els _ _) < _) into Hels.
+  all: match type of Hels with (Z.of_nat (length (project_vec_els ?len2 ?xs2)) < _)%Z => rename len2 into len; rename xs2 into xs end.
+  all: rewrite project_vec_els_length in Hels.
+  all: rename select (size_of_array_in_bytes (ty_syn_type T_ty) _ ≤ MaxInt isize_t) into Hsz.
+  all: rename select (∀ i: nat, (0 <= i < len)%nat → _) into Hlook_1.
+  all: rename select (∀ i: nat, (len <= i < _)%nat → _) into Hlook_2.
 
-  Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal. 
-  all: try solve_goal with (lia). 
+  Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal.
+  all: try solve_goal with (lia).
   all: try (unfold_common_defs; solve_goal with (lia)).
 
-  { 
-    move: H71. rewrite /size_of_array_in_bytes. 
-    rewrite project_vec_els_length. 
+  {
+    move: Hsz. rewrite /size_of_array_in_bytes.
+    rewrite project_vec_els_length.
     lia.
-  } 
-  
+  }
+
   {
     rewrite project_vec_els_insert_lt /=; [|lia].
     apply list_lookup_insert_Some'.
@@ -54,20 +59,20 @@ Proof.
   }
   {
     rewrite project_vec_els_insert_lt /=; [|lia].
-    apply (list_eq_split (length x4)).
+    apply (list_eq_split (length xs)).
     - rewrite take_insert; [|lia]. rewrite take_app_alt ?project_vec_els_length; [|lia].
       rewrite project_vec_els_take project_vec_els_take_r. f_equal; [lia|].
       rewrite take_app_le; [|lia]. rewrite take_ge; [done|lia].
     - rewrite drop_insert_le; [|lia]. rewrite drop_app_alt ?project_vec_els_length; [|lia].
       rewrite project_vec_els_drop. apply list_eq_singleton. split; solve_goal.
   }
-  { move: H71. rewrite /size_of_array_in_bytes. rewrite project_vec_els_length. simplify_layout_goal. nia. }
+  { move: Hsz. rewrite /size_of_array_in_bytes. rewrite project_vec_els_length. simplify_layout_goal. nia. }
   { nia. }
   {
     (* TODO *)
-    assert (x3 < length x4) as ?.
-    { specialize (H79 x3 ltac:(lia)).
-      apply lookup_lt_Some in H79.
+    assert (len < length xs) as ?.
+    { specialize (Hlook_2 len ltac:(lia)).
+      apply lookup_lt_Some in Hlook_2.
       lia. }
 
     rewrite project_vec_els_insert_lt /=; [|lia].
@@ -75,22 +80,22 @@ Proof.
     { lia. }
     erewrite project_vec_els_lookup_mono; [solve_goal|lia|done].
   }
-  { 
+  {
     (* TODO should get this in a different way *)
-    assert (x3 < length x4) as ?.
-    { specialize (H79 x3 ltac:(lia)).
-      apply lookup_lt_Some in H79.
+    assert (len < length xs) as ?.
+    { specialize (Hlook_2 len ltac:(lia)).
+      apply lookup_lt_Some in Hlook_2.
       lia. }
     nia. }
   {
     (* TODO we should get this in a different way *)
-    assert (x3 < length x4) as ?.
-    { specialize (H79 x3 ltac:(lia)).
-      apply lookup_lt_Some in H79.
+    assert (len < length xs) as ?.
+    { specialize (Hlook_2 len ltac:(lia)).
+      apply lookup_lt_Some in Hlook_2.
       lia. }
-    (* I guess I want to know  that x2 < length x3. *)
+    (* I guess I want to know  that len < length xs. *)
     rewrite project_vec_els_insert_lt /=; [|lia].
-    apply (list_eq_split x3).
+    apply (list_eq_split len).
     - rewrite take_insert; [|lia]. rewrite take_app_alt ?project_vec_els_length; [|lia].
       rewrite project_vec_els_take. f_equal. lia.
     - rewrite drop_insert_le; [|lia]. rewrite drop_app_alt ?project_vec_els_length; [|lia].
@@ -98,7 +103,6 @@ Proof.
       apply list_eq_singleton. split; first solve_goal.
       normalize_and_simpl_goal. solve_goal.
   }
-
 
 
   Unshelve. all: try done; try apply: inhabitant; print_remaining_shelved_goal "Vec_T_push".
