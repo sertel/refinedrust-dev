@@ -2372,7 +2372,6 @@ Ltac check_for_cached_layout H :=
         end
   end.
 
-
 Ltac simplify_layout_alg := fail "impl simplify_layout_alg".
 Ltac inv_multi_fields_rec Hrec :=
   simpl in Hrec;
