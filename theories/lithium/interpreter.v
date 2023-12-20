@@ -243,11 +243,16 @@ Ltac liImpl :=
 
 (** ** [liSideCond] *)
 Ltac liSideCond :=
+  try lazymatch goal with
+  | |- (name_hint _ ?P) ∧ ?Q =>
+      change_no_check (P ∧ Q)
+  end;
   lazymatch goal with
   | |- ?P ∧ ?Q =>
     lazymatch P with
     | shelve_hint _ => split; [ unfold shelve_hint; shelve_sidecond |]
-    | _ => first [
+    | _ =>
+      first [
         lazymatch P with
         | context [protected _] => fail
         | _ => split; [splitting_fast_done|]

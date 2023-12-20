@@ -1,3 +1,4 @@
+From iris.proofmode Require Import string_ident.
 From lithium Require Export base.
 From lithium Require Import hooks simpl_classes pure_definitions normalize.
 
@@ -74,6 +75,9 @@ Ltac normalize_and_simpl_impl handle_exist :=
     | |- (_ = _) → _ =>
         check_injection_hook;
         let Hi := fresh "Hi" in move => Hi; injection Hi; clear Hi
+    | |- name_hint ?s ?P → ?Q =>
+        change_no_check (P → Q);
+        string_ident.string_to_ident_cps s ltac:(fun H => first [intros H | intros ?])
     | |- ?P → _ => assert_is_not_trivial P; intros ?; subst
     | |- _ => move => _
     end;
