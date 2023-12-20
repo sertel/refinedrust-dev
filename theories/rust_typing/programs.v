@@ -480,6 +480,10 @@ Section judgments.
   Class TypedAnnotExpr (π : thread_id) (E : elctx) (L : llctx) (n : nat) {A} (a : A) (v : val) (P : iProp Σ) : Type :=
     typed_annot_expr_proof T : iProp_to_Prop (typed_annot_expr π E L n a v P T).
 
+  Definition enter_cache_hint (P : Prop) := P.
+  Global Arguments enter_cache_hint : simpl never.
+  Global Typeclasses Opaque enter_cache_hint.
+
   (** Learn from a hypothesis on introduction with [introduce_with_hooks], defined below *)
   Class LearnFromHyp (P : iProp Σ) := {
     learn_from_hyp_Q : iProp Σ;
@@ -501,7 +505,7 @@ Section judgments.
 
   Global Program Instance learn_hyp_place_owned π l {rt} (ty : type rt) r :
     LearnFromHypVal ty r → LearnFromHyp (l ◁ₗ[π, Owned false] #r @ (◁ ty))%I | 10 :=
-    λ H, {| learn_from_hyp_Q := learn_from_hyp_val_Q ∗ ∃ ly, ⌜use_layout_alg (ty_syn_type ty) = Some ly⌝ ∗ ⌜l `has_layout_loc` ly⌝ ∗ loc_in_bounds l 0 (ly_size ly) |}.
+    λ H, {| learn_from_hyp_Q := learn_from_hyp_val_Q ∗ ∃ ly, ⌜use_layout_alg (ty_syn_type ty) = Some ly⌝ ∗ ⌜enter_cache_hint (l `has_layout_loc` ly)⌝ ∗ loc_in_bounds l 0 (ly_size ly) |}.
   Next Obligation.
     intros π l rt ty r [Q ? HQ] F.
     iIntros (?) "Hl". simpl.
@@ -511,19 +515,21 @@ Section judgments.
     iMod (HQ with "[//] Hv") as "(Hv & #HQ')".
     iSplitL. { iModIntro. iExists _. iFrame. iR. iR. iR. iExists _. iR.
       iModIntro. eauto 8 with iFrame. }
-    iModIntro. iFrame "HQ'". iExists _. iFrame "Hlb". done.
+    iModIntro. iFrame "HQ'". iExists _. iFrame "Hlb".
+    rewrite /enter_cache_hint. done.
   Qed.
 
   (* Lower-priority instance for other ownership modes and place types *)
   Global Program Instance learn_hyp_place_layout π l k {rt} (lt : ltype rt) r :
     LearnFromHyp (l ◁ₗ[π, k] r @ lt)%I | 20 :=
-    {| learn_from_hyp_Q := ∃ ly, ⌜use_layout_alg (ltype_st lt) = Some ly⌝ ∗ ⌜l `has_layout_loc` ly⌝ ∗ loc_in_bounds l 0 (ly_size ly)  |}.
+    {| learn_from_hyp_Q := ∃ ly, ⌜use_layout_alg (ltype_st lt) = Some ly⌝ ∗ ⌜enter_cache_hint (l `has_layout_loc` ly)⌝ ∗ loc_in_bounds l 0 (ly_size ly)  |}.
   Next Obligation.
     intros π l k rt lt r F.
     iIntros (?) "Hl".
     iPoseProof (ltype_own_has_layout with "Hl") as "(%ly & %Hst & %Hl)".
     iPoseProof (ltype_own_loc_in_bounds with "Hl") as "#Hlb"; first done.
-    iModIntro. iFrame. iExists _. iFrame "Hlb". iPureIntro. eauto.
+    iModIntro. iFrame. iExists _. iFrame "Hlb".
+    rewrite /enter_cache_hint. iPureIntro. eauto.
   Qed.
 
   Global Program Instance learn_hyp_loc_in_bounds l off1 off2 :

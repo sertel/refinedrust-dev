@@ -463,7 +463,7 @@ Definition ptr_invalid `{!LayoutAlg} (T_st : syn_type) : function := {|
 |}.
 Definition type_of_ptr_invalid `{!typeGS Σ} (T_rt : Type) (T_st : syn_type) :=
   fn(∀ () : 0 | (n) : nat, (λ ϝ, []); Z.of_nat n @ int usize_t; λ π, ⌜(min_alloc_start ≤ n)%Z ∧ (n ≤ max_alloc_end)%Z⌝)
-    → ∃ l : loc, l @ alias_ptr_t; (λ π, ⌜l `aligned_to` n⌝ ∗ l ◁ₗ[π, Owned false] .@ ◁ unit_t).
+    → ∃ l : loc, l @ alias_ptr_t; (λ π, ⌜name_hint "Ha" (l `aligned_to` n)⌝ ∗ l ◁ₗ[π, Owned false] .@ ◁ unit_t).
 Lemma ptr_invalid_typed `{!typeGS Σ} π T_rt T_st T_ly :
   syn_type_has_layout T_st T_ly →
   ⊢ typed_function π (ptr_invalid T_st) [] (type_of_ptr_invalid T_rt T_st).
@@ -501,7 +501,8 @@ Proof.
     iExists (). iSplitR; first done.
     iModIntro. iExists []. iFrame. rewrite /ty_own_val /= //. }
 
-  repeat liRStep.
+  repeat liRStep; liShow.
+
   Unshelve.
   all: unshelve_sidecond; sidecond_hook.
   all: unfold_common_defs; solve_goal.
