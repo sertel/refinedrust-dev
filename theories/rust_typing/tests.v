@@ -241,7 +241,7 @@ Section test.
     use_layout_alg (ArraySynType (ty_syn_type T_ty) (length xs)) = Some ly →
     syn_type_is_layoutable (T_st).
   Proof.
-    intros ? H1. inv_layout_alg.
+    intros -> H1. inv_layout_alg.
     solve_layout_alg; solve[fail].
   Abort.
 

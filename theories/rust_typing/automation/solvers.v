@@ -15,6 +15,20 @@ Ltac hammer :=
   first [timeout 4 lia | timeout 4 nia | timeout 4 refined_solver lia].
 Ltac solve_goal_final_hook ::= refined_solver lia.
 
+(* Reduced version of simplify_eq *)
+Ltac subst_with Heq :=
+  (* TODO: better implementation? *)
+  try match type of Heq with
+  | ?a = ?b =>
+      is_var a;
+      subst a
+  | ?a = ?b =>
+      is_var b;
+      subst b
+  end.
+
+
+
 (** The main hook for solving sideconditions, will be re-defined later. *)
 Ltac sidecond_hook := idtac.
 Ltac unsolved_sidecond_hook := idtac.
@@ -2308,7 +2322,11 @@ Ltac inv_multi_fields_rec Hrec :=
   | Forall2 _ (?x :: ?L1) (?L2) =>
       let Harg := fresh in
       let Hrec2 := fresh "Hrec" in
-      apply Forall2_cons_inv_l in Hrec as ([] & ? & [? Harg] & Hrec2 & ?);
+      let Heq := fresh "Heq" in
+      let Hnameeq := fresh "Heq" in
+      apply Forall2_cons_inv_l in Hrec as ([] & ? & [Hnameeq Harg] & Hrec2 & Heq);
+      subst_with Hnameeq;
+      subst_with Heq;
       inv_multi_fields_rec Hrec2;
       simplify_layout_alg Harg
   | Forall2 _ [] _ =>
@@ -2328,10 +2346,11 @@ Ltac rename_layouts_core H cont :=
       string_to_ident_cps sl_name ltac:(fun sl_n =>
       string_to_ident_cps fields_name ltac:(fun fields_n =>
       string_to_ident_cps H_name ltac:(fun H_n =>
-      rename sl into sl_n;
-      apply struct_layout_alg_has_fields in H as fields_n;
-      rename H into H_n;
-      cont H_n)))
+      try rename sl into sl_n;
+      (* TODO cache *)
+      try apply struct_layout_alg_has_fields in H as fields_n;
+      first [rename H into H_n; cont H_n | cont H]
+      )))
   | union_layout_alg ?name ?variants ?repr = Some ?ul =>
       let ul_name := eval cbv in (append name "_ul") in
       let variants_name := eval cbv in (append name "_variants") in
@@ -2339,10 +2358,11 @@ Ltac rename_layouts_core H cont :=
       string_to_ident_cps ul_name ltac:(fun ul_n =>
       string_to_ident_cps variants_name ltac:(fun variants_n =>
       string_to_ident_cps H_name ltac:(fun H_n =>
-      rename ul into ul_n;
-      apply union_layout_alg_has_variants in H as variants_n;
-      rename H into H_n;
-      cont H_n)))
+      try rename ul into ul_n;
+      (* TODO cache *)
+      try apply union_layout_alg_has_variants in H as variants_n;
+      first [rename H into H_n; cont H_n | cont H]
+      )))
   | use_layout_alg ?T = Some ?ly =>
       assert_is_atomic_st T;
       is_var ly;
@@ -2353,9 +2373,8 @@ Ltac rename_layouts_core H cont :=
         let H_name := eval cbv in (append st_name "_alg") in
         string_to_ident_cps ly_name ltac:(fun ly_n =>
         string_to_ident_cps H_name ltac:(fun H_n =>
-        rename ly into ly_n;
-        rename H into H_n;
-        cont H_n))
+        try rename ly into ly_n;
+        rename H into H_n; cont H_n))
       | cont H]
   end.
 Tactic Notation "rename_layouts" "in" hyp(H) "with" tactic(cont) :=
@@ -2415,13 +2434,18 @@ Section handle_duplicate.
 End handle_duplicate.
 
 Ltac postprocess_new_struct_assum H Halg :=
+  (* NOTE: we do nothing if [Halg] doesn't exist anymore.
+    [simplify_eq] in [inv_multi_fields] may already have taken the [Halg] away -- then this will fail and cause huge pain. *)
+  first [ assert_fails (is_var Halg) | 
   lazymatch type of Halg with
   | struct_layout_alg ?name ?field_lys ?repr = Some _ =>
     first [
       (* if this is a duplicate, remove it *)
       lazymatch goal with
       | H2 : CACHED (struct_layout_alg name field_lys repr = Some _) |- _ =>
-        specialize (handle_duplicate_struct_layout_alg_tac _ _ _ _ _ Halg H2) as ?;
+        let Heq := fresh "Heq" in
+        specialize (handle_duplicate_struct_layout_alg_tac _ _ _ _ _ Halg H2) as Heq;
+        subst_with Heq;
         clear Halg
       end
     |
@@ -2440,15 +2464,18 @@ Ltac postprocess_new_struct_assum H Halg :=
       end;
       rename_layouts in Halg with (fun Halg => enter_cache_unsafe Halg)
     ]
-  end.
+  end].
 Ltac postprocess_new_union_assum H Halg :=
+  first [assert_fails (is_var Halg) | 
   lazymatch type of Halg with
   | union_layout_alg ?name ?variant_lys ?repr = Some _ =>
     first [
       (* if this is a duplicate, remove it *)
       lazymatch goal with
       | H2 : CACHED (union_layout_alg name variant_lys repr = Some _) |- _ =>
-        specialize (handle_duplicate_union_layout_alg_tac _ _ _ _ _ Halg H2) as ?;
+        let Heq := fresh "Heq" in
+        specialize (handle_duplicate_union_layout_alg_tac _ _ _ _ _ Halg H2) as Heq;
+        subst_with Heq;
         clear Halg
       end
     |
@@ -2464,7 +2491,7 @@ Ltac postprocess_new_union_assum H Halg :=
       end;
       rename_layouts in Halg with (fun Halg => enter_cache_unsafe Halg)
     ]
-  end.
+  end].
 
 
 Ltac simplify_layout_alg_prepare H :=
@@ -2517,8 +2544,10 @@ Ltac simplify_layout_alg H ::=
           (* if this is a duplicate, remove it *)
           match goal with
           | H2 : CACHED (use_layout_alg st = Some _) |- _ =>
-            specialize (handle_duplicate_use_layout_alg_tac _ _ _ H H2) as ?;
-            clear H
+              let Heq := fresh "Heq" in 
+              specialize (handle_duplicate_use_layout_alg_tac _ _ _ H H2) as Heq;
+              subst_with Heq;
+              clear H
           end
         | specialize_cache (use_layout_alg_size _ _ H);
           specialize_cache (use_layout_alg_wf _ _ H);
@@ -2544,8 +2573,8 @@ Ltac simplify_layout_alg H ::=
           specialize (use_struct_layout_alg_inv _ _ H) as (? & Halg & Hrec);
           simpl in Halg;
           inv_multi_fields Hrec;
-          simplify_eq;
-          try postprocess_new_struct_assum H Halg;
+          (*simplify_eq;*)
+          postprocess_new_struct_assum H Halg;
           (*clear H*)
           enter_cache H
         ]
@@ -2565,10 +2594,10 @@ Ltac simplify_layout_alg H ::=
           specialize (use_enum_layout_alg_inv _ _ H) as (? & ? & Halg_ul & Halg_sl & Hrec);
           simpl in Halg_ul, Halg_sl;
           inv_multi_fields Hrec;
-          simplify_eq;
-          try postprocess_new_union_assum H Halg_ul;
-          simplify_eq;
-          try postprocess_new_struct_assum H Halg_sl;
+          (*simplify_eq;*)
+          postprocess_new_union_assum H Halg_ul;
+          (*simplify_eq;*)
+          postprocess_new_struct_assum H Halg_sl;
           (*clear H*)
           enter_cache H
         ]
@@ -2587,61 +2616,76 @@ Ltac simplify_layout_alg H ::=
           specialize (use_union_layout_alg_inv _ _ H) as (? & Halg_ul & Hrec);
           simpl in Halg_ul;
           inv_multi_fields Hrec;
-          simplify_eq;
-          try postprocess_new_union_assum H Halg_ul;
+          (*simplify_eq;*)
+          postprocess_new_union_assum H Halg_ul;
           (*clear H*)
           enter_cache H
         ]
 
     | use_layout_alg (IntSynType ?it) = Some _ =>
-        apply syn_type_has_layout_int_inv in H as (? & ?)
+        let Heq := fresh "Heq" in
+        apply syn_type_has_layout_int_inv in H as (Heq & ?);
+        subst_with Heq
     | use_layout_alg (BoolSynType) = Some _ =>
-        apply syn_type_has_layout_bool_inv in H
+        apply syn_type_has_layout_bool_inv in H;
+        subst_with H
     | use_layout_alg (CharSynType) = Some _ =>
-        apply syn_type_has_layout_char_inv in H
+        apply syn_type_has_layout_char_inv in H;
+        subst_with H
     | use_layout_alg PtrSynType = Some _ =>
-        apply syn_type_has_layout_ptr_inv in H
+        apply syn_type_has_layout_ptr_inv in H;
+        subst_with H
     | use_layout_alg FnPtrSynType = Some _ =>
-        apply syn_type_has_layout_fnptr_inv in H
+        apply syn_type_has_layout_fnptr_inv in H;
+        subst_with H
 
     | use_layout_alg (StructSynType _ ?fields ?repr) = Some _ =>
         let Hrec := fresh "Hrec" in
         let Halg := fresh "Halg" in
-        specialize (syn_type_has_layout_struct_inv _ _ _ _ H) as (? & ? & ? & Halg & Hrec);
+        let Heq := fresh "Heq" in
+        specialize (syn_type_has_layout_struct_inv _ _ _ _ H) as (? & ? & Heq & Halg & Hrec);
         simpl in Halg;
         inv_multi_fields Hrec;
-        simplify_eq;
-        (* NOTE: this has a [try] in front because some of the [simplify_eq] in [inv_multi_fields] may already have taken the [Halg] away -- then this will fail and cause huge pain. *)
-        try postprocess_new_struct_assum H Halg;
+        subst_with Heq;
+        
+        postprocess_new_struct_assum H Halg;
         (*clear H*)
         enter_cache H
 
 
     | use_layout_alg UnitSynType = Some _ =>
-        apply syn_type_has_layout_unit_inv in H
+        apply syn_type_has_layout_unit_inv in H;
+        subst_with H
 
     | use_layout_alg (ArraySynType ?st ?len) = Some _ =>
-        let ly' := fresh "ly" in let H' := fresh "_ly_eq" in
-        apply syn_type_has_layout_array_inv in H as (ly' & H' & ? & ?);
-        simplify_eq;
+        let ly' := fresh "ly" in let H' := fresh "H" in
+        let Heq := fresh "Heq" in
+        apply syn_type_has_layout_array_inv in H as (ly' & H' & Heq & ?);
+        subst_with Heq;
         simplify_layout_alg H'
 
     | use_layout_alg (UnsafeCell ?st) = Some _ =>
-        apply syn_type_has_layout_unsafecell in H; simplify_layout_alg H
+        apply syn_type_has_layout_unsafecell in H;
+        simplify_layout_alg H
     | use_layout_alg (UntypedSynType ?ly) = Some _ =>
-        apply syn_type_has_layout_untyped_inv in H as (? & ? & ? & ?)
+        let Heq := fresh "Heq" in
+        (* TODO: enter these things into cache *)
+        apply syn_type_has_layout_untyped_inv in H as (Heq & ? & ? & ?);
+        subst_with Heq
+
 
     | use_layout_alg (EnumSynType _ ?it ?variants ?repr) = Some ?ly =>
         let Hrec := fresh "Hrec" in
         let Halg_ul := fresh "Halg" in
         let Halg_sl := fresh "Halg" in
-        specialize (syn_type_has_layout_enum_inv _ _ _ _ _ H) as (? & ? & ? & Halg_ul & Halg_sl & ? & Hrec);
+        let Heq := fresh "Heq" in
+        specialize (syn_type_has_layout_enum_inv _ _ _ _ _ H) as (? & ? & ? & Halg_ul & Halg_sl & Heq & Hrec);
         simpl in Halg_ul, Halg_sl;
         inv_multi_fields Hrec;
-        simplify_eq;
-        try postprocess_new_union_assum H Halg_ul;
-        simplify_eq;
-        try postprocess_new_struct_assum H Halg_sl;
+        subst_with Heq;
+        postprocess_new_union_assum H Halg_ul;
+        (*simplify_eq;*)
+        postprocess_new_struct_assum H Halg_sl;
         (*clear H*)
         enter_cache H
 
@@ -2649,19 +2693,21 @@ Ltac simplify_layout_alg H ::=
     | use_layout_alg (UnionSynType _ ?variants ?repr) = Some _ =>
         let Hrec := fresh "Hrec" in
         let Halg_ul := fresh "Halg" in
-        specialize (syn_type_has_layout_union_inv _ _ _ _ H) as (? & ? & ? & Halg_ul & Hrec);
+        let Heq := fresh "Heq" in
+        specialize (syn_type_has_layout_union_inv _ _ _ _ H) as (? & ? & Heq & Halg_ul & Hrec);
         simpl in Halg_ul;
         inv_multi_fields Hrec;
-        simplify_eq;
-        try postprocess_new_union_assum H Halg_ul;
+        subst_with Heq;
+        postprocess_new_union_assum H Halg_ul;
         (*clear H*)
         enter_cache H
 
     | use_layout_alg _ = Some _ =>
+        (* TODO: cache? *)
         idtac
     end
-  ];
-  simplify_eq.
+  ].
+  (*simplify_eq.*)
 
 (* TODO: we currently need this because we introduce syn_type equalities on generic args in preconditions of functions and not before, so we may get duplicates.
   Once this is fixed, we can remove this hack *)
