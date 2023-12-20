@@ -1031,6 +1031,12 @@ Ltac normalize_hook ::=
   normalize_autorewrite.
 
 Ltac after_intro_hook ::=
+  try match goal with
+  | H : enter_cache_hint ?P |- _ =>
+      unfold enter_cache_hint in H;
+      try simplify_layout_alg H;
+      enter_cache H
+  end;
   inv_layout_alg
 .
 

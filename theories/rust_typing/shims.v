@@ -501,7 +501,8 @@ Proof.
     iExists (). iSplitR; first done.
     iModIntro. iExists []. iFrame. rewrite /ty_own_val /= //. }
 
-  repeat liRStep.
+  repeat liRStep; liShow.
+
   Unshelve.
   all: unshelve_sidecond; sidecond_hook.
   all: unfold_common_defs; solve_goal.
