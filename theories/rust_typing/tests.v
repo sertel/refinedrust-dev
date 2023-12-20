@@ -181,7 +181,7 @@ End test.
 
 (** inv_layout_alg *)
 Section test.
-  Context `{LayoutAlg}.
+  Context `{!typeGS Σ}.
   Context (T_st : syn_type).
 
   (** Struct tests *)

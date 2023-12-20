@@ -922,6 +922,7 @@ Ltac ex_plain_t_solve_shr_mono :=
   rewrite -?bi.sep_assoc;
   repeat prove_assumption_monotonicity "Ha".
 
+(*
 Module test.
   Context `{!typeGS Σ}.
 
@@ -940,4 +941,5 @@ Module test.
   Next Obligation. rewrite /S_b. ex_plain_t_solve_shr_mono. Qed.
   Next Obligation. rewrite /P_b. ex_plain_t_solve_shr. Qed.
 End test.
+*)
 

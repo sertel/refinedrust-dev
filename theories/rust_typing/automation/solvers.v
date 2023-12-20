@@ -2299,6 +2299,80 @@ Ltac augment_context :=
 (** * Tactics for inverting layout assumptions *)
 Global Arguments use_layout_alg : simpl never.
 
+(** Check for already solved cached results for layout alg applications *)
+Section remove_duplicates.
+  Context `{!LayoutAlg}.
+  Lemma enter_cache_resolve_layout_alg_dup st ly1 ly2 :
+    use_layout_alg st = Some ly1 →
+    CACHED (use_layout_alg st = Some ly2) →
+    ly1 = ly2.
+  Proof.
+    intros. open_cache. by eapply syn_type_has_layout_inj.
+  Qed.
+
+  Lemma enter_cache_resolve_struct_layout_alg_dup sls ly1 ly2 :
+    use_struct_layout_alg sls = Some ly1 →
+    CACHED (use_struct_layout_alg sls = Some ly2) →
+    ly1 = ly2.
+  Proof.
+    intros H1 H2. open_cache.
+    rewrite H1 in H2. naive_solver.
+  Qed.
+  Lemma enter_cache_resolve_enum_layout_alg_dup els ly1 ly2 :
+    use_enum_layout_alg els = Some ly1 →
+    CACHED (use_enum_layout_alg els = Some ly2) →
+    ly1 = ly2.
+  Proof.
+    intros H1 H2. open_cache.
+    rewrite H1 in H2. naive_solver.
+  Qed.
+  Lemma enter_cache_resolve_union_layout_alg_dup uls ly1 ly2 :
+    use_union_layout_alg uls = Some ly1 →
+    CACHED (use_union_layout_alg uls = Some ly2) →
+    ly1 = ly2.
+  Proof.
+    intros H1 H2. open_cache.
+    rewrite H1 in H2. naive_solver.
+  Qed.
+End remove_duplicates.
+
+Ltac check_for_cached_layout H :=
+  lazymatch type of H with
+    | use_layout_alg ?st = Some ?ly1 =>
+        lazymatch goal with
+        | H2: CACHED (use_layout_alg st = Some ?ly2) |- _ =>
+          let Heq := fresh "Heq" in
+          specialize (enter_cache_resolve_layout_alg_dup _ _ _ H H2) as Heq;
+          subst_with Heq;
+          clear H
+        end
+    | use_struct_layout_alg ?sls = Some ?ly1 =>
+        lazymatch goal with
+        | H2: CACHED (use_struct_layout_alg sls = Some ?ly2) |- _ =>
+          let Heq := fresh "Heq" in
+          specialize (enter_cache_resolve_struct_layout_alg_dup _ _ _ H H2) as Heq;
+          subst_with Heq;
+          clear H
+        end
+    | use_enum_layout_alg ?els = Some ?ly1 =>
+        lazymatch goal with
+        | H2: CACHED (use_enum_layout_alg els = Some ?ly2) |- _ =>
+          let Heq := fresh "Heq" in
+          specialize (enter_cache_resolve_enum_layout_alg_dup _ _ _ H H2) as Heq;
+          subst_with Heq;
+          clear H
+        end
+    | use_union_layout_alg ?uls = Some ?ly1 =>
+        lazymatch goal with
+        | H2: CACHED (use_union_layout_alg uls = Some ?ly2) |- _ =>
+          let Heq := fresh "Heq" in
+          specialize (enter_cache_resolve_union_layout_alg_dup _ _ _ H H2) as Heq;
+          subst_with Heq;
+          clear H
+        end
+  end.
+
+
 Ltac simplify_layout_alg := fail "impl simplify_layout_alg".
 Ltac inv_multi_fields_rec Hrec :=
   simpl in Hrec;
@@ -2518,6 +2592,9 @@ Ltac simplify_layout_alg H ::=
   end;
   first
   [
+    (* Check for cached applications *)
+    check_for_cached_layout H
+  |
     (* Handle atomic alg applications *)
     lazymatch type of H with
     | use_layout_alg (ty_syn_type ?ty) = Some _ =>
@@ -2526,21 +2603,11 @@ Ltac simplify_layout_alg H ::=
     | use_layout_alg ?st = Some _ =>
         (*assert_is_atomic_st st;*)
         is_var st;
-        first [
-          (* if this is a duplicate, remove it *)
-          match goal with
-          | H2 : CACHED (use_layout_alg st = Some _) |- _ =>
-              let Heq := fresh "_Heq" in
-              specialize (handle_duplicate_use_layout_alg_tac _ _ _ H H2) as Heq;
-              subst_with Heq;
-              clear H
-          end
-        | specialize_cache (use_layout_alg_size _ _ H);
-          specialize_cache (use_layout_alg_wf _ _ H);
-          specialize_cache (use_layout_alg_align _ _ H);
-          (* stop exploiting this further to prevent divergence *)
-          rename_layouts in H with (fun H_n => enter_cache_unsafe H_n)
-        ]
+        specialize_cache (use_layout_alg_size _ _ H);
+        specialize_cache (use_layout_alg_wf _ _ H);
+        specialize_cache (use_layout_alg_align _ _ H);
+        (* stop exploiting this further to prevent divergence *)
+        rename_layouts in H with (fun H_n => enter_cache_unsafe H_n)
     end
   |
     (* Handle non-atomic alg applications *)
@@ -2745,48 +2812,6 @@ Ltac inv_layout_alg :=
   end;
   remove_duplicate_layout_assumptions.
 Global Arguments syn_type_has_layout : simpl never.
-
-(** Override the [enter_cache_hook] to check for duplicate layout assumptions first *)
-Section remove_duplicates.
-  Context `{!LayoutAlg}.
-  (*
-     use_layout_alg ... = Some ...
-
-   *)
-  Lemma enter_cache_resolve_layout_alg_dup st ly1 ly2 :
-    use_layout_alg st = Some ly1 →
-    CACHED (use_layout_alg st = Some ly2) →
-    ly1 = ly2.
-  Proof.
-    intros. open_cache. by eapply syn_type_has_layout_inj.
-  Qed.
-
-  Lemma enter_cache_resolve_struct_layout_alg_dup sls ly1 ly2 :
-    use_struct_layout_alg sls = Some ly1 →
-    CACHED (use_struct_layout_alg sls = Some ly2) →
-    ly1 = ly2.
-  Proof.
-    intros H1 H2. open_cache.
-    rewrite H1 in H2. naive_solver.
-  Qed.
-  Lemma enter_cache_resolve_enum_layout_alg_dup els ly1 ly2 :
-    use_enum_layout_alg els = Some ly1 →
-    CACHED (use_enum_layout_alg els = Some ly2) →
-    ly1 = ly2.
-  Proof.
-    intros H1 H2. open_cache.
-    rewrite H1 in H2. naive_solver.
-  Qed.
-  Lemma enter_cache_resolve_union_layout_alg_dup uls ly1 ly2 :
-    use_union_layout_alg uls = Some ly1 →
-    CACHED (use_union_layout_alg uls = Some ly2) →
-    ly1 = ly2.
-  Proof.
-    intros H1 H2. open_cache.
-    rewrite H1 in H2. naive_solver.
-  Qed.
-End remove_duplicates.
-
 
 (** Solve [Inhabited] instances for inductives, used for enum declarations.
    We assume that arguments of inductive constructors have already been proved inhabited. *)

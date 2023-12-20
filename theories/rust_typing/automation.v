@@ -1040,40 +1040,18 @@ Ltac after_intro_hook ::=
   inv_layout_alg
 .
 
+
 Ltac enter_cache_hook H cont ::=
   first [
+    check_for_cached_layout H
+  | 
     lazymatch type of H with
-    | use_layout_alg ?st = Some ?ly1 =>
-        lazymatch goal with
-        | H2: CACHED (use_layout_alg st = Some ?ly2) |- _ =>
-          specialize (enter_cache_resolve_layout_alg_dup _ _ _ H H2) as ?;
-          clear H
-        end
-    | use_struct_layout_alg ?sls = Some ?ly1 =>
-        lazymatch goal with
-        | H2: CACHED (use_struct_layout_alg sls = Some ?ly2) |- _ =>
-          specialize (enter_cache_resolve_struct_layout_alg_dup _ _ _ H H2) as ?;
-          clear H
-        end
-    | use_enum_layout_alg ?els = Some ?ly1 =>
-        lazymatch goal with
-        | H2: CACHED (use_enum_layout_alg els = Some ?ly2) |- _ =>
-          specialize (enter_cache_resolve_enum_layout_alg_dup _ _ _ H H2) as ?;
-          clear H
-        end
-    | use_union_layout_alg ?uls = Some ?ly1 =>
-        lazymatch goal with
-        | H2: CACHED (use_union_layout_alg uls = Some ?ly2) |- _ =>
-          specialize (enter_cache_resolve_union_layout_alg_dup _ _ _ H H2) as ?;
-          clear H
-        end
     | ?ty =>
         lazymatch goal with
         | H2 : CACHED ty |- _ =>
             clear H
         end
-    end;
-    simplify_eq
+    end
   | cont H].
 
 (** Lithium hooks for [solve_goal]: called for remaining sideconditions *)
