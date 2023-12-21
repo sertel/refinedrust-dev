@@ -62,8 +62,10 @@ impl<U> Parse<U> for RRELfts where U: ?Sized {
 
 /// Representation of the IProps that can appear in a requires or ensures clause.
 enum MetaIProp {
-    /// #[rr::requires("..")]
-    Plain(specs::IProp),
+    /// #[rr::requires("..")] or #[rr::requires("Ha" : "..")]
+    Pure(String, Option<String>),
+    /// #[rr::requires(#iris "..")]
+    Iris(specs::IProp),
     /// #[rr::requires(#type "l" : "rfn" @ "ty")]
     Type(specs::TyOwnSpec),
 }
@@ -94,14 +96,34 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let spec = specs::TyOwnSpec::new(loc_str, rfn_str, type_str, annot_meta);
                     Ok(MetaIProp::Type(spec))
                 },
+                "iris" => {
+                    let prop: IProp = input.parse(meta)?;
+                    Ok(MetaIProp::Iris(prop.into()))
+                },
                 _ => {
                     panic!("invalid macro command: {:?}", macro_cmd.value());
                 },
             }
         }
         else {
-            let prop: IProp = input.parse(meta)?;
-            Ok(MetaIProp::Plain(prop.into()))
+            let name_or_prop_str: parse::LitStr = input.parse(meta)?;
+            if parse::Colon::peek(input) {
+                // this is a name
+                let name_str = name_or_prop_str.value();
+
+                input.parse::<_, parse::MToken![:]>(meta)?;
+
+                let pure_prop: parse::LitStr = input.parse(meta)?;
+                let (pure_str, annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
+                // TODO: should we use annot_meta?
+
+                Ok(MetaIProp::Pure(pure_str, Some(name_str)))
+            }
+            else {
+                // this is a
+                let (lit, _) = process_coq_literal(&name_or_prop_str.value(), *meta);
+                Ok(MetaIProp::Pure(lit, None))
+            }
         }
     }
 }
@@ -109,7 +131,15 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
 impl Into<specs::IProp> for MetaIProp {
     fn into(self) -> specs::IProp {
         match self {
-            Self::Plain(p) => p,
+            Self::Pure(p, name) => {
+                match name {
+                    None => specs::IProp::Pure(p),
+                    Some(n) => specs::IProp::PureWithName(p, n),
+                }
+            },
+            Self::Iris(p) => {
+                p
+            },
             Self::Type(spec) => {
                 let lit = spec.fmt_owned("π");
                 specs::IProp::Atom(lit)

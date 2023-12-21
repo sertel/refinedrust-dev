@@ -2115,6 +2115,8 @@ pub enum IProp {
     True,
     Atom(String),
     Pure(String),
+    // prop, name
+    PureWithName(String, String),
     Sep(Vec<IProp>),
     Disj(Vec<IProp>),
     Conj(Vec<IProp>),
@@ -2156,6 +2158,7 @@ impl Display for IProp {
             Self::True => write!(f, "True"),
             Self::Atom(a) => write!(f, "{}", a),
             Self::Pure(a) => write!(f, "⌜{}⌝", a),
+            Self::PureWithName(p, name) => write!(f, "⌜name_hint \"{name}\" ({p})⌝"),
             Self::Sep(v) => {
                 fmt_with_op(&v, "∗", f)
             },

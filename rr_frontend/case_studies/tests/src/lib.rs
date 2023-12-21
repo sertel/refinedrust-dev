@@ -5,3 +5,4 @@
 mod enums;
 mod structs;
 mod char;
+mod traits;

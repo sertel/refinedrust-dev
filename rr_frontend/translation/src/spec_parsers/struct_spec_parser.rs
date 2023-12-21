@@ -56,8 +56,10 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
 
 /// Representation of the IProps that can appear in an invariant clause.
 enum MetaIProp {
-    /// #[rr::invariant("..")]
-    Plain(specs::IProp),
+    /// #[rr::invariant("..")] or #[rr::invariant("H" : "..")]
+    Pure(String, Option<String>),
+    /// #[rr::invariant(#iris "..")]
+    Iris(specs::IProp),
     /// #[rr::invariant(#type "l" : "rfn" @ "ty")]
     Type(specs::TyOwnSpec),
     /// #[rr::invariant(#own "...")] (only for the Owned predicate)
@@ -72,6 +74,10 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
             input.parse::<_, parse::MToken![#]>(meta)?;
             let macro_cmd: parse::Ident = input.parse(meta)?;
             match macro_cmd.value().as_str() {
+                "iris" => {
+                    let prop: IProp = input.parse(meta)?;
+                    Ok(MetaIProp::Iris(prop.into()))
+                },
                 "own" => {
                     let prop: IProp = input.parse(meta)?;
                     Ok(MetaIProp::Own(prop.into()))
@@ -107,8 +113,24 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
             }
         }
         else {
-            let prop: IProp = input.parse(meta)?;
-            Ok(MetaIProp::Plain(prop.into()))
+            let name_or_prop_str: parse::LitStr = input.parse(meta)?;
+            if parse::Colon::peek(input) {
+                // this is a name
+                let name_str = name_or_prop_str.value();
+
+                input.parse::<_, parse::MToken![:]>(meta)?;
+
+                let pure_prop: parse::LitStr = input.parse(meta)?;
+                let (pure_str, annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
+                // TODO: should we use annot_meta?
+
+                Ok(MetaIProp::Pure(pure_str, Some(name_str)))
+            }
+            else {
+                // this is a
+                let (lit, _) = process_coq_literal(&name_or_prop_str.value(), *meta);
+                Ok(MetaIProp::Pure(lit, None))
+            }
         }
     }
 }
@@ -201,11 +223,17 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                             MetaIProp::Shared(iprop) => {
                                 invariants.push((iprop, specs::InvariantMode::OnlyShared));
                             },
-                            MetaIProp::Plain(iprop) => {
+                            MetaIProp::Iris(iprop) => {
                                 invariants.push((iprop, specs::InvariantMode::All));
                             },
                             MetaIProp::Type(ty) => {
                                 type_invariants.push(ty);
+                            },
+                            MetaIProp::Pure(p, name) => {
+                                match name {
+                                    None => invariants.push((specs::IProp::Pure(p), specs::InvariantMode::All)),
+                                    Some(n) => invariants.push((specs::IProp::PureWithName(p, n), specs::InvariantMode::All)),
+                                }
                             },
                         }
                     },
