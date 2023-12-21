@@ -106,11 +106,20 @@ In particular, we support the following escape sequences:
 To prevent an expression wrapped in curly braces to be transformed, write two curly braces: `{{ ... }}`.
 This will be replaced by `{ ... }`.
 
-### Templates
-RefinedRust offers notational shortcuts for some commonly-used specification patterns.
+## RefinedRust propositions
+For propositional specifications, as appearing in `#[rr::requires("P")]`, `#[rr::ensures("P")]`, and `#[rr::invariant("P")]`, specific notational shortcuts are supported.
+By default, `P` is interpreted as a (pure) Coq proposition (i.e., it is interpreted to the Iris proposition `⌜P⌝`).
 
+This can be changed by format specifiers starting with `#` which preceed the string `"P"`:
+
+- The `#iris` format specifier interprets `P` as an Iris proposition.
 - Type assignments for locations/places can be specified by the `#type "l" : "r" @ "ty"` template, specifying that `l` is an owned pointer storing a value of type `r @ ty`.
-  This is allowed in `requires` and `ensures` clauses on functions, as well as in `invariant` clauses on struct definitions.
+- In `rr::invariant` clauses on structs, the `#own` specifier only makes the following Iris proposition available in the invariant for owned types.
+- In `rr::invariant` clauses on structs, the `#shr` specifier only makes the following Iris proposition available in the invariant for shared types.
+
+In the default interpretation as pure Coq propositions, optionally a name can be specified that will be used in Coq's context (if the proposition becomes a hypothesis), by writing (for instance) `#[rr::requires("Hx" : "x < 5")]`.
+This is especially useful for semi-manual proofs.
+
 
 ## Types
 TODO: provide an overview of RefinedRust types.
