@@ -408,7 +408,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             params.push(translated_ty);
         }
 
-        let struct_use = radium::AbstractStructUse::new(struct_ref, params);
+        let struct_use = radium::AbstractStructUse::new(struct_ref, params, radium::TypeIsRaw::No);
 
         // generate the struct use key
         let key = AdtUseKey { base_struct: variant_id, generics: generic_syntys};
@@ -455,7 +455,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
             }
         }
 
-        let struct_use = radium::AbstractStructUse::new(struct_ref, params);
+        let struct_use = radium::AbstractStructUse::new(struct_ref, params, radium::TypeIsRaw::No);
 
         // TODO maybe track the whole enum?
         // track this enum use for the current function
@@ -491,7 +491,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         let struct_ref = self.get_tuple_struct_ref(num_components);
 
         // TODO: don't generate duplicates
-        let struct_use = radium::AbstractStructUse::new(struct_ref, params);
+        let struct_use = radium::AbstractStructUse::new(struct_ref, params, radium::TypeIsRaw::Yes);
         self.tuple_uses.borrow_mut().push(struct_use.clone());
 
         Ok(struct_use)
@@ -1111,7 +1111,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                     }
                     if adt.is_struct() {
                         let su = self.generate_structlike_use(ty, None, adt_deps)?;
-                        Ok(radium::Type::Struct(su, radium::TypeIsRaw::No))
+                        Ok(radium::Type::Struct(su))
                     }
                     else if adt.is_enum() {
                         let eu = self.generate_enum_use(*adt, *substs, adt_deps)?;
@@ -1128,7 +1128,7 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
                 }
                 else {
                     let su = self.generate_tuple_use(params.iter(), adt_deps)?;
-                    Ok(radium::Type::Struct(su, radium::TypeIsRaw::Yes))
+                    Ok(radium::Type::Struct(su))
                 }
             },
             TyKind::Param(param_ty) => {

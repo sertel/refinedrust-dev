@@ -16,9 +16,11 @@ fn add_42(x : i32) -> i32 {
 }
 ```
 The `params` clause specifies a universally-quantified parameter of the specification -- in this case, the (mathematical) integer `z` represented by the argument `x`.
+
 The `args` clause specifies the refinement and (optionally) a type for the single argument `x` of the function.
 RefinedRust infers a "default" type for the argument from Rust's type, but this can also be overridden by providing an explicit type after a `@`.
 For instance, the clause `#[rr::args("z" @ "int i32")]` would be equivalent to the one specified above.
+In addition, for types (like structs) with invariants declared on them, the argument can be prefixed with `#raw` in order to not require the invariant on them to hold (e.g. `#[rr::args("z", #raw "-[#x]")]`).
 
 The `requires` clause specifies the requirement that the result of the addition fits into an `i32`. This can in general include arbitrary Iris propositions.
 Arbitrary Coq propositions (like `z+42 ∈ i32`) can be embedded into Iris by wrapping it with `⌜`/`⌝` brackets.

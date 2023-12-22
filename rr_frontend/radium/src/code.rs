@@ -138,13 +138,14 @@ impl RustType {
                 let ty = Self::of_type(ty, env);
                 Self::PrimBox(Box::new(ty))
             },
-            Type::Struct(as_use, raw) => {
+            Type::Struct(as_use) => {
+                let is_raw = as_use.is_raw();
                 if let Some(def) = as_use.def {
                     // translate type parameter instantiations
                     let typarams: Vec<_> = as_use.ty_params.iter().map(|ty| RustType::of_type(ty, env)).collect();
                     let def = def.borrow();
                     let def = def.as_ref().unwrap();
-                    let ty_name = if let TypeIsRaw::Yes = raw { def.plain_ty_name().to_string() } else { def.public_type_name().to_string() };
+                    let ty_name = if is_raw { def.plain_ty_name().to_string() } else { def.public_type_name().to_string() };
                     Self::Lit(vec![ty_name], typarams)
                 }
                 else {

@@ -14,3 +14,45 @@ impl<T, U> Pair<T, U> {
         Self{x, y}
     }
 }
+
+
+
+
+
+
+#[rr::refined_by("x" : "Z")]
+#[rr::invariant("Zeven x")]
+struct EvenInt {
+    #[rr::field("x")]
+    num: i32,
+}
+
+impl EvenInt {
+    #[rr::params("x")]
+    #[rr::args("x")]
+    #[rr::requires("Zeven x")]
+    #[rr::returns("x")]
+    pub fn new(x: i32) -> Self {
+        Self {num: x}
+    }
+
+    #[rr::params("x", "γ")]
+    #[rr::args(#raw "(#(-[#x]), γ)")]
+    #[rr::requires("(x + 1 ≤ MaxInt i32)%Z")]
+    #[rr::ensures(#iris "gvar_pobs γ (-[#(x+1)%Z] : plist place_rfn _)")]
+    fn add(&mut self) {
+        self.num += 1;
+    }
+
+    #[rr::params("x", "γ")]
+    #[rr::args("(#x, γ)")]
+    #[rr::requires("(x + 2 ≤ MaxInt i32)%Z")]
+    #[rr::ensures(#iris "gvar_pobs γ (x+2)")]
+    #[rr::tactics("rewrite -Z.add_assoc; apply Zeven_plus_Zeven; solve_goal.")]
+    pub fn add_two(&mut self) {
+        self.num;
+
+        self.add();
+        self.add();
+    }
+}

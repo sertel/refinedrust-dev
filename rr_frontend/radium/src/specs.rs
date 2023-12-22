@@ -359,7 +359,7 @@ pub enum Type<'def> {
     BoxType(Box<Type<'def>>),
     /// a struct type, potentially instantiated with some type parameters
     /// the boolean indicates
-    Struct(AbstractStructUse<'def>, TypeIsRaw),
+    Struct(AbstractStructUse<'def>),
     /// an enum type, potentially instantiated with some type parameters
     Enum(AbstractEnumUse<'def>),
     /// Rust name, Coq name of the type (potentially applied to some generics), the refinement type, the syntactic type
@@ -389,8 +389,8 @@ impl<'def> Display for Type<'def> {
             Self::BoxType(ty) => {
                 write!(f, "(box {})", ty)
             },
-            Self::Struct(su, raw) => {
-                write!(f, "{}", su.generate_type_term(*raw))
+            Self::Struct(su) => {
+                write!(f, "{}", su.generate_type_term())
             },
             Self::Enum(su) => {
                 write!(f, "{}", su.generate_type_term())
@@ -410,10 +410,20 @@ impl<'def> Display for Type<'def> {
 }
 
 impl<'def> Type<'def> {
+    /// Make the first type in the type tree having an invariant not use the invariant.
     pub fn make_raw(&mut self) {
         match self {
-            Self::Struct(_, raw) => {
-                *raw = TypeIsRaw::Yes;
+            Self::Struct(su) => {
+                su.make_raw()
+            },
+            Self::MutRef(box ty, _) => {
+                ty.make_raw()
+            },
+            Self::ShrRef(box ty, _) => {
+                ty.make_raw()
+            },
+            Self::BoxType(box ty) => {
+                ty.make_raw()
             },
             _ => (),
         }
@@ -434,10 +444,10 @@ impl<'def> Type<'def> {
                 CoqType::PlaceRfn(Box::new (ty.get_rfn_type(env))),
             Self::Literal(_, _, t, _, _) => t.clone(),
             Self::Uninit(_) => CoqType::Unit,
-            Self::Struct(su, raw) =>
+            Self::Struct(su) =>
                 // NOTE: we don't need to subst, due to our invariant that the instantiations for
                 // struct uses are already fully substituted
-                CoqType::Literal(su.get_rfn_type(*raw)),
+                CoqType::Literal(su.get_rfn_type()),
             Self::Enum(su) =>
                 // similar to structs, we don't need to subst
                 su.get_rfn_type(),
@@ -460,7 +470,7 @@ impl<'def> Type<'def> {
             Self::MutRef(..) => SynType::Ptr,
             Self::ShrRef(..) => SynType::Ptr,
             Self::BoxType(..) => SynType::Ptr,
-            Self::Struct(s, _) => s.generate_syn_type_term(),
+            Self::Struct(s) => s.generate_syn_type_term(),
             Self::Enum(s) => s.generate_syn_type_term(),
             Self::Literal(_, _, _, st, _) => st.clone(),
             Self::Uninit(st) => st.clone(),
@@ -493,8 +503,8 @@ impl<'def> Type<'def> {
                 s.insert(format!("ty_lfts {t}"));
             },
             Self::Uninit(_) => (),
-            Self::Struct(su, raw) => {
-                su.get_ty_lfts(*raw, s)
+            Self::Struct(su) => {
+                su.get_ty_lfts(s)
             }
             Self::Enum(su) => {
                 su.get_ty_lfts(s)
@@ -525,8 +535,8 @@ impl<'def> Type<'def> {
                 s.insert(format!("ty_wf_elctx {t}"));
             },
             Self::Uninit(_) => (),
-            Self::Struct(su, raw) => {
-                su.get_ty_wf_elctx(*raw, s)
+            Self::Struct(su) => {
+                su.get_ty_wf_elctx(s)
             }
             Self::Enum(su) => {
                 su.get_ty_wf_elctx(s)
@@ -560,7 +570,7 @@ impl<'def> Type<'def> {
             Self::MutRef(box t, _) => t.subst(substi),
             Self::ShrRef(box t, _) => t.subst(substi),
             Self::BoxType(box t) => t.subst(substi),
-            Self::Struct(s, _) => {
+            Self::Struct(s) => {
                 // the struct def itself should be closed, but the arguments to it may contain
                 // further variables
                 s.ty_params.iter_mut().map(|a| a.subst(substi)).count();
@@ -1355,15 +1365,19 @@ pub struct AbstractStructUse<'def> {
     /// reference to the struct's definition, or None if unit
     pub def: Option<AbstractStructRef<'def>>,
     /// Instantiations for type parameters. These should _not_ contain `Var` constructors.
-    pub ty_params: Vec<Type<'def>>
+    pub ty_params: Vec<Type<'def>>,
+    /// does this refer to the raw type without invariants?
+    pub raw: TypeIsRaw,
+
 }
 
 impl<'def> AbstractStructUse<'def> {
     /// `params` should not contain `Var`
-    pub fn new(s: AbstractStructRef<'def>, params: Vec<Type<'def>>) -> Self {
+    pub fn new(s: AbstractStructRef<'def>, params: Vec<Type<'def>>, raw: TypeIsRaw) -> Self {
         AbstractStructUse {
             def: Some(s),
             ty_params: params,
+            raw,
         }
     }
 
@@ -1372,6 +1386,7 @@ impl<'def> AbstractStructUse<'def> {
         AbstractStructUse {
             def: None,
             ty_params: Vec::new(),
+            raw: TypeIsRaw::Yes,
         }
     }
 
@@ -1380,19 +1395,26 @@ impl<'def> AbstractStructUse<'def> {
         self.def.is_none()
     }
 
+    pub fn is_raw(&self) -> bool {
+        self.raw == TypeIsRaw::Yes
+    }
+    pub fn make_raw(&mut self) {
+        self.raw = TypeIsRaw::Yes;
+    }
+
     /// Add the lifetimes appearing in this type to `s`.
-    pub fn get_ty_lfts(&self, raw: TypeIsRaw, s: &mut HashSet<Lft>) {
+    pub fn get_ty_lfts(&self, s: &mut HashSet<Lft>) {
         // TODO
     }
 
     /// Add the lifetime constraints in this type to `s`.
-    pub fn get_ty_wf_elctx(&self, raw: TypeIsRaw, s: &mut HashSet<String>) {
+    pub fn get_ty_wf_elctx(&self, s: &mut HashSet<String>) {
         // TODO
     }
 
     /// Get the refinement type of a struct usage.
     /// This requires that all type parameters of the struct have been instantiated.
-    pub fn get_rfn_type(&self, is_raw: TypeIsRaw) -> String {
+    pub fn get_rfn_type(&self) -> String {
         if let Some(def) = self.def.as_ref() {
             let rfn_instantiations: Vec<String> = self.ty_params.iter().map(|ty| ty.get_rfn_type(&[]).to_string()).collect();
 
@@ -1400,7 +1422,7 @@ impl<'def> AbstractStructUse<'def> {
             let def = def.as_ref();
             let inv = &def.unwrap().invariant.as_ref();
 
-            if is_raw == TypeIsRaw::Yes || inv.is_none() {
+            if self.is_raw() || inv.is_none() {
                 let rfn_type = def.unwrap().plain_rt_def_name().to_string();
                 let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
                 applied.to_string()
@@ -1476,7 +1498,7 @@ impl<'def> AbstractStructUse<'def> {
 
 
     /// Generate a string representation of this struct use.
-    pub fn generate_type_term(&self, raw: TypeIsRaw) -> String {
+    pub fn generate_type_term(&self) -> String {
         if let Some(def) = self.def.as_ref() {
             let mut param_tys = Vec::new();
             for p in self.ty_params.iter() {
@@ -1484,7 +1506,7 @@ impl<'def> AbstractStructUse<'def> {
             }
             let def = def.borrow();
             let def = def.as_ref().unwrap();
-            if raw == TypeIsRaw::No && def.invariant.is_some() {
+            if !self.is_raw() && def.invariant.is_some() {
                 if let Some(ref inv) = def.invariant {
                     let term = CoqAppTerm::new(inv.type_name.clone(), param_tys);
                     term.to_string()
