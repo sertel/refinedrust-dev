@@ -436,7 +436,7 @@ Section call.
     llctx_interp L -∗
     introduce_arguments π E L tys ls cont -∗
     ([∗ list] l; x ∈ lsa; tys, let '(existT _ (ty, r)) := x in l ◁ₗ[ π, Owned false] # r @ (◁ ty)) -∗
-    |={F}=> ∃ L', cont L' (ls ++ lsa).
+    |={F}=> ∃ L', llctx_interp L' ∗ cont L' (ls ++ lsa).
   Proof.
     iIntros "#Hlft #HE HL".
 
@@ -462,7 +462,7 @@ Section call.
     llctx_interp L -∗
     introduce_arguments π E L tys [] cont -∗
     ([∗ list] l; x ∈ lsa; tys, let '(existT _ (ty, r)) := x in l ◁ₗ[ π, Owned false] # r @ (◁ ty)) -∗
-    |={F}=> ∃ L', cont L' lsa.
+    |={F}=> ∃ L', llctx_interp L' ∗ cont L' lsa.
   Proof.
     iApply introduce_arguments_elim'.
   Qed.
@@ -473,12 +473,11 @@ Section call.
     let ϝ := lft_intersect_list (L.*1.*2) in
 
     ⌜eκs = []⌝ ∗
-    (* NOTE: Is the following should be fn_layout_assumptions instead? *)
-    ⌜Forall2 (λ '(existT _ (ty, _)) '(_, p), (ty_has_op_type ty) (UntypedOp p) MCNone) tys fn.(f_args)⌝ ∗
-    ⌜@fn_local_layout_assumptions (@ALG Σ typeGS0) (UntypedSynType <$> lyv) lyv⌝ ∗
+    ⌜fn_arg_layout_assumptions tys lya⌝ ∗
+    ⌜fn_local_layout_assumptions (UntypedSynType <$> lyv) lyv⌝ ∗
     introduce_arguments π E L tys []
       (λ L lsa,
-        let tys' := (λ ly, existT _ (uninit (UntypedSynType ly), ())) <$> fn.(f_local_vars).*2 in
+        let tys' := (λ ly, existT _ (uninit (UntypedSynType ly), ())) <$> lyv in
         introduce_arguments π E L tys' []
         (λ L lsv,
           ∀ (ϝ': lft),
@@ -498,8 +497,10 @@ Section call.
       iInduction (fn.(f_args)) as [|[? ly]] "IH" forall (vl tys Hops sta Halg).
       { apply Forall2_nil_inv_r in Hops as ->. destruct vl => //=. }
 
-      apply Forall2_cons_inv_r in Hops as (? & ? & Hty & ? & ->); simplify_eq /=.
-      apply list_map_option_cons_inv_r in Halg as (st & ? & ? & ? & ?); simplify_eq /=.
+      simplify_eq /=.
+
+      apply Forall2_cons_inv_r in Hops as (? & ? & Hty & ? & ->).
+      apply list_map_option_cons_inv_r in Halg as (st & ? & ? & ? & ?).
 
       destruct vl => //=.
       iDestruct "Htys" as "[Hv Hvl]".
@@ -509,9 +510,7 @@ Section call.
       iDestruct ("IH" with "[//] [//] Hvl") as %?.
 
       assert (ly = ly') as ->.
-      { clear -Hty Hty'.
-        apply ty_op_type_stable in Hty; simpl in Hty.
-        by eapply syn_type_has_layout_inj. }
+      { by apply (syn_type_has_layout_inj (ty_syn_type ty)). }
 
       iPureIntro. constructor => //=. }
 
@@ -542,8 +541,9 @@ Section call.
     iPoseProof (introduce_arguments_elim _ _ _ ⊤ _ lsa with "[//] HE HL Hcont [Hlsa Htys]") as "Hcont".
     { clear -Halg Hall Hlya Hops.
 
+      subst lya.
       move: Halg Hall Hlya Hops.
-      move: {1 2 3 4}(fn.(f_args)) => alys Halg Hall Hlya Hops.
+      move: {1 2 3 4}(fn.(f_args).*2) => alys Halg Hall Hlya Hops.
 
       iInduction lsa as [| l xl] "IH" forall (alys sta vl tys Halg Hall Hlya Hops).
       { destruct vl => //. }
@@ -551,7 +551,8 @@ Section call.
       iDestruct (big_sepL2_cons_inv_l with "Hlsa") as (v xv ->) "[Hl Hlsa]".
       iDestruct (big_sepL2_cons_inv_l with "Htys") as ([? [ty r]] tys' ->) "[Hty Htys]".
 
-      apply Forall2_cons_inv_l in Hops as (t & ts & Hop & Hops & Heq).
+      unfold fn_arg_layout_assumptions in Hops.
+      apply Forall2_cons_inv_l in Hops as (ly & ? & Hop & Hops & Heq).
       rewrite Heq in Halg Hall Hlya; simplify_eq /=.
 
       rewrite list_map_option_alt in Halg.
@@ -561,11 +562,7 @@ Section call.
       apply Forall2_cons in Hall as [Hval Hall].
       apply Forall2_cons in Hlya as [Hloc Hlya].
 
-      destruct t as (? & ly); simplify_eq /=.
-      apply ty_op_type_stable in Hop; simpl in Hop.
-
-      iSplitL "Hl Hty"; last iApply ("IH" with "[//] [//] [//] [//] Hlsa Htys").
-
+      iSplitL "Hl Hty"; last iApply ("IH" with "[//] [//] [//] [//] Hlsa Htys"); first last.
       rewrite ltype_own_ofty_unfold /lty_of_ty_own => /=.
       iExists ly.
 
@@ -576,14 +573,12 @@ Section call.
       iExists r; iR.
       by iExists v; iFrame. }
 
-    iMod "Hcont" as (?) "(Hcont & HL)".
+    iMod "Hcont" as (?) "(HL & Hcont)".
 
     iPoseProof (introduce_arguments_elim _ _ _ ⊤ _ lsv with "[//] HE HL Hcont [Hlsv]") as "Hcont".
     { clear -Halgl Hlops.
 
-      (* NOTE: Is there a better way? *)
-      replace lyv with (f_local_vars fn).*2 in Hlops by done.
-
+      subst lyv.
       move: Halgl Hlops.
       move: {1 2 3 4 5}(fn.(f_local_vars)) => alys Halgl Hlops.
 
@@ -618,7 +613,7 @@ Section call.
       split_and ! => //.
       by apply Forall_true. }
 
-    iMod "Hcont" as (?) "(Hcont & HL)".
+    iMod "Hcont" as (?) "(HL & Hcont)".
     rewrite /introduce_typed_stmt /typed_stmt.
 
     iDestruct "CTX" as "#(LFT & TIME & LCTX)".
