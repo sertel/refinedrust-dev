@@ -48,18 +48,6 @@ impl<'a> Parse<ParseMeta<'a>> for RRArgs {
     }
 }
 
-
-/// Parse a list of comma-separated lifetimes.
-struct RRELfts {
-    lfts: Vec<specs::Lft>,
-}
-impl<U> Parse<U> for RRELfts where U: ?Sized {
-    fn parse(input: ParseStream, meta: &U) -> ParseResult<Self> {
-        let elfts: parse::Punctuated<parse::LitStr, MToken![,]> = parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
-        Ok(RRELfts {lfts: elfts.into_iter().map(|s| s.value()).collect() })
-    }
-}
-
 /// Representation of the IProps that can appear in a requires or ensures clause.
 enum MetaIProp {
     /// #[rr::requires("..")] or #[rr::requires("Ha" : "..")]
@@ -276,13 +264,6 @@ impl<'a, 'def> FunctionSpecParser<'def> for VerboseFunctionSpecParser<'a, 'def> 
                         let tacs = tacs.value();
                         builder.add_manual_tactic(&tacs);
 
-                    },
-                    // TODO do we need this anymore?
-                    "lifetimes" => {
-                        let lfts = RRELfts::parse(&buffer, &meta).map_err(str_err)?;
-                        for lft in lfts.lfts.iter() {
-                            builder.spec.add_param(specs::CoqName::Named(lft.clone()), specs::CoqType::Lft)?;
-                        }
                     },
                     "context" => {
                         let context_item = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;

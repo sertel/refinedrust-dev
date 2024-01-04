@@ -1846,6 +1846,10 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         //cont_stmt = self.prepend_endlfts(cont_stmt, loc, dying);
         //cont_stmt = self.prepend_endlfts(cont_stmt, loc, dying_zombie);
+        
+        // HashSet to keep track which HirIds we already encountered, since multiple Mir statements
+        // may originate from the same Hir statement
+        let mut processed_hirids = HashSet::new();
 
         for stmt in bb.statements.iter().rev() {
             idx -= 1;
@@ -1872,6 +1876,18 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             //let dying = self.info.get_dying_loans(loc);
             //let dying_zombie = self.info.get_dying_zombie_loans(loc);
             //cont_stmt = self.prepend_endlfts(cont_stmt, dying_zombie);
+
+
+            // check for attributes on this statement
+            let scopes = &self.proc.get_mir().source_scopes;
+            let maybe_hir = stmt.source_info.scope.lint_root(scopes);
+            if let Some(hirid) = maybe_hir {
+                if processed_hirids.insert(hirid) {
+                    // get attributes
+                    let attrs = self.env.tcx().hir().attrs(hirid);
+                    info!("Found HIR-Id for stmt {:?}: {:?} with attrs {:?}", stmt, maybe_hir, attrs);
+                }
+            }
 
             match &stmt.kind {
                 StatementKind::Assign(b) => {
@@ -2026,9 +2042,11 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 StatementKind::SetDiscriminant { place: _place, variant_index: _variant_index } =>
                     // TODO
                     return Err(TranslationError::UnsupportedFeature{description: "TODO: implement SetDiscriminant".to_string()}),
-                StatementKind::PlaceMention(_place) =>
+                StatementKind::PlaceMention(place) => {
                     // TODO: this is missed UB
-                    return Err(TranslationError::UnsupportedFeature{description: "TODO: implement PlaceMention".to_string()}),
+                    info!("Ignoring PlaceMention: {:?}", place);
+                    ()
+                }
                 StatementKind::Intrinsic(_intrinsic) =>
                     return Err(TranslationError::UnsupportedFeature{description: "TODO: implement Intrinsic".to_string()}),
                 StatementKind::ConstEvalCounter =>

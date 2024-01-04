@@ -1088,3 +1088,23 @@ Ltac solve_goal_normalized_prepare_hook ::=
   (*rewrite /ly_size/ly_align_log //= in **)
   idtac
 .
+
+
+(** User facing tactic calls *)
+Ltac sidecond_hammer :=
+  prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook
+.
+Ltac sidecond_solver :=
+  unshelve_sidecond; sidecond_hook.
+
+Ltac print_remaining_goal :=
+  match goal with
+  | H := FUNCTION_NAME ?s |- _ =>
+    print_typesystem_goal s
+  end.
+Ltac print_remaining_sidecond :=
+  try done; try apply: inhabitant;
+  match goal with
+  | H := FUNCTION_NAME ?s |- _ =>
+    print_remaining_shelved_goal s
+  end.

@@ -2249,10 +2249,8 @@ pub struct FunctionSpec<'def> {
 
     /// lifetime parameters (available in the typing proof)
     pub lifetimes: Vec<Lft>,
-    /// function parameters (available in the typing proof)
-    pub param: (CoqPattern, CoqType),
-    // we keep the uncooked parameters to be able to generate the proof script
-    pub decomposed_params: Vec<(CoqName, CoqType)>,
+    pub params: Vec<(CoqName, CoqType)>,
+    pub ty_params: Vec<(CoqName, CoqType)>,
     /// external lifetime context
     pub elctx: Vec<ExtLftConstr>,
     /// precondition as a separating conjunction
@@ -2260,7 +2258,7 @@ pub struct FunctionSpec<'def> {
     /// argument types including refinements
     pub args: Vec<TypeWithRef<'def>>,
     /// existential quantifiers for the postcondition
-    pub existential: (CoqPattern, CoqType),
+    pub existentials: Vec<(CoqName, CoqType)>,
     /// return type
     pub ret: TypeWithRef<'def>,
     /// postcondition as a separating conjunction
@@ -2327,6 +2325,35 @@ impl<'def> FunctionSpec<'def> {
     pub fn has_spec(&self) -> bool {
         self.has_spec
     }
+
+    fn uncurry_typed_binders<'a, F>(v : F) -> (CoqPattern, CoqType) 
+        where F : IntoIterator<Item=&'a(CoqName, CoqType)>
+    {
+        let mut v = v.into_iter().peekable();
+        if v.peek().is_none() {
+            ("_".to_string(), CoqType::Literal("unit".to_string()))
+        }
+        else {
+            let mut pattern = String::with_capacity(100);
+            let mut types = String::with_capacity(100);
+
+            pattern.push_str("(");
+            types.push_str("(");
+            let mut need_sep = false;
+            for (name, t) in v.into_iter() {
+                if need_sep {
+                    pattern.push_str(", ");
+                    types.push_str(" * ");
+                }
+                pattern.push_str(format!("{}", name).as_str());
+                types.push_str(format!("{}", t).as_str());
+                need_sep = true;
+            }
+            pattern.push_str(")");
+            types.push_str(")");
+            (pattern, CoqType::Literal(types))
+        }
+    }
 }
 
 impl<'def> Display for FunctionSpec<'def> {
@@ -2344,16 +2371,20 @@ impl<'def> Display for FunctionSpec<'def> {
         }
         write!(lft_pattern, ")")?;
 
+        
+        let param = Self::uncurry_typed_binders(self.params.iter().chain(self.ty_params.iter()));
+        let existential = Self::uncurry_typed_binders(&self.existentials);
+
 
         write!(f, "Definition {} {} :=\n", self.spec_name, self.format_coq_params().as_str())?;
-        write!(f, "  fn(∀ {} : {} | {} : {}, ({}); ", lft_pattern, self.lifetimes.len(), self.param.0, self.param.1, self.format_elctx().as_str())?;
+        write!(f, "  fn(∀ {} : {} | {} : {}, ({}); ", lft_pattern, self.lifetimes.len(), param.0, param.1, self.format_elctx().as_str())?;
         if self.args.len() == 0 {
             write!(f, "(λ π : thread_id, {}))\n", self.pre)?;
         }
         else {
             write!(f, "{}; (λ π : thread_id, {}))\n", self.format_args().as_str(), self.pre)?;
         }
-        write!(f, "    → ∃ {} : {}, {}; (λ π : thread_id, {}).", self.existential.0, self.existential.1, self.ret, self.post)?;
+        write!(f, "    → ∃ {} : {}, {}; (λ π : thread_id, {}).", existential.0, existential.1, self.ret, self.post)?;
         Ok(())
     }
 }
@@ -2370,6 +2401,7 @@ pub struct FunctionSpecBuilder<'def> {
 
     lifetimes: Vec<Lft>,
     params: Vec<(CoqName, CoqType)>,
+    ty_params: Vec<(CoqName, CoqType)>,
     elctx: Vec<ExtLftConstr>,
     pre: IProp,
     args: Vec<TypeWithRef<'def>>,
@@ -2389,6 +2421,7 @@ impl<'def> FunctionSpecBuilder<'def> {
             coq_params: Vec::new(),
             lifetimes: Vec::new(),
             params: Vec::new(),
+            ty_params: Vec::new(),
             elctx: Vec::new(),
             pre: IProp::Sep(Vec::new()),
             args: Vec::new(),
@@ -2421,6 +2454,14 @@ impl<'def> FunctionSpecBuilder<'def> {
         self.ensure_coq_not_bound(&cname)?;
         self.push_coq_name(&cname);
         self.lifetimes.push(name);
+        Ok(())
+    }
+
+    /// Add a type parameter.
+    pub fn add_ty_param(&mut self, name: CoqName, t: CoqType) -> Result<(), String> {
+        self.ensure_coq_not_bound(&name)?;
+        self.push_coq_name(&name);
+        self.ty_params.push((name, t));
         Ok(())
     }
 
@@ -2551,55 +2592,23 @@ impl<'def> FunctionSpecBuilder<'def> {
         self.has_spec = true;
     }
 
-    fn uncurry_typed_binders(v : &[(CoqName, CoqType)]) -> (CoqPattern, CoqType) {
-        if v.len() == 0 {
-            ("_".to_string(), CoqType::Literal("unit".to_string()))
-        }
-        else {
-            let mut pattern = String::with_capacity(100);
-            let mut types = String::with_capacity(100);
-
-            pattern.push_str("(");
-            types.push_str("(");
-            let mut need_sep = false;
-            for (name, t) in v {
-                if need_sep {
-                    pattern.push_str(", ");
-                    types.push_str(" * ");
-                }
-                pattern.push_str(format!("{}", name).as_str());
-                types.push_str(format!("{}", t).as_str());
-                need_sep = true;
-            }
-            pattern.push_str(")");
-            types.push_str(")");
-            (pattern, CoqType::Literal(types))
-        }
-    }
-
     /// Generate an actual function spec.
     /// `name` is the designated name of the function.
     /// `code_params` are the parameters the code body needs to be provided (e.g., locations of
     /// other functions).
     pub fn into_function_spec(self, name: &str, spec_name: &str) -> FunctionSpec<'def> {
-        // generate the parameters
-        let parameter = Self::uncurry_typed_binders(&self.params);
-        // generate the existential quantifier
-        let existential = Self::uncurry_typed_binders(&self.existential);
-
-        // generate return type
         let ret = self.ret.unwrap_or(TypeWithRef::make_unit());
         FunctionSpec {
             function_name: name.to_string(),
             spec_name: spec_name.to_string(),
             coq_params: self.coq_params,
             lifetimes: self.lifetimes,
-            param: parameter,
-            decomposed_params: self.params,
+            params: self.params,
+            ty_params: self.ty_params,
             elctx: self.elctx,
             pre: self.pre,
             args: self.args,
-            existential,
+            existentials: self.existential,
             ret,
             post: self.post,
             has_spec: self.has_spec,

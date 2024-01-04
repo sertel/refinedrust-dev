@@ -9,9 +9,13 @@
 
 use std::collections::{HashSet, HashMap};
 use std::fmt;
-use std::fmt::Write;
+use std::io;
+
+use std::io::Write;
+use std::fmt::Write as fWrite;
 
 use std::fmt::{Formatter, Display};
+use indent_write::io::IndentWriter;
 
 use log::info;
 
@@ -949,30 +953,31 @@ impl<'def> Function<'def> {
         &self.code.name
     }
 
-    // TODO refactor to use a Formatter instead
-    pub fn generate_proof(&self) -> String {
-        let mut out = String::with_capacity(100);
-        let indent0 = make_indent(2);
-        let indent = indent0.as_str();
 
-        // generate Iris assumptions about other functions that this one uses.
-        let mut iris_assums: Vec<String> = Vec::new();
-        // generate additional layout args for the proof
-        let mut additional_args: Vec<String> = Vec::new();
-        // generate code args (passed to the code definition)
-        let mut code_args: Vec<String> = Vec::new();
+    pub fn generate_lemma_statement<F>(&self, f: &mut F) -> Result<(), io::Error>
+        where F: io::Write
+    {
+        // indent
+        let mut writer = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
+        let f = &mut writer;
 
-        let mut coq_assums: Vec<String> = Vec::new();
+        write!(f, "Definition {}_lemma {} ", self.name(), self.spec.format_coq_params())?;
+
+        // assume locations for other functions
+        for (loc_name, _, _, _) in self.other_functions.iter() {
+            write!(f, "({} : loc) ", loc_name)?;
+        }
+        write!(f, "(π : thread_id) : Prop :=\n")?;
+
+
+        // assume Coq assumptions
         for st in self.layoutable_syntys.iter() {
-            coq_assums.push(format!("syn_type_is_layoutable ({}) →\n{}", st, indent));
+            write!(f, "syn_type_is_layoutable ({}) →\n", st)?;
         }
 
-        //for (n, _) in self.generic_types.iter() {
-            //additional_args.push(format!("`{{!Inhabited {}}}", n.rt_name));
-        //}
-
+        // write iris assums
         if self.other_functions.len() == 0 {
-            iris_assums.push(format!("⊢ "));
+            write!(f, "⊢ ")?;
         }
         else {
             for (loc_name, spec_name, param_insts, sts) in self.other_functions.iter() {
@@ -988,72 +993,82 @@ impl<'def> Function<'def> {
                 }
                 let arg_syntys: Vec<String> = sts.iter().map(|st| st.to_string()).collect();
 
-                let assum = format!("{} ◁ᵥ{{π}} {} @ function_ptr [{}] ({} {}) -∗\n{}",
-                    loc_name, loc_name, arg_syntys.join("; "), spec_name, gen_rfn_type_inst.join(" "), indent);
-                iris_assums.push(assum);
-
-                code_args.push(loc_name.clone());
-
-                additional_args.push(format!("({} : loc)", loc_name));
+                write!(f, "{} ◁ᵥ{{π}} {} @ function_ptr [{}] ({} {}) -∗\n",
+                    loc_name, loc_name, arg_syntys.join("; "), spec_name, gen_rfn_type_inst.join(" "))?;
             }
         }
 
-        for (_, st) in self.generic_types.iter() {
-            //additional_args.push(format!("({} : syn_type)", st));
-            code_args.push(format!("{}", st));
-        }
-        // locations of used functions are added to code_args below
+        write!(f, "typed_function π ({}_def ", self.name())?;
 
-        // generate type args (passed to the type definition)
-        let mut type_args: Vec<String> = Vec::new();
+        // add arguments for the code definition
+        for (loc_name, _, _, _) in self.other_functions.iter() {
+            write!(f, "{}  ", loc_name)?;
+        }
+        for (_, st) in self.generic_types.iter() {
+            write!(f, "{} ", st)?;
+        }
+
+        // write local syntypes
+        write!(f, ") [")?;
+        let mut needs_sep = false;
+        for (_, st) in self.code.stack_layout.local_map.iter() {
+            if needs_sep {
+                write!(f, "; ")?;
+            }
+            needs_sep = true;
+            write!(f, "{}", st)?;
+        }
+
+        write!(f, "] (type_of_{} ", self.name())?;
+
+        // write type args (passed to the type definition)
         // push all the non-implicit parameters of the spec (this will, in particular, include the
         // refinement types for generics)
         for (n, _, imp) in self.spec.coq_params.iter() {
             if !imp {
-                type_args.push(n.to_string());
+                write!(f, "{} ", n)?;
             }
         }
 
-        // generate list of local sts
-        let mut local_sts: Vec<String> = Vec::new();
-        for (_, st) in self.code.stack_layout.local_map.iter() {
-            local_sts.push(st.to_string());
-        }
+        write!(f, ").\n")
+    }
 
-        out.push_str(format!("\
-            Lemma {}_proof {} {} (π : thread_id) :\n\
-            {}{}{}typed_function π ({}_def {}) [{}] (type_of_{} {}).\n\
-            Proof.\n",
-            self.name(),
-            self.spec.format_coq_params(),
-            additional_args.join(" "),
-            indent,
-            coq_assums.join(""),
-            iris_assums.join(""),
-            self.name(),
-            code_args.join(" "),
-            local_sts.join("; "),
-            self.name(),
-            type_args.join(" ")
-            ).as_str());
+    pub fn generate_proof_prelude<F>(&self, f: &mut F) -> Result<(), io::Error>
+        where F: io::Write
+    {
+        // indent
+        let mut writer = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
+        let f = &mut writer;
+
+        write!(f, "Ltac {}_prelude :=\n", self.name())?;
+
+        write!(f, "unfold {}_lemma;\n", self.name())?;
+        write!(f, "set (FN_NAME := FUNCTION_NAME \"{}\");\n", self.name())?;
+
+        write!(f, "intros;\n")?;
+        write!(f, "iStartProof;\n")?;
 
         // generate intro pattern for params
         let mut ip_params = String::with_capacity(100);
-        let params = &self.spec.decomposed_params;
-        if params.len() >0 {
+        let params = &self.spec.params;
+        let ty_params = &self.spec.ty_params;
+        if !params.is_empty() || !ty_params.is_empty() {
             // product is left-associative
-            for _ in 0 .. params.len() - 1 {
+            for _ in 0 .. (params.len() + ty_params.len() - 1) {
                 ip_params.push_str("[ ");
             }
 
             let mut p_count = 0;
-            for (n, _) in params {
+            for (n, _) in params.iter().chain(ty_params.iter()) {
                 if p_count > 1 {
                     ip_params.push_str(" ]");
                 }
                 ip_params.push_str(" ");
                 p_count += 1;
                 ip_params.push_str(format!("{}", n).as_str());
+            }
+            for (n, _) in ty_params.iter() {
+                write!(f, "let {} := fresh \"{}\" in\n", n, n)?;
             }
 
             if p_count > 1 {
@@ -1075,67 +1090,108 @@ impl<'def> Function<'def> {
         write!(lft_pattern, "[]").unwrap();
         for lft in self.spec.lifetimes.iter() {
             write!(lft_pattern, " {}]", lft).unwrap();
+            write!(f, "let {} := fresh \"{}\" in\n", lft, lft)?;
         }
 
-        out.push_str(format!("{}intros.\n", indent).as_str());
-        out.push_str(format!("{}iStartProof.\n", indent).as_str());
-        out.push_str(format!("{}start_function \"{}\" ( {} ) ( {} ).\n", indent, self.name(), lft_pattern.as_str(), ip_params.as_str()).as_str());
-        out.push_str(format!("{}set (loop_map := BB_INV_MAP {}).\n", indent, self.loop_invariants).as_str());
+        write!(f, "start_function \"{}\" ( {} ) ( {} );\n", self.name(), lft_pattern.as_str(), ip_params.as_str())?;
+
+        write!(f, "set (loop_map := BB_INV_MAP {});\n", self.loop_invariants)?;
 
         // intro stack locations
-        out.push_str(format!("{}intros", indent).as_str());
+        write!(f, "intros")?;
         for (arg, _) in self.code.stack_layout.arg_map.iter() {
-            out.push_str(" arg_");
-            out.push_str(arg.as_str());
+            write!(f, " arg_{}", arg)?;
         }
         for (local, _) in self.code.stack_layout.local_map.iter() {
-            out.push_str(" local_");
-            out.push_str(local.as_str());
+            write!(f, " local_{}", local)?;
         }
-        out.push_str(".\n");
+        write!(f, ";\n")?;
 
         // destruct function parameters
-        out.push_str(format!("{}prepare_parameters (", indent).as_str());
+        write!(f, "prepare_parameters (")?;
         for (n, _) in params {
-            out.push_str(" ");
-            out.push_str(format!("{}", n).as_str());
+            write!(f, " {}", n)?;
         }
-        out.push_str(" ).\n");
+        write!(f, " );\n")?;
 
         // initialize lifetimes
         let formatted_lifetimes = make_lft_map_string(self.spec.lifetimes.iter().map(|n| (n.to_string(), n.to_string())).collect());
-        out.push_str(format!("{}init_lfts ({} ).\n", indent, formatted_lifetimes.as_str()).as_str());
+        write!(f, "init_lfts ({} );\n", formatted_lifetimes.as_str())?;
 
         // initialize tyvars
-        let formatted_tyvars = make_map_string(" ", " ", self.generic_types.iter().map(|(n, _)| (n.param_name.to_string(), format!("existT _ ({})", n.ty_name))).collect());
-        out.push_str(format!("{}init_tyvars ({} ).\n", indent, formatted_tyvars.as_str()).as_str());
+        let formatted_tyvars =
+            make_map_string(" ", " ",
+                self.generic_types.iter().map(|(n, _)|
+                    (n.param_name.to_string(), format!("existT _ ({})", n.ty_name))).collect());
 
+        write!(f, "init_tyvars ({} ).\n", formatted_tyvars.as_str())
+    }
 
-        out.push_str(format!("{}repeat liRStep; liShow.\n", indent).as_str());
-        out.push_str(format!("{}all: print_typesystem_goal \"{}\".\n", indent, self.name()).as_str());
-        out.push_str(format!("{}Unshelve. all: unshelve_sidecond; sidecond_hook.\n", indent).as_str());
-        out.push_str(format!("{}Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook.\n", indent).as_str());
+    pub fn generate_proof<F>(&self, f: &mut F) -> Result<(), io::Error>
+        where F: io::Write
+    {
+        write!(f, "Lemma {}_proof {} ", self.name(), self.spec.format_coq_params())?;
 
-        // add custom tactics specified in annotations
-        for tac in self.manual_tactics.iter() {
-            if tac.starts_with("all:") {
-                out.push_str(format!("{}{}\n", indent, tac).as_str());
-            }
-            else {
-                out.push_str(format!("{}{{ {} all: shelve. }}\n", indent, tac).as_str());
-            }
+        // assume locations for other functions
+        for (loc_name, _, _, _) in self.other_functions.iter() {
+            write!(f, "({} : loc) ", loc_name)?;
         }
+        write!(f, "(π : thread_id) :\n")?;
 
+        {
+            // indent
+            let mut writer = IndentWriter::new(BASE_INDENT, &mut *f);
+            let f = &mut writer;
 
-        out.push_str(format!("{}Unshelve. all: try done; try apply: inhabitant; print_remaining_shelved_goal \"{}\".\n", indent, self.name()).as_str());
+            write!(f, "{}_lemma ", self.name())?;
+
+            // push the parameters
+            for (n, _, imp) in self.spec.coq_params.iter() {
+                if !imp {
+                    write!(f, "{} ", n)?;
+                }
+            }
+
+            for (loc_name, _, _, _) in self.other_functions.iter() {
+                write!(f, "{} ", loc_name)?;
+            }
+            write!(f, "π.")?;
+
+        }
+        write!(f, "\n")?;
+        write!(f, "Proof.\n")?;
+
+        {
+            let mut writer = IndentWriter::new(BASE_INDENT, &mut *f);
+            let f = &mut writer;
+
+            write!(f, "{}_prelude.\n\n", self.name())?;
+
+            write!(f, "repeat liRStep; liShow.\n\n")?;
+            write!(f, "all: print_remaining_goal.\n")?;
+            write!(f, "Unshelve. all: sidecond_solver.\n")?;
+            write!(f, "Unshelve. all: sidecond_hammer.\n")?;
+
+            // add custom tactics specified in annotations
+            for tac in self.manual_tactics.iter() {
+                if tac.starts_with("all:") {
+                    write!(f, "{}\n", tac)?;
+                }
+                else {
+                    write!(f, "{{ {} all: shelve. }}\n", tac)?;
+                }
+            }
+
+            write!(f, "Unshelve. all: print_remaining_sidecond.\n")?;
+        }
 
         if rrconfig::admit_proofs() {
-            out.push_str("Admitted. (* admitted due to admit_proofs config flag *)\n");
+            write!(f, "Admitted. (* admitted due to admit_proofs config flag *)\n")?;
         }
         else {
-            out.push_str("Qed.\n");
+            write!(f, "Qed.\n")?;
         }
-        out
+        Ok(())
     }
 }
 
@@ -1265,7 +1321,7 @@ impl<'def> FunctionBuilder<'def> {
             self.spec.add_coq_param(CoqName::Named(names.rt_name.to_string()), CoqType::Type, false).unwrap();
             self.spec.add_coq_param(CoqName::Unnamed, CoqType::Literal(format!("Inhabited {}", names.rt_name)), true).unwrap();
             self.spec.add_coq_param(CoqName::Named(st_name.to_string()), CoqType::SynType, false).unwrap();
-            self.spec.add_param(CoqName::Named(names.ty_name.clone()), CoqType::Ttype(Box::new (CoqType::Literal(names.rt_name.clone())))).unwrap();
+            self.spec.add_ty_param(CoqName::Named(names.ty_name.clone()), CoqType::Ttype(Box::new (CoqType::Literal(names.rt_name.clone())))).unwrap();
 
             // Add assumptions that the syntactic type of the semantic argument matches with the
             // assumed syntactic type.

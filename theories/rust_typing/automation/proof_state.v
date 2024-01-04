@@ -32,6 +32,11 @@ Notation "'HIDDEN'" := (RETURN_MARKER _) (only printing).
 (* simplify RETURN_MARKER as soon as it is applied enough in the goal *)
 Arguments RETURN_MARKER _ _ /.
 
+(* Function name marker *)
+Definition FUNCTION_NAME (s : string) := s.
+Arguments FUNCTION_NAME : simpl never.
+Notation "'HIDDEN'" := (FUNCTION_NAME _) (only printing).
+
 (** marker for tactics that have already exploited a particular fact *)
 Definition NO_ENRICH {A} (a : A) := a.
 Global Typeclasses Opaque NO_ENRICH.

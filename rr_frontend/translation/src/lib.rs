@@ -293,6 +293,47 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         spec_file.write("End specs.".as_bytes()).unwrap();
     }
 
+    /// Write proof templates for a verification unit.
+    fn write_templates<F>(&self, file_path: F, stem: &str) where F : Fn(&str) -> std::path::PathBuf {
+        // write templates
+        // each function gets a separate file in order to parallelize
+        for (did, fun) in self.procedure_registry.iter_code() {
+            let path = file_path(&fun.name());
+            let mut template_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
+
+            let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
+
+            if fun.spec.has_spec() && mode.needs_proof() {
+                template_file.write(format!("\
+                    From caesium Require Import lang notation.\n\
+                    From refinedrust Require Import typing shims.\n\
+                    From {}.{stem} Require Import generated_code_{stem} generated_specs_{stem} extra_proofs_{stem}.\n",
+                    self.coq_path_prefix).as_bytes()).unwrap();
+                self.extra_imports.iter().map(|path| template_file.write(format!("{}", path).as_bytes()).unwrap()).count();
+                template_file.write("\n".as_bytes()).unwrap();
+
+                template_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
+
+                template_file.write("\
+                    Section proof.\n\
+                    Context `{!typeGS Σ}.\n".as_bytes()).unwrap();
+
+                fun.generate_lemma_statement(&mut template_file).unwrap();
+
+                write!(template_file, "End proof.\n\n").unwrap();
+
+                fun.generate_proof_prelude(&mut template_file).unwrap();
+
+            }
+            else if !fun.spec.has_spec() {
+                write!(template_file, "(* No specification provided *)").unwrap();
+            }
+            else {
+                write!(template_file, "(* Function is trusted *)").unwrap();
+            }
+        }
+    }
+
     /// Write proofs for a verification unit.
     fn write_proofs<F>(&self, file_path: F, stem: &str) where F : Fn(&str) -> std::path::PathBuf {
         // write proofs
@@ -304,11 +345,12 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
 
             if fun.spec.has_spec() && mode.needs_proof() {
-                proof_file.write(format!("\
+                write!(proof_file, "\
                     From caesium Require Import lang notation.\n\
                     From refinedrust Require Import typing shims.\n\
-                    From {}.{} Require Import generated_code_{} generated_specs_{} extra_proofs_{}.\n",
-                    self.coq_path_prefix, stem, stem, stem, stem).as_bytes()).unwrap();
+                    From {}.{stem} Require Import generated_code_{stem} generated_specs_{stem} extra_proofs_{stem}.\n\
+                    From {}.{stem} Require Import generated_template_{}.\n",
+                    self.coq_path_prefix, self.coq_path_prefix, fun.name()).unwrap();
                 self.extra_imports.iter().map(|path| proof_file.write(format!("{}", path).as_bytes()).unwrap()).count();
                 proof_file.write("\n".as_bytes()).unwrap();
 
@@ -319,7 +361,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     Section proof.\n\
                     Context `{!typeGS Σ}.\n".as_bytes()).unwrap();
 
-                proof_file.write(fun.generate_proof().as_bytes()).unwrap();
+                fun.generate_proof(&mut proof_file).unwrap();
 
                 proof_file.write("End proof.".as_bytes()).unwrap();
             }
@@ -374,6 +416,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write specs
         self.write_specifications(spec_path.as_path(), code_path.as_path(), &stem);
+        // write templates
+        self.write_templates(|name| { dir_path.join(format!("generated_template_{}.v", name)) }, &stem);
         // write proofs
         self.write_proofs(|name| { dir_path.join(format!("generated_proof_{}.v", name)) }, &stem);
 
@@ -453,6 +497,7 @@ fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             mode = function_body::ProcedureMode::OnlySpec;
         }
         else if crate::utils::has_tool_attr(attrs, "ignore") {
+            info!("Function {:?} will be ignored", f);
             mode = function_body::ProcedureMode::Ignore;
         }
 
