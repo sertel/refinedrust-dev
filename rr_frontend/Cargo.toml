@@ -7,8 +7,5 @@ members = [
     "attribute_parse",
     "radium",
     "rrconfig",
-    "refinedrust_frontend",
-    "case_studies/minivec",
-    "case_studies/paper-examples",
-    "case_studies/tests",
+    "refinedrust_frontend"
 ]

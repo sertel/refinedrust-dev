@@ -15,16 +15,17 @@ clean:
 .PHONY: clean
 
 frontend:
-	cd rr_frontend && ./refinedrust build
+	cd rr_frontend && ./refinedrust install
 
-#RUST_SRC = $(wildcard rr_frontend/examples/*.rs)
-RUST_SRC = rr_frontend/examples/paper.rs
+RUST_SRC = case_studies/paper-examples case_studies/tests
 
-%.rs.gen: %.rs phony
-	cd rr_frontend && ./refinedrust run ../$<
+%.gen: % phony
+	cd $< && cargo refinedrust
 .PHONY: phony
 
 generate_all: $(addsuffix .gen, $(RUST_SRC))
+  
+
 .PHONY: generate_all
 
 check_generate_all: generate_all

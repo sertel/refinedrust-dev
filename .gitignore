@@ -10,7 +10,9 @@ _opam
 *.timing
 .lia.cache
 .nia.cache
+.DS_store
 .vscode/
-**/proofs/*/generated*
-**/proofs/*/dune
-**/proofs/*/proof_files
+**/case_studies/*/target
+**/case_studies/*/log
+**/case_studies/*/Cargo.lock
+**/rustc-ice-*
