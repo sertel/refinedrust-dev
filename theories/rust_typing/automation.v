@@ -55,6 +55,17 @@ Ltac can_solve_hook ::= first [
 Ltac liTrace_hook info ::=
   add_case_distinction_info info.
 
+Ltac rep_check_backtrack_point ::=
+  lazymatch goal with
+  | |- BACKTRACK_POINT ?P => idtac
+  | |- envs_entails _ ?P =>
+      lazymatch P with
+      | typed_stmt _ _ _ _ _ _ _ => idtac
+      | typed_val_expr _ _ _ _ _ => idtac
+      | typed_call _ _ _ _ _ _ _ _ _ => idtac
+      (* TODO maybe also typed_assert etc *)
+      end
+  end.
 
 Ltac liExtensible_to_i2p_hook P bind cont ::=
   lazymatch P with
@@ -665,6 +676,7 @@ Ltac liRStep :=
  | liRExpr
  | liRJudgement
  | liStep
+ | lazymatch goal with | |- BACKTRACK_POINT ?P => change_no_check P end
 ]; try unfold_introduce_direct; liSimpl.
 
 Tactic Notation "liRStepUntil" open_constr(id) :=
@@ -1044,7 +1056,7 @@ Ltac after_intro_hook ::=
 Ltac enter_cache_hook H cont ::=
   first [
     check_for_cached_layout H
-  | 
+  |
     lazymatch type of H with
     | ?ty =>
         lazymatch goal with

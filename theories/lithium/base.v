@@ -1022,17 +1022,44 @@ Global Hint Resolve bitblast_pos_xI | 15 : bitblast.
  The [rep] tactic is an alternative to the [repeat] and [do] tactics
  that supports left-biased depth-first branching with optional
  backtracking on failure. *)
+
+(* A backtrack point marker *)
+Definition BACKTRACK_POINT {A} (P : A) : A := P.
+Arguments BACKTRACK_POINT : simpl never.
+Global Typeclasses Opaque BACKTRACK_POINT.
+
+(* Check whether the current goal is a backtracking point.
+  By default, this is the case for [BACKTRACK_POINT], but this behavior can be overridden. *)
+Ltac rep_check_backtrack_point :=
+  match goal with
+    | |- BACKTRACK_POINT ?P =>
+      idtac
+  end.
+
 Module Rep.
   Import Ltac2.
   Import Ltac2.Printf.
 
+  (* Check whether the current goal is a backtracking point *)
+  Ltac2 rep_check_backtrack_point (x : unit) : bool :=
+    let tac_res := Control.focus 1 1 (fun _ => Control.case (fun _ => ltac1:(rep_check_backtrack_point))) in
+    match tac_res with
+    | Err _ => false
+    | Val _ => true
+    end.
+
+  (* Backtracking mode:
+     - NoBacktrack: don't backtrack
+     - BacktrackSteps n: backtrack to n steps before failure
+     - BacktrackPoint n: go back to the n-th last goal for which [rep_check_backtrack_point] succeeded *)
+  Ltac2 Type backtrack_mode := [ NoBacktrack | BacktrackSteps (int) | BacktrackPoint (int) ].
+
   (* Exception to signal how many more steps should be backtracked*)
-  Ltac2 Type exn ::= [ RepBacktrack (int) ].
+  Ltac2 Type exn ::= [ RepBacktrack (backtrack_mode) ].
 
   (* calls [tac] [n] times (n = None means infinite) on the first goal
-  under focus, stops on failure of [tac] and then backtracks [nback]
-  steps. *)
-  Ltac2 rec rep (n : int option) (nback : int) (tac : (unit -> unit)) : int :=
+  under focus, stops on failure of [tac] and then backtracks according to [nback]. *)
+  Ltac2 rec rep (n : int option) (nback : backtrack_mode) (tac : (unit -> unit)) : int :=
     (* if there are no goals left, we are done *)
     match Control.case (fun _ => Control.focus 1 1 (fun _ => ())) with
     | Err _ => 0
@@ -1042,17 +1069,16 @@ Module Rep.
       match do_rep with
       | false => 0
       | true =>
+        (* maybe we should match on the goal here *)
+        let is_backtrack_point := Control.focus 1 1 (fun _ => rep_check_backtrack_point ()) in
         (* backtracking point *)
         let res := Control.case (fun _ =>
           (* run tac on the first goal *)
           let tac_res := Control.focus 1 1 (fun _ => Control.case tac) in
           match tac_res  with
           | Err _ =>
-              (* if tac failed, either start the backtracking or return 0 *)
-              match Int.gt nback 0 with
-              | true => Control.zero (RepBacktrack nback)
-              | false => 0
-              end
+              (* if tac failed, start the backtracking *)
+              Control.zero (RepBacktrack nback)
           | Val _ =>
               (* compute new n and recurse *)
               let new_n :=
@@ -1063,12 +1089,31 @@ Module Rep.
         match res with
         | Err e =>
             match e with
-            | RepBacktrack n =>
-                (* if we catch a RepBacktrack, either rethrow it with
-                one less or return 0 *)
-                match Int.gt n 0 with
-                | true => Control.zero (RepBacktrack (Int.sub n 1))
-                | false => 0
+            (* check if we have to backtrack *)
+            | RepBacktrack m =>
+                match m with
+                | BacktrackSteps n =>
+                  (* either rethrow it with one less or return 0 *)
+                  match Int.gt n 0 with
+                  | true => Control.zero (RepBacktrack (BacktrackSteps (Int.sub n 1)))
+                  | false => 0
+                  end
+                | BacktrackPoint n =>
+                    match Int.gt n 0 with
+                    | true =>
+                      (* check if we are at the last backtracking point or rethrow it *)
+                      match is_backtrack_point with
+                      | true =>
+                        match Int.gt n 1 with
+                        | true =>
+                          Control.zero (RepBacktrack (BacktrackPoint (Int.sub n 1)))
+                        | false => 0
+                        end
+                      | false => Control.zero (RepBacktrack (BacktrackPoint n))
+                      end
+                    | false => 0
+                    end
+                | NoBacktrack => 0
                 end
             | _ => Control.zero e
             end
@@ -1133,10 +1178,14 @@ fails, the complete process stops (unlike [repeat] which continues
 with other subgoals).
 
 [rep n tac] iterates this process at most n times.
-[rep <- n tac] backtracks n steps on failure. *)
+[rep <- n tac] backtracks n steps on failure.
+[rep <-! tac] backtracks to the last backtracking point on failure.
+ (See the comment on [rep_check_backtrack_point] above to see what a backtracking point is)
+[rep <-? n tac] backtracks to the n-th last backtracking point on failure.
+*)
 Tactic Notation "rep" tactic3(tac) :=
   let r := ltac2:(tac |-
-    Rep.print_steps (Rep.rep Rep.none 0 (fun _ => Ltac1.run tac))) in
+    Rep.print_steps (Rep.rep Rep.none Rep.NoBacktrack (fun _ => Ltac1.run tac))) in
   r tac.
 
 (* rep is carefully written such that all goals are passed to Ltac2
@@ -1148,14 +1197,26 @@ Tactic Notation "rep" int(n) tactic3(tac) :=
   let ntac := do n (refine (1 + _)%Z); refine 0%Z in
   let r := ltac2:(ntac tac |-
     let n := Rep.int_from_z_subgoal (fun _ => Ltac1.run ntac) in
-    Rep.print_steps (Rep.rep (Rep.some n) 0 (fun _ => Ltac1.run tac))) in
+    Rep.print_steps (Rep.rep (Rep.some n) Rep.NoBacktrack (fun _ => Ltac1.run tac))) in
   r ntac tac.
 
 Tactic Notation "rep" "<-" int(n) tactic3(tac) :=
   let ntac := do n (refine (1 + _)%Z); refine 0%Z in
   let r := ltac2:(ntac tac |-
      let n := Rep.int_from_z_subgoal (fun _ => Ltac1.run ntac) in
-     Rep.print_steps (Rep.rep (Rep.none) n (fun _ => Ltac1.run tac))) in
+     Rep.print_steps (Rep.rep (Rep.none) (Rep.BacktrackSteps n) (fun _ => Ltac1.run tac))) in
+  r ntac tac.
+
+Tactic Notation "rep" "<-!" tactic3(tac) :=
+  let r := ltac2:(tac |-
+    Rep.print_steps (Rep.rep Rep.none (Rep.BacktrackPoint 1) (fun _ => Ltac1.run tac))) in
+  r tac.
+
+Tactic Notation "rep" "<-?" int(n) tactic3(tac) :=
+  let ntac := do n (refine (1 + _)%Z); refine 0%Z in
+  let r := ltac2:(ntac tac |-
+     let n := Rep.int_from_z_subgoal (fun _ => Ltac1.run ntac) in
+     Rep.print_steps (Rep.rep (Rep.none) (Rep.BacktrackPoint n) (fun _ => Ltac1.run tac))) in
   r ntac tac.
 
 Module RepTest.
@@ -1165,7 +1226,8 @@ Module RepTest.
     first [
         lazymatch goal with | |- DELAY ?P => change P end |
         exact eq_refl |
-        split
+        split |
+        lazymatch goal with | |- BACKTRACK_POINT ?P => change P end
       ].
 
   Goal ∃ x, Nat.iter 10 DELAY (x = 1) ∧ Nat.iter 6 DELAY (x = 2). simpl. eexists.
@@ -1209,4 +1271,17 @@ Module RepTest.
     (* Notice the difference to [rep] above: [repeat] continues with
     the second subgoal on failure. *)
   Abort.
+
+  Goal BACKTRACK_POINT (Nat.iter 10 DELAY (BACKTRACK_POINT (BACKTRACK_POINT (Nat.iter 10 DELAY (1 = 2))))). simpl.
+    all: rep <-! DELAY_test_tac.
+    all: do 11 DELAY_test_tac.
+    1: lazymatch goal with | |- 1 = 2 => idtac | |- _ => fail "unexpected goal" end.
+  Abort.
+
+  Goal BACKTRACK_POINT (Nat.iter 10 DELAY (BACKTRACK_POINT (BACKTRACK_POINT (Nat.iter 10 DELAY (1 = 2))))). simpl.
+    all: rep <-? 3 DELAY_test_tac.
+    all: do 23 DELAY_test_tac.
+    1: lazymatch goal with | |- 1 = 2 => idtac | |- _ => fail "unexpected goal" end.
+  Abort.
+
 End RepTest.
