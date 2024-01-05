@@ -193,7 +193,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         spec_file.write(format!("\
             From caesium Require Import lang notation.\n\
             From refinedrust Require Import typing shims.\n\
-            From {}.{} Require Import generated_code_{} extra_proofs_{}.\n", self.coq_path_prefix, stem, stem, stem).as_bytes()).unwrap();
+            From {}.{} Require Import generated_code_{}.\n", self.coq_path_prefix, stem, stem).as_bytes()).unwrap();
         self.extra_imports.iter().map(|path| spec_file.write(format!("{}", path).as_bytes()).unwrap()).count();
         spec_file.write("\n".as_bytes()).unwrap();
 
@@ -307,7 +307,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 template_file.write(format!("\
                     From caesium Require Import lang notation.\n\
                     From refinedrust Require Import typing shims.\n\
-                    From {}.{stem} Require Import generated_code_{stem} generated_specs_{stem} extra_proofs_{stem}.\n",
+                    From {}.{stem} Require Import generated_code_{stem} generated_specs_{stem}.\n",
                     self.coq_path_prefix).as_bytes()).unwrap();
                 self.extra_imports.iter().map(|path| template_file.write(format!("{}", path).as_bytes()).unwrap()).count();
                 template_file.write("\n".as_bytes()).unwrap();
@@ -334,24 +334,36 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         }
     }
 
+    fn check_function_needs_proof(&self, did: DefId, fun: &radium::Function) -> bool {
+        let mode = self.procedure_registry.lookup_function_mode(&did).unwrap();
+        fun.spec.has_spec() && mode.needs_proof()
+    }
+
     /// Write proofs for a verification unit.
     fn write_proofs<F>(&self, file_path: F, stem: &str) where F : Fn(&str) -> std::path::PathBuf {
         // write proofs
         // each function gets a separate file in order to parallelize
         for (did, fun) in self.procedure_registry.iter_code() {
             let path = file_path(&fun.name());
-            let mut proof_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
 
-            let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
+            if path.exists() {
+                info!("Proof file for function {} already exists, skipping creation", fun.name());
+                continue;
+            }
+            else if self.check_function_needs_proof(*did, fun) {
+                info!("Proof file for function {} does not yet exist, creating", fun.name());
 
-            if fun.spec.has_spec() && mode.needs_proof() {
+                let mut proof_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
+
                 write!(proof_file, "\
                     From caesium Require Import lang notation.\n\
                     From refinedrust Require Import typing shims.\n\
-                    From {}.{stem} Require Import generated_code_{stem} generated_specs_{stem} extra_proofs_{stem}.\n\
-                    From {}.{stem} Require Import generated_template_{}.\n",
+                    From {}.{stem}.generated Require Import generated_code_{stem} generated_specs_{stem}.\n\
+                    From {}.{stem}.generated Require Import generated_template_{}.\n",
                     self.coq_path_prefix, self.coq_path_prefix, fun.name()).unwrap();
-                self.extra_imports.iter().map(|path| proof_file.write(format!("{}", path).as_bytes()).unwrap()).count();
+                // Note: we do not import the self.extra_imports explicitly, as we rely on them
+                // being re-exported from the template -- we want to be stable under changes of the
+                // extras
                 proof_file.write("\n".as_bytes()).unwrap();
 
                 proof_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
@@ -365,78 +377,148 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
                 proof_file.write("End proof.".as_bytes()).unwrap();
             }
-            else if !fun.spec.has_spec() {
-                proof_file.write(format!("(* No specification provided *)").as_bytes()).unwrap();
-            }
-            else {
-                proof_file.write(format!("(* Function is trusted *)").as_bytes()).unwrap();
-            }
         }
     }
 
     /// Write Coq files for this verification unit.
     pub fn write_coq_files(&self) {
-        // get file stem for naming
-        let stem;
-        let filepath = &self.env.tcx().sess.local_crate_source_file();
-        if let Some(path) = filepath {
-            if let Some (file_stem) = path.file_stem() {
-                info!("file stem: {:?}", file_stem);
-                stem = file_stem.to_str().unwrap().to_string();
-            }
-            else {
-                stem = "mod".to_string();
-            }
-        }
-        else {
-            stem = "mod".to_string();
-        }
+        // use the crate_name for naming
+        let crate_name: rustc_span::symbol::Symbol = self.env.tcx().crate_name(rustc_span::def_id::LOCAL_CRATE);
+        let stem = crate_name.as_str();
 
         // create output directory
-        let base_dir_path: std::path::PathBuf = if let Some(output) = rrconfig::output_dir() {
+        let output_dir_path: std::path::PathBuf = if let Some(output) = rrconfig::output_dir() {
             output
         } else {
             info!("No output directory specified, not writing files");
             return;
         };
 
-        let mut dir_path = base_dir_path.clone();
-        dir_path.push(&stem);
-        let dir_path = dir_path.as_path();
-        info!("outputting generated code to {}", dir_path.to_str().unwrap());
-        if let Err(_) = fs::read_dir(dir_path) {
+        let mut base_dir_path = output_dir_path.clone();
+        base_dir_path.push(&stem);
+
+        if let Err(_) = fs::read_dir(base_dir_path.as_path()) {
             warn!("Output directory {:?} does not exist, creating directory", base_dir_path);
-            fs::create_dir_all(dir_path).unwrap();
+            fs::create_dir_all(base_dir_path.as_path()).unwrap();
         }
 
-        let code_path = dir_path.join(format!("generated_code_{}.v", stem));
-        let spec_path = dir_path.join(format!("generated_specs_{}.v", stem));
-        let dune_path = dir_path.join("dune");
-        let extra_path = dir_path.join(format!("extra_proofs_{}.v", stem));
+        // write gitignore file
+        let gitignore_path = base_dir_path.as_path().join(format!(".gitignore"));
+        if !gitignore_path.exists() {
+            let mut gitignore_file = io::BufWriter::new(fs::File::create(gitignore_path.as_path()).unwrap());
+            write!(gitignore_file, "\
+                generated\n\
+                proofs/dune").unwrap();
+        }
+
+
+        // build the path for generated files
+        base_dir_path.push("generated");
+        let generated_dir_path = base_dir_path.clone();
+        let generated_dir_path = generated_dir_path.as_path();
+
+        // build the path for proof files
+        base_dir_path.pop();
+        base_dir_path.push("proofs");
+        let proof_dir_path = base_dir_path.as_path();
+
+        // write generated (subdirectory "generated")
+        info!("outputting generated code to {}", generated_dir_path.to_str().unwrap());
+        if let Err(_) = fs::read_dir(generated_dir_path) {
+            warn!("Output directory {:?} does not exist, creating directory", generated_dir_path);
+            fs::create_dir_all(generated_dir_path).unwrap();
+        }
+        else {
+            // purge contents
+            info!("Removing the contents of the generated directory");
+            fs::remove_dir_all(generated_dir_path).unwrap();
+            fs::create_dir(generated_dir_path).unwrap();
+
+        }
+
+        let code_path = generated_dir_path.join(format!("generated_code_{}.v", stem));
+        let spec_path = generated_dir_path.join(format!("generated_specs_{}.v", stem));
+        let generated_dune_path = generated_dir_path.join("dune");
 
         // write specs
         self.write_specifications(spec_path.as_path(), code_path.as_path(), &stem);
+
         // write templates
-        self.write_templates(|name| { dir_path.join(format!("generated_template_{}.v", name)) }, &stem);
-        // write proofs
-        self.write_proofs(|name| { dir_path.join(format!("generated_proof_{}.v", name)) }, &stem);
-
-
-        // write extra file, if it does not already exist
-        if !extra_path.exists() {
-            let mut extra_file = io::BufWriter::new(fs::File::create(extra_path.as_path()).unwrap());
-            extra_file.write(format!("(* Your extra proofs go here *)\n").as_bytes()).unwrap();
-        }
+        self.write_templates(|name| { generated_dir_path.join(format!("generated_template_{}.v", name)) }, &stem);
 
         // write dune meta file
-        let mut dune_file = io::BufWriter::new(fs::File::create(dune_path.as_path()).unwrap());
+        let mut dune_file = io::BufWriter::new(fs::File::create(generated_dune_path.as_path()).unwrap());
         let extra_theories: Vec<_> = self.extra_imports.iter().filter_map(|path| path.path.clone()).collect();
-        dune_file.write(format!("\
+        write!(dune_file, "\
             ; Generated by [refinedrust], do not edit.\n\
             (coq.theory\n\
              (flags -w -notation-overridden -w -redundant-canonical-projection)\n\
-             (name {}.{})\n\
-             (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust {}))", self.coq_path_prefix, stem, extra_theories.join(" ")).as_bytes()).unwrap();
+             (name {}.{}.generated)\n\
+             (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust {}))", self.coq_path_prefix, stem, extra_theories.join(" ")).unwrap();
+
+        // write proofs (subdirectory "proofs")
+        let make_proof_file_name = |name| { format!("proof_{}.v", name) };
+
+        info!("using {} as proof directory", proof_dir_path.to_str().unwrap());
+        if let Ok(read) = fs::read_dir(proof_dir_path) {
+            // directory already exists, we want to check if there are any stale proof files and
+            // issue a warning in that case
+
+            // build the set of proof files we are going to expect
+            let mut proof_files_to_generate = HashSet::new();
+            for (did, fun) in self.procedure_registry.iter_code() {
+                if self.check_function_needs_proof(*did, fun) {
+                    proof_files_to_generate.insert(make_proof_file_name(fun.name()));
+                }
+            }
+
+            for file in read {
+                if let Ok(file) = file {
+                    // check if the file name is okay
+                    let filename = file.file_name();
+                    if let Some(filename) = filename.to_str() {
+                        if filename == "dune" {
+                            continue;
+                        }
+                        else if proof_files_to_generate.contains(filename) {
+                            continue;
+                        }
+                        else {
+                            println!("Warning: Proof file {filename} does not have a matching Rust function to verify.");
+                        }
+                    }
+                }
+            }
+
+
+        }
+        else {
+            warn!("Output directory {:?} does not exist, creating directory", proof_dir_path);
+            fs::create_dir_all(proof_dir_path).unwrap();
+        }
+
+        self.write_proofs(|name| { proof_dir_path.join(format!("proof_{}.v", name)) }, &stem);
+
+        // explicitly spell out the proof modules we want to compile so we don't choke on stale
+        // proof files
+        let mut proof_modules = Vec::new();
+        for (did, fun) in self.procedure_registry.iter_code() {
+            if self.check_function_needs_proof(*did, fun) {
+                proof_modules.push(format!("proof_{}", fun.name()));
+            }
+        }
+
+        // write proof dune file
+        let proof_dune_path = proof_dir_path.join("dune");
+        let mut dune_file = io::BufWriter::new(fs::File::create(proof_dune_path.as_path()).unwrap());
+        write!(dune_file, "\
+            ; Generated by [refinedrust], do not edit.\n\
+            (coq.theory\n\
+             (flags -w -notation-overridden -w -redundant-canonical-projection)\n\
+             (name {}.{stem}.proofs)\n\
+             (modules {})\n\
+             (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust {} {}.{}.generated))",
+            self.coq_path_prefix, proof_modules.join(" "), extra_theories.join(" "), self.coq_path_prefix, stem).unwrap();
     }
 }
 

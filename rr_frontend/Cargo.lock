@@ -463,10 +463,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68354c5c6bd36d73ff3feceb05efa59b6acb7626617f4962be322a825e61f79a"
 
 [[package]]
-name = "minivec"
-version = "0.1.0"
-
-[[package]]
 name = "miow"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -510,10 +506,6 @@ dependencies = [
  "dlv-list",
  "hashbrown 0.12.3",
 ]
-
-[[package]]
-name = "paper-examples"
-version = "0.1.0"
 
 [[package]]
 name = "path-clean"
@@ -848,10 +840,6 @@ dependencies = [
  "num_cpus",
  "term",
 ]
-
-[[package]]
-name = "tests"
-version = "0.1.0"
 
 [[package]]
 name = "thiserror"

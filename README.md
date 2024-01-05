@@ -4,21 +4,13 @@ This repository contains a public mirror of the RefinedRust development version.
 
 ## Structure
 The Coq implementation of RefinedRust can be found in the `theories` subfolder.
-The frontend implementation and examples can be found in the `rr_frontend` subfolder.
+The frontend implementation can be found in the `rr_frontend` subfolder.
+Case studies and tests can be found in the `case_studies` subfolder.
 
 ### For the `theories` subfolder:
 * the `caesium` subfolder contains the Radium operational semantics, an adaptation of RefinedC's Caesium semantics.
 * the `lithium` subfolder contains RefinedC's Lithium separation logic automation engine with very lightweight modifications.
-
-
-### For the `rr_frontend` subfolder:
-
-### Structure of the generated code:
-For each input module `mod`, the RefinedRust generates the following files in the corresponding output directory:
-* `generated_code_mod.v` contains the definition of the code translated to the Radium semantics, including layout specifications for the used structs and enums.
-* `generated_specs_mod.v` contains the definition of the annotated specifications for functions and data structures in terms of RefinedRust's type system.
-* `extra_proofs_mod.v` allows users to add custom theory for use in specifications and proofs.
-* for each function `fun` with annotated specifications: a file `generated_proof_fun.v` containing the automatically-generated typing proof that calls into RefinedRust's automation.
+* the `rust_typing` subfolder contains the implementation of the RefinedRust type system and proof automation.
 
 ## Setup
 ### Setup instructions for the Coq code:
@@ -42,31 +34,49 @@ make builddep
 ```
 3. Build the project
 ```
-dune build
+dune build theories
 ```
 
 
 ### Setup instructions for the frontend:
 1. Make sure that you have a working `rustup`/Rust install. Instructions for setting up Rust can be found on https://rustup.rs/.
 2. Run `./refinedrust build` in `rr_frontend` to build the frontend.
+3. Run `./refinedrust install` in `rr_frontend` to install the frontend.
 
+The last command will install RefinedRust's frontend into Rustup's install directory.
 
 ## Frontend usage
-To use RefinedRust's frontend to generate the Coq input for RefinedRust's type system, switch to the `rr-frontend` directory.
-Then, assuming you want to translate `path-to-file.rs`, run:
-```
-./refinedrust run -- path-to-file.rs
-```
-For example:
-```
-./refinedrust run -- examples/paper.rs
-```
-This will create a new directory called `paper` in the `output` folder.
+After installing RefinedRust, it can be invoked through `cargo`, Rust's build system and package manager, by running `cargo refinedrust`.
 
-To then compile the generated Coq code, switch to `output/paper` and run `dune build`.
+For example, you can build the examples from the paper (located in `case_studies/paper-examples`) by running:
+```
+cd case_studies/paper-examples
+cargo refinedrust
+dune build
+```
 
+The invocation of `cargo refinedrust` will generate a folder `output/paper_examples` with two subdirectories: `generated` and `proofs`.
+The `generated` subdirectory contains auto-generated code that may be overwritten by RefinedRust at any time during subsequent invocations.
+The `proofs` subdirectory contains proofs which may be edited manually (see the section [Proof Editing](#proof-editing) below) and are not overwritten by RefinedRust.
+
+More specifically, the `generated` directory will contain for each crate `mod`:
+* `generated_code_mod.v` contains the definition of the code translated to the Radium semantics, including layout specifications for the used structs and enums.
+* `generated_specs_mod.v` contains the definition of the annotated specifications for functions and data structures in terms of RefinedRust's type system.
+* for each function `fun` with annotated specifications: a file `generated_template_fun.v` containing the lemma statement that has to be proven to show the specification, as well as auto-generated parts of the proof that may change when implementation details of `fun` are changed.
+
+The `proofs` subdirectory contains for each function `fun` a proof that invokes the components defined in the `generated_template_fun.v` file.
+
+## Proof editing
 In order to interactively look at the generated code using a Coq plugin like Coqtail, VSCoq, or Proof General for the editor of your choice, you need to add a line pointing to the directory of the generated code in the `_CoqProject` file.
 See the existing includes for inspiration.
+
+Changes to the `proof_*.v` files in the generated `proofs` folder are persistent and files are not changed once RefinedRust has generated them once.
+This enables to write semi-automatic proofs.
+`proof_*.v` files are intended to be checked into `git`, as they are stable.
+
+On changes to implementations or specifications, only the files located in `generated` are modified.
+The default automatic proofs in `proof_*.v` files are stable under any changes to a function.
+Of course, once you change proofs manually, changing an implementation or specification may require changes to your manually-written code.
 
 ## Frontend Configuration
 Configuration options can be set in the `RefinedRust.toml` file.
