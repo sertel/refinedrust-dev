@@ -21,8 +21,8 @@ pub struct CoqPath {
 impl fmt::Display for CoqPath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.path {
-            None => write!(f, "Require Import {}.\n", self.module),
-            Some(ref path) => write!(f, "From {} Require Import {}.\n", path, self.module),
+            None => write!(f, "Require Export {}.\n", self.module),
+            Some(ref path) => write!(f, "From {} Require Export {}.\n", path, self.module),
         }
     }
 }
