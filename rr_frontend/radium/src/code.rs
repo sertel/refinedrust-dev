@@ -961,13 +961,26 @@ impl<'def> Function<'def> {
         let mut writer = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
         let f = &mut writer;
 
-        write!(f, "Definition {}_lemma {} ", self.name(), self.spec.format_coq_params())?;
+        writeln!(f, "Definition {}_lemma (π : thread_id) : Prop :=", self.name())?;
 
-        // assume locations for other functions
-        for (loc_name, _, _, _) in self.other_functions.iter() {
-            write!(f, "({} : loc) ", loc_name)?;
+        // write coq parameters
+        if !self.spec.coq_params.is_empty() || !self.other_functions.is_empty() {
+            write!(f, "∀ ")?;
+            for (n, ty, imp) in self.spec.coq_params.iter() {
+                if !imp {
+                    write!(f, "({n} : {ty}) ")?;
+                }
+                else {
+                    write!(f, "`({ty}) ")?;
+                }
+            }
+
+            // assume locations for other functions
+            for (loc_name, _, _, _) in self.other_functions.iter() {
+                write!(f, "({} : loc) ", loc_name)?;
+            }
+            writeln!(f, ", ")?;
         }
-        write!(f, "(π : thread_id) : Prop :=\n")?;
 
 
         // assume Coq assumptions
@@ -1022,8 +1035,6 @@ impl<'def> Function<'def> {
         write!(f, "] (type_of_{} ", self.name())?;
 
         // write type args (passed to the type definition)
-        // push all the non-implicit parameters of the spec (this will, in particular, include the
-        // refinement types for generics)
         for (n, _, imp) in self.spec.coq_params.iter() {
             if !imp {
                 write!(f, "{} ", n)?;
@@ -1044,6 +1055,20 @@ impl<'def> Function<'def> {
 
         write!(f, "unfold {}_lemma;\n", self.name())?;
         write!(f, "set (FN_NAME := FUNCTION_NAME \"{}\");\n", self.name())?;
+
+        // intros spec params
+        if !self.spec.coq_params.is_empty() {
+            write!(f, "intros")?;
+            for (n, _, imp) in self.spec.coq_params.iter() {
+                if !imp {
+                    write!(f, " {n}")?;
+                }
+                else {
+                    write!(f, " ?")?;
+                }
+            }
+            writeln!(f, ";")?;
+        }
 
         write!(f, "intros;\n")?;
         write!(f, "iStartProof;\n")?;
@@ -1130,33 +1155,14 @@ impl<'def> Function<'def> {
     pub fn generate_proof<F>(&self, f: &mut F) -> Result<(), io::Error>
         where F: io::Write
     {
-        write!(f, "Lemma {}_proof {} ", self.name(), self.spec.format_coq_params())?;
-
-        // assume locations for other functions
-        for (loc_name, _, _, _) in self.other_functions.iter() {
-            write!(f, "({} : loc) ", loc_name)?;
-        }
-        write!(f, "(π : thread_id) :\n")?;
+        writeln!(f, "Lemma {}_proof (π : thread_id) :", self.name())?;
 
         {
             // indent
             let mut writer = IndentWriter::new(BASE_INDENT, &mut *f);
             let f = &mut writer;
 
-            write!(f, "{}_lemma ", self.name())?;
-
-            // push the parameters
-            for (n, _, imp) in self.spec.coq_params.iter() {
-                if !imp {
-                    write!(f, "{} ", n)?;
-                }
-            }
-
-            for (loc_name, _, _, _) in self.other_functions.iter() {
-                write!(f, "{} ", loc_name)?;
-            }
-            write!(f, "π.")?;
-
+            write!(f, "{}_lemma π.", self.name())?;
         }
         write!(f, "\n")?;
         write!(f, "Proof.\n")?;
