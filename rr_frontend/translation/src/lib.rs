@@ -376,21 +376,9 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
     /// Write Coq files for this verification unit.
     pub fn write_coq_files(&self) {
-        // get file stem for naming
-        let stem;
-        let filepath = &self.env.tcx().sess.local_crate_source_file();
-        if let Some(path) = filepath {
-            if let Some (file_stem) = path.file_stem() {
-                info!("file stem: {:?}", file_stem);
-                stem = file_stem.to_str().unwrap().to_string();
-            }
-            else {
-                stem = "mod".to_string();
-            }
-        }
-        else {
-            stem = "mod".to_string();
-        }
+        // use the crate_name for naming
+        let crate_name: rustc_span::symbol::Symbol = self.env.tcx().crate_name(rustc_span::def_id::LOCAL_CRATE);
+        let stem = crate_name.as_str();
 
         // create output directory
         let base_dir_path: std::path::PathBuf = if let Some(output) = rrconfig::output_dir() {
