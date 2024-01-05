@@ -9,7 +9,7 @@ As an example, the following function has specifications attached to it that say
 ```rust
 #[rr::params(z)]
 #[rr::args("z")]
-#[rr::requires("⌜z + 42 ∈ i32⌝")]
+#[rr::requires("z + 42 ∈ i32")]
 #[rr::returns("z + 42")]
 fn add_42(x : i32) -> i32 {
   x + 42
@@ -22,9 +22,9 @@ RefinedRust infers a "default" type for the argument from Rust's type, but this 
 For instance, the clause `#[rr::args("z" @ "int i32")]` would be equivalent to the one specified above.
 In addition, for types (like structs) with invariants declared on them, the argument can be prefixed with `#raw` in order to not require the invariant on them to hold (e.g. `#[rr::args("z", #raw "-[#x]")]`).
 
-The `requires` clause specifies the requirement that the result of the addition fits into an `i32`. This can in general include arbitrary Iris propositions.
-Arbitrary Coq propositions (like `z+42 ∈ i32`) can be embedded into Iris by wrapping it with `⌜`/`⌝` brackets.
-Finally, the returns clause specifies a refinement (and optionally, a type) for the return value of the function.
+The `requires` clause specifies the requirement that the result of the addition fits into an `i32` (see [RefinedRust propositions](#refinedrust-propositions) for details on the syntax).
+
+Finally, the `returns` clause specifies a refinement (and optionally, a type) for the return value of the function.
 
 
 | Keyword   | Purpose                      | Properties | Example                          |
@@ -33,8 +33,8 @@ Finally, the returns clause specifies a refinement (and optionally, a type) for 
 | `param`  | specify Coq-level parameters | multiple   | `#[rr:param("n" : "Z")]` |
 | `args`    | specify argument refinements/types | multiple | `#[rr::args("n" @ "int i32", "b"]` |
 | `returns` | specify return refinement/type | single | `#[rr::returns("42" @ "int i32")]` |
-| `requires` | specify a precondition | multiple | `#[rr:requires("⌜i > 42⌝")]` |
-| `ensures` | specify a postcondition | multiple | `#[rr::ensures("⌜x > y⌝")]` |
+| `requires` | specify a precondition | multiple | `#[rr:requires("i > 42")]` |
+| `ensures` | specify a postcondition | multiple | `#[rr::ensures("x > y")]` |
 | `exists`  | specify an existential for the postcondition | multiple | `#[rr::exists("x" : "Z")]` |
 
 There are further attributes that influence the proof-checking behaviour:
@@ -90,6 +90,20 @@ Inside a crate, the following crate-level attributes can be specified:
 - `#![rr::coq_prefix("A.B.C")]`: puts the generated files under the logical Coq path `A.B.C`
 - `#![rr::import("A.B.C", "D")]`: imports the file `D` from logical Coq path `A.B.C` in all spec and proof files
 
+## RefinedRust propositions
+For propositional specifications, as appearing in `#[rr::requires("P")]`, `#[rr::ensures("P")]`, and `#[rr::invariant("P")]`, specific notational shortcuts are supported.
+By default, `P` is interpreted as a (pure) Coq proposition (i.e., it is interpreted to the Iris proposition `⌜P⌝`).
+
+This can be changed by format specifiers starting with `#` which preceed the string `"P"`:
+
+- The `#iris` format specifier interprets `P` as an Iris proposition.
+- Type assignments for locations/places can be specified by the `#type "l" : "r" @ "ty"` template, specifying that `l` is an owned pointer storing a value of type `r @ ty`.
+- In `rr::invariant` clauses on structs, the `#own` specifier only makes the following Iris proposition available in the invariant for owned types.
+- In `rr::invariant` clauses on structs, the `#shr` specifier only makes the following Iris proposition available in the invariant for shared types.
+
+In the default interpretation as pure Coq propositions, optionally a name can be specified that will be used in Coq's context (if the proposition becomes a hypothesis), by writing (for instance) `#[rr::requires("Hx" : "x < 5")]`.
+This is especially useful for semi-manual proofs.
+
 ## Special syntax
 ### Escape sequences
 As a rule of thumb, all  string literals in specifications are inserted literally into the generated Coq code.
@@ -108,19 +122,6 @@ In particular, we support the following escape sequences:
 To prevent an expression wrapped in curly braces to be transformed, write two curly braces: `{{ ... }}`.
 This will be replaced by `{ ... }`.
 
-## RefinedRust propositions
-For propositional specifications, as appearing in `#[rr::requires("P")]`, `#[rr::ensures("P")]`, and `#[rr::invariant("P")]`, specific notational shortcuts are supported.
-By default, `P` is interpreted as a (pure) Coq proposition (i.e., it is interpreted to the Iris proposition `⌜P⌝`).
-
-This can be changed by format specifiers starting with `#` which preceed the string `"P"`:
-
-- The `#iris` format specifier interprets `P` as an Iris proposition.
-- Type assignments for locations/places can be specified by the `#type "l" : "r" @ "ty"` template, specifying that `l` is an owned pointer storing a value of type `r @ ty`.
-- In `rr::invariant` clauses on structs, the `#own` specifier only makes the following Iris proposition available in the invariant for owned types.
-- In `rr::invariant` clauses on structs, the `#shr` specifier only makes the following Iris proposition available in the invariant for shared types.
-
-In the default interpretation as pure Coq propositions, optionally a name can be specified that will be used in Coq's context (if the proposition becomes a hypothesis), by writing (for instance) `#[rr::requires("Hx" : "x < 5")]`.
-This is especially useful for semi-manual proofs.
 
 
 ## Types
