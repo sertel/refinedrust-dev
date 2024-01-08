@@ -5,6 +5,8 @@
 use std::ptr;
 use std::mem;
 
+mod example;
+
 /* TODO:
  * 1. Add support for non-atomic invariants (na mode)
  * 2. add support for rr::inline
@@ -16,6 +18,7 @@ use std::mem;
 
 // We make UnsafeCell behave the same (in terms of refinements) as a value of T.
 #[repr(transparent)]
+// T_ty : type T_rt
 #[rr::refined_by("x" : "{rt_of T}")]
 pub struct UnsafeCell<T> {
     #[rr::field("x")]
@@ -41,8 +44,8 @@ impl<T> UnsafeCell<T> {
     #[rr::args("(#x, γ)")]
     #[rr::exists("γ'")]
     #[rr::returns("(#x, γ')")]
-    #[rr::ensures("inherit {'a} (Rel2 γ' γ eq)")]
-    pub fn get_mut(&mut self) -> &mut T {
+    #[rr::ensures(#iprop "inherit {'a} (Rel2 γ' γ eq)")]
+    pub fn get_mut<'a>(&'a mut self) -> &'a mut T {
         &mut self.value
     }
 
@@ -68,7 +71,7 @@ impl<T> UnsafeCell<T> {
 
 #[rr::refined_by("P" : "{rt_of T} → Prop")]
 #[rr::exists("x" : "{rt_of T}")]
-#[rr::invariant("⌜P x⌝")]
+#[rr::invariant("P x")]
 // TODO: add support for this mode
 #[rr::mode("na")]
 pub struct Cell<T> {
@@ -80,7 +83,7 @@ impl<T> Cell<T> {
     // NOTE: calling this function requires manual effort to instantiate P
     #[rr::params("x" : "{rt_of T}", "P")]
     #[rr::args("x")]
-    #[rr::requires("⌜P x⌝")]
+    #[rr::requires("P x")]
     #[rr::returns("P")]
     pub const fn new(value: T) -> Cell<T> {
         Cell { value: UnsafeCell::new(value) }
@@ -88,7 +91,7 @@ impl<T> Cell<T> {
 
     #[rr::params("P", "x")]
     #[rr::args("P", "x")]
-    #[rr::requires("⌜P x⌝")]
+    #[rr::requires("P x")]
     pub fn set(&self, val: T) {
         let old = self.replace(val);
         drop(old);
@@ -112,9 +115,9 @@ impl<T> Cell<T> {
     }
 
     #[rr::args("#P", "x")]
-    #[rr::requires("⌜P x⌝")]
+    #[rr::requires("P x")]
     #[rr::exists("y")]
-    #[rr::ensures("⌜P y⌝")]
+    #[rr::ensures("P y")]
     #[rr::returns("y")]
     pub fn replace(&self, val: T) -> T {
         // SAFETY: This can cause data races if called from a separate thread,
