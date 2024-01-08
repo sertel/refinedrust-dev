@@ -3,9 +3,10 @@
 #![feature(custom_inner_attributes)]
 #![feature(stmt_expr_attributes)]
 
-mod enums;
-mod structs;
 mod char;
+mod enums;
+mod inline;
+mod structs;
 mod traits;
 mod statics;
 
