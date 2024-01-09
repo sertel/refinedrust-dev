@@ -36,7 +36,7 @@ use rustc_middle::ty as ty;
 use rustc_middle::ty::TyCtxt;
 
 use std::fs;
-use std::io::{self, Write};
+use std::io::{self, Write, Read};
 use std::path::Path;
 
 use typed_arena::Arena;
@@ -288,6 +288,17 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             else {
                 spec_file.write(format!("(* No specification provided for {} *)\n\n", spec.function_name).as_bytes()).unwrap();
             }
+        }
+
+        // Include extra specs
+        if let Some(extra_specs_path) = rrconfig::extra_specs_file() {
+            writeln!(spec_file, "(* Included specifications from configured file {:?} *)", extra_specs_path).unwrap();
+            let mut extra_specs_file = io::BufReader::new(fs::File::open(extra_specs_path).unwrap());
+
+            let mut extra_specs_string = String::new();
+            extra_specs_file.read_to_string(&mut extra_specs_string).unwrap();
+
+            write!(spec_file, "{}", extra_specs_string).unwrap();
         }
 
         spec_file.write("End specs.".as_bytes()).unwrap();
