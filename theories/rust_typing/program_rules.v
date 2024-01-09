@@ -464,11 +464,11 @@ Section typing.
     λ T, i2p (subsume_full_owned_subtype π E L step v ty1 ty2 r1 r2 T).
 
   (* TODO: how does the evar thing work here? *)
-  Lemma subsume_full_own_loc_bk_evar {rt1 rt2} π E L step l (lt1 : ltype rt1) (lt2 : ltype rt2) b1 b2 r1 r2 T `{!IsProtected b2}:
+  Lemma subsume_full_own_loc_bk_evar {rt1 rt2} π E L step l (lt1 : ltype rt1) (lt2 : ltype rt2) b1 b2 r1 r2 T `{!ContainsProtected b2}:
     ⌜b1 = b2⌝ ∗ subsume_full E L step (l ◁ₗ[π, b1] r1 @ lt1) (l ◁ₗ[π, b2] r2 @ lt2) T
     ⊢ subsume_full E L step (l ◁ₗ[π, b1] r1 @ lt1) (l ◁ₗ[π, b2] r2 @ lt2) T.
   Proof. iIntros "(-> & HT)". done. Qed.
-  Global Instance subsume_full_own_loc_bk_evar_inst {rt1 rt2} π E L step l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 b1 b2 `{!IsProtected b2}:
+  Global Instance subsume_full_own_loc_bk_evar_inst {rt1 rt2} π E L step l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 b1 b2 `{!ContainsProtected b2}:
     SubsumeFull E L step (l ◁ₗ[π, b1] r1 @ lt1) (l ◁ₗ[π, b2] r2 @ lt2) | 1000 :=
     λ T, i2p (subsume_full_own_loc_bk_evar π E L step l lt1 lt2 b1 b2 r1 r2 T).
 
