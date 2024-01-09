@@ -156,8 +156,8 @@ Section updateable_rules.
       typed_array_access updateable_π updateable_E updateable_L l off st lt r k (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         l ◁ₗ[updateable_π, k2] #rs2 @ ArrayLtype ty2 len2 iml2 -∗
         (l offsetst{st}ₗ off) ◁ₗ[updateable_π, k2] re @ lte -∗
-        updateable_core updateable_π updateable_E L2)) -∗
-    P.
+        updateable_core updateable_π updateable_E L2))
+    ⊢ P.
   Proof.
     iIntros "HT".
     unshelve iApply add_updateable; first apply _.
@@ -180,6 +180,8 @@ Ltac add_updateable :=
       unshelve notypeclasses refine (tac_fast_apply (add_updateable P) _);
       [ apply _ | apply _ | ]
   end.
+Tactic Notation "apply_update" uconstr(H) :=
+  refine (tac_fast_apply H _).
 
 Section test.
   Context `{!typeGS Σ}.
@@ -191,6 +193,14 @@ Section test.
     add_updateable.
     add_updateable.
     unshelve iApply (updateable_typed_array_access l off st).
+    idtac.
+  Abort.
+
+  Lemma typed_s_updateable π E L s rf R ϝ (l : loc) (off : Z) (st : syn_type) :
+    ⊢ typed_stmt π E L s rf R ϝ.
+  Proof.
+    iStartProof.
+    unshelve apply_update (updateable_typed_array_access l off st).
     idtac.
   Abort.
 End test.
