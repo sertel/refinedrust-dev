@@ -82,7 +82,7 @@ pub fn dump() -> String {
 /// Makes the path absolute with respect to the work_dir.
 fn make_path_absolute(path: &str) -> PathBuf {
     // read the base path we set
-    let base_path: String = work_dir(); 
+    let base_path: String = work_dir();
 
     let path_buf = std::path::PathBuf::from(path);
     if path_buf.is_absolute() {
@@ -160,7 +160,7 @@ pub fn output_dir() -> Option<PathBuf> {
     read_optional_setting("output_dir").map(|s: String| make_path_absolute(&s))
 }
 
-/// Whether to admit proofs of functions instead of running Qed. 
+/// Whether to admit proofs of functions instead of running Qed.
 pub fn admit_proofs() -> bool {
     read_setting("admit_proofs")
 }
@@ -168,6 +168,11 @@ pub fn admit_proofs() -> bool {
 /// Which file to read shims from?
 pub fn shim_file() -> Option<PathBuf> {
     read_optional_setting("shims").map(|s: String| make_path_absolute(&s))
+}
+
+/// Which file should we read extra specs from?
+pub fn extra_specs_file() -> Option<PathBuf> {
+    read_optional_setting("extra_specs").map(|s: String| make_path_absolute(&s))
 }
 
 /// Run the proof checker after generating the Coq code?

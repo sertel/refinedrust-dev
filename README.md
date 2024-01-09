@@ -88,10 +88,11 @@ These include:
 | `dump_borrowck_info` | Boolean | Dumps borrowck debug output in the log directory |
 | `output_dir` | Relative/absolute path | Determines the directory where the generated output files will be placed |
 | `log_dir` | Relative/absolute path | Determines the directory where logs and debug dumps will be placed if enabled |
-| `shims` | Relative path | Determines the JSON file storing information about shims that RefinedRust uses |
+| `shims` | Relative/absolute path | Determines the JSON file storing information about shims that RefinedRust uses |
 | `run_check` | Boolean | Automatically call the Coq type checker on the generated files |
 | `verify_deps` | Boolean | Verify dependencies or not |
 | `admit_proofs` | Boolean | Skip Coq's `Qed` check and instead run `Admitted` |
+| `extra_specs` | Relative/absolute path | File whose contents will be inlined at the end of the generated specs file |
 
 The path to the config file can also be specified via the environment variable `RR_CONFIG`.
 Setting this variable will also change the `work_dir` (relative to which paths are interpreted) to the path of `RR_CONFIG`.

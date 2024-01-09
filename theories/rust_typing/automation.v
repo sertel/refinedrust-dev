@@ -876,122 +876,13 @@ Ltac sidecond_hook ::=
   | |- ty_allows_writes _ =>
       solve_ty_allows
   | |- _ =>
-      try solve [solve_layout_size | solve_layout_eq | solve_op_alg];
-      try solve_layout_alg
+      try solve_layout_alg;
+      try solve_op_alg;
+      try solve_layout_eq
+      (*try solve [solve_layout_size | solve_layout_eq | solve_op_alg];*)
+      (*try solve_layout_alg*)
   end.
 
-
-(** ** Proofmode support for manual proofs *)
-Lemma tac_typed_val_expr_bind' `{!typeGS Σ} π E L K e T :
-  typed_val_expr π E L (W.to_expr e) (λ L' v rt ty r,
-    v ◁ᵥ{π} r @ ty -∗ typed_val_expr π E L' (W.to_expr (W.fill K (W.Val v))) T) -∗
-  typed_val_expr π E L (W.to_expr (W.fill K e)) T.
-Proof.
-  iIntros "He".
-  rewrite /typed_val_expr.
-  iIntros (Φ) "#CTX #HE HL Hna Hcont".
-  iApply tac_wp_bind'.
-  iApply ("He" with "CTX HE HL Hna").
-  iIntros (L' v rt ty r) "HL Hna Hv Hcont'".
-  iApply ("Hcont'" with "Hv CTX HE HL Hna"). done.
-Qed.
-Lemma tac_typed_val_expr_bind `{!typeGS Σ} π E L e Ks e' T :
-  W.find_expr_fill e false = Some (Ks, e') →
-  typed_val_expr π E L (W.to_expr e') (λ L' v rt ty r,
-    if Ks is [] then T L' v rt ty r else
-      v ◁ᵥ{π} r @ ty -∗ typed_val_expr π E L' (W.to_expr (W.fill Ks (W.Val v))) T) -∗
-  typed_val_expr π E L (W.to_expr e) T.
-Proof.
-  move => /W.find_expr_fill_correct ->. move: Ks => [|K Ks] //.
-  { auto. }
-  move: (K::Ks) => {K}Ks. by iApply tac_typed_val_expr_bind'.
-Qed.
-
-Tactic Notation "typed_val_expr_bind" :=
-  iStartProof;
-  lazymatch goal with
-  | |- envs_entails _ (typed_val_expr ?π ?E ?L ?e ?T) =>
-    let e' := W.of_expr e in change (typed_val_expr π E L e T) with (typed_val_expr π E L (W.to_expr e') T);
-    iApply tac_typed_val_expr_bind; [done |];
-    unfold W.to_expr; simpl
-  | _ => fail "typed_val_expr_bind: not a 'typed_val_expr'"
-  end.
-
-Lemma fupd_typed_val_expr `{!typeGS Σ} π E L e T :
-  (|={⊤}=> typed_val_expr π E L e T) -∗ typed_val_expr π E L e T.
-Proof.
-  rewrite /typed_val_expr.
-  iIntros "HT" (?) "CTX HE HL Hna Hc".
-  iApply fupd_wp. iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hna Hc").
-Qed.
-Lemma fupd_typed_call `{!typeGS Σ} π E L κs v (P : iProp Σ) vl tys T :
-  (|={⊤}=> typed_call π E L κs v P vl tys T) -∗ typed_call π E L κs v P vl tys T.
-Proof.
-  rewrite /typed_call.
-  iIntros "HT HP Ha".
-  iApply fupd_typed_val_expr. iMod "HT" as "HT". iApply ("HT" with "HP Ha").
-Qed.
-
-
-Lemma tac_typed_stmt_bind `{!typeGS Σ} π E L s e Ks fn ϝ T :
-  W.find_stmt_fill s = Some (Ks, e) →
-  typed_val_expr π E L (W.to_expr e) (λ L' v rt ty r,
-    v ◁ᵥ{π} r @ ty -∗ typed_stmt π E L' (W.to_stmt (W.stmt_fill Ks (W.Val v))) fn T ϝ) -∗
-  typed_stmt π E L (W.to_stmt s) fn T ϝ.
-Proof.
-  move => /W.find_stmt_fill_correct ->. iIntros "He".
-  rewrite /typed_stmt.
-  iIntros (?) "#CTX #HE HL Hna Hcont".
-  rewrite stmt_wp_eq. iIntros (? rf ?) "?".
-  have [Ks' HKs']:= W.stmt_fill_correct Ks rf. rewrite HKs'.
-  iApply wp_bind.
-  iApply (wp_wand with "[Hna He HL]").
-  { rewrite /typed_val_expr. iApply ("He" with "CTX HE HL Hna").
-    iIntros (L' v rt ty r) "HL Hna Hv Hcont".
-    iApply ("Hcont" with "Hv CTX HE HL Hna"). }
-  iIntros (v) "HWP".
-  rewrite -(HKs' (W.Val _)) /W.to_expr.
-  iSpecialize ("HWP" with "Hcont").
-  rewrite stmt_wp_eq/stmt_wp_def/=.
-  iApply "HWP"; done.
-Qed.
-
-Tactic Notation "typed_stmt_bind" :=
-  iStartProof;
-  lazymatch goal with
-  | |- envs_entails _ (typed_stmt ?π ?E ?L ?s ?fn ?R ?ϝ) =>
-    let s' := W.of_stmt s in change (typed_stmt π E L s fn R ϝ) with (typed_stmt π E L (W.to_stmt s') fn R ϝ);
-    iApply tac_typed_stmt_bind; [done |];
-    unfold W.to_expr, W.to_stmt; simpl; unfold W.to_expr; simpl
-  | _ => fail "typed_stmt_bind: not a 'typed_stmt'"
-  end.
-
-Lemma intro_typed_stmt `{!typeGS Σ} fn R ϝ π E L s Φ :
-  rrust_ctx -∗
-  elctx_interp E -∗
-  llctx_interp L -∗
-  na_own π shrE -∗
-  (∀ (L' : llctx) (v : val), llctx_interp L' -∗ na_own π shrE -∗ ([∗ list] l ∈ rf_locs fn, l.1 ↦|l.2|) -∗ R v L' -∗ Φ v) -∗
-  typed_stmt π E L s fn R ϝ -∗
-  WPs s {{ f_code (rf_fn fn), Φ }}.
-Proof.
-  iIntros "#CTX #HE HL Hna Hcont Hs".
-  rewrite /typed_stmt.
-  iApply ("Hs" with "CTX HE HL Hna Hcont").
-Qed.
-Lemma fupd_typed_stmt `{!typeGS Σ} π E L s rf R ϝ :
-  ⊢ (|={⊤}=> typed_stmt π E L s rf R ϝ) -∗ typed_stmt π E L s rf R ϝ.
-Proof.
-  iIntros "HT". rewrite /typed_stmt. iIntros (?) "CTX HE HL Hna Hcont".
-  iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hna Hcont").
-Qed.
-
-Ltac to_typed_stmt SPEC :=
-  iStartProof;
-  lazymatch goal with
-  | FN : runtime_function |- envs_entails _ (WPs ?s {{ ?code, ?c }}) =>
-    iApply (intro_typed_stmt FN with SPEC)
-  end.
 
 (** ** Hints for automation *)
 Global Hint Extern 0 (LayoutSizeEq _ _) => rewrite /LayoutSizeEq; solve_layout_size : typeclass_instances.
