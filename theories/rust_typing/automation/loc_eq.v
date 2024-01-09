@@ -107,10 +107,10 @@ Section test.
   solve_loc_eq. Qed.
 
   Goal (l offsetst{IntSynType u8}ₗ n1) = l +ₗ (ly_size u8 * n1).
-  solve_loc_eq. Qed.
+  init_cache; solve_loc_eq. Qed.
 
   Goal (l offsetst{IntSynType usize_t}ₗ n1) = l +ₗ (ly_size usize_t * n1).
-  solve_loc_eq. Qed.
+  init_cache; solve_loc_eq. Qed.
 
   (*Goal (l +ₗ offset) = l +ₗ (len * size_of  *)
 End test.

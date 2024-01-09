@@ -299,7 +299,7 @@ Section test.
   Next Obligation. repeat first [econstructor | set_solver]. Qed.
   Next Obligation. done. Qed.
   Next Obligation. repeat first [econstructor | set_solver]. Qed.
-  Next Obligation. repeat first [econstructor | solve_goal]. Qed.
+  Next Obligation. repeat first [econstructor | init_cache; solve_goal]. Qed.
 
   Lemma inv_test e_ly :
     use_enum_layout_alg std_option_Option_els = Some e_ly →
@@ -616,7 +616,7 @@ Section test.
   Lemma ty_allows_reads_int :
     ty_allows_reads (int i32).
   Proof.
-    solve [unshelve solve_ty_allows; solve_goal].
+    solve [unshelve solve_ty_allows; init_cache; solve_goal].
   Abort.
   Lemma ty_allows_reads_struct_1 :
     struct_layout_spec_is_layoutable (s1_spec (IntSynType i32)) →
