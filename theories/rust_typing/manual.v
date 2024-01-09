@@ -107,6 +107,24 @@ Section updateable.
     simpl. eauto.
   Qed.
 
+  Global Program Instance updateable_updateable π E L T :
+    Updateable (updateable π E L T) := {|
+      updateable_E := E;
+      updateable_L := L;
+      updateable_π := π;
+      updateable_core π E L := updateable π E L T;
+    |}.
+  Next Obligation.
+    iIntros (_ _ _ ? ? ? ?) "HT".
+    rewrite /updateable.
+    iIntros "#CTX #HE HL Hna".
+    iMod ("HT" with "CTX HE HL Hna") as "(%L2 & HL & Hna & HT)".
+    iApply ("HT" with "CTX HE HL Hna").
+  Qed.
+  Next Obligation.
+    eauto.
+  Qed.
+
   Lemma fupd_typed_val_expr `{!typeGS Σ} π E L e T :
     (|={⊤}=> typed_val_expr π E L e T) -∗ typed_val_expr π E L e T.
   Proof.
@@ -131,25 +149,26 @@ Section updateable.
 End updateable.
 
 Section updateable_rules.
-  Context `{!typeGS Σ}.
+  Context `{!typeGS Σ} {P} `{!Updateable P}.
 
-  Lemma updateable_typed_array_access l off st π E L T :
-    find_in_context (FindLoc l π)  (λ '(existT _ (lt, r, k)),
-      typed_array_access π E L l off st lt r k (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
-        l ◁ₗ[π, k2] #rs2 @ ArrayLtype ty2 len2 iml2 -∗
-        (l offsetst{st}ₗ off) ◁ₗ[π, k2] re @ lte -∗
-        updateable π E L2 T)) -∗
-    updateable π E L T.
+  Lemma updateable_typed_array_access l off st :
+    find_in_context (FindLoc l updateable_π)  (λ '(existT _ (lt, r, k)),
+      typed_array_access updateable_π updateable_E updateable_L l off st lt r k (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
+        l ◁ₗ[updateable_π, k2] #rs2 @ ArrayLtype ty2 len2 iml2 -∗
+        (l offsetst{st}ₗ off) ◁ₗ[updateable_π, k2] re @ lte -∗
+        updateable_core updateable_π updateable_E L2)) -∗
+    P.
   Proof.
-    iIntros "HT #CTX #HE HL Hna".
+    iIntros "HT".
+    unshelve iApply add_updateable; first apply _.
+    iIntros "#CTX #HE HL Hna".
     rewrite /FindLoc /find_in_context/=.
     iDestruct "HT" as ([rt [[lt r] k]]) "(Ha & Hb)".
     rewrite /typed_array_access.
     iMod ("Hb" with "[] [] CTX HE HL Ha") as "(%L2 & %k2 & %rt2 & %ty2 & %len & %iml & %rs2 & %rte & %re & %lte & Hl & He & HL & HT)";
     [set_solver.. | ].
     iPoseProof ("HT" with "Hl He") as "Ha".
-    iApply ("Ha" with "CTX HE HL").
-    iFrame.
+    iModIntro. iExists _. iFrame.
   Qed.
 
   (* TODO: add lemma for unfolding / subtyping? *)
@@ -162,11 +181,19 @@ Ltac add_updateable :=
       [ apply _ | apply _ | ]
   end.
 
+Section test.
+  Context `{!typeGS Σ}.
 
-
-
-
-
+  Lemma updateable_updateable_b π E L (l : loc) (off : Z) (st : syn_type) :
+    ⊢ updateable π E L (λ _, True).
+  Proof.
+    iStartProof.
+    add_updateable.
+    add_updateable.
+    unshelve iApply (updateable_typed_array_access l off st).
+    idtac.
+  Abort.
+End test.
 
 Lemma tac_typed_val_expr_bind' `{!typeGS Σ} π E L K e T :
   typed_val_expr π E L (W.to_expr e) (λ L' v rt ty r,
