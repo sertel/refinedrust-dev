@@ -41,7 +41,7 @@ Section updateable.
   Qed.
 
   Lemma add_updateable P `{!Updateable P} :
-    updateable updateable_π updateable_E updateable_L (λ L2, updateable_core updateable_π  updateable_E L2) -∗ P.
+    updateable updateable_π updateable_E updateable_L (λ L2, updateable_core updateable_π  updateable_E L2) ⊢ P.
   Proof.
     iIntros "HT".
     iApply updateable_eq.
