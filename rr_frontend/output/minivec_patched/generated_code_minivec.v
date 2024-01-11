@@ -32,7 +32,7 @@ Section std_option_Option_els.
   Next Obligation. repeat first [econstructor | set_solver]. Qed.
   Next Obligation. done. Qed.
   Next Obligation. repeat first [econstructor | set_solver]. Qed.
-  Next Obligation. repeat first [econstructor | solve_goal]. Qed.
+  Next Obligation. repeat first [econstructor | init_cache; solve_goal]. Qed.
 Global Typeclasses Opaque std_option_Option_els.
 End std_option_Option_els.
 

@@ -2245,7 +2245,6 @@ Ltac solve_bor_kind_outlives :=
       refine (lctx_bor_kind_outlives_shared _ _ _ _ _); solve_lft_incl
   end.
 
-
 (** ** Augment the context with commonly needed facts. *)
 Section augment.
   Lemma MaxInt_isize_lt_usize : (MaxInt isize_t < MaxInt usize_t)%Z.
@@ -2264,33 +2263,33 @@ Section augment.
 End augment.
 
 
-Ltac augment_context :=
+Ltac init_cache :=
   (*specialize (bytes_per_addr_eq) as ?;*)
-  specialize (MaxInt_isize_lt_usize) as ?;
-  specialize (MaxInt_ge_127 i8) as ?;
-  specialize (MaxInt_ge_127 u8) as ?;
-  specialize (MaxInt_ge_127 i16) as ?;
-  specialize (MaxInt_ge_127 u16) as ?;
-  specialize (MaxInt_ge_127 i32) as ?;
-  specialize (MaxInt_ge_127 u32) as ?;
-  specialize (MaxInt_ge_127 i64) as ?;
-  specialize (MaxInt_ge_127 u64) as ?;
-  specialize (MaxInt_ge_127 i128) as ?;
-  specialize (MaxInt_ge_127 u128) as ?;
-  specialize (MaxInt_ge_127 isize_t) as ?;
-  specialize (MaxInt_ge_127 usize_t) as ?;
-  specialize (MinInt_le_n128_signed i8 eq_refl) as ?;
-  specialize (MinInt_le_n128_signed i16 eq_refl) as ?;
-  specialize (MinInt_le_n128_signed i32 eq_refl) as ?;
-  specialize (MinInt_le_n128_signed i64 eq_refl) as ?;
-  specialize (MinInt_le_n128_signed i128 eq_refl) as ?;
-  specialize (MinInt_le_n128_signed isize_t eq_refl) as ?;
-  specialize (MinInt_unsigned_0 u8 eq_refl) as ?;
-  specialize (MinInt_unsigned_0 u16 eq_refl) as ?;
-  specialize (MinInt_unsigned_0 u32 eq_refl) as ?;
-  specialize (MinInt_unsigned_0 u64 eq_refl) as ?;
-  specialize (MinInt_unsigned_0 u128 eq_refl) as ?;
-  specialize (MinInt_unsigned_0 usize_t eq_refl) as ?
+  specialize_cache (MaxInt_isize_lt_usize);
+  specialize_cache (MaxInt_ge_127 i8);
+  specialize_cache (MaxInt_ge_127 u8);
+  specialize_cache (MaxInt_ge_127 i16);
+  specialize_cache (MaxInt_ge_127 u16);
+  specialize_cache (MaxInt_ge_127 i32);
+  specialize_cache (MaxInt_ge_127 u32);
+  specialize_cache (MaxInt_ge_127 i64);
+  specialize_cache (MaxInt_ge_127 u64);
+  specialize_cache (MaxInt_ge_127 i128);
+  specialize_cache (MaxInt_ge_127 u128);
+  specialize_cache (MaxInt_ge_127 isize_t);
+  specialize_cache (MaxInt_ge_127 usize_t);
+  specialize_cache (MinInt_le_n128_signed i8 eq_refl);
+  specialize_cache (MinInt_le_n128_signed i16 eq_refl);
+  specialize_cache (MinInt_le_n128_signed i32 eq_refl);
+  specialize_cache (MinInt_le_n128_signed i64 eq_refl);
+  specialize_cache (MinInt_le_n128_signed i128 eq_refl);
+  specialize_cache (MinInt_le_n128_signed isize_t eq_refl);
+  specialize_cache (MinInt_unsigned_0 u8 eq_refl);
+  specialize_cache (MinInt_unsigned_0 u16 eq_refl);
+  specialize_cache (MinInt_unsigned_0 u32 eq_refl);
+  specialize_cache (MinInt_unsigned_0 u64 eq_refl);
+  specialize_cache (MinInt_unsigned_0 u128 eq_refl);
+  specialize_cache (MinInt_unsigned_0 usize_t eq_refl)
   (*specialize (layout_wf_unit) as ?;*)
   (*specialize (layout_wf_ptr) as ?*)
 .

@@ -1,7 +1,7 @@
 (** Adapted from RefinedC *)
 From lithium Require Import all.
 From caesium Require Import base lang.
-From refinedrust Require Import programs program_rules.
+From refinedrust Require Import solvers programs program_rules automation.
 
 (** This file contains a solver for location (semantic) equality based on [lia]
 and an [autorewrite] hint database [refinedrust_loc_eq_rewrite] that the user can
@@ -25,6 +25,10 @@ Create HintDb refinedrust_loc_eq_rewrite discriminated.
 Lemma eq_loc (l1 l2 : loc): l1.1 = l2.1 → l1.2 = l2.2 → l1 = l2.
 Proof. destruct l1, l2 => /= -> -> //. Qed.
 
+Ltac simplify_layout_goal_noshelve :=
+  unshelve simplify_layout_goal;
+  [ unfold_common_defs; solve_goal.. | ].
+
 (** Turns an equality over locations into an equality over physical addresses
 (in type [Z]) that has been simplified with [autorewrite]. This tactics only
 succeeds if the compared locations have convertible allocation ids. *)
@@ -38,10 +42,18 @@ Ltac prepare_loc_eq :=
   end;
   (* Remove all [offset_loc] and [shift_loc]. *)
   rewrite ?/offset_loc ?shift_loc_assoc; rewrite ?/shift_loc;
+  (* Unfold OffsetLocSt *)
+  (*GetMemberLocSt*)
+  (*GetMemberUnionLocSt*)
+  (*GetEnumDataLocSt*)
+  (*GetEnumDiscriminantLocSt*)
+  rewrite /OffsetLocSt;
   (* Checking that both sides have the same [alloc_id]. *)
   notypeclasses refine (eq_loc _ _ _ _); [ reflexivity | simpl ];
   (* Rewrite with the hints. *)
-  autorewrite with refinedrust_loc_eq_rewrite.
+  autorewrite with refinedrust_loc_eq_rewrite;
+  (* Simplify layout terms *)
+  simplify_layout_goal_noshelve; simpl.
 
 (** Solver for location equality. *)
 Ltac solve_loc_eq :=
@@ -50,6 +62,7 @@ Ltac solve_loc_eq :=
 
 
 Section test.
+  Context `{!LayoutAlg}.
   Context (l : loc).
   Context (id : prov).
   Context (a : addr).
@@ -92,6 +105,12 @@ Section test.
 
   Goal (l = (l.1, l.2 * 1))%Z.
   solve_loc_eq. Qed.
+
+  Goal (l offsetst{IntSynType u8}ₗ n1) = l +ₗ (ly_size u8 * n1).
+  init_cache; solve_loc_eq. Qed.
+
+  Goal (l offsetst{IntSynType usize_t}ₗ n1) = l +ₗ (ly_size usize_t * n1).
+  init_cache; solve_loc_eq. Qed.
 
   (*Goal (l +ₗ offset) = l +ₗ (len * size_of  *)
 End test.

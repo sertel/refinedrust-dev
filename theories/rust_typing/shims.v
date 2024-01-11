@@ -46,7 +46,7 @@ Proof.
   rewrite /ly_align_in_bounds/min_alloc_start/max_alloc_end/=/ly_align/bytes_per_addr/bytes_per_addr_log/=.
   rewrite /bits_per_byte/=.
   intros [Ha Hb].
-  split; first solve_goal.
+  split; first (init_cache; solve_goal).
   rewrite MaxInt_eq.
   rewrite /max_int/=/int_modulus/bits_per_int/bytes_per_int/it_byte_size_log/=.
   rewrite /bits_per_byte/=.
@@ -61,7 +61,7 @@ Lemma ly_align_log_in_usize ly :
   ly_align_in_bounds ly → Z.of_nat (ly_align_log ly) ∈ usize_t.
 Proof.
   intros [_ Ha]%ly_align_log_in_u8.
-  split; first solve_goal.
+  split; first (init_cache; solve_goal).
   etrans; first apply Ha.
   rewrite MaxInt_eq in Ha.
   rewrite !MaxInt_eq /max_int/=/int_modulus/bits_per_int/bytes_per_int/it_byte_size_log/bits_per_byte/=.
@@ -70,7 +70,7 @@ Qed.
 Lemma ly_align_in_usize ly :
   ly_align_in_bounds ly → Z.of_nat (ly_align ly) ∈ usize_t.
 Proof.
-  intros [Ha Hb]. split; first solve_goal.
+  intros [Ha Hb]. split; first (init_cache; solve_goal).
   etrans; first apply Hb.
   (* TODO: why doesn't this work anymore? *)
   rewrite /max_alloc_end.

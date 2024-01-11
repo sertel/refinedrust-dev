@@ -817,7 +817,9 @@ Tactic Notation "start_function" constr(fnname) "(" simple_intropattern(κs) ")"
   iExists _, _; iSplitR;
   [iPureIntro; solve [simplify_elctx] | ];
   iSplitR; [iPureIntro; solve[reorder_elctx] | ];
-  inv_vec lsv; inv_vec lsa.
+  inv_vec lsv; inv_vec lsa;
+  init_cache
+.
 
 Tactic Notation "prepare_parameters" "(" ident_list(i) ")" :=
   revert i; repeat liForall.
@@ -973,7 +975,6 @@ Ltac solve_goal_normalized_prepare_hook ::=
   simplify_layout_assum;
   simplify_layout_goal;
   open_cache;
-  augment_context;
   unfold_no_enrich;
   simpl in *;
   (*rewrite /ly_size/ly_align_log //= in **)

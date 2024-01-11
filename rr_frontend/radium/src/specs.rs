@@ -1656,7 +1656,7 @@ impl<'def> AbstractEnum<'def> {
         write!(out, "{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n").unwrap();
         write!(out, "{indent}Next Obligation. done. Qed.\n").unwrap();
         write!(out, "{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n").unwrap();
-        write!(out, "{indent}Next Obligation. repeat first [econstructor | solve_goal]. Qed.\n").unwrap();
+        write!(out, "{indent}Next Obligation. repeat first [econstructor | init_cache; solve_goal]. Qed.\n").unwrap();
         write!(out, "{indent}Global Typeclasses Opaque {}.\n", self.els_def_name).unwrap();
 
         // finish

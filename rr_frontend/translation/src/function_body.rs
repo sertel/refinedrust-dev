@@ -1846,7 +1846,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         //cont_stmt = self.prepend_endlfts(cont_stmt, loc, dying);
         //cont_stmt = self.prepend_endlfts(cont_stmt, loc, dying_zombie);
-        
+
         // HashSet to keep track which HirIds we already encountered, since multiple Mir statements
         // may originate from the same Hir statement
         let mut processed_hirids = HashSet::new();
@@ -2326,12 +2326,18 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 match *kind {
                     box mir::AggregateKind::Tuple => {
-                        let struct_use = self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r), None)?;
-                        let sl = struct_use.generate_struct_layout_spec_term();
-                        let initializers: Vec<_> = translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
-                        Ok(radium::Expr::StructInitE {
-                            sls: radium::CoqAppTerm::new_lhs(sl),
-                            components: initializers})
+                        if operand_types.len() == 0 {
+                            // translate to unit literal
+                            Ok(radium::Expr::Literal(radium::Literal::LitZST))
+                        }
+                        else {
+                            let struct_use = self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r), None)?;
+                            let sl = struct_use.generate_struct_layout_spec_term();
+                            let initializers: Vec<_> = translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
+                            Ok(radium::Expr::StructInitE {
+                                sls: radium::CoqAppTerm::new_lhs(sl),
+                                components: initializers})
+                        }
                     },
                     box mir::AggregateKind::Adt(did, variant, args, ..) => {
                         // get the adt def
