@@ -22,7 +22,7 @@ fn box_add_42(mut x : Box<i32>) -> Box<i32> {
 #[rr::params(x : "Z", "γ")]
 #[rr::args("(#x, γ)")]
 #[rr::requires("(x + 42)%Z ∈ i32")]
-#[rr::ensures(#iris "gvar_pobs γ (x + 42)")]
+#[rr::observe("γ": "x + 42")]
 fn mut_ref_add_42(x : &mut i32) {
     *x += 42;
 }
