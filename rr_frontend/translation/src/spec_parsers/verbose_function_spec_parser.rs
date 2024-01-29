@@ -56,6 +56,8 @@ enum MetaIProp {
     Iris(specs::IProp),
     /// #[rr::requires(#type "l" : "rfn" @ "ty")]
     Type(specs::TyOwnSpec),
+    /// #[rr::ensures(#observe "γ" : "2 * x")]
+    Observe(String, String),
 }
 
 impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
@@ -87,6 +89,15 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 "iris" => {
                     let prop: IProp = input.parse(meta)?;
                     Ok(MetaIProp::Iris(prop.into()))
+                },
+                "observe" => {
+                    let gname: parse::LitStr = input.parse(meta)?;
+                    input.parse::<_, parse::MToken![:]>(meta)?;
+
+                    let term: parse::LitStr = input.parse(meta)?;
+                    let (term, meta) = process_coq_literal(&term.value(), *meta);
+
+                    Ok(MetaIProp::Observe(gname.value().to_string(), term))
                 },
                 _ => {
                     panic!("invalid macro command: {:?}", macro_cmd.value());
@@ -132,6 +143,9 @@ impl Into<specs::IProp> for MetaIProp {
                 let lit = spec.fmt_owned("π");
                 specs::IProp::Atom(lit)
             },
+            Self::Observe(name, term) => {
+                specs::IProp::Atom(format!("gvar_pobs {name} ({term})"))
+            }
         }
     }
 }
@@ -246,6 +260,18 @@ impl<'a, 'def> FunctionSpecParser<'def> for VerboseFunctionSpecParser<'a, 'def> 
                     "ensures" => {
                         let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
                         builder.spec.add_postcondition(iprop.into())?;
+                    },
+                    "observe" => {
+                        let m = || {
+                            let gname: parse::LitStr = buffer.parse(&meta)?;
+                            buffer.parse::<_, parse::MToken![:]>(&meta)?;
+
+                            let term: parse::LitStr = buffer.parse(&meta)?;
+                            let (term, _) = process_coq_literal(&term.value(), meta);
+                            Ok(MetaIProp::Observe(gname.value().to_string(), term))
+                        };
+                        let m = m().map_err(str_err)?;
+                        builder.spec.add_postcondition(m.into())?;
                     },
                     "returns" => {
                         let tr = LiteralTypeWithRef::parse(&buffer, &meta).map_err(str_err)?;

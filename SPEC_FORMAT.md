@@ -36,6 +36,7 @@ Finally, the `returns` clause specifies a refinement (and optionally, a type) fo
 | `requires` | specify a precondition | multiple | `#[rr:requires("i > 42")]` |
 | `ensures` | specify a postcondition | multiple | `#[rr::ensures("x > y")]` |
 | `exists`  | specify an existential for the postcondition | multiple | `#[rr::exists("x" : "Z")]` |
+| `observe` | shortcut for specifying observations on ghost variables | single | `#[rr::observe("γ": "x + 2")]` | 
 
 There are further attributes that influence the proof-checking behaviour:
 | Keyword   | Purpose                      | Properties | Example                          |
