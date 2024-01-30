@@ -393,19 +393,23 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         let mut generic_syntys = Vec::new();
 
         for arg in args.into_iter() {
-            let arg_ty = arg.expect_ty();
-            let mut translated_ty;
-            if let Some(ref mut adt_deps) = adt_deps {
-                translated_ty = self.translate_type_with_deps(&arg_ty, Some(&mut *adt_deps))?;
+            if let Some(arg_ty) = arg.as_type() {
+                let mut translated_ty;
+                if let Some(ref mut adt_deps) = adt_deps {
+                    translated_ty = self.translate_type_with_deps(&arg_ty, Some(&mut *adt_deps))?;
+                }
+                else {
+                    translated_ty = self.translate_type_with_deps(&arg_ty, None)?;
+                }
+                // we need to substitute in the variables according to the function scope
+                translated_ty.subst(generic_env.as_slice());
+                //translated_ty.subst
+                generic_syntys.push(translated_ty.get_syn_type());
+                params.push(translated_ty);
             }
             else {
-                translated_ty = self.translate_type_with_deps(&arg_ty, None)?;
+                return Err(TranslationError::UnsupportedFeature{ description: "structs with lifetime parameters are not supported".to_string()})
             }
-            // we need to substitute in the variables according to the function scope
-            translated_ty.subst(generic_env.as_slice());
-            //translated_ty.subst
-            generic_syntys.push(translated_ty.get_syn_type());
-            params.push(translated_ty);
         }
 
         let struct_use = radium::AbstractStructUse::new(struct_ref, params, radium::TypeIsRaw::No);
@@ -580,27 +584,35 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
         let struct_name = strip_coq_ident(&ty.ident(tcx).to_string());
         self.variant_registry.borrow_mut().insert(ty.def_id, (struct_name.clone(), &*struct_def_init, ty, false));
 
-        let struct_name = strip_coq_ident(&ty.ident(tcx).to_string());
-        let (variant_def, invariant_def) = self.make_adt_variant(&struct_name, ty, adt, &ty_param_defs, &st_params, Some(&mut adt_deps))?;
+        let translate_adt = || {
+            let struct_name = strip_coq_ident(&ty.ident(tcx).to_string());
+            let (variant_def, invariant_def) = self.make_adt_variant(&struct_name, ty, adt, &ty_param_defs, &st_params, Some(&mut adt_deps))?;
 
-        let mut struct_def = radium::AbstractStruct::new(variant_def, ty_param_defs, st_params);
-        if let Some(invariant_def) = invariant_def {
-            struct_def.add_invariant(invariant_def);
+            let mut struct_def = radium::AbstractStruct::new(variant_def, ty_param_defs, st_params);
+            if let Some(invariant_def) = invariant_def {
+                struct_def.add_invariant(invariant_def);
+            }
+            Ok(struct_def)
+        };
+
+        match translate_adt() {
+            Ok(struct_def) => {
+                // finalize the definition
+                // TODO for generating the semtype definition, we will also need to track dependencies
+                // between structs so that we know when we need recursive types etc.
+                let mut struct_def_ref = struct_def_init.borrow_mut();
+                *struct_def_ref = Some(struct_def);
+
+                let mut deps_ref = self.adt_deps.borrow_mut();
+                deps_ref.insert(adt.did(), adt_deps);
+                Ok(())
+            }
+            Err(err) => {
+                // remove the partial definition
+                self.variant_registry.borrow_mut().remove(&ty.def_id);
+                Err(err)
+            }
         }
-
-        // TODO for generating the semtype definition, we will also need to track dependencies
-        // between structs so that we know when we need recursive types etc.
-
-        // finalize the definition
-        {
-            let mut struct_def_ref = struct_def_init.borrow_mut();
-            *struct_def_ref = Some(struct_def);
-
-            let mut deps_ref = self.adt_deps.borrow_mut();
-            deps_ref.insert(adt.did(), adt_deps);
-        }
-
-        Ok(())
     }
 
     /// Make an ADT variant.
@@ -881,7 +893,6 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
         // TODO: currently a hack, I don't know how to query the name properly
         let enum_name = strip_coq_ident(format!("{:?}", def).as_str());
-        self.enum_registry.borrow_mut().insert(def.did(), (enum_name.clone(), &*enum_def_init, def));
 
         // first thing: figure out the generics we are using here.
         // we need to search all of the variant types for that.
@@ -906,131 +917,142 @@ impl <'def, 'tcx : 'def> TypeTranslator<'def, 'tcx> {
 
         info!("enum using generics: {:?}", used_generics);
 
-        // now build masks describing which generics each of the variants uses
-        // and register the variants
-        let mut variant_masks: HashMap<DefId, Vec<bool>> = HashMap::new();
-        let mut variant_attrs = Vec::new();
-        for v in def.variants().iter() {
-            let mut folder = TyVarFolder::new(self.env.tcx());
-            for f in v.fields.iter() {
-                let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
-                f_ty.fold_with(&mut folder);
-            }
-            let variant_generics: HashSet<ty::ParamTy> = folder.get_result();
+        // insert partial definition for recursive occurrences
+        self.enum_registry.borrow_mut().insert(def.did(), (enum_name.clone(), &*enum_def_init, def));
 
-            let mut mask = Vec::new();
-            let mut these_param_defs = Vec::new();
-            let mut these_st_params = Vec::new();
-            for ((param, param_defs), st_param) in used_generics.iter().zip(ty_param_defs.iter()).zip(st_params.iter()) {
-                if variant_generics.contains(param) {
-                    mask.push(true);
-                    these_param_defs.push(param_defs.clone());
-                    these_st_params.push(st_param.clone());
+        let translate_variants = || {
+            // now build masks describing which generics each of the variants uses
+            // and register the variants
+            let mut variant_masks: HashMap<DefId, Vec<bool>> = HashMap::new();
+            let mut variant_attrs = Vec::new();
+            for v in def.variants().iter() {
+                let mut folder = TyVarFolder::new(self.env.tcx());
+                for f in v.fields.iter() {
+                    let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
+                    f_ty.fold_with(&mut folder);
                 }
-                else {
-                    mask.push(false);
+                let variant_generics: HashSet<ty::ParamTy> = folder.get_result();
+
+                let mut mask = Vec::new();
+                let mut these_param_defs = Vec::new();
+                let mut these_st_params = Vec::new();
+                for ((param, param_defs), st_param) in used_generics.iter().zip(ty_param_defs.iter()).zip(st_params.iter()) {
+                    if variant_generics.contains(param) {
+                        mask.push(true);
+                        these_param_defs.push(param_defs.clone());
+                        these_st_params.push(st_param.clone());
+                    }
+                    else {
+                        mask.push(false);
+                    }
+                }
+                variant_masks.insert(v.def_id, mask);
+
+                // now generate the variant
+                let struct_def_init = self.struct_arena.alloc(RefCell::new(None));
+
+                let struct_name = strip_coq_ident(format!("{}_{}", enum_name, v.ident(tcx)).as_str());
+                self.variant_registry.borrow_mut().insert(v.def_id, (struct_name.clone(), &*struct_def_init, v, true));
+
+                // IMPORTANT: use the full enum's ty_param_defs to account for indexing
+                let (variant_def, invariant_def) = self.make_adt_variant(struct_name.as_str(), v, def, &ty_param_defs, &st_params, Some(&mut adt_deps))?;
+
+                // IMPORTANT: use the subset of actually used params for the definition
+                let mut struct_def = radium::AbstractStruct::new(variant_def, these_param_defs, these_st_params);
+                if let Some(invariant_def) = invariant_def {
+                    struct_def.add_invariant(invariant_def);
+                }
+
+                // also remember the attributes for additional processing
+                let outer_attrs = self.env.get_attributes(v.def_id);
+                let outer_attrs = crate::utils::filter_tool_attrs(outer_attrs);
+                variant_attrs.push(outer_attrs);
+
+                // finalize the definition
+                {
+                    let mut struct_def_ref = struct_def_init.borrow_mut();
+                    *struct_def_ref = Some(struct_def);
                 }
             }
-            variant_masks.insert(v.def_id, mask);
 
-            // now generate the variant
-            let struct_def_init = self.struct_arena.alloc(RefCell::new(None));
+            // get the type of the discriminant
+            let it = def.repr().discr_type();
+            let translated_it = self.translate_integer_type(it)?;
 
-            let struct_name = strip_coq_ident(format!("{}_{}", enum_name, v.ident(tcx)).as_str());
-            self.variant_registry.borrow_mut().insert(v.def_id, (struct_name.clone(), &*struct_def_init, v, true));
+            // build the discriminant map
+            let discrs = self.build_discriminant_map(def)?;
 
-            // IMPORTANT: use the full enum's ty_param_defs to account for indexing
-            let (variant_def, invariant_def) = self.make_adt_variant(struct_name.as_str(), v, def, &ty_param_defs, &st_params, Some(&mut adt_deps))?;
-
-            // IMPORTANT: use the subset of actually used params for the definition
-            let mut struct_def = radium::AbstractStruct::new(variant_def, these_param_defs, these_st_params);
-            if let Some(invariant_def) = invariant_def {
-                struct_def.add_invariant(invariant_def);
+            // get representation options
+            let repr = def.repr();
+            let mut repr_opt = radium::EnumRepr::ReprRust;
+            if repr.c() {
+                repr_opt = radium::EnumRepr::ReprC;
+            }
+            else if repr.simd() {
+                return Err(TranslationError::UnsupportedFeature { description: "The SIMD flag is currently unsupported".to_string() })
+            }
+            else if repr.packed() {
+                return Err(TranslationError::UnsupportedFeature { description: "The repr(packed) flag is currently unsupported".to_string() })
+            }
+            else if repr.linear() {
+                return Err(TranslationError::UnsupportedFeature { description: "The linear flag is currently unsupported".to_string() })
+            }
+            else if repr.transparent() {
+                repr_opt = radium::EnumRepr::ReprTransparent;
             }
 
-            // also remember the attributes for additional processing
-            let outer_attrs = self.env.get_attributes(v.def_id);
-            let outer_attrs = crate::utils::filter_tool_attrs(outer_attrs);
-            variant_attrs.push(outer_attrs);
-
-            // finalize the definition
-            {
-                let mut struct_def_ref = struct_def_init.borrow_mut();
-                *struct_def_ref = Some(struct_def);
+            // parse annotations for enum type
+            let enum_spec;
+            let mut inductive_decl = None;
+            let builtin_spec = self.get_builtin_enum_spec(def.did())?;
+            if let Some(spec) = builtin_spec {
+                enum_spec = spec;
             }
-        }
+            else if self.env.has_tool_attribute(def.did(), "refined_by") {
+                let attributes = self.env.get_attributes(def.did());
+                let attributes = crate::utils::filter_tool_attrs(attributes);
 
-        // get the type of the discriminant
-        let it = def.repr().discr_type();
-        let translated_it = self.translate_integer_type(it)?;
+                // TODO: change once we handle lft parameters properly
+                let lft_params: Vec<(Option<String>, radium::Lft)> = Vec::new();
 
-        // build the discriminant map
-        let discrs = self.build_discriminant_map(def)?;
+                let mut parser = VerboseEnumSpecParser::new();
+                enum_spec = parser.parse_enum_spec("", &attributes, &variant_attrs, &ty_param_defs, &lft_params)
+                    .map_err(|err| TranslationError::FatalError(err))?;
+            }
+            else {
+                // generate a specification
+                let decl;
+                (decl, enum_spec) = self.generate_enum_spec(def, &enum_name);
+                inductive_decl = Some(decl);
+            }
 
-        // get representation options
-        let repr = def.repr();
-        let mut repr_opt = radium::EnumRepr::ReprRust;
-        if repr.c() {
-            repr_opt = radium::EnumRepr::ReprC;
-        }
-        else if repr.simd() {
-            return Err(TranslationError::UnsupportedFeature { description: "The SIMD flag is currently unsupported".to_string() })
-        }
-        else if repr.packed() {
-            return Err(TranslationError::UnsupportedFeature { description: "The repr(packed) flag is currently unsupported".to_string() })
-        }
-        else if repr.linear() {
-            return Err(TranslationError::UnsupportedFeature { description: "The linear flag is currently unsupported".to_string() })
-        }
-        else if repr.transparent() {
-            repr_opt = radium::EnumRepr::ReprTransparent;
-        }
+            let mut enum_builder = radium::EnumBuilder::new(enum_name, ty_param_defs, st_params, translated_it, repr_opt);
+            // now build the enum itself
+            for v in def.variants().iter() {
+                let variant_ref = self.lookup_adt_variant(v.def_id)?;
+                let variant_name = strip_coq_ident(&v.ident(tcx).to_string());
+                let discriminant = discrs.get(&variant_name).unwrap();
+                enum_builder.add_variant(&variant_name, variant_ref, variant_masks.remove(&v.def_id).unwrap(), *discriminant);
+            }
+            Ok(enum_builder.finish(inductive_decl, enum_spec))
+        };
 
-        // parse annotations for enum type
-        let enum_spec;
-        let mut inductive_decl = None;
-        let builtin_spec = self.get_builtin_enum_spec(def.did())?;
-        if let Some(spec) = builtin_spec {
-            enum_spec = spec;
+        match translate_variants() {
+            Ok(enum_def) => {
+                // finalize the definition
+                let mut enum_def_ref = enum_def_init.borrow_mut();
+                *enum_def_ref = Some(enum_def);
+
+                let mut deps_ref = self.adt_deps.borrow_mut();
+                deps_ref.insert(def.did(), adt_deps);
+                Ok(())
+            },
+            Err(err) => {
+                // deregister the ADT again
+                self.enum_registry.borrow_mut().remove(&def.did());
+                Err(err)
+            },
         }
-        else if self.env.has_tool_attribute(def.did(), "refined_by") {
-            let attributes = self.env.get_attributes(def.did());
-            let attributes = crate::utils::filter_tool_attrs(attributes);
-
-            // TODO: change once we handle lft parameters properly
-            let lft_params: Vec<(Option<String>, radium::Lft)> = Vec::new();
-
-            let mut parser = VerboseEnumSpecParser::new();
-            enum_spec = parser.parse_enum_spec("", &attributes, &variant_attrs, &ty_param_defs, &lft_params)
-                .map_err(|err| TranslationError::FatalError(err))?;
-        }
-        else {
-            // generate a specification
-            let decl;
-            (decl, enum_spec) = self.generate_enum_spec(def, &enum_name);
-            inductive_decl = Some(decl);
-        }
-
-        let mut enum_builder = radium::EnumBuilder::new(enum_name, ty_param_defs, st_params, translated_it, repr_opt);
-        // now build the enum itself
-        for v in def.variants().iter() {
-            let variant_ref = self.lookup_adt_variant(v.def_id)?;
-            let variant_name = strip_coq_ident(&v.ident(tcx).to_string());
-            let discriminant = discrs.get(&variant_name).unwrap();
-            enum_builder.add_variant(&variant_name, variant_ref, variant_masks.remove(&v.def_id).unwrap(), *discriminant);
-        }
-
-        let enum_def = enum_builder.finish(inductive_decl, enum_spec);
-        // finalize the definition
-        {
-            let mut enum_def_ref = enum_def_init.borrow_mut();
-            *enum_def_ref = Some(enum_def);
-
-            let mut deps_ref = self.adt_deps.borrow_mut();
-            deps_ref.insert(def.did(), adt_deps);
-        }
-
-        Ok(())
     }
 
     /// Translate type.

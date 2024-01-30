@@ -56,3 +56,23 @@ impl EvenInt {
         self.add();
     }
 }
+
+
+
+pub struct Foo {}
+
+impl Foo {
+    #[rr::params("x", "γ")]
+    #[rr::args("(#x, γ)")]
+    #[rr::returns("()")]
+    pub fn a(&mut self) {
+        assert!(true);
+    }
+
+    #[rr::params("x", "γ")]
+    #[rr::args("(#x, γ)")]
+    #[rr::returns("()")]
+    pub fn b(&mut self) {
+        assert!(true);
+    }
+}

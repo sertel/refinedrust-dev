@@ -629,17 +629,17 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             // Only generate a spec
             match translator.and_then(|t| t.generate_spec()) {
                 Ok(spec) => {
-                    info!("Successfully generated spec for {}", fname);
+                    println!("Successfully generated spec for {}", fname);
                     vcx.procedure_registry.provide_specced_function(&f.to_def_id(), spec);
                 },
                 Err(function_body::TranslationError::FatalError(err)) => {
-                    error!("Encountered fatal cross-function error in translation: {:?}", err);
-                    error!("Aborting...");
+                    println!("Encountered fatal cross-function error in translation: {:?}", err);
+                    println!("Aborting...");
                     return;
                 },
                 Err(err) => {
-                    warn!("Encountered error: {:?}", err);
-                    warn!("Skipping function {}", fname);
+                    println!("Encountered error: {:?}", err);
+                    println!("Skipping function {}", fname);
                     if !rrconfig::skip_unsupported_features() {
                         exit_with_error(&format!("Encountered error when translating function {}, stopping...", fname));
                     }
@@ -650,17 +650,17 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             // Fully translate the function
             match translator.and_then(|t| t.translate()) {
                 Ok(fun) => {
-                    info!("Successfully translated {}", fname);
+                    println!("Successfully translated {}", fname);
                     vcx.procedure_registry.provide_translated_function(&f.to_def_id(), fun);
                 },
                 Err(function_body::TranslationError::FatalError(err)) => {
-                    error!("Encountered fatal cross-function error in translation: {:?}", err);
-                    error!("Aborting...");
+                    println!("Encountered fatal cross-function error in translation: {:?}", err);
+                    println!("Aborting...");
                     return;
                 },
                 Err(err) => {
-                    warn!("Encountered error: {:?}", err);
-                    warn!("Skipping function {}", fname);
+                    println!("Encountered error: {:?}", err);
+                    println!("Skipping function {}", fname);
                     if !rrconfig::skip_unsupported_features() {
                         exit_with_error(&format!("Encountered error when translating function {}, stopping...", fname));
                     }
