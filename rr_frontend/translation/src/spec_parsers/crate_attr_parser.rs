@@ -22,7 +22,8 @@ pub trait CrateAttrParser {
 #[derive(Debug, Clone)]
 pub struct CrateAttrs {
     pub imports: Vec<specs::CoqPath>,
-    pub prefix: Option<String>
+    pub prefix: Option<String>,
+    pub includes: Vec<String>,
 }
 
 
@@ -43,6 +44,7 @@ impl CrateAttrParser for VerboseCrateAttrParser {
 
         let meta = ();
         let mut imports: Vec<specs::CoqPath> = Vec::new();
+        let mut includes: Vec<String> = Vec::new();
         let mut prefix: Option<String> = None;
 
 
@@ -56,6 +58,10 @@ impl CrateAttrParser for VerboseCrateAttrParser {
                     "import" => {
                         let path: parse_utils::CoqPath = buffer.parse(&meta).map_err(str_err)?;
                         imports.push(path.into());
+                    },
+                    "include" => {
+                        let name: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                        includes.push(name.value());
                     },
                     "coq_prefix" => {
                         let path: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
@@ -71,6 +77,6 @@ impl CrateAttrParser for VerboseCrateAttrParser {
                 }
             }
         }
-        Ok(CrateAttrs { imports, prefix })
+        Ok(CrateAttrs { imports, prefix , includes})
     }
 }

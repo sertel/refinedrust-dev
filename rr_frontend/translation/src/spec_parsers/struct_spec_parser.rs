@@ -26,7 +26,7 @@ pub trait InvariantSpecParser {
     /// - rr::refines for the inner refinement
     ///
     /// Returns whether a Boolean stating whether a rr::refines attribute was included.
-    fn parse_invariant_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], params: &'a [specs::TyParamNames], lfts: &'a [(Option<String>, specs::Lft)]) -> Result<(specs::InvariantSpec, bool), String>;
+    fn parse_invariant_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], params: &'a [specs::LiteralTyParam], lfts: &'a [(Option<String>, specs::Lft)]) -> Result<(specs::InvariantSpec, bool), String>;
 }
 
 /// Parse a binder pattern with an optional Coq type annotation, e.g.
@@ -174,7 +174,7 @@ impl VerboseInvariantSpecParser {
 
 impl InvariantSpecParser for VerboseInvariantSpecParser {
 
-    fn parse_invariant_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], params: &'a [specs::TyParamNames], lfts: &'a [(Option<String>, specs::Lft)])
+    fn parse_invariant_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], params: &'a [specs::LiteralTyParam], lfts: &'a [(Option<String>, specs::Lft)])
             -> Result<(specs::InvariantSpec, bool), String>
     {
         fn str_err(e : parse::ParseError) -> String {
@@ -300,25 +300,30 @@ pub trait StructFieldSpecParser<'def> {
 
 /// Parses attributes on a field to a `StructFieldSpec`, using a given default type for the field
 /// in case none is annotated.
-pub struct VerboseStructFieldSpecParser<'a, 'def> {
+pub struct VerboseStructFieldSpecParser<'a, 'def, F>
+    where F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>
+{
     /// The translated Rust field type that is used as a default.
     field_type: &'a specs::Type<'def>,
 
     /// the type parameters of this struct
-    params: &'a[specs::TyParamNames],
+    params: &'a[specs::LiteralTyParam],
 
     lfts: &'a [(Option<String>, specs::Lft)],
 
     /// whether to expect a refinement to be specified or not
     expect_rfn: bool,
 
+    make_literal: F,
     //ty_scope: &'a [Option<specs::Type<'def>>],
     //rfnty_scope: &'a [Option<specs::CoqType>],
 }
 
-impl<'a, 'def> VerboseStructFieldSpecParser<'a, 'def> {
-    pub fn new(field_type: &'a specs::Type<'def>, params: &'a [specs::TyParamNames], lfts: &'a [(Option<String>, specs::Lft)], expect_rfn: bool) -> Self {
-        Self { field_type, params, lfts, expect_rfn }
+impl<'a, 'def, F> VerboseStructFieldSpecParser<'a, 'def, F>
+    where F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>
+{
+    pub fn new(field_type: &'a specs::Type<'def>, params: &'a [specs::LiteralTyParam], lfts: &'a [(Option<String>, specs::Lft)], expect_rfn: bool, make_literal: F) -> Self {
+        Self { field_type, params, lfts, expect_rfn, make_literal}
     }
 
     fn make_type(&self, lit: LiteralType, ty: &specs::Type<'def>) -> specs::Type<'def> {
@@ -331,15 +336,21 @@ impl<'a, 'def> VerboseStructFieldSpecParser<'a, 'def> {
         // we need this in order to be able to specify the invariant spec separately.
 
         info!("making type: {:?}, {:?}", lit, ty);
-        specs::Type::Literal(None,
-                             specs::CoqAppTerm::new_lhs(lit.ty.to_string()),
-                             specs::CoqType::Infer,
-                             st,
-                             lit.meta)
+        let lit_ty =  specs::LiteralType {
+            rust_name: None,
+            type_term: lit.ty.to_string(),
+            refinement_type: specs::CoqType::Infer,
+            syn_type: st };
+        let lit_ref = (&self.make_literal)(lit_ty);
+        let lit_use = specs::LiteralTypeUse::new_with_annot(lit_ref, vec![], lit.meta);
+
+        specs::Type::Literal(lit_use)
     }
 }
 
-impl<'a, 'def> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'a, 'def> {
+impl<'a, 'def, F> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'a, 'def, F>
+    where F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>
+{
     fn parse_field_spec(&mut self, field_name: &str, attrs: &[&AttrItem]) -> Result<StructFieldSpec<'def>, String> {
         fn str_err(e : parse::ParseError) -> String {
             format!("{:?}", e)

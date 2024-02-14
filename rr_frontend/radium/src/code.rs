@@ -113,19 +113,13 @@ impl Display for RustType {
 }
 
 impl RustType {
-    pub fn of_type<'def>(ty: &Type<'def>, env: &[Option<Type<'def>>]) -> Self{
+    pub fn of_type<'def>(ty: &Type<'def>, env: &[Option<LiteralTyParam>]) -> Self{
         info!("Translating rustType: {:?}", ty);
         match ty {
             Type::Var(var) => {
                 // this must be a generic type variable
                 let ty = env.get(*var).unwrap().as_ref().unwrap();
-                if let Type::Literal(Some(name), _, _, _, _) = ty {
-                    //assert!(name.is_empty());
-                    Self::TyVar(name.to_string())
-                }
-                else {
-                    panic!("RustType::of_type: type variable is non-primitive");
-                }
+                Self::TyVar(ty.rust_name.clone())
             },
             Type::Int(it) => Self::Int(it.clone()),
             Type::Bool => Self::Bool,
@@ -163,13 +157,12 @@ impl RustType {
                 Self::Lit(vec![def.public_type_name().to_string()], typarams)
 
             },
-            Type::Literal(name,_, _, _, _) => {
-                if let Some(name) = name {
-                Self::TyVar(name.to_string())
-                }
-                else {
-                    panic!("RustType::of_type: type variable is non-primitive");
-                }
+            Type::LiteralParam(lit) => {
+                Self::TyVar(lit.rust_name.clone())
+            },
+            Type::Literal(lit) => {
+                let typarams: Vec<_> = lit.params.iter().map(|ty| RustType::of_type(ty, env)).collect();
+                Self::Lit(vec![lit.def.type_term.clone()], typarams)
             },
             Type::Uninit(_) => {
                 panic!("RustType::of_type: uninit is not a Rust type");
@@ -933,8 +926,8 @@ impl Display for InvariantMap {
 pub struct Function<'def> {
     pub code: FunctionCode,
     pub spec: FunctionSpec<'def>,
-    /// Generic types in scope for this function: (names, st_name)
-    generic_types: Vec<(TyParamNames, String)>,
+    /// Generic types in scope for this function
+    generic_types: Vec<LiteralTyParam>,
 
     /// Other functions that are used by this one.
     other_functions: Vec<(String, String, Vec<Type<'def>>, Vec<SynType>)>,
@@ -1017,8 +1010,8 @@ impl<'def> Function<'def> {
         for (loc_name, _, _, _) in self.other_functions.iter() {
             write!(f, "{}  ", loc_name)?;
         }
-        for (_, st) in self.generic_types.iter() {
-            write!(f, "{} ", st)?;
+        for names in self.generic_types.iter() {
+            write!(f, "{} ", names.syn_type)?;
         }
 
         // write local syntypes
@@ -1146,8 +1139,8 @@ impl<'def> Function<'def> {
         // initialize tyvars
         let formatted_tyvars =
             make_map_string(" ", " ",
-                self.generic_types.iter().map(|(n, _)|
-                    (n.param_name.to_string(), format!("existT _ ({})", n.ty_name))).collect());
+                self.generic_types.iter().map(|names|
+                    (names.rust_name.to_string(), format!("existT _ ({})", names.type_term))).collect());
 
         write!(f, "init_tyvars ({} ).\n", formatted_tyvars.as_str())
     }
@@ -1219,8 +1212,8 @@ pub struct FunctionBuilder<'def> {
     /// available refinement types
     /// TODO: may not need this anymore.
     rfn_types: Vec<CoqType>,
-    /// generic types in scope for this function: (names, st_name)
-    generic_types: Vec<(TyParamNames, String)>,
+    /// generic types in scope for this function
+    generic_types: Vec<LiteralTyParam>,
     /// generic lifetimes
     generic_lifetimes: Vec<(Option<String>, Lft)>,
     /// Syntypes we assume to be layoutable in the typing proof
@@ -1280,24 +1273,13 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Add a generic type used by this function.
-    pub fn add_generic_type(&mut self, t: &Type<'def>) {
-        if let Type::Literal(Some(name), ty, CoqType::Literal(rt), SynType::Literal(st), _) = t {
-            let names = TyParamNames {
-                param_name: name.clone(),
-                rt_name: rt.clone(),
-                ty_name: ty.lhs.clone(),
-            };
-
-            self.generic_types.push((names, st.lhs.clone()));
-        }
-        else {
-            panic!("add_generic_type called with non-Literal");
-        }
+    pub fn add_generic_type(&mut self, t: LiteralTyParam) {
+        self.generic_types.push(t);
     }
 
     /// Get the type parameters.
-    pub fn get_ty_params(&self) -> Vec<TyParamNames> {
-        self.generic_types.iter().map(|a| a.0.clone()).collect()
+    pub fn get_ty_params(&self) -> &[LiteralTyParam] {
+        &self.generic_types
     }
 
     /// Get the universal lifetimes.
@@ -1321,25 +1303,25 @@ impl<'def> FunctionBuilder<'def> {
 
     fn add_generics_to_spec(&mut self) {
         // push generic type parameters to the spec builder
-        for (names, st_name) in self.generic_types.iter() {
+        for names in self.generic_types.iter() {
             // TODO(cleanup): this currently regenerates the names for ty + rt, instead of using
             // the existing names
-            self.spec.add_coq_param(CoqName::Named(names.rt_name.to_string()), CoqType::Type, false).unwrap();
-            self.spec.add_coq_param(CoqName::Unnamed, CoqType::Literal(format!("Inhabited {}", names.rt_name)), true).unwrap();
-            self.spec.add_coq_param(CoqName::Named(st_name.to_string()), CoqType::SynType, false).unwrap();
-            self.spec.add_ty_param(CoqName::Named(names.ty_name.clone()), CoqType::Ttype(Box::new (CoqType::Literal(names.rt_name.clone())))).unwrap();
+            self.spec.add_coq_param(CoqName::Named(names.refinement_type.to_string()), CoqType::Type, false).unwrap();
+            self.spec.add_coq_param(CoqName::Unnamed, CoqType::Literal(format!("Inhabited {}", names.refinement_type)), true).unwrap();
+            self.spec.add_coq_param(CoqName::Named(names.syn_type.to_string()), CoqType::SynType, false).unwrap();
+            self.spec.add_ty_param(CoqName::Named(names.type_term.clone()), CoqType::Ttype(Box::new (CoqType::Literal(names.refinement_type.clone())))).unwrap();
 
             // Add assumptions that the syntactic type of the semantic argument matches with the
             // assumed syntactic type.
-            let st_precond = IProp::Pure(format!("ty_syn_type {} = {}", names.ty_name.to_string(), st_name.to_string()));
+            let st_precond = IProp::Pure(format!("ty_syn_type {} = {}", names.type_term, names.syn_type));
             // We prepend these conditions so that this information can already be used to simplify
             // the other assumptions.
             self.spec.prepend_precondition(st_precond).unwrap();
 
             // add assumptions that reads/writes to the generic are allowed
-            let write_precond = IProp::Pure(format!("ty_allows_writes {}", names.ty_name.to_string()));
-            let read_precond = IProp::Pure(format!("ty_allows_reads {}", names.ty_name.to_string()));
-            let sc_precond = IProp::Atom(format!("ty_sidecond {}", names.ty_name.to_string()));
+            let write_precond = IProp::Pure(format!("ty_allows_writes {}", names.type_term));
+            let read_precond = IProp::Pure(format!("ty_allows_reads {}", names.type_term));
+            let sc_precond = IProp::Atom(format!("ty_sidecond {}", names.type_term));
             self.spec.add_precondition(write_precond).unwrap();
             self.spec.add_precondition(read_precond).unwrap();
             self.spec.add_precondition(sc_precond).unwrap();
@@ -1356,7 +1338,7 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
         let mut parameters: Vec<(CoqName, CoqType)> = self.other_functions.iter().map(|f_inst| (CoqName::Named(f_inst.0.to_string()), CoqType::Loc)).collect();
 
         // add generic syntype parameters for generics that this function uses.
-        let mut gen_st_parameters = self.generic_types.iter().map(|(_, st)| (CoqName::Named(st.to_string()), CoqType::SynType)).collect();
+        let mut gen_st_parameters = self.generic_types.iter().map(|names| (CoqName::Named(names.syn_type.to_string()), CoqType::SynType)).collect();
         parameters.append(&mut gen_st_parameters);
 
         self.add_generics_to_spec();

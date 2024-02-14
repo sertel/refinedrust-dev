@@ -116,5 +116,22 @@ Proof.
   intros T [-> ?]. done.
 Qed.
 
+
+
+Global Instance simpl_and_unsafe_apply_evar_right {A B} (f g : A → B) (a y : A) `{!IsProtected y} : 
+  SimplAndUnsafe (f a = g y) (λ T, a = y ∧ f = g ∧ T) | 1000.
+Proof.
+  rewrite /SimplAndUnsafe.
+  intros T (<- & <- & HT). 
+  done.
+Qed.
+Global Instance simpl_and_unsafe_apply_evar_left {A B} (f g : A → B) (a y : A) `{!IsProtected y} : 
+  SimplAndUnsafe (f y = g a) (λ T, a = y ∧ f = g ∧ T) | 1000.
+Proof.
+  rewrite /SimplAndUnsafe.
+  intros T (<- & <- & HT). 
+  done.
+Qed.
+
 (** ** Additional normalization instances *)
 #[export] Hint Rewrite Nat.add_sub : lithium_rewrite.

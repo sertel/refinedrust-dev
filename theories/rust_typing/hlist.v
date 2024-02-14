@@ -215,6 +215,13 @@ Notation "(-::)" := pcons (only parsing).
 Notation "-[ x ; .. ; z ]" := (x -:: .. (z -:: -[]) ..)
   (at level 1, format "-[ x ;  .. ;  z ]").
 
+(* Different notation for matching on it *)
+Notation "'*[' ']'" := nil_tt (at level 1, format "*[ ]").
+Infix "*::" := cons_pair (at level 60, right associativity).
+Notation "*[ x ; .. ; z ]" := (x *:: .. (z *:: *[]) ..)
+  (at level 1, format "*[ x ;  .. ;  z ]").
+
+
 Inductive TCTForall {A} (P : A → Type) : list A → Type :=
   | TCTForall_nil : TCTForall P []
   | TCTForall_cons x xs : P x → TCTForall P xs → TCTForall P (x :: xs).

@@ -151,23 +151,25 @@ impl Into<specs::IProp> for MetaIProp {
 }
 
 /// The main parser.
-pub struct VerboseFunctionSpecParser<'a, 'def> {
+pub struct VerboseFunctionSpecParser<'a, 'def, F>
+    where F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>
+{
     /// argument types with substituted type parameters
     arg_types: &'a [specs::Type<'def>],
     /// return types with substituted type parameters
     ret_type: &'a specs::Type<'def>,
-
-    /// environment for rfn type identifiers for generics
-    rfnty_scope: &'a [Option<specs::CoqType>],
+    make_literal: F,
 }
 
-impl<'a, 'def> VerboseFunctionSpecParser<'a, 'def> {
+impl<'a, 'def, F> VerboseFunctionSpecParser<'a, 'def, F>
+    where F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>
+{
     /// Type parameters must already have been substituted in the given types.
-    pub fn new(arg_types: &'a [specs::Type<'def>], ret_type: &'a specs::Type<'def>, rfnty_scope : &'a [Option<specs::CoqType>]) -> Self {
+    pub fn new(arg_types: &'a [specs::Type<'def>], ret_type: &'a specs::Type<'def>, make_literal: F) -> Self {
         VerboseFunctionSpecParser {
             arg_types,
             ret_type,
-            rfnty_scope
+            make_literal
         }
     }
 
@@ -182,8 +184,17 @@ impl<'a, 'def> VerboseFunctionSpecParser<'a, 'def> {
 
             // TODO: get CoqType for refinement. maybe have it as an annotation? the Infer is currently a placeholder.
 
+            let lit_ty = specs::LiteralType {
+                rust_name: None,
+                type_term: lit_ty.to_string(),
+                refinement_type: specs::CoqType::Infer,
+                syn_type: st,
+            };
+            let lit_ref = (&self.make_literal)(lit_ty);
+            let lit_ty_use = specs::LiteralTypeUse::new_with_annot(lit_ref, vec![], lit.meta.clone());
+
             (specs::TypeWithRef::new(
-                specs::Type::Literal(None, specs::CoqAppTerm::new_lhs(lit_ty.to_string()), specs::CoqType::Infer, st, lit.meta.clone()),
+                specs::Type::Literal(lit_ty_use),
                 lit.rfn.to_string()),
              None)
         }
@@ -191,7 +202,7 @@ impl<'a, 'def> VerboseFunctionSpecParser<'a, 'def> {
             // no literal type given, just a refinement
             // we use the translated Rust type with the given refinement
             let mut ty = ty.clone();
-            let rt = ty.get_rfn_type(self.rfnty_scope);
+            let rt = ty.get_rfn_type(&[]);
             if lit.raw == specs::TypeIsRaw::Yes {
                 ty.make_raw();
             }
@@ -204,23 +215,29 @@ fn str_err(e : parse::ParseError) -> String {
     format!("{:?}", e)
 }
 
-impl<'a, 'def> FunctionSpecParser<'def> for VerboseFunctionSpecParser<'a, 'def> {
+impl<'a, 'def, F> FunctionSpecParser<'def> for VerboseFunctionSpecParser<'a, 'def, F>
+    where F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>
+{
     fn parse_function_spec(&mut self, attrs: &[&AttrItem], spec: &mut radium::FunctionBuilder<'def>) -> Result<(), String> {
         if attrs.len() > 0 {
             spec.spec.have_spec();
         }
 
         // clone to be able to mutably borrow later
-        let meta: Vec<specs::TyParamNames> = spec.get_ty_params();
-        let lfts: Vec<(Option<String>, specs::Lft)> = spec.get_lfts();
+        let builder = spec;
+        let lfts: Vec<(Option<String>, specs::Lft)> = builder.get_lfts();
+
+        let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
         let meta: ParseMeta = (&meta, &lfts);
         info!("ty params: {:?}", meta);
 
-        let builder = spec;
 
         for &it in attrs.iter() {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
+
+            let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
+            let meta: ParseMeta = (&meta, &lfts);
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
@@ -347,4 +364,36 @@ pub fn get_shim_attrs(attrs: &[&AttrItem]) -> Result<ShimAnnot, String> {
         }
     }
     Err("Did not find shim annotation".to_string())
+}
+
+
+/// For parsing of RustPaths
+pub struct RustPath {
+    path: Vec<String>,
+}
+impl<'tcx, F> parse::Parse<F> for RustPath {
+    fn parse(input: parse::ParseStream, meta: &F) -> parse::ParseResult<Self> {
+        let x: parse::Punctuated<parse::Ident, parse::MToken![::]> = parse::Punctuated::parse_separated_nonempty(input, meta)?;
+        let path = x.into_iter().map(|x| x.value()).collect();
+        Ok(RustPath {path })
+    }
+}
+pub fn get_export_as_attr(attrs: &[&AttrItem]) -> Result<Vec<String>, String> {
+    let meta: () = ();
+    let meta = &meta;
+    for &it in attrs.iter() {
+        let ref path_segs = it.path.segments;
+
+        if let Some(seg) = path_segs.get(1) {
+            let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
+            match &*seg.ident.name.as_str() {
+                "export_as" => {
+                    let path = RustPath::parse(&buffer, meta).map_err(str_err)?;
+                    return Ok(path.path);
+                }
+                _ => (),
+            }
+        }
+    }
+    Err("Did not find export_as annotation".to_string())
 }

@@ -54,7 +54,7 @@ impl<T> fmt::Display for CoqAppTerm<T> where T: Display {
         else {
             write!(f, "({}", self.lhs)?;
             for r in self.rhs.iter() {
-                write!(f, " {}", r)?;
+                write!(f, " ({})", r)?;
             }
             write!(f, ")")
         }

@@ -35,10 +35,18 @@
     "name": "std_ptr_copy",
     "spec": "type_of_ptr_copy"
   },
+
   { 
     "path": ["std", "option", "Option", "unwrap"],
     "kind": "method",
     "name": "std_option_Option_unwrap_def",
     "spec": "type_of_std_option_Option_unwrap"
+  },
+  {
+    "path": ["std", "vec", "Vec"],
+    "kind": "adt",
+    "syntype": "std_vec_Vec_st",
+    "rtype": "std_vec_Vec_rt",
+    "semtype": "std_vec_Vec_ty"
   }
 ]

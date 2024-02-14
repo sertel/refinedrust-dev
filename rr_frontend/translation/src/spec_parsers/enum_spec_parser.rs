@@ -22,7 +22,7 @@ use parse::Peek;
 /// - rr::refinement: specifies the refinement of the struct for this variant in the scope
 ///     introduced by the pattern. Can be omitted if the variant does not have any fields.
 pub trait EnumSpecParser {
-    fn parse_enum_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], variant_attrs: &[Vec<&'a AttrItem>], params: &'a [specs::TyParamNames], lfts: &'a [(Option<String>, specs::Lft)]) -> Result<specs::EnumSpec, String>;
+    fn parse_enum_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], variant_attrs: &[Vec<&'a AttrItem>], params: &'a [specs::LiteralTyParam], lfts: &'a [(Option<String>, specs::Lft)]) -> Result<specs::EnumSpec, String>;
 }
 
 #[derive(Debug)]
@@ -66,7 +66,7 @@ impl VerboseEnumSpecParser {
 impl EnumSpecParser for VerboseEnumSpecParser {
     fn parse_enum_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem],
                            variant_attrs: &[Vec<&'a AttrItem>],
-                           params: &'a [specs::TyParamNames],
+                           params: &'a [specs::LiteralTyParam],
                            lfts: &'a [(Option<String>, specs::Lft)]) -> Result<specs::EnumSpec, String> {
         fn str_err(e : parse::ParseError) -> String {
             format!("{:?}", e)

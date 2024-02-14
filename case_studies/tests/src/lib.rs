@@ -6,3 +6,5 @@ mod enums;
 mod structs;
 mod char;
 mod traits;
+
+mod vec_client;

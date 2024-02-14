@@ -1,1 +1,3 @@
 output_dir="./output"
+dump_borrowck_info=true
+lib_load_paths=["../../stdlib/"]

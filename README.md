@@ -6,6 +6,7 @@ This repository contains a public mirror of the RefinedRust development version.
 The Coq implementation of RefinedRust can be found in the `theories` subfolder.
 The frontend implementation can be found in the `rr_frontend` subfolder.
 Case studies and tests can be found in the `case_studies` subfolder.
+Stdlib interfaces (without proofs) can be found in the `stdlib` subfolder.
 
 ### For the `theories` subfolder:
 * the `caesium` subfolder contains the Radium operational semantics, an adaptation of RefinedC's Caesium semantics.
@@ -59,12 +60,17 @@ The invocation of `cargo refinedrust` will generate a folder `output/paper_examp
 The `generated` subdirectory contains auto-generated code that may be overwritten by RefinedRust at any time during subsequent invocations.
 The `proofs` subdirectory contains proofs which may be edited manually (see the section [Proof Editing](#proof-editing) below) and are not overwritten by RefinedRust.
 
-More specifically, the `generated` directory will contain for each crate `mod`:
-* `generated_code_mod.v` contains the definition of the code translated to the Radium semantics, including layout specifications for the used structs and enums.
-* `generated_specs_mod.v` contains the definition of the annotated specifications for functions and data structures in terms of RefinedRust's type system.
+More specifically, the `generated` directory will contain:
+* `generated_code_crate.v` contains the definition of the code translated to the Radium semantics, including layout specifications for the used structs and enums.
+* `generated_specs_crate.v` contains the definition of the annotated specifications for functions and data structures in terms of RefinedRust's type system.
 * for each function `fun` with annotated specifications: a file `generated_template_fun.v` containing the lemma statement that has to be proven to show the specification, as well as auto-generated parts of the proof that may change when implementation details of `fun` are changed.
 
 The `proofs` subdirectory contains for each function `fun` a proof that invokes the components defined in the `generated_template_fun.v` file.
+
+In addition, RefinedRust generates an `interface.rrlib` file containing the ADTs and functions which are publicly exported and specified.
+Verification of other crates can import these specifications.
+The `lib_load_paths` config option influences where the verifier searches for these interface files.
+The crate-level `rr::include` directive can be used to import these proof files (see the description in `SPEC_FORMAT.md`).
 
 ## Proof editing
 In order to interactively look at the generated code using a Coq plugin like Coqtail, VSCoq, or Proof General for the editor of your choice, you need to add a line pointing to the directory of the generated code in the `_CoqProject` file.
@@ -93,6 +99,7 @@ These include:
 | `verify_deps` | Boolean | Verify dependencies or not |
 | `admit_proofs` | Boolean | Skip Coq's `Qed` check and instead run `Admitted` |
 | `extra_specs` | Relative/absolute path | File whose contents will be inlined at the end of the generated specs file |
+| `lib_load_paths` | Array of relative/absolute paths to directories | Search these paths (recursively) for RefinedRust libraries |
 
 The path to the config file can also be specified via the environment variable `RR_CONFIG`.
 Setting this variable will also change the `work_dir` (relative to which paths are interpreted) to the path of `RR_CONFIG`.

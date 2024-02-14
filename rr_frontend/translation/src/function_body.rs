@@ -320,8 +320,8 @@ impl<'a, 'def : 'a, 'tcx : 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // add generic args to the fn
                 let generics = ty_translator.generic_scope.borrow();
                 for t in generics.iter() {
-                    if let Some(t) = t {
-                        translated_fn.add_generic_type(&t);
+                    if let Some(ref t) = t {
+                        translated_fn.add_generic_type(t.clone());
                     }
                 }
 
@@ -388,19 +388,20 @@ impl<'a, 'def : 'a, 'tcx : 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let generic_env = &*self.ty_translator.generic_scope.borrow();
         for arg in inputs.iter() {
             let mut translated: radium::Type<'def> = self.ty_translator.translate_type(arg)?;
-            translated.subst(generic_env.as_slice());
+            translated.subst_params(generic_env.as_slice());
             translated_arg_types.push(translated);
         }
         let mut translated_ret_type: radium::Type<'def> = self.ty_translator.translate_type(output)?;
-        translated_ret_type.subst(generic_env.as_slice());
+        translated_ret_type.subst_params(generic_env.as_slice());
         info!("translated function type: {:?} → {}", translated_arg_types, translated_ret_type);
-
-        let rfnty_scope = self.ty_translator.rfnty_scope.borrow();
 
         let parser = rrconfig::attribute_parser();
         match parser.as_str() {
             "verbose" => {
-                let mut parser: VerboseFunctionSpecParser<'_, 'def> = VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, &rfnty_scope);
+                let ty_translator = &self.ty_translator;
+                let mut parser: VerboseFunctionSpecParser<'_, 'def, _> =
+                    VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type,
+                                                   |lit| ty_translator.intern_literal(lit));
                 parser.parse_function_spec(v.as_slice(), &mut self.translated_fn).map_err(|e| TranslationError::AttributeError(e))?;
                 Ok(())
             },
@@ -527,9 +528,9 @@ impl<'a, 'def : 'a, 'tcx : 'def> FunctionTranslator<'a, 'def, 'tcx> {
             }
 
             // type:
-            let tr_ty = self.ty_translator.translate_type(ty)?;
-            let mut st = tr_ty.get_syn_type();
-            st.subst(self.ty_translator.synty_scope.borrow().as_ref());
+            let mut tr_ty = self.ty_translator.translate_type(ty)?;
+            tr_ty.subst_params(&self.ty_translator.generic_scope.borrow());
+            let st = tr_ty.get_syn_type();
 
             let name = Self::make_local_name(body, &local);
             radium_name_map.insert(local, name.to_string());
@@ -693,8 +694,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
             let scope = self.ty_translator.generic_scope.borrow();
             for g in scope.iter() {
                 if let Some(ty) = g {
-                    let synty = ty.get_syn_type();
-                    self.translated_fn.assume_synty_layoutable(synty);
+                    self.translated_fn.assume_synty_layoutable(radium::SynType::Literal(ty.syn_type.clone()));
                 }
             }
         }
@@ -704,6 +704,10 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
         // assume that all used enums are layoutable
         for (_, g) in self.ty_translator.enum_uses.borrow().iter() {
+            self.translated_fn.assume_synty_layoutable(g.generate_syn_type_term());
+        }
+        // assume that all used shims are layoutable
+        for (_, g) in self.ty_translator.shim_uses.borrow().iter() {
             self.translated_fn.assume_synty_layoutable(g.generate_syn_type_term());
         }
         // assume that all used tuples are layoutable
@@ -819,7 +823,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 let mut translated_ty = self.ty_translator.translate_type(p)?;
                 // we need to substitute in the variables according to the function scope
-                translated_ty.subst(generic_env.as_slice());
+                translated_ty.subst_params(generic_env.as_slice());
 
                 translated_params.push(translated_ty);
             }
@@ -1024,8 +1028,7 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
         // get locals
         for (_l, name, ty) in self.fn_locals.iter() {
             // get the refinement type
-            let rfnty_scope = self.ty_translator.rfnty_scope.borrow();
-            let mut rfn_ty = ty.get_rfn_type(&rfnty_scope);
+            let mut rfn_ty = ty.get_rfn_type(&[]);
             // wrap it in place_rfn, since we reason about places
             rfn_ty = radium::CoqType::PlaceRfn(Box::new(rfn_ty));
 
@@ -2678,12 +2681,16 @@ impl<'a, 'def : 'a, 'tcx : 'def> BodyTranslator<'a, 'def, 'tcx> {
                 },
                 ProjectionElem::Field(f, _) => {
                     // `t` is the type of the field we are accessing!
-                    let struct_use = self.ty_translator.generate_structlike_use(&cur_ty.ty, cur_ty.variant_index, None)?;
-                    let struct_sls = struct_use.generate_struct_layout_spec_term();
+                    let ty = self.ty_translator.generate_structlike_use(&cur_ty.ty, cur_ty.variant_index, None)?;
+                    if let radium::Type::Struct(su) = ty {
+                        let struct_sls = su.generate_struct_layout_spec_term();
+                        let name = self.ty_translator.get_field_name_of(f, cur_ty.ty, cur_ty.variant_index.map(|a| a.as_usize()))?;
 
-                    let name = self.ty_translator.get_field_name_of(f, cur_ty.ty, cur_ty.variant_index.map(|a| a.as_usize()))?;
-
-                    acc_expr = radium::Expr::FieldOf { e: Box::new(acc_expr), name, sls: struct_sls};
+                        acc_expr = radium::Expr::FieldOf { e: Box::new(acc_expr), name, sls: struct_sls};
+                    }
+                    else {
+                        return Err(TranslationError::UnknownError(format!("trying to access field of ADT {:?} for which a shim has been registered", cur_ty.ty)));
+                    }
                 },
                 ProjectionElem::Index(_v) => {
                     //TODO

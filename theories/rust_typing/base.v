@@ -28,6 +28,11 @@ Definition lftE : coPset := ↑lftN.
 Definition timeE : coPset := ↑timeN.
 Definition shrE : coPset := ↑shrN.
 
+Definition unitt : Type := unit.
+Definition ttt : unitt := tt.
+Notation "()" := ttt.
+Notation "()" := unitt : type_scope.
+
 Create HintDb refinedc_typing.
 
 Ltac solve_typing :=

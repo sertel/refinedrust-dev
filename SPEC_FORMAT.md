@@ -36,7 +36,7 @@ Finally, the `returns` clause specifies a refinement (and optionally, a type) fo
 | `requires` | specify a precondition | multiple | `#[rr:requires("i > 42")]` |
 | `ensures` | specify a postcondition | multiple | `#[rr::ensures("x > y")]` |
 | `exists`  | specify an existential for the postcondition | multiple | `#[rr::exists("x" : "Z")]` |
-| `observe` | shortcut for specifying observations on ghost variables | single | `#[rr::observe("γ": "x + 2")]` | 
+| `observe` | shortcut for specifying observations on ghost variables | single | `#[rr::observe("γ": "x + 2")]` |
 
 There are further attributes that influence the proof-checking behaviour:
 | Keyword   | Purpose                      | Properties | Example                          |
@@ -44,6 +44,16 @@ There are further attributes that influence the proof-checking behaviour:
 | `trust_me`  | generate and type-check the specification and code, but do not generate a proof | none   | `#[rr::trust_me]` |
 | `only_spec`  | only generate and type-check the specification, but do not generate the code | none   | `#[rr::only_spec]` |
 | `skip`  | ignore annotations on this function completely | none   | `#[rr::skip]` |
+| `export_as` | influence the exported path in the generated RefinedRust library interface for import in other proofs | a Rust path | `#[rr::export_as(std::vec::Vec::push)]` |
+
+## Impl attributes
+The following attributes are also available on impls and then influence all functions contained in them:
+| Keyword   | Purpose                      | Properties | Example                          |
+|-----------|------------------------------|------------|----------------------------------|
+| `export_as` | influence the exported paths in the generated RefinedRust library interface for import in other proofs | a Rust path | `#[rr::export_as(std::vec::Vec)]` |
+| `trust_me`  | generate and type-check the specifications and code, but do not generate proofs | none   | `#[rr::trust_me]` |
+| `only_spec`  | only generate and type-check the specifications, but do not generate the code | none   | `#[rr::only_spec]` |
+| `skip`  | ignore this block completely | none   | `#[rr::skip]` |
 
 
 ## Struct attributes
@@ -54,6 +64,7 @@ There are further attributes that influence the proof-checking behaviour:
 | `invariant` | Specify an invariant on the struct type | multiple | `#[rr::invariant("#type "l" : "x" @ "int i32")]` |
 | `refines` | Optionally specify the refinement of the raw struct type (can only be used when no refinements are specified via `field` attributes on the struct's fields) | single | `#[rr::refines("-[a; b]")]` |
 | `mode`  | Specifies the sharing mode of the defined type: either `plain` (the default, invariants are shared on a best-effort basis for the sharing invariant) or `persistent` (all invariants need to be shareable) | `#[rr::mode("plain")]` |
+| `export_as` | influence the exported path in the generated RefinedRust library interface for import in other proofs | a Rust path | `#[rr::export_as(std::vec::Vec)]` |
 
 Invariants on structs can be prefixed by `#own` or `#shr` to only include the invariant in the struct's ownership or sharing predicate, respectively, e.g.: `#[rr::invariant(#own "freeable l len")]`.
 
@@ -82,14 +93,18 @@ enum option<T> {
 }
 ```
 
+In addition, enums also support the `export_as` attribute (same as structs).
+
 ## Module attributes
 Inside a module, the following mod-level attributes can be specified:
 - `#![rr::import("A.B.C", "D")]`: imports the file `D` from logical Coq path `A.B.C` in all spec and proof files
+- `#![rr::include("vec")]`: imports the RefinedRust library `vec` from the loadpath
 
 ## Crate attributes
 Inside a crate, the following crate-level attributes can be specified:
 - `#![rr::coq_prefix("A.B.C")]`: puts the generated files under the logical Coq path `A.B.C`
 - `#![rr::import("A.B.C", "D")]`: imports the file `D` from logical Coq path `A.B.C` in all spec and proof files
+- `#![rr::include("vec")]`: imports the RefinedRust library `vec` from the loadpath
 
 ## RefinedRust propositions
 For propositional specifications, as appearing in `#[rr::requires("P")]`, `#[rr::ensures("P")]`, and `#[rr::invariant("P")]`, specific notational shortcuts are supported.
