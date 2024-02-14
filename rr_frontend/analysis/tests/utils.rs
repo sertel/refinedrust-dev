@@ -1,26 +1,14 @@
 use std::path::PathBuf;
 
 pub fn find_compiled_executable(name: &str) -> PathBuf {
-    let target_directory = if cfg!(debug_assertions) {
-        "debug"
-    } else {
-        "release"
-    };
-    let executable_name = if cfg!(windows) {
-        format!("{}.exe", name)
-    } else {
-        name.to_string()
-    };
-    let local_driver_path: PathBuf = ["target", target_directory, executable_name.as_str()]
-        .iter()
-        .collect();
+    let target_directory = if cfg!(debug_assertions) { "debug" } else { "release" };
+    let executable_name = if cfg!(windows) { format!("{}.exe", name) } else { name.to_string() };
+    let local_driver_path: PathBuf = ["target", target_directory, executable_name.as_str()].iter().collect();
     if local_driver_path.exists() {
         return local_driver_path;
     }
     let workspace_driver_path: PathBuf =
-        ["..", "target", target_directory, executable_name.as_str()]
-            .iter()
-            .collect();
+        ["..", "target", target_directory, executable_name.as_str()].iter().collect();
     if workspace_driver_path.exists() {
         return workspace_driver_path;
     }

@@ -4,13 +4,14 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    domains::DefinitelyAccessibleState,
-    mir_utils::{is_prefix, Place},
-};
-use rr_rustc_interface::data_structures::fx::FxHashSet;
-use serde::{ser::SerializeMap, Serialize, Serializer};
 use std::fmt;
+
+use rr_rustc_interface::data_structures::fx::FxHashSet;
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
+
+use crate::domains::DefinitelyAccessibleState;
+use crate::mir_utils::{is_prefix, Place};
 
 #[derive(Clone, Default, Eq, PartialEq)]
 pub struct FramingState<'tcx> {
@@ -46,7 +47,8 @@ impl<'tcx> FramingState<'tcx> {
         }
         for &owned_place in self.framed_accessible.iter() {
             debug_assert!(
-                accessibility.get_definitely_accessible()
+                accessibility
+                    .get_definitely_accessible()
                     .iter()
                     .any(|&place| place == owned_place || is_prefix(owned_place, place)),
                 "In the state before {:?} the place {:?} is not accessible, but it is framed as accessible",

@@ -6,17 +6,12 @@
 
 /// Provides the Coq AST for code and specifications as well as utilities for
 /// constructing them.
-
-use std::collections::{HashSet, HashMap};
-use std::fmt;
-use std::io;
-
+use std::collections::{HashMap, HashSet};
+use std::fmt::{Display, Formatter, Write as fWrite};
 use std::io::Write;
-use std::fmt::Write as fWrite;
+use std::{fmt, io};
 
-use std::fmt::{Formatter, Display};
 use indent_write::io::IndentWriter;
-
 use log::info;
 
 use crate::specs::*;
@@ -26,7 +21,9 @@ fn make_indent(i: usize) -> String {
 }
 
 fn fmt_list<H>(f: &mut Formatter<'_>, elems: H, sep: &str, wrap: &str) -> fmt::Result
-        where H: IntoIterator, H::Item: Display
+where
+    H: IntoIterator,
+    H::Item: Display,
 {
     let mut needs_sep = false;
     for e in elems.into_iter() {
@@ -40,14 +37,14 @@ fn fmt_list<H>(f: &mut Formatter<'_>, elems: H, sep: &str, wrap: &str) -> fmt::R
 }
 
 fn fmt_option<H>(f: &mut Formatter<'_>, o: &Option<H>) -> fmt::Result
-        where H: Display
+where
+    H: Display,
 {
     match o {
         Some(h) => write!(f, "Some ({})", h),
         None => write!(f, "None"),
     }
 }
-
 
 /// A representation of syntactic Rust types that we can use in annotations for the RefinedRust
 /// type system.
@@ -107,13 +104,13 @@ impl Display for RustType {
             },
             Self::Array(len, ty) => {
                 write!(f, "RSTArray {} ({})", len, ty)
-            }
+            },
         }
     }
 }
 
 impl RustType {
-    pub fn of_type<'def>(ty: &Type<'def>, env: &[Option<LiteralTyParam>]) -> Self{
+    pub fn of_type<'def>(ty: &Type<'def>, env: &[Option<LiteralTyParam>]) -> Self {
         info!("Translating rustType: {:?}", ty);
         match ty {
             Type::Var(var) => {
@@ -131,7 +128,7 @@ impl RustType {
             Type::ShrRef(ty, lft) => {
                 let ty = Self::of_type(ty, env);
                 Self::ShrRef(Box::new(ty), lft.clone())
-            }
+            },
             Type::BoxType(ty) => {
                 let ty = Self::of_type(ty, env);
                 Self::PrimBox(Box::new(ty))
@@ -140,13 +137,17 @@ impl RustType {
                 let is_raw = as_use.is_raw();
                 if let Some(def) = as_use.def {
                     // translate type parameter instantiations
-                    let typarams: Vec<_> = as_use.ty_params.iter().map(|ty| RustType::of_type(ty, env)).collect();
+                    let typarams: Vec<_> =
+                        as_use.ty_params.iter().map(|ty| RustType::of_type(ty, env)).collect();
                     let def = def.borrow();
                     let def = def.as_ref().unwrap();
-                    let ty_name = if is_raw { def.plain_ty_name().to_string() } else { def.public_type_name().to_string() };
+                    let ty_name = if is_raw {
+                        def.plain_ty_name().to_string()
+                    } else {
+                        def.public_type_name().to_string()
+                    };
                     Self::Lit(vec![ty_name], typarams)
-                }
-                else {
+                } else {
                     Self::Unit
                 }
             },
@@ -155,11 +156,8 @@ impl RustType {
                 let def = ae_use.def.borrow();
                 let def = def.as_ref().unwrap();
                 Self::Lit(vec![def.public_type_name().to_string()], typarams)
-
             },
-            Type::LiteralParam(lit) => {
-                Self::TyVar(lit.rust_name.clone())
-            },
+            Type::LiteralParam(lit) => Self::TyVar(lit.rust_name.clone()),
             Type::Literal(lit) => {
                 let typarams: Vec<_> = lit.params.iter().map(|ty| RustType::of_type(ty, env)).collect();
                 Self::Lit(vec![lit.def.type_term.clone()], typarams)
@@ -167,19 +165,14 @@ impl RustType {
             Type::Uninit(_) => {
                 panic!("RustType::of_type: uninit is not a Rust type");
             },
-            Type::Unit => {
-                Self::Unit
-            },
+            Type::Unit => Self::Unit,
             Type::Never => {
                 panic!("RustType::of_type: cannot translate Never type");
             },
-            Type::RawPtr => {
-                Self::Lit(vec!["alias_ptr_t".to_string()], vec![])
-            },
+            Type::RawPtr => Self::Lit(vec!["alias_ptr_t".to_string()], vec![]),
         }
     }
 }
-
 
 /**
  * Caesium literals.
@@ -207,9 +200,7 @@ pub enum Literal {
 
 impl Display for Literal {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut format_int = |i: String, it: IntType| {
-            write!(f, "I2v ({}) {}", i.as_str(), it)
-        };
+        let mut format_int = |i: String, it: IntType| write!(f, "I2v ({}) {}", i.as_str(), it);
         match self {
             Self::LitI8(i) => format_int(i.to_string(), IntType::I8),
             Self::LitI16(i) => format_int(i.to_string(), IntType::I16),
@@ -236,52 +227,52 @@ pub enum Expr {
     /// a Coq-level parameter with a given Coq name
     MetaParam(String),
     Literal(Literal),
-    UnOp{
-        o : Unop,
-        ot : OpType,
-        e : Box<Expr>,
+    UnOp {
+        o: Unop,
+        ot: OpType,
+        e: Box<Expr>,
     },
-    BinOp{
-        o : Binop,
+    BinOp {
+        o: Binop,
         ot1: OpType,
         ot2: OpType,
         e1: Box<Expr>,
         e2: Box<Expr>,
     },
     // dereference an lvalue
-    Deref{
-        ot : OpType,
-        e : Box<Expr>,
+    Deref {
+        ot: OpType,
+        e: Box<Expr>,
     },
     // lvalue to rvalue conversion
-    Use{
+    Use {
         ot: OpType,
-        e : Box<Expr>,
+        e: Box<Expr>,
     },
     // the borrow-operator to get a reference
-    Borrow{
+    Borrow {
         lft: Lft,
         bk: BorKind,
         ty: Option<RustType>,
-        e : Box<Expr>,
+        e: Box<Expr>,
     },
     // the address-of operator to get a raw pointer
-    AddressOf{
+    AddressOf {
         mt: Mutability,
         e: Box<Expr>,
     },
-    Call{
-        f : Box<Expr>,
+    Call {
+        f: Box<Expr>,
         lfts: Vec<Lft>,
         args: Vec<Expr>,
     },
-    If{
+    If {
         ot: OpType,
         e1: Box<Expr>,
         e2: Box<Expr>,
-        e3: Box<Expr>
+        e3: Box<Expr>,
     },
-    FieldOf{
+    FieldOf {
         e: Box<Expr>,
         sls: String,
         name: String,
@@ -289,7 +280,7 @@ pub enum Expr {
     /// an annotated expression
     Annot {
         a: Annotation,
-        e: Box<Expr>
+        e: Box<Expr>,
     },
     StructInitE {
         sls: CoqAppTerm<String>,
@@ -307,14 +298,14 @@ pub enum Expr {
     /// access the discriminant of an enum
     EnumDiscriminant {
         els: String,
-        e: Box<Expr>
+        e: Box<Expr>,
     },
     /// access to the data of an enum
     EnumData {
         els: String,
         variant: String,
         e: Box<Expr>,
-    }
+    },
 }
 
 impl Display for Expr {
@@ -323,41 +314,47 @@ impl Display for Expr {
             Self::Var(var) => write!(f, "\"{}\"", var),
             Self::MetaParam(param) => write!(f, "{}", param),
             Self::Literal(lit) => lit.fmt(f),
-            Self::Use {ot, e} => {
+            Self::Use { ot, e } => {
                 write!(f, "use{{ {} }} ({})", ot, e)
             },
-            Self::Call{f: fe, lfts, args} => {
+            Self::Call { f: fe, lfts, args } => {
                 write!(f, "CallE {} [", fe.as_ref())?;
                 fmt_list(f, lfts, "; ", "\"")?;
                 write!(f, "] [@{{expr}} ")?;
                 fmt_list(f, args, "; ", "")?;
                 write!(f, "]")
             },
-            Self::Deref{ot, e} => {
+            Self::Deref { ot, e } => {
                 write!(f, "!{{ {} }} ( {} )", ot, e)
             },
-            Self::Borrow{lft, bk, ty, e} => {
+            Self::Borrow { lft, bk, ty, e } => {
                 let formatted_bk = bk.caesium_fmt();
                 write!(f, "&ref{{ {}, ", formatted_bk)?;
                 fmt_option(f, ty)?;
                 write!(f, ", \"{}\" }} ({})", lft, e)
             },
-            Self::AddressOf{mt, e} => {
+            Self::AddressOf { mt, e } => {
                 let formatted_mt = mt.caesium_fmt();
                 write!(f, "&raw{{ {} }} ({})", formatted_mt, e)
             },
-            Self::BinOp{o, ot1, ot2, e1, e2} => {
+            Self::BinOp {
+                o,
+                ot1,
+                ot2,
+                e1,
+                e2,
+            } => {
                 let formatted_o = o.caesium_fmt(ot1, ot2);
                 write!(f, "({}) {} ({})", e1, formatted_o.as_str(), e2)
             },
             Self::UnOp { o, ot, e } => {
                 write!(f, "UnOp ({o}) ({ot}) ({e})")
             },
-            Self::FieldOf{e, sls, name} => {
+            Self::FieldOf { e, sls, name } => {
                 //let formatted_ly = ly.caesium_fmt();
                 write!(f, "({}) at{{ {} }} \"{}\"", e, sls, name)
             },
-            Self::Annot{a, e} => {
+            Self::Annot { a, e } => {
                 write!(f, "AnnotExpr {} ({}) ({})", a.needs_laters(), a, e)
             },
             Self::BoxE(ly) => {
@@ -365,7 +362,7 @@ impl Display for Expr {
             },
             Self::DropE(e) => {
                 write!(f, "AnnotExpr 0 DropAnnot ({})", e)
-            }
+            },
             Self::StructInitE { sls, components } => {
                 write!(f, "StructInit {} [", sls)?;
                 let mut needs_sep = false;
@@ -378,7 +375,12 @@ impl Display for Expr {
                 }
                 write!(f, "]")
             },
-            Self::EnumInitE { els, variant, ty, initializer } => {
+            Self::EnumInitE {
+                els,
+                variant,
+                ty,
+                initializer,
+            } => {
                 write!(f, "EnumInit {} \"{}\" ({}) ({})", els, variant, ty, initializer)
             },
             Self::EnumDiscriminant { els, e } => {
@@ -438,12 +440,12 @@ impl fmt::Display for LftNameTree {
         match self {
             Self::Leaf => {
                 write!(f, "LftNameTreeLeaf")
-            }
+            },
             Self::Ref(lft, t) => {
                 write!(f, "LftNameTreeRef \"{}\" (", lft)?;
                 t.fmt(f)?;
                 write!(f, ")")
-            }
+            },
         }
     }
 }
@@ -471,7 +473,7 @@ pub enum Annotation {
     EnterLoop,
 }
 impl fmt::Display for Annotation {
-    fn fmt(&self, f : &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::StartLft(l, sup) => {
                 write!(f, "StartLftAnnot \"{}\" [", l)?;
@@ -511,7 +513,7 @@ impl fmt::Display for Annotation {
 impl Annotation {
     pub(crate) fn needs_laters(&self) -> u32 {
         match self {
-            Self::ShortenLft{..} => 0,
+            Self::ShortenLft { .. } => 0,
             _ => 0,
         }
     }
@@ -522,36 +524,36 @@ type BlockLabel = String;
 pub enum Stmt {
     GotoBlock(BlockLabel),
     Return(Expr),
-    If{
+    If {
         ot: OpType,
         e: Expr,
         s1: Box<Stmt>,
         s2: Box<Stmt>,
     },
-    Switch{
+    Switch {
         // e needs to evaluate to an integer/variant index used as index to bs
-        e : Expr,
+        e: Expr,
         it: IntType,
         index_map: HashMap<u128, usize>,
         bs: Vec<Stmt>,
         def: Box<Stmt>,
     },
-    Assign{
+    Assign {
         ot: OpType,
         e1: Expr,
         e2: Expr,
         s: Box<Stmt>,
     },
-    ExprS{
+    ExprS {
         e: Expr,
         s: Box<Stmt>,
     },
-    AssertS{
+    AssertS {
         e: Expr,
         s: Box<Stmt>,
     },
-    Annot{
-        a : Annotation,
+    Annot {
+        a: Annotation,
         s: Box<Stmt>,
     },
     Stuck,
@@ -568,23 +570,29 @@ impl Stmt {
             Stmt::Return(e) => {
                 format!("{ind}return ({})", e)
             },
-            Stmt::Assign{ot, e1, e2, s} => {
+            Stmt::Assign { ot, e1, e2, s } => {
                 let formatted_s = s.caesium_fmt(indent);
 
                 format!("{ind}{} <-{{ {} }} {};\n{}", e1, ot, e2, formatted_s.as_str())
             },
-            Stmt::ExprS{e, s} => {
+            Stmt::ExprS { e, s } => {
                 let formatted_s = s.caesium_fmt(indent);
                 format!("{ind}expr: {};\n{}", e, formatted_s.as_str())
             },
-            Stmt::Annot{a, s} => {
+            Stmt::Annot { a, s } => {
                 let formatted_s = s.caesium_fmt(indent);
                 format!("{ind}annot: {};\n{}", a, formatted_s.as_str())
             },
-            Stmt::If{ot, e, s1, s2} => {
-                let formatted_s1 = s1.caesium_fmt(indent+1);
-                let formatted_s2 = s2.caesium_fmt(indent+1);
-                format!("{ind}if{{ {} }}: {} then\n{}\n{ind}else\n{}", ot, e, formatted_s1.as_str(), formatted_s2.as_str())
+            Stmt::If { ot, e, s1, s2 } => {
+                let formatted_s1 = s1.caesium_fmt(indent + 1);
+                let formatted_s2 = s2.caesium_fmt(indent + 1);
+                format!(
+                    "{ind}if{{ {} }}: {} then\n{}\n{ind}else\n{}",
+                    ot,
+                    e,
+                    formatted_s1.as_str(),
+                    formatted_s2.as_str()
+                )
             },
             Stmt::AssertS { e, s } => {
                 let formatted_s = s.caesium_fmt(indent);
@@ -593,7 +601,13 @@ impl Stmt {
             Stmt::Stuck => {
                 format!("{ind}StuckS")
             },
-            Stmt::Switch { e, it, index_map, bs, def } => {
+            Stmt::Switch {
+                e,
+                it,
+                index_map,
+                bs,
+                def,
+            } => {
                 let mut fmt_index_map = String::with_capacity(100);
                 for (k, v) in index_map.iter() {
                     write!(fmt_index_map, "<[ {k}%Z := {v}%nat ]> $ ").unwrap();
@@ -614,7 +628,9 @@ impl Stmt {
 
                 let fmt_default = def.caesium_fmt(0);
 
-                format!("{ind}Switch ({it} : int_type) ({e}) ({fmt_index_map}) ({fmt_targets}) ({fmt_default})")
+                format!(
+                    "{ind}Switch ({it} : int_type) ({e}) ({fmt_index_map}) ({fmt_targets}) ({fmt_default})"
+                )
             },
         }
     }
@@ -671,9 +687,8 @@ pub enum Binop {
 }
 impl Binop {
     fn caesium_fmt(&self, ot1: &OpType, ot2: &OpType) -> String {
-        let format_prim = |st:&str| format!("{} {} , {} }}", st, ot1, ot2);
-        let format_bool = |st:&str| format!("{} {} , {} , {} }}", st, ot1, ot2, BOOL_REPR);
-
+        let format_prim = |st: &str| format!("{} {} , {} }}", st, ot1, ot2);
+        let format_bool = |st: &str| format!("{} {} , {} , {} }}", st, ot1, ot2, BOOL_REPR);
 
         match self {
             Self::AddOp => format_prim("+{"),
@@ -703,7 +718,6 @@ impl Binop {
         }
     }
 }
-
 
 /// Representation of a Caesium function's source code
 pub struct FunctionCode {
@@ -738,6 +752,7 @@ fn make_lft_map_string(els: Vec<(String, String)>) -> String {
 
 impl FunctionCode {
     const INITIAL_BB: &'static str = "_bb0";
+
     pub fn caesium_fmt(&self) -> String {
         // format args
         let format_stack_layout = |layout: std::slice::Iter<'_, (String, SynType)>| {
@@ -761,19 +776,35 @@ impl FunctionCode {
         };
 
         let mut formatted_args = String::with_capacity(100);
-        formatted_args.push_str(format!("{}f_args := {}", make_indent(1), format_stack_layout(self.stack_layout.iter_args()).as_str()).as_str());
+        formatted_args.push_str(
+            format!(
+                "{}f_args := {}",
+                make_indent(1),
+                format_stack_layout(self.stack_layout.iter_args()).as_str()
+            )
+            .as_str(),
+        );
 
         let mut formatted_locals = String::with_capacity(100);
-        formatted_locals.push_str(format!("{}f_local_vars := {}", make_indent(1), format_stack_layout(self.stack_layout.iter_locals()).as_str()).as_str());
+        formatted_locals.push_str(
+            format!(
+                "{}f_local_vars := {}",
+                make_indent(1),
+                format_stack_layout(self.stack_layout.iter_locals()).as_str()
+            )
+            .as_str(),
+        );
 
-        let formatted_bb = make_map_string("\n", format!("\n{}", make_indent(2).as_str()).as_str(),
-            self.basic_blocks.iter().map(|(name, bb)| (name.to_string(), bb.caesium_fmt(3))).collect());
+        let formatted_bb = make_map_string(
+            "\n",
+            format!("\n{}", make_indent(2).as_str()).as_str(),
+            self.basic_blocks.iter().map(|(name, bb)| (name.to_string(), bb.caesium_fmt(3))).collect(),
+        );
 
         if self.basic_blocks.len() < 1 {
             panic!("Function has no basic block");
         }
         let formatted_init = format!("{}f_init := \"{}\"", make_indent(1).as_str(), Self::INITIAL_BB);
-
 
         // format Coq parameters
         let mut formatted_params = String::with_capacity(20);
@@ -781,14 +812,16 @@ impl FunctionCode {
             formatted_params.push_str(format!(" ({} : {})", name, ty).as_str());
         }
 
-        format!("Definition {}_def{} : function := {{|\n{};\n{};\n{}f_code := {};\n{};\n|}}.",
-                self.name.as_str(),
-                formatted_params.as_str(),
-                formatted_args.as_str(),
-                formatted_locals.as_str(),
-                make_indent(1).as_str(),
-                formatted_bb.as_str(),
-                formatted_init.as_str())
+        format!(
+            "Definition {}_def{} : function := {{|\n{};\n{};\n{}f_code := {};\n{};\n|}}.",
+            self.name.as_str(),
+            formatted_params.as_str(),
+            formatted_args.as_str(),
+            formatted_locals.as_str(),
+            make_indent(1).as_str(),
+            formatted_bb.as_str(),
+            formatted_init.as_str()
+        )
     }
 
     /// Get the number of arguments of the function.
@@ -797,13 +830,12 @@ impl FunctionCode {
     }
 }
 
-
 /**
  * Maintain necessary info to map MIR places to Caesium stack variables.
  */
 pub struct StackMap {
-    arg_map : Vec<(String, SynType)>,
-    local_map : Vec<(String, SynType)>,
+    arg_map: Vec<(String, SynType)>,
+    local_map: Vec<(String, SynType)>,
     used_names: HashSet<String>,
 }
 
@@ -812,7 +844,6 @@ impl StackMap {
         let local_map = Vec::new();
         let arg_map = Vec::new();
         let names = HashSet::new();
-
 
         StackMap {
             arg_map,
@@ -823,17 +854,16 @@ impl StackMap {
 
     pub fn insert_local(&mut self, name: String, st: SynType) -> bool {
         if self.used_names.contains(&name) {
-            return false
+            return false;
         }
         self.used_names.insert(name.to_string());
         self.local_map.push((name, st));
         true
     }
 
-
     pub fn insert_arg(&mut self, name: String, st: SynType) -> bool {
         if self.used_names.contains(&name) {
-            return false
+            return false;
         }
         self.used_names.insert(name.to_string());
         self.arg_map.push((name, st));
@@ -842,7 +872,7 @@ impl StackMap {
 
     pub fn lookup_binding(&self, name: &str) -> Option<&SynType> {
         if !self.used_names.contains(name) {
-            return None
+            return None;
         }
         for (nm, st) in &self.local_map {
             if nm == name {
@@ -872,9 +902,7 @@ pub struct FunctionCodeBuilder {
     basic_blocks: HashMap<String, Stmt>,
 }
 
-
 impl FunctionCodeBuilder {
-
     pub fn new() -> FunctionCodeBuilder {
         FunctionCodeBuilder {
             stack_layout: StackMap::new(),
@@ -920,7 +948,6 @@ impl Display for InvariantMap {
     }
 }
 
-
 /// A Caesium function bundles up the Caesium code itself as well as the generated specification
 /// for it.
 pub struct Function<'def> {
@@ -946,9 +973,9 @@ impl<'def> Function<'def> {
         &self.code.name
     }
 
-
     pub fn generate_lemma_statement<F>(&self, f: &mut F) -> Result<(), io::Error>
-        where F: io::Write
+    where
+        F: io::Write,
     {
         // indent
         let mut writer = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
@@ -962,8 +989,7 @@ impl<'def> Function<'def> {
             for (n, ty, imp) in self.spec.coq_params.iter() {
                 if !imp {
                     write!(f, "({n} : {ty}) ")?;
-                }
-                else {
+                } else {
                     write!(f, "`({ty}) ")?;
                 }
             }
@@ -975,7 +1001,6 @@ impl<'def> Function<'def> {
             writeln!(f, ", ")?;
         }
 
-
         // assume Coq assumptions
         for st in self.layoutable_syntys.iter() {
             write!(f, "syn_type_is_layoutable ({}) →\n", st)?;
@@ -984,11 +1009,11 @@ impl<'def> Function<'def> {
         // write iris assums
         if self.other_functions.len() == 0 {
             write!(f, "⊢ ")?;
-        }
-        else {
+        } else {
             for (loc_name, spec_name, param_insts, sts) in self.other_functions.iter() {
                 info!("Using other function: {:?} with insts: {:?}", spec_name, param_insts);
-                // generate an instantiation for the generic type arguments, by getting the refinement types which need to be passed at the Coq level
+                // generate an instantiation for the generic type arguments, by getting the refinement types
+                // which need to be passed at the Coq level
                 let mut gen_rfn_type_inst = Vec::new();
                 for p in param_insts.iter() {
                     // use an empty env, these should be closed in the current environment
@@ -999,8 +1024,15 @@ impl<'def> Function<'def> {
                 }
                 let arg_syntys: Vec<String> = sts.iter().map(|st| st.to_string()).collect();
 
-                write!(f, "{} ◁ᵥ{{π}} {} @ function_ptr [{}] ({} {}) -∗\n",
-                    loc_name, loc_name, arg_syntys.join("; "), spec_name, gen_rfn_type_inst.join(" "))?;
+                write!(
+                    f,
+                    "{} ◁ᵥ{{π}} {} @ function_ptr [{}] ({} {}) -∗\n",
+                    loc_name,
+                    loc_name,
+                    arg_syntys.join("; "),
+                    spec_name,
+                    gen_rfn_type_inst.join(" ")
+                )?;
             }
         }
 
@@ -1038,7 +1070,8 @@ impl<'def> Function<'def> {
     }
 
     pub fn generate_proof_prelude<F>(&self, f: &mut F) -> Result<(), io::Error>
-        where F: io::Write
+    where
+        F: io::Write,
     {
         // indent
         let mut writer = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
@@ -1055,8 +1088,7 @@ impl<'def> Function<'def> {
             for (n, _, imp) in self.spec.coq_params.iter() {
                 if !imp {
                     write!(f, " {n}")?;
-                }
-                else {
+                } else {
                     write!(f, " ?")?;
                 }
             }
@@ -1072,7 +1104,7 @@ impl<'def> Function<'def> {
         let ty_params = &self.spec.ty_params;
         if !params.is_empty() || !ty_params.is_empty() {
             // product is left-associative
-            for _ in 0 .. (params.len() + ty_params.len() - 1) {
+            for _ in 0..(params.len() + ty_params.len() - 1) {
                 ip_params.push_str("[ ");
             }
 
@@ -1092,8 +1124,7 @@ impl<'def> Function<'def> {
             if p_count > 1 {
                 ip_params.push_str(" ]");
             }
-        }
-        else {
+        } else {
             // no params, but still need to provide something to catch the unit
             // (and no empty intropatterns are allowed)
             ip_params.push_str("?");
@@ -1111,7 +1142,13 @@ impl<'def> Function<'def> {
             write!(f, "let {} := fresh \"{}\" in\n", lft, lft)?;
         }
 
-        write!(f, "start_function \"{}\" ( {} ) ( {} );\n", self.name(), lft_pattern.as_str(), ip_params.as_str())?;
+        write!(
+            f,
+            "start_function \"{}\" ( {} ) ( {} );\n",
+            self.name(),
+            lft_pattern.as_str(),
+            ip_params.as_str()
+        )?;
 
         write!(f, "set (loop_map := BB_INV_MAP {});\n", self.loop_invariants)?;
 
@@ -1133,20 +1170,26 @@ impl<'def> Function<'def> {
         write!(f, " );\n")?;
 
         // initialize lifetimes
-        let formatted_lifetimes = make_lft_map_string(self.spec.lifetimes.iter().map(|n| (n.to_string(), n.to_string())).collect());
+        let formatted_lifetimes =
+            make_lft_map_string(self.spec.lifetimes.iter().map(|n| (n.to_string(), n.to_string())).collect());
         write!(f, "init_lfts ({} );\n", formatted_lifetimes.as_str())?;
 
         // initialize tyvars
-        let formatted_tyvars =
-            make_map_string(" ", " ",
-                self.generic_types.iter().map(|names|
-                    (names.rust_name.to_string(), format!("existT _ ({})", names.type_term))).collect());
+        let formatted_tyvars = make_map_string(
+            " ",
+            " ",
+            self.generic_types
+                .iter()
+                .map(|names| (names.rust_name.to_string(), format!("existT _ ({})", names.type_term)))
+                .collect(),
+        );
 
         write!(f, "init_tyvars ({} ).\n", formatted_tyvars.as_str())
     }
 
     pub fn generate_proof<F>(&self, f: &mut F) -> Result<(), io::Error>
-        where F: io::Write
+    where
+        F: io::Write,
     {
         writeln!(f, "Lemma {}_proof (π : thread_id) :", self.name())?;
 
@@ -1175,8 +1218,7 @@ impl<'def> Function<'def> {
             for tac in self.manual_tactics.iter() {
                 if tac.starts_with("all:") {
                     write!(f, "{}\n", tac)?;
-                }
-                else {
+                } else {
                     write!(f, "{{ {} all: shelve. }}\n", tac)?;
                 }
             }
@@ -1186,8 +1228,7 @@ impl<'def> Function<'def> {
 
         if rrconfig::admit_proofs() {
             write!(f, "Admitted. (* admitted due to admit_proofs config flag *)\n")?;
-        }
-        else {
+        } else {
             write!(f, "Qed.\n")?;
         }
         Ok(())
@@ -1246,7 +1287,13 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Require another function to be available.
-    pub fn require_function(&mut self, loc_name: String, spec_name: String, params: Vec<Type<'def>>, syntypes: Vec<SynType>) {
+    pub fn require_function(
+        &mut self,
+        loc_name: String,
+        spec_name: String,
+        params: Vec<Type<'def>>,
+        syntypes: Vec<SynType>,
+    ) {
         self.other_functions.push((loc_name, spec_name, params, syntypes));
     }
 
@@ -1263,7 +1310,11 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Adds a universal lifetime constraint to the function.
-    pub fn add_universal_lifetime_constraint(&mut self, lft1: UniversalLft, lft2: UniversalLft) -> Result<(), String> {
+    pub fn add_universal_lifetime_constraint(
+        &mut self,
+        lft1: UniversalLft,
+        lft2: UniversalLft,
+    ) -> Result<(), String> {
         self.spec.add_lifetime_constraint(lft1, lft2)
     }
 
@@ -1306,10 +1357,25 @@ impl<'def> FunctionBuilder<'def> {
         for names in self.generic_types.iter() {
             // TODO(cleanup): this currently regenerates the names for ty + rt, instead of using
             // the existing names
-            self.spec.add_coq_param(CoqName::Named(names.refinement_type.to_string()), CoqType::Type, false).unwrap();
-            self.spec.add_coq_param(CoqName::Unnamed, CoqType::Literal(format!("Inhabited {}", names.refinement_type)), true).unwrap();
-            self.spec.add_coq_param(CoqName::Named(names.syn_type.to_string()), CoqType::SynType, false).unwrap();
-            self.spec.add_ty_param(CoqName::Named(names.type_term.clone()), CoqType::Ttype(Box::new (CoqType::Literal(names.refinement_type.clone())))).unwrap();
+            self.spec
+                .add_coq_param(CoqName::Named(names.refinement_type.to_string()), CoqType::Type, false)
+                .unwrap();
+            self.spec
+                .add_coq_param(
+                    CoqName::Unnamed,
+                    CoqType::Literal(format!("Inhabited {}", names.refinement_type)),
+                    true,
+                )
+                .unwrap();
+            self.spec
+                .add_coq_param(CoqName::Named(names.syn_type.to_string()), CoqType::SynType, false)
+                .unwrap();
+            self.spec
+                .add_ty_param(
+                    CoqName::Named(names.type_term.clone()),
+                    CoqType::Ttype(Box::new(CoqType::Literal(names.refinement_type.clone()))),
+                )
+                .unwrap();
 
             // Add assumptions that the syntactic type of the semantic argument matches with the
             // assumed syntactic type.
@@ -1329,16 +1395,21 @@ impl<'def> FunctionBuilder<'def> {
     }
 }
 
-
-
 impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
     fn into(mut self) -> Function<'def> {
-
         // generate location parameters for other functions used by this one.
-        let mut parameters: Vec<(CoqName, CoqType)> = self.other_functions.iter().map(|f_inst| (CoqName::Named(f_inst.0.to_string()), CoqType::Loc)).collect();
+        let mut parameters: Vec<(CoqName, CoqType)> = self
+            .other_functions
+            .iter()
+            .map(|f_inst| (CoqName::Named(f_inst.0.to_string()), CoqType::Loc))
+            .collect();
 
         // add generic syntype parameters for generics that this function uses.
-        let mut gen_st_parameters = self.generic_types.iter().map(|names| (CoqName::Named(names.syn_type.to_string()), CoqType::SynType)).collect();
+        let mut gen_st_parameters = self
+            .generic_types
+            .iter()
+            .map(|names| (CoqName::Named(names.syn_type.to_string()), CoqType::SynType))
+            .collect();
         parameters.append(&mut gen_st_parameters);
 
         self.add_generics_to_spec();
@@ -1352,7 +1423,8 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
         };
 
         Function {
-            code, spec,
+            code,
+            spec,
             generic_types: self.generic_types,
             other_functions: self.other_functions,
             layoutable_syntys: self.layoutable_syntys,

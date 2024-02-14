@@ -6,5 +6,5 @@
 
 //! This module defines various MIR analyses.
 
-pub mod initialization;
 pub mod allocation;
+pub mod initialization;

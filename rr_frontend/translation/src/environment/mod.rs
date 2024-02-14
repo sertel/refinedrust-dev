@@ -6,43 +6,45 @@
 
 //! This module defines the interface provided to a verifier.
 
-use rustc_middle::mir;
-use rustc_hir::hir_id::HirId;
-use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_middle::ty::{self, TyCtxt, ParamEnv};
-use rustc_trait_selection::infer::{TyCtxtInferExt, InferCtxtExt};
-use rustc_ast::ast::Attribute;
-use std::path::PathBuf;
-use rustc_span::{Span, symbol::Symbol};
-use std::collections::HashSet;
-use std::rc::Rc;
-use std::collections::HashMap;
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::rc::Rc;
+
+use rustc_ast::ast::Attribute;
+use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::hir_id::HirId;
+use rustc_middle::mir;
+use rustc_middle::ty::{self, ParamEnv, TyCtxt};
+use rustc_span::symbol::Symbol;
+use rustc_span::Span;
+use rustc_trait_selection::infer::{InferCtxtExt, TyCtxtInferExt};
 
 pub mod borrowck;
-mod collect_prusti_spec_visitor;
 mod collect_closure_defs_visitor;
+mod collect_prusti_spec_visitor;
 mod dump_borrowck_info;
 mod loops;
-pub mod mir_sets;
 pub mod mir_analyses;
+pub mod mir_sets;
 pub mod mir_storage;
 pub mod mir_utils;
 pub mod polonius_info;
 pub mod procedure;
 
-pub use self::dump_borrowck_info::dump_borrowck_info;
-use self::collect_prusti_spec_visitor::CollectPrustiSpecVisitor;
-use self::collect_closure_defs_visitor::CollectClosureDefsVisitor;
-pub use self::loops::{PlaceAccess, PlaceAccessKind, ProcedureLoops};
-pub use self::procedure::{BasicBlockIndex, Procedure};
-use self::borrowck::facts::BorrowckFacts;
-// use config;
-use crate::data::ProcedureDefId;
 // use syntax::codemap::CodeMap;
 // use syntax::codemap::Span;
 // use utils::get_attr_value;
 use rustc_span::source_map::SourceMap;
+
+use self::borrowck::facts::BorrowckFacts;
+use self::collect_closure_defs_visitor::CollectClosureDefsVisitor;
+use self::collect_prusti_spec_visitor::CollectPrustiSpecVisitor;
+pub use self::dump_borrowck_info::dump_borrowck_info;
+pub use self::loops::{PlaceAccess, PlaceAccessKind, ProcedureLoops};
+pub use self::procedure::{BasicBlockIndex, Procedure};
+// use config;
+use crate::data::ProcedureDefId;
 
 /// Facade to the Rust compiler.
 // #[derive(Copy, Clone)]
@@ -77,9 +79,7 @@ impl<'tcx> Environment<'tcx> {
 
     /// Returns the name of the crate that is being compiled
     pub fn crate_name(&self) -> String {
-        self.tcx
-            .crate_name(rustc_span::def_id::LOCAL_CRATE)
-            .to_string()
+        self.tcx.crate_name(rustc_span::def_id::LOCAL_CRATE).to_string()
     }
 
     /// Returns the typing context
@@ -89,8 +89,8 @@ impl<'tcx> Environment<'tcx> {
 
     /// Returns the type of a `HirId`
     //pub fn hir_id_to_type(&self, hir_id: HirId) -> ty::EarlyBinder<ty::Ty<'tcx>> {
-        //let def_id = self.tcx.hir().local_def_id(hir_id);
-        //self.tcx.type_of(def_id)
+    //let def_id = self.tcx.hir().local_def_id(hir_id);
+    //self.tcx.type_of(def_id)
     //}
 
     /// Returns the `CodeMap`
@@ -177,7 +177,7 @@ impl<'tcx> Environment<'tcx> {
         let (_, _, _, consts) = visitor.get_results();
         consts
     }
-    
+
     /// Get ids of Rust modules.
     pub fn get_modules(&self) -> Vec<LocalDefId> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
@@ -262,9 +262,7 @@ impl<'tcx> Environment<'tcx> {
         } else {
             // SAFETY: This is safe because we are feeding in the same `tcx`
             // that was used to store the data.
-            let body_with_facts = unsafe {
-                self::mir_storage::retrieve_mir_body(self.tcx, def_id)
-            };
+            let body_with_facts = unsafe { self::mir_storage::retrieve_mir_body(self.tcx, def_id) };
             let body = body_with_facts.body;
             let facts = BorrowckFacts {
                 input_facts: RefCell::new(body_with_facts.input_facts),
@@ -275,9 +273,7 @@ impl<'tcx> Environment<'tcx> {
             let mut borrowck_facts = self.borrowck_facts.borrow_mut();
             borrowck_facts.insert(def_id, Rc::new(facts));
 
-            bodies.entry(def_id).or_insert_with(|| {
-                Rc::new(body)
-            }).clone()
+            bodies.entry(def_id).or_insert_with(|| Rc::new(body)).clone()
         }
     }
 
@@ -316,7 +312,12 @@ impl<'tcx> Environment<'tcx> {
     }
 
     /// Get a trait method declaration by name for type.
-    pub fn get_trait_method_decl_for_type(&self, typ: ty::Ty<'tcx>, trait_id: DefId, name: Symbol) -> Vec<ty::AssocItem> {
+    pub fn get_trait_method_decl_for_type(
+        &self,
+        typ: ty::Ty<'tcx>,
+        trait_id: DefId,
+        name: Symbol,
+    ) -> Vec<ty::AssocItem> {
         let mut result = Vec::new();
         self.tcx().for_each_relevant_impl(trait_id, typ, |impl_id| {
             let item = self.get_assoc_item(impl_id, name);
@@ -328,120 +329,120 @@ impl<'tcx> Environment<'tcx> {
     }
 
     /*
-    pub fn type_is_copy(&self, ty: ty::Ty<'tcx>) -> bool {
-        let copy_trait = self.tcx.lang_items().copy_trait();
-        if let Some(copy_trait_def_id) = copy_trait {
-            self.type_implements_trait(&ty, copy_trait_def_id)
-        } else {
-            false
-        }
-    }
-
-    /// Checks whether the given type implements the trait with the given DefId.
-    pub fn type_implements_trait(&self, ty: &ty::Ty<'tcx>, trait_def_id: DefId) -> bool {
-        assert!(self.tcx.is_trait(trait_def_id));
-        match ty.kind() {
-            ty::TyKind::Adt(_, subst)
-            | ty::TyKind::FnDef(_, subst)
-            | ty::TyKind::Closure(_, subst)
-            | ty::TyKind::Opaque(_, subst)
-            | ty::TyKind::Generator(_, subst, _) => {
-                self.tcx.infer_ctxt().enter(|infcx|
-                    infcx
-                        .type_implements_trait(trait_def_id, *ty, subst, ParamEnv::empty())
-                        .must_apply_considering_regions()
-                )
-            },
-            // TODO
-            //ty::TyKind::Tuple(subst) => {
-                    //self.tcx.infer_ctxt().enter(|infcx|
-
-                    //infcx
-                        //.types_implements_trait(trait_def_id, *ty, subst, ParamEnv::empty())
-                        //.must_apply_considering_regions()
-                //)
-            //},
-            ty::TyKind::Bool => {
-                self.primitive_type_implements_trait(
-                    ty,
-                    self.tcx.lang_items().bool_impl(),
-                    trait_def_id
-                )
-            }
-            ty::TyKind::Char => {
-                self.primitive_type_implements_trait(
-                    ty,
-                    self.tcx.lang_items().char_impl(),
-                    trait_def_id
-                )
-            }
-            ty::TyKind::Int(int_ty) => {
-                let lang_items = self.tcx.lang_items();
-                let impl_def = match int_ty {
-                    ty::IntTy::Isize => lang_items.isize_impl(),
-                    ty::IntTy::I8 => lang_items.i8_impl(),
-                    ty::IntTy::I16 => lang_items.i16_impl(),
-                    ty::IntTy::I32 => lang_items.i32_impl(),
-                    ty::IntTy::I64 => lang_items.i64_impl(),
-                    ty::IntTy::I128 => lang_items.i128_impl(),
-                };
-                self.primitive_type_implements_trait(
-                    ty,
-                    impl_def,
-                    trait_def_id
-                )
-            }
-            ty::TyKind::Uint(uint_ty) => {
-                let lang_items = self.tcx.lang_items();
-                let impl_def = match uint_ty {
-                    ty::UintTy::Usize => lang_items.usize_impl(),
-                    ty::UintTy::U8 => lang_items.u8_impl(),
-                    ty::UintTy::U16 => lang_items.u16_impl(),
-                    ty::UintTy::U32 => lang_items.u32_impl(),
-                    ty::UintTy::U64 => lang_items.u64_impl(),
-                    ty::UintTy::U128 => lang_items.u128_impl(),
-                };
-                self.primitive_type_implements_trait(
-                    ty,
-                    impl_def,
-                    trait_def_id
-                )
-            }
-            ty::TyKind::Float(float_ty) => {
-                let lang_items = self.tcx.lang_items();
-                let impl_def = match float_ty {
-                    ty::FloatTy::F32 => lang_items.f32_impl(),
-                    ty::FloatTy::F64 => lang_items.f64_impl(),
-                };
-                self.primitive_type_implements_trait(
-                    ty,
-                    impl_def,
-                    trait_def_id
-                )
-            }
-            ty::TyKind::Ref(_, ref_ty, _) => {
-                self.type_implements_trait(ref_ty, trait_def_id)
-            }
-            _ => {
-                unimplemented!() // none of the remaining types should be supported yet
+        pub fn type_is_copy(&self, ty: ty::Ty<'tcx>) -> bool {
+            let copy_trait = self.tcx.lang_items().copy_trait();
+            if let Some(copy_trait_def_id) = copy_trait {
+                self.type_implements_trait(&ty, copy_trait_def_id)
+            } else {
+                false
             }
         }
-    }
-*/
+
+        /// Checks whether the given type implements the trait with the given DefId.
+        pub fn type_implements_trait(&self, ty: &ty::Ty<'tcx>, trait_def_id: DefId) -> bool {
+            assert!(self.tcx.is_trait(trait_def_id));
+            match ty.kind() {
+                ty::TyKind::Adt(_, subst)
+                | ty::TyKind::FnDef(_, subst)
+                | ty::TyKind::Closure(_, subst)
+                | ty::TyKind::Opaque(_, subst)
+                | ty::TyKind::Generator(_, subst, _) => {
+                    self.tcx.infer_ctxt().enter(|infcx|
+                        infcx
+                            .type_implements_trait(trait_def_id, *ty, subst, ParamEnv::empty())
+                            .must_apply_considering_regions()
+                    )
+                },
+                // TODO
+                //ty::TyKind::Tuple(subst) => {
+                        //self.tcx.infer_ctxt().enter(|infcx|
+
+                        //infcx
+                            //.types_implements_trait(trait_def_id, *ty, subst, ParamEnv::empty())
+                            //.must_apply_considering_regions()
+                    //)
+                //},
+                ty::TyKind::Bool => {
+                    self.primitive_type_implements_trait(
+                        ty,
+                        self.tcx.lang_items().bool_impl(),
+                        trait_def_id
+                    )
+                }
+                ty::TyKind::Char => {
+                    self.primitive_type_implements_trait(
+                        ty,
+                        self.tcx.lang_items().char_impl(),
+                        trait_def_id
+                    )
+                }
+                ty::TyKind::Int(int_ty) => {
+                    let lang_items = self.tcx.lang_items();
+                    let impl_def = match int_ty {
+                        ty::IntTy::Isize => lang_items.isize_impl(),
+                        ty::IntTy::I8 => lang_items.i8_impl(),
+                        ty::IntTy::I16 => lang_items.i16_impl(),
+                        ty::IntTy::I32 => lang_items.i32_impl(),
+                        ty::IntTy::I64 => lang_items.i64_impl(),
+                        ty::IntTy::I128 => lang_items.i128_impl(),
+                    };
+                    self.primitive_type_implements_trait(
+                        ty,
+                        impl_def,
+                        trait_def_id
+                    )
+                }
+                ty::TyKind::Uint(uint_ty) => {
+                    let lang_items = self.tcx.lang_items();
+                    let impl_def = match uint_ty {
+                        ty::UintTy::Usize => lang_items.usize_impl(),
+                        ty::UintTy::U8 => lang_items.u8_impl(),
+                        ty::UintTy::U16 => lang_items.u16_impl(),
+                        ty::UintTy::U32 => lang_items.u32_impl(),
+                        ty::UintTy::U64 => lang_items.u64_impl(),
+                        ty::UintTy::U128 => lang_items.u128_impl(),
+                    };
+                    self.primitive_type_implements_trait(
+                        ty,
+                        impl_def,
+                        trait_def_id
+                    )
+                }
+                ty::TyKind::Float(float_ty) => {
+                    let lang_items = self.tcx.lang_items();
+                    let impl_def = match float_ty {
+                        ty::FloatTy::F32 => lang_items.f32_impl(),
+                        ty::FloatTy::F64 => lang_items.f64_impl(),
+                    };
+                    self.primitive_type_implements_trait(
+                        ty,
+                        impl_def,
+                        trait_def_id
+                    )
+                }
+                ty::TyKind::Ref(_, ref_ty, _) => {
+                    self.type_implements_trait(ref_ty, trait_def_id)
+                }
+                _ => {
+                    unimplemented!() // none of the remaining types should be supported yet
+                }
+            }
+        }
+    */
 
     /*
-    fn primitive_type_implements_trait(
-        &self,
-        ty: ty::Ty<'tcx>,
-        impl_def: Option<DefId>,
-        trait_def_id: DefId
-    ) -> bool {
-        assert!(impl_def.is_some());
-        self.tcx.infer_ctxt().enter(|infcx|
-            infcx
-                .type_implements_trait(trait_def_id, ty, ty::List::empty(), ParamEnv::empty())
-                .must_apply_considering_regions()
-        )
-    }
-*/
+        fn primitive_type_implements_trait(
+            &self,
+            ty: ty::Ty<'tcx>,
+            impl_def: Option<DefId>,
+            trait_def_id: DefId
+        ) -> bool {
+            assert!(impl_def.is_some());
+            self.tcx.infer_ctxt().enter(|infcx|
+                infcx
+                    .type_implements_trait(trait_def_id, ty, ty::List::empty(), ParamEnv::empty())
+                    .must_apply_considering_regions()
+            )
+        }
+    */
 }

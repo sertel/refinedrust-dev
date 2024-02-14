@@ -4,13 +4,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    abstract_interpretation::AbstractState, analysis_error::AnalysisError::NoStateAfterSuccessor,
-    PointwiseState,
-};
-pub use crate::{domains::*, AnalysisError};
-use rr_rustc_interface::{data_structures::fx::FxHashMap, middle::mir, span::def_id::DefId};
-use std::{collections::BTreeSet, iter::FromIterator};
+use std::collections::BTreeSet;
+use std::iter::FromIterator;
+
+use rr_rustc_interface::data_structures::fx::FxHashMap;
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::span::def_id::DefId;
+
+use crate::abstract_interpretation::AbstractState;
+use crate::analysis_error::AnalysisError::NoStateAfterSuccessor;
+pub use crate::domains::*;
+pub use crate::AnalysisError;
+use crate::PointwiseState;
 
 pub type AnalysisResult<T> = std::result::Result<T, AnalysisError>;
 
@@ -41,11 +46,7 @@ pub trait FixpointEngine<'mir, 'tcx: 'mir> {
     ///
     /// The statement can be extracted using
     /// `self.mir[location.block].statements[location.statement_index]`.
-    fn apply_statement_effect(
-        &self,
-        state: &mut Self::State,
-        location: mir::Location,
-    ) -> AnalysisResult<()>;
+    fn apply_statement_effect(&self, state: &mut Self::State, location: mir::Location) -> AnalysisResult<()>;
 
     /// Compute the states after a terminator at `location`.
     ///
@@ -63,8 +64,7 @@ pub trait FixpointEngine<'mir, 'tcx: 'mir> {
         let mir = self.body();
         let mut p_state = PointwiseState::new(mir);
         // use https://crates.io/crates/linked_hash_set for set preserving insertion order?
-        let mut work_set: BTreeSet<mir::BasicBlock> =
-            BTreeSet::from_iter(mir.basic_blocks.indices());
+        let mut work_set: BTreeSet<mir::BasicBlock> = BTreeSet::from_iter(mir.basic_blocks.indices());
 
         let mut counters: FxHashMap<mir::BasicBlock, u32> =
             FxHashMap::with_capacity_and_hasher(mir.basic_blocks.len(), Default::default());

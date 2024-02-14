@@ -4,9 +4,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use rr_rustc_interface::{data_structures::fx::FxHashMap, middle::mir};
-use serde::{ser::SerializeMap, Serialize, Serializer};
-use std::{collections::BTreeMap, fmt};
+use std::collections::BTreeMap;
+use std::fmt;
+
+use rr_rustc_interface::data_structures::fx::FxHashMap;
+use rr_rustc_interface::middle::mir;
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 
 /// Records the state of the analysis at every program point and CFG edge of `mir`.
 pub struct PointwiseState<'mir, 'tcx: 'mir, S: Serialize> {
@@ -58,20 +62,12 @@ impl<'mir, 'tcx: 'mir, S: Serialize> Serialize for PointwiseState<'mir, 'tcx, S>
 
             let new_map = FxHashMap::default();
             let map_after = self.lookup_after_block(bb).unwrap_or(&new_map);
-            let ordered_succ_map: BTreeMap<_, _> = map_after
-                .iter()
-                .map(|(bb, s)| (format!("{:?}", bb), ("state:", s)))
-                .collect();
+            let ordered_succ_map: BTreeMap<_, _> =
+                map_after.iter().map(|(bb, s)| (format!("{:?}", bb), ("state:", s))).collect();
 
             map.serialize_entry(
                 &format!("{:?}", bb),
-                &(
-                    stmt_vec,
-                    "state before terminator:",
-                    state_before,
-                    terminator_str,
-                    ordered_succ_map,
-                ),
+                &(stmt_vec, "state before terminator:", state_before, terminator_str, ordered_succ_map),
             )?;
         }
         map.end()
@@ -109,10 +105,7 @@ impl<'mir, 'tcx: 'mir, S: Serialize> PointwiseState<'mir, 'tcx, S> {
     /// Look up the state on the outgoing CFG edges of `block`.
     /// The return value maps all successor blocks to the state on the CFG edge from `block` to
     /// that block.
-    pub fn lookup_after_block(
-        &self,
-        block: mir::BasicBlock,
-    ) -> Option<&FxHashMap<mir::BasicBlock, S>> {
+    pub fn lookup_after_block(&self, block: mir::BasicBlock) -> Option<&FxHashMap<mir::BasicBlock, S>> {
         self.state_after_block.get(&block)
     }
 
@@ -123,9 +116,7 @@ impl<'mir, 'tcx: 'mir, S: Serialize> PointwiseState<'mir, 'tcx, S> {
         &mut self,
         block: mir::BasicBlock,
     ) -> &mut FxHashMap<mir::BasicBlock, S> {
-        self.state_after_block
-            .entry(block)
-            .or_insert_with(FxHashMap::default)
+        self.state_after_block.entry(block).or_insert_with(FxHashMap::default)
     }
 
     /// Update the state before the `location`.
@@ -156,11 +147,8 @@ impl<'mir, 'tcx: 'mir, S: Serialize + Default> PointwiseState<'mir, 'tcx, S> {
             .basic_blocks
             .iter_enumerated()
             .map(|(block, bb_data)| {
-                let successors: FxHashMap<_, _> = bb_data
-                    .terminator()
-                    .successors()
-                    .map(|successor| (successor, S::default()))
-                    .collect();
+                let successors: FxHashMap<_, _> =
+                    bb_data.terminator().successors().map(|successor| (successor, S::default())).collect();
                 (block, successors)
             })
             .collect();

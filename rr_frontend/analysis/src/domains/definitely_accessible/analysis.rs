@@ -4,21 +4,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    abstract_interpretation::{AnalysisResult, FixpointEngine},
-    domains::{
-        DefinitelyAccessibleState, DefinitelyInitializedAnalysis, DefinitelyInitializedState,
-        MaybeBorrowedAnalysis, MaybeBorrowedState,
-    },
-    mir_utils::remove_place_from_set,
-    PointwiseState,
+use rr_rustc_interface::borrowck::consumers::BodyWithBorrowckFacts;
+use rr_rustc_interface::data_structures::fx::{FxHashMap, FxHashSet};
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::ty::TyCtxt;
+use rr_rustc_interface::span::def_id::DefId;
+
+use crate::abstract_interpretation::{AnalysisResult, FixpointEngine};
+use crate::domains::{
+    DefinitelyAccessibleState, DefinitelyInitializedAnalysis, DefinitelyInitializedState,
+    MaybeBorrowedAnalysis, MaybeBorrowedState,
 };
-use rr_rustc_interface::{
-    borrowck::consumers::BodyWithBorrowckFacts,
-    data_structures::fx::{FxHashMap, FxHashSet},
-    middle::{mir, ty::TyCtxt},
-    span::def_id::DefId,
-};
+use crate::mir_utils::remove_place_from_set;
+use crate::PointwiseState;
 
 pub struct DefinitelyAccessibleAnalysis<'mir, 'tcx: 'mir> {
     tcx: TyCtxt<'tcx>,
@@ -27,11 +25,7 @@ pub struct DefinitelyAccessibleAnalysis<'mir, 'tcx: 'mir> {
 }
 
 impl<'mir, 'tcx: 'mir> DefinitelyAccessibleAnalysis<'mir, 'tcx> {
-    pub fn new(
-        tcx: TyCtxt<'tcx>,
-        def_id: DefId,
-        body_with_facts: &'mir BodyWithBorrowckFacts<'tcx>,
-    ) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, def_id: DefId, body_with_facts: &'mir BodyWithBorrowckFacts<'tcx>) -> Self {
         DefinitelyAccessibleAnalysis {
             tcx,
             def_id,
@@ -43,8 +37,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyAccessibleAnalysis<'mir, 'tcx> {
         &self,
     ) -> AnalysisResult<PointwiseState<'mir, 'tcx, DefinitelyAccessibleState<'tcx>>> {
         let body = &self.body_with_facts.body;
-        let def_init_analysis =
-            DefinitelyInitializedAnalysis::new_relaxed(self.tcx, self.def_id, body);
+        let def_init_analysis = DefinitelyInitializedAnalysis::new_relaxed(self.tcx, self.def_id, body);
         let borrowed_analysis = MaybeBorrowedAnalysis::new(self.tcx, self.body_with_facts);
         let def_init = def_init_analysis.run_fwd_analysis()?;
         let borrowed = borrowed_analysis.run_analysis()?;
@@ -71,14 +64,9 @@ impl<'mir, 'tcx: 'mir> DefinitelyAccessibleAnalysis<'mir, 'tcx> {
                 let borrowed_before = borrowed
                     .lookup_before(location)
                     .unwrap_or_else(|| panic!("No 'borrowed' state before location {location:?}"));
-                let liveness_before = var_live_on_entry
-                    .get(&location_table.start_index(location))
-                    .unwrap_or(&empty_locals_set);
-                let state = self.compute_accessible_state(
-                    def_init_before,
-                    borrowed_before,
-                    liveness_before,
-                );
+                let liveness_before =
+                    var_live_on_entry.get(&location_table.start_index(location)).unwrap_or(&empty_locals_set);
+                let state = self.compute_accessible_state(def_init_before, borrowed_before, liveness_before);
                 state.check_invariant(location);
                 analysis_state.set_before(location, state);
             }
@@ -92,17 +80,16 @@ impl<'mir, 'tcx: 'mir> DefinitelyAccessibleAnalysis<'mir, 'tcx> {
                 .unwrap_or_else(|| panic!("No 'borrowed' state after block {block:?}"));
             let available_after_block = analysis_state.lookup_mut_after_block(block);
             for successor in block_data.terminator().successors() {
-                let def_init_after = def_init_after_block.get(&successor).unwrap_or_else(|| {
-                    panic!("No 'def_init' state from {block:?} to {successor:?}")
-                });
-                let borrowed_after = borrowed_after_block.get(&successor).unwrap_or_else(|| {
-                    panic!("No 'borrowed' state from {block:?} to {successor:?}")
-                });
+                let def_init_after = def_init_after_block
+                    .get(&successor)
+                    .unwrap_or_else(|| panic!("No 'def_init' state from {block:?} to {successor:?}"));
+                let borrowed_after = borrowed_after_block
+                    .get(&successor)
+                    .unwrap_or_else(|| panic!("No 'borrowed' state from {block:?} to {successor:?}"));
                 let liveness_after = var_live_on_entry
                     .get(&location_table.start_index(successor.start_location()))
                     .unwrap_or(&empty_locals_set);
-                let state =
-                    self.compute_accessible_state(def_init_after, borrowed_after, liveness_after);
+                let state = self.compute_accessible_state(def_init_after, borrowed_after, liveness_after);
                 state.check_invariant(successor);
                 available_after_block.insert(successor, state);
             }

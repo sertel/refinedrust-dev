@@ -9,26 +9,28 @@
 //! Various helper functions for working with `mir::Place`.
 
 use std::mem;
+
+use log::{info, trace};
+use rrconfig as config;
+use rustc_ast::ast;
+use rustc_data_structures::fx::FxHashSet;
+use rustc_hir::def_id::{DefId, CRATE_DEF_INDEX};
 use rustc_middle::mir;
 use rustc_middle::ty::{self, TyCtxt};
-use rustc_ast::ast;
-use log::trace;
 
 use crate::force_matches;
-use rrconfig as config;
-
-use rustc_hir::def_id::{DefId, CRATE_DEF_INDEX};
-use rustc_data_structures::fx::FxHashSet;
-
-use log::info;
-
 
 /// Gets an instance for a path.
 /// Taken from Miri https://github.com/rust-lang/miri/blob/31fb32e49f42df19b45baccb6aa80c3d726ed6d5/src/helpers.rs#L48.
 pub fn try_resolve_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<DefId> {
-    tcx.crates(()).iter().find(|&&krate| tcx.crate_name(krate).as_str() == path[0]).and_then(
-        |krate| {
-            let krate = DefId { krate: *krate, index: CRATE_DEF_INDEX };
+    tcx.crates(())
+        .iter()
+        .find(|&&krate| tcx.crate_name(krate).as_str() == path[0])
+        .and_then(|krate| {
+            let krate = DefId {
+                krate: *krate,
+                index: CRATE_DEF_INDEX,
+            };
             //ModChild
 
             let mut items: &'tcx [rustc_middle::metadata::ModChild] = tcx.module_children(krate);
@@ -48,17 +50,21 @@ pub fn try_resolve_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<DefId> 
                 }
             }
             None
-        },
-    )
+        })
 }
 
 /// Try to get a defid of a method at the given path.
 /// TODO: this doesn't handle overlapping method definitions that are distinguished by generics.
 pub fn try_resolve_method_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<DefId> {
     info!("trying to resolve method did: {:?}", path);
-    tcx.crates(()).iter().find(|&&krate| tcx.crate_name(krate).as_str() == path[0]).and_then(
-        |krate| {
-            let krate = DefId { krate: *krate, index: CRATE_DEF_INDEX };
+    tcx.crates(())
+        .iter()
+        .find(|&&krate| tcx.crate_name(krate).as_str() == path[0])
+        .and_then(|krate| {
+            let krate = DefId {
+                krate: *krate,
+                index: CRATE_DEF_INDEX,
+            };
 
             let mut items: &'tcx [rustc_middle::metadata::ModChild] = tcx.module_children(krate);
             let mut path_it = path.iter().skip(1).peekable();
@@ -95,8 +101,7 @@ pub fn try_resolve_method_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<
                             }
                             //info!("inherent impls for {:?}: {:?}", did, impls);
                             return None;
-                        }
-                        else {
+                        } else {
                             items = tcx.module_children(item.res.def_id());
                             break;
                         }
@@ -104,17 +109,14 @@ pub fn try_resolve_method_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<
                 }
             }
             None
-        },
-    )
+        })
 }
-
-
 
 /// Check if the place `potential_prefix` is a prefix of `place`. For example:
 ///
-/// +   `is_prefix(x.f, x.f) == true`
-/// +   `is_prefix(x.f.g, x.f) == true`
-/// +   `is_prefix(x.f, x.f.g) == false`
+/// + `is_prefix(x.f, x.f) == true`
+/// + `is_prefix(x.f.g, x.f) == true`
+/// + `is_prefix(x.f, x.f.g) == false`
 pub fn is_prefix<'tcx>(place: &mir::Place<'tcx>, potential_prefix: &mir::Place<'tcx>) -> bool {
     if place.local != potential_prefix.local || place.projection.len() < potential_prefix.projection.len() {
         false
@@ -140,11 +142,7 @@ pub fn expand_struct_place<'tcx>(
     } else {
         match typ.ty.kind() {
             ty::Adt(def, substs) => {
-                assert!(
-                    def.is_struct(),
-                    "Only structs can be expanded. Got def={:?}.",
-                    def
-                );
+                assert!(def.is_struct(), "Only structs can be expanded. Got def={:?}.", def);
                 let variant = def.non_enum_variant();
                 for (index, field_def) in variant.fields.iter().enumerate() {
                     if Some(index) != without_field {
@@ -152,7 +150,7 @@ pub fn expand_struct_place<'tcx>(
                         places.push(field_place);
                     }
                 }
-            }
+            },
             ty::Tuple(slice) => {
                 for (index, arg) in slice.iter().enumerate() {
                     if Some(index) != without_field {
@@ -163,18 +161,15 @@ pub fn expand_struct_place<'tcx>(
             },
             ty::Ref(_region, _ty, _) => match without_field {
                 Some(without_field) => {
-                    assert_eq!(
-                        without_field, 0,
-                        "References have only a single “field”."
-                    );
-                }
+                    assert_eq!(without_field, 0, "References have only a single “field”.");
+                },
                 None => {
                     places.push(tcx.mk_place_deref(*place));
-                }
+                },
             },
             ref ty => {
                 unimplemented!("ty={:?}", ty);
-            }
+            },
         }
     }
     places
@@ -192,33 +187,31 @@ pub fn expand_one_level<'tcx>(
     let index = current_place.projection.len();
     match guide_place.projection[index] {
         mir::ProjectionElem::Field(projected_field, field_ty) => {
-            let places =
-                expand_struct_place(&current_place, mir, tcx, Some(projected_field.index()));
+            let places = expand_struct_place(&current_place, mir, tcx, Some(projected_field.index()));
             let new_current_place = tcx.mk_place_field(current_place, projected_field, field_ty);
             (new_current_place, places)
-        }
+        },
         mir::ProjectionElem::Downcast(_symbol, variant) => {
             let kind = &current_place.ty(mir, tcx).ty.kind();
             force_matches!(kind, ty::TyKind::Adt(adt, _) =>
                 (tcx.mk_place_downcast(current_place, *adt, variant), Vec::new())
             )
-        }
-        mir::ProjectionElem::Deref => {
-            (tcx.mk_place_deref(current_place), Vec::new())
-        }
-        mir::ProjectionElem::Index(idx) => {
-            (tcx.mk_place_index(current_place, idx), Vec::new())
-        }
+        },
+        mir::ProjectionElem::Deref => (tcx.mk_place_deref(current_place), Vec::new()),
+        mir::ProjectionElem::Index(idx) => (tcx.mk_place_index(current_place, idx), Vec::new()),
         elem => {
             unimplemented!("elem = {:?}", elem);
-        }
+        },
     }
 }
 
 /// Pop the last projection from the place and return the new place with the popped element.
-pub fn try_pop_one_level<'tcx>(tcx: TyCtxt<'tcx>, place: mir::Place<'tcx>) -> Option<(mir::PlaceElem<'tcx>, mir::Place<'tcx>)> {
+pub fn try_pop_one_level<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    place: mir::Place<'tcx>,
+) -> Option<(mir::PlaceElem<'tcx>, mir::Place<'tcx>)> {
     if place.projection.len() > 0 {
-        let last_index = place.projection.len()-1;
+        let last_index = place.projection.len() - 1;
         let new_place = mir::Place {
             local: place.local,
             projection: tcx.mk_place_elems(&place.projection[..last_index]),
@@ -231,13 +224,8 @@ pub fn try_pop_one_level<'tcx>(tcx: TyCtxt<'tcx>, place: mir::Place<'tcx>) -> Op
 
 /// Pop the last element from the place if it is a dereference.
 pub fn try_pop_deref<'tcx>(tcx: TyCtxt<'tcx>, place: mir::Place<'tcx>) -> Option<mir::Place<'tcx>> {
-    try_pop_one_level(tcx, place).and_then(|(elem, base)| {
-        if let mir::ProjectionElem::Deref = elem {
-            Some(base)
-        } else {
-            None
-        }
-    })
+    try_pop_one_level(tcx, place)
+        .and_then(|(elem, base)| if let mir::ProjectionElem::Deref = elem { Some(base) } else { None })
 }
 
 /// Subtract the `subtrahend` place from the `minuend` place. The
@@ -254,15 +242,8 @@ pub fn expand<'tcx>(
     minuend: &mir::Place<'tcx>,
     subtrahend: &mir::Place<'tcx>,
 ) -> Vec<mir::Place<'tcx>> {
-    assert!(
-        is_prefix(subtrahend, minuend),
-        "The minuend must be the prefix of the subtrahend."
-    );
-    trace!(
-        "[enter] expand minuend={:?} subtrahend={:?}",
-        minuend,
-        subtrahend
-    );
+    assert!(is_prefix(subtrahend, minuend), "The minuend must be the prefix of the subtrahend.");
+    trace!("[enter] expand minuend={:?} subtrahend={:?}", minuend, subtrahend);
     let mut place_set = Vec::new();
     let mut minuend = *minuend;
     while minuend.projection.len() < subtrahend.projection.len() {
@@ -270,12 +251,7 @@ pub fn expand<'tcx>(
         minuend = new_minuend;
         place_set.extend(places);
     }
-    trace!(
-        "[exit] expand minuend={:?} subtrahend={:?} place_set={:?}",
-        minuend,
-        subtrahend,
-        place_set
-    );
+    trace!("[exit] expand minuend={:?} subtrahend={:?} place_set={:?}", minuend, subtrahend, place_set);
     place_set
 }
 
@@ -297,8 +273,7 @@ pub fn collapse<'tcx>(
         guide_place: mir::Place<'tcx>,
     ) {
         if current_place != guide_place {
-            let (new_current_place, mut expansion) = expand_one_level(
-                mir, tcx, current_place, guide_place);
+            let (new_current_place, mut expansion) = expand_one_level(mir, tcx, current_place, guide_place);
             recurse(mir, tcx, places, new_current_place, guide_place);
             expansion.push(new_current_place);
             if expansion.iter().all(|place| places.contains(place)) {
@@ -331,11 +306,7 @@ pub struct VecPlace<'tcx> {
 }
 
 impl<'tcx> VecPlace<'tcx> {
-    pub fn new(
-        mir: &mir::Body<'tcx>,
-        tcx: TyCtxt<'tcx>,
-        place: &mir::Place<'tcx>
-    ) -> VecPlace<'tcx> {
+    pub fn new(mir: &mir::Body<'tcx>, tcx: TyCtxt<'tcx>, place: &mir::Place<'tcx>) -> VecPlace<'tcx> {
         let mut vec_place = Self {
             components: Vec::new(),
         };
@@ -348,9 +319,11 @@ impl<'tcx> VecPlace<'tcx> {
         }
         vec_place
     }
+
     pub fn iter<'a>(&'a self) -> impl DoubleEndedIterator<Item = &'a VecPlaceComponent<'tcx>> {
         self.components.iter()
     }
+
     pub fn component_count(&self) -> usize {
         self.components.len()
     }
@@ -367,7 +340,7 @@ pub fn has_tool_attr(attrs: &[ast::Attribute], name: &str) -> bool {
             segments.len() == 2
                 && segments[0].ident.as_str() == config::spec_hotword().as_str()
                 && segments[1].ident.as_str() == name
-        }
+        },
         _ => false,
     })
 }
@@ -379,7 +352,7 @@ pub fn has_any_tool_attr(attrs: &[ast::Attribute]) -> bool {
             let na: &rustc_ast::ast::NormalAttr = &(*n);
             let segments = &na.item.path.segments;
             segments[0].ident.as_str() == config::spec_hotword().as_str()
-        }
+        },
         _ => false,
     })
 }
@@ -387,30 +360,28 @@ pub fn has_any_tool_attr(attrs: &[ast::Attribute]) -> bool {
 /// Get all tool attributes, i.e. attributes of the shape `<tool>::attr`, where `tool` is
 /// determined by the `spec_hotword` config.
 pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
-    let v: Vec<_> = attrs.iter().filter_map(|attr| {
-        match attr.kind {
-            ast::AttrKind::Normal(ref n) => {
-                let na: &rustc_ast::ast::NormalAttr = &*(n);
-                let it = &na.item;
-                let ref path_segs = it.path.segments;
+    let v: Vec<_> = attrs
+        .iter()
+        .filter_map(|attr| {
+            match attr.kind {
+                ast::AttrKind::Normal(ref n) => {
+                    let na: &rustc_ast::ast::NormalAttr = &*(n);
+                    let it = &na.item;
+                    let ref path_segs = it.path.segments;
 
-                // parse path
-                if path_segs.len() < 1 {
-                    return None;
-                }
-                if let Some(seg) = path_segs.get(0) {
-                    if (&*seg.ident.name.as_str()) == &config::spec_hotword() {
-                        Some(it)
+                    // parse path
+                    if path_segs.len() < 1 {
+                        return None;
                     }
-                    else {
+                    if let Some(seg) = path_segs.get(0) {
+                        if (&*seg.ident.name.as_str()) == &config::spec_hotword() { Some(it) } else { None }
+                    } else {
                         None
                     }
-                }
-                else {
-                    None
-                }
-            },
-            _ => None,
-        }}).collect();
+                },
+                _ => None,
+            }
+        })
+        .collect();
     v
 }

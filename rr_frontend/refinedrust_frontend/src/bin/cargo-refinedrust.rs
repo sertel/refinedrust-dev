@@ -6,10 +6,12 @@
 #![feature(let_chains)]
 
 //use prusti_utils::{config, launch};
-use std::{env, path::PathBuf, process::Command};
-use fs_extra::dir::CopyOptions;
+use std::env;
+use std::path::PathBuf;
+use std::process::Command;
 
-use rrconfig::launch as launch;
+use fs_extra::dir::CopyOptions;
+use rrconfig::launch;
 
 fn main() {
     if let Err(code) = process(env::args().skip(1)) {
@@ -48,8 +50,7 @@ where
     let output_dir;
     if let Some(old_output_dir) = maybe_output_dir {
         output_dir = old_output_dir;
-    }
-    else {
+    } else {
         output_dir = [cargo_target_path, "verify".to_string()].into_iter().collect();
     }
 
@@ -72,10 +73,5 @@ where
         .status()
         .expect("could not run cargo");
 
-    if exit_status.success() {
-        Ok(())
-    } else {
-        Err(exit_status.code().unwrap_or(-1))
-    }
+    if exit_status.success() { Ok(()) } else { Err(exit_status.code().unwrap_or(-1)) }
 }
-

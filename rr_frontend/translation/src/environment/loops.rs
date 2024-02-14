@@ -4,16 +4,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::utils;
-use crate::environment::mir_sets::place_set::PlaceSet;
-use crate::environment::procedure::BasicBlockIndex;
+use std::collections::{HashMap, HashSet};
+
+use log::{debug, trace};
+use rustc_data_structures::graph::dominators::{dominators, Dominators};
+use rustc_index::{Idx, IndexVec};
 use rustc_middle::mir;
 use rustc_middle::mir::visit::Visitor;
-use rustc_data_structures::graph::dominators::{Dominators, dominators};
-use std::collections::{HashMap, HashSet};
-use rustc_index::{Idx, IndexVec};
-use log::{debug, trace};
+
+use crate::environment::mir_sets::place_set::PlaceSet;
 use crate::environment::mir_utils::RealEdges;
+use crate::environment::procedure::BasicBlockIndex;
+use crate::utils;
 
 /// Walk up the CFG graph an collect all basic blocks that belong to the loop body.
 fn collect_loop_body(
@@ -58,9 +60,7 @@ impl PlaceAccessKind {
     fn is_write_access(&self) -> bool {
         match &self {
             PlaceAccessKind::Store | PlaceAccessKind::Move => true,
-            PlaceAccessKind::Read
-            | PlaceAccessKind::MutableBorrow
-            | PlaceAccessKind::SharedBorrow => false,
+            PlaceAccessKind::Read | PlaceAccessKind::MutableBorrow | PlaceAccessKind::SharedBorrow => false,
         }
     }
 }
@@ -96,12 +96,7 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
         // TODO: using `location`, skip the places that are used for typechecking
         // because that part of the generated code contains closures.
         if self.body.contains(&location.block) && context.is_use() {
-            trace!(
-                "visit_place(place={:?}, context={:?}, location={:?})",
-                place,
-                context,
-                location
-            );
+            trace!("visit_place(place={:?}, context={:?}, location={:?})", place, context, location);
             use rustc_middle::mir::visit::PlaceContext::*;
             let access_kind = match context {
                 MutatingUse(mir::visit::MutatingUseContext::Store) => PlaceAccessKind::Store,
@@ -111,8 +106,9 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
                 NonMutatingUse(mir::visit::NonMutatingUseContext::Copy) => PlaceAccessKind::Read,
                 NonMutatingUse(mir::visit::NonMutatingUseContext::Move) => PlaceAccessKind::Move,
                 NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => PlaceAccessKind::Read,
-                NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) =>
-                    PlaceAccessKind::SharedBorrow,
+                NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => {
+                    PlaceAccessKind::SharedBorrow
+                },
                 NonUse(_) => unreachable!(),
                 x => unimplemented!("{:?}", x),
             };
@@ -135,8 +131,7 @@ fn order_basic_blocks<'tcx>(
 ) -> Vec<BasicBlockIndex> {
     let basic_blocks = &mir.basic_blocks;
     let mut sorted_blocks = Vec::new();
-    let mut permanent_mark =
-        IndexVec::<BasicBlockIndex, bool>::from_elem_n(false, basic_blocks.len());
+    let mut permanent_mark = IndexVec::<BasicBlockIndex, bool>::from_elem_n(false, basic_blocks.len());
     let mut temporary_mark = permanent_mark.clone();
 
     #[allow(clippy::too_many_arguments)]
@@ -157,12 +152,18 @@ fn order_basic_blocks<'tcx>(
         let curr_depth = loop_depth(current);
         // We want to order the loop body before exit edges
         let successors_groups: Vec<Vec<_>> = vec![
-            real_edges.successors(current).iter().filter(
-                |&&bb| loop_depth(bb) < curr_depth
-            ).cloned().collect(),
-            real_edges.successors(current).iter().filter(
-                |&&bb| loop_depth(bb) >= curr_depth
-            ).cloned().collect(),
+            real_edges
+                .successors(current)
+                .iter()
+                .filter(|&&bb| loop_depth(bb) < curr_depth)
+                .cloned()
+                .collect(),
+            real_edges
+                .successors(current)
+                .iter()
+                .filter(|&&bb| loop_depth(bb) >= curr_depth)
+                .cloned()
+                .collect(),
         ];
         for group in &successors_groups {
             for &successor in group.iter() {
@@ -223,7 +224,6 @@ pub struct ProcedureLoops {
     dominators: Dominators<BasicBlockIndex>,
     /// The list of basic blocks ordered in the topological order (ignoring back edges).
     pub ordered_blocks: Vec<BasicBlockIndex>,
-
 }
 
 impl ProcedureLoops {
@@ -246,13 +246,10 @@ impl ProcedureLoops {
             collect_loop_body(target, source, real_edges, body);
         }
 
-        let mut enclosing_loop_heads_set: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>> =
-            HashMap::new();
+        let mut enclosing_loop_heads_set: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>> = HashMap::new();
         for (&loop_head, loop_body) in loop_bodies.iter() {
             for &block in loop_body.iter() {
-                let heads_set = enclosing_loop_heads_set
-                    .entry(block)
-                    .or_insert_with(HashSet::new);
+                let heads_set = enclosing_loop_heads_set.entry(block).or_insert_with(HashSet::new);
                 heads_set.insert(loop_head);
             }
         }
@@ -271,15 +268,16 @@ impl ProcedureLoops {
         }
 
         let get_loop_depth = |bb: BasicBlockIndex| {
-            enclosing_loop_heads.get(&bb)
+            enclosing_loop_heads
+                .get(&bb)
                 .and_then(|heads| heads.last())
                 .map(|bb_head| loop_head_depths[bb_head])
                 .unwrap_or(0)
         };
 
         let ordered_blocks = order_basic_blocks(mir, real_edges, &back_edges, &get_loop_depth);
-        let block_order: HashMap<BasicBlockIndex, usize> = ordered_blocks
-            .iter().cloned().enumerate().map(|(i, v)| (v, i)).collect();
+        let block_order: HashMap<BasicBlockIndex, usize> =
+            ordered_blocks.iter().cloned().enumerate().map(|(i, v)| (v, i)).collect();
         debug!("ordered_blocks: {:?}", ordered_blocks);
 
         let mut ordered_loop_bodies = HashMap::new();
@@ -311,9 +309,8 @@ impl ProcedureLoops {
                 // Decide if this block has an exit edge
                 let term = mir[curr_bb].terminator();
                 let is_switch_int = matches!(term.kind, mir::TerminatorKind::SwitchInt { .. });
-                let has_exit_edge = real_edges.successors(curr_bb).iter().any(
-                    |&bb| get_loop_depth(bb) < loop_head_depth
-                );
+                let has_exit_edge =
+                    real_edges.successors(curr_bb).iter().any(|&bb| get_loop_depth(bb) < loop_head_depth);
                 if is_switch_int && has_exit_edge {
                     exit_blocks.push(curr_bb);
                 }
@@ -342,9 +339,8 @@ impl ProcedureLoops {
         }
         for &(back_edge_source, loop_head) in back_edges.iter() {
             let blocks = nonconditional_loop_blocks.get_mut(&loop_head).unwrap();
-            *blocks = blocks.intersection(
-                &dominators.dominators(back_edge_source).collect()
-            ).copied().collect();
+            *blocks =
+                blocks.intersection(&dominators.dominators(back_edge_source).collect()).copied().collect();
         }
         debug!("nonconditional_loop_blocks: {:?}", nonconditional_loop_blocks);
 
@@ -358,7 +354,7 @@ impl ProcedureLoops {
             nonconditional_loop_blocks,
             back_edges,
             dominators,
-            ordered_blocks
+            ordered_blocks,
         }
     }
 
@@ -385,20 +381,13 @@ impl ProcedureLoops {
     }
 
     pub fn get_enclosing_loop_heads(&self, bbi: BasicBlockIndex) -> &[BasicBlockIndex] {
-        if let Some(heads) = self.enclosing_loop_heads.get(&bbi) {
-            heads
-        } else {
-            &[]
-        }
+        if let Some(heads) = self.enclosing_loop_heads.get(&bbi) { heads } else { &[] }
     }
 
     /// Get the loop head, if any
     /// Note: a loop head **is** loop head of itself
     pub fn get_loop_head(&self, bbi: BasicBlockIndex) -> Option<BasicBlockIndex> {
-        self.enclosing_loop_heads
-            .get(&bbi)
-            .and_then(|heads| heads.last())
-            .cloned()
+        self.enclosing_loop_heads.get(&bbi).and_then(|heads| heads.last()).cloned()
     }
 
     /// Get the depth of a loop head, starting from one for a simple loop
@@ -462,38 +451,27 @@ impl ProcedureLoops {
         loop_head: BasicBlockIndex,
         mir: &'a mir::Body<'tcx>,
         definitely_initalised_paths: Option<&PlaceSet<'tcx>>,
-    ) -> (
-        Vec<mir::Place<'tcx>>,
-        Vec<mir::Place<'tcx>>,
-        Vec<mir::Place<'tcx>>,
-    ) {
-        // 1.  Let ``A1`` be a set of pairs ``(p, t)`` where ``p`` is a prefix
-        //     accessed in the loop body and ``t`` is the type of access (read,
-        //     destructive read, …).
-        // 2.  Let ``A2`` be a subset of ``A1`` that contains only the prefixes
-        //     whose roots are defined before the loop. (The root of the prefix
-        //     ``x.f.g.h`` is ``x``.)
-        // 3.  Let ``A3`` be a subset of ``A2`` without accesses that are subsumed
-        //     by other accesses.
-        // 4.  Let ``U`` be a set of prefixes that are unreachable at the loop
-        //     head because they are either moved out or mutably borrowed.
-        // 5.  For each access ``(p, t)`` in the set ``A3``:
+    ) -> (Vec<mir::Place<'tcx>>, Vec<mir::Place<'tcx>>, Vec<mir::Place<'tcx>>) {
+        // 1. Let ``A1`` be a set of pairs ``(p, t)`` where ``p`` is a prefix accessed in the loop body and
+        //    ``t`` is the type of access (read, destructive read, …).
+        // 2. Let ``A2`` be a subset of ``A1`` that contains only the prefixes whose roots are defined before
+        //    the loop. (The root of the prefix ``x.f.g.h`` is ``x``.)
+        // 3. Let ``A3`` be a subset of ``A2`` without accesses that are subsumed by other accesses.
+        // 4. Let ``U`` be a set of prefixes that are unreachable at the loop head because they are either
+        //    moved out or mutably borrowed.
+        // 5. For each access ``(p, t)`` in the set ``A3``:
         //
-        //     1.  Add a read permission to the loop invariant to read the prefix
-        //         up to the last element. If needed, unfold the corresponding
-        //         predicates.
-        //     2.  Add a permission to the last element based on what is required
-        //         by the type of access. If ``p`` is a prefix of some prefixes in
-        //         ``U``, then the invariant would contain corresponding predicate
-        //         bodies without unreachable elements instead of predicates.
+        //     1. Add a read permission to the loop invariant to read the prefix up to the last element. If
+        //        needed, unfold the corresponding predicates.
+        //     2. Add a permission to the last element based on what is required by the type of access. If
+        //        ``p`` is a prefix of some prefixes in ``U``, then the invariant would contain corresponding
+        //        predicate bodies without unreachable elements instead of predicates.
 
         // Paths accessed inside the loop body.
         let accesses = self.compute_used_paths(loop_head, mir);
         debug!("accesses = {:?}", accesses);
-        let mut accesses_pairs: Vec<_> = accesses
-            .iter()
-            .map(|PlaceAccess { place, kind, .. }| (place, *kind))
-            .collect();
+        let mut accesses_pairs: Vec<_> =
+            accesses.iter().map(|PlaceAccess { place, kind, .. }| (place, *kind)).collect();
         debug!("accesses_pairs = {:?}", accesses_pairs);
         if let Some(paths) = definitely_initalised_paths {
             debug!("definitely_initalised_paths = {:?}", paths);
@@ -542,10 +520,7 @@ impl ProcedureLoops {
                         && place != potential_prefix
                         && utils::is_prefix(place, potential_prefix)
                 });
-                if !has_prefix
-                    && !write_leaves.contains(place)
-                    && !mut_borrow_leaves.contains(place)
-                {
+                if !has_prefix && !write_leaves.contains(place) && !mut_borrow_leaves.contains(place) {
                     mut_borrow_leaves.push(*(*place));
                 }
             }

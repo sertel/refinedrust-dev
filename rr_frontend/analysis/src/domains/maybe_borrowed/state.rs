@@ -4,9 +4,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::mir_utils::Place;
 use rr_rustc_interface::data_structures::fx::FxHashSet;
-use serde::{ser::SerializeMap, Serialize, Serializer};
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
+
+use crate::mir_utils::Place;
 
 #[derive(Clone, Default, Eq, PartialEq)]
 pub struct MaybeBorrowedState<'tcx> {

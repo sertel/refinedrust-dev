@@ -4,11 +4,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    abstract_interpretation::{AnalysisResult, FixpointEngine},
-    domains::DefinitelyAllocatedState,
-};
-use rr_rustc_interface::{data_structures::fx::FxHashSet, middle::mir, span::def_id::DefId};
+use rr_rustc_interface::data_structures::fx::FxHashSet;
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::span::def_id::DefId;
+
+use crate::abstract_interpretation::{AnalysisResult, FixpointEngine};
+use crate::domains::DefinitelyAllocatedState;
 
 pub struct DefinitelyAllocatedAnalysis<'mir, 'tcx: 'mir> {
     def_id: DefId,
@@ -42,16 +43,14 @@ impl<'mir, 'tcx: 'mir> FixpointEngine<'mir, 'tcx> for DefinitelyAllocatedAnalysi
     }
 
     fn new_initial(&self) -> Self::State {
-        let mut locals_without_explicit_allocation: FxHashSet<_> =
-            self.mir.vars_and_temps_iter().collect();
+        let mut locals_without_explicit_allocation: FxHashSet<_> = self.mir.vars_and_temps_iter().collect();
         for block in self.mir.basic_blocks.iter() {
             for statement in &block.statements {
                 match statement.kind {
-                    mir::StatementKind::StorageLive(local)
-                    | mir::StatementKind::StorageDead(local) => {
+                    mir::StatementKind::StorageLive(local) | mir::StatementKind::StorageDead(local) => {
                         locals_without_explicit_allocation.remove(&local);
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
         }
@@ -65,11 +64,7 @@ impl<'mir, 'tcx: 'mir> FixpointEngine<'mir, 'tcx> for DefinitelyAllocatedAnalysi
         false
     }
 
-    fn apply_statement_effect(
-        &self,
-        state: &mut Self::State,
-        location: mir::Location,
-    ) -> AnalysisResult<()> {
+    fn apply_statement_effect(&self, state: &mut Self::State, location: mir::Location) -> AnalysisResult<()> {
         state.apply_statement_effect(location)
     }
 

@@ -8,16 +8,13 @@
 //! copied from prusti-interface/utils
 
 //use rustc_abi::FieldIdx;
-use rr_rustc_interface::{
-    data_structures::fx::FxHashSet,
-    infer::infer::TyCtxtInferExt,
-    middle::{
-        mir,
-        ty::{self, TyCtxt},
-    },
-    trait_selection::infer::InferCtxtExt,
-};
 use std::mem;
+
+use rr_rustc_interface::data_structures::fx::FxHashSet;
+use rr_rustc_interface::infer::infer::TyCtxtInferExt;
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::ty::{self, TyCtxt};
+use rr_rustc_interface::trait_selection::infer::InferCtxtExt;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Eq, PartialEq, derive_more::From, Hash)]
@@ -44,10 +41,7 @@ impl<'tcx> PartialOrd for Place<'tcx> {
 
 impl<'tcx> Ord for Place<'tcx> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.0
-            .local
-            .cmp(&other.0.local)
-            .then(self.0.projection.cmp(other.0.projection))
+        self.0.local.cmp(&other.0.local).then(self.0.projection.cmp(other.0.projection))
     }
 }
 
@@ -59,6 +53,7 @@ impl<'tcx> std::fmt::Debug for Place<'tcx> {
 
 impl<'tcx> std::ops::Deref for Place<'tcx> {
     type Target = mir::Place<'tcx>;
+
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -68,6 +63,7 @@ impl<'tcx> PlaceImpl<'tcx> for Place<'tcx> {
     fn from_mir_place(place: mir::Place<'tcx>) -> Place<'tcx> {
         Place(place)
     }
+
     fn to_mir_place(self) -> mir::Place<'tcx> {
         self.0
     }
@@ -77,6 +73,7 @@ impl<'tcx> PlaceImpl<'tcx> for mir::Place<'tcx> {
     fn from_mir_place(place: mir::Place<'tcx>) -> mir::Place<'tcx> {
         place
     }
+
     fn to_mir_place(self) -> mir::Place<'tcx> {
         self
     }
@@ -97,20 +94,14 @@ pub fn location_to_stmt_str(location: mir::Location, mir: &mir::Body) -> String 
 
 /// Check if the place `potential_prefix` is a prefix of `place`. For example:
 ///
-/// +   `is_prefix(x.f, x.f) == true`
-/// +   `is_prefix(x.f.g, x.f) == true`
-/// +   `is_prefix(x.f, x.f.g) == false`
+/// + `is_prefix(x.f, x.f) == true`
+/// + `is_prefix(x.f.g, x.f) == true`
+/// + `is_prefix(x.f, x.f.g) == false`
 pub(crate) fn is_prefix<'tcx>(place: Place<'tcx>, potential_prefix: Place<'tcx>) -> bool {
-    if place.local != potential_prefix.local
-        || place.projection.len() < potential_prefix.projection.len()
-    {
+    if place.local != potential_prefix.local || place.projection.len() < potential_prefix.projection.len() {
         false
     } else {
-        place
-            .projection
-            .iter()
-            .zip(potential_prefix.projection.iter())
-            .all(|(e1, e2)| e1 == e2)
+        place.projection.iter().zip(potential_prefix.projection.iter()).all(|(e1, e2)| e1 == e2)
     }
 }
 
@@ -134,10 +125,7 @@ pub fn expand_struct_place<'tcx, P: PlaceImpl<'tcx> + std::marker::Copy>(
     }
     match typ.ty.kind() {
         ty::Adt(def, substs) => {
-            let variant = typ
-                .variant_index
-                .map(|i| def.variant(i))
-                .unwrap_or_else(|| def.non_enum_variant());
+            let variant = typ.variant_index.map(|i| def.variant(i)).unwrap_or_else(|| def.non_enum_variant());
             for (index, field_def) in variant.fields.iter().enumerate() {
                 if Some(index) != without_field {
                     let field_place =
@@ -145,7 +133,7 @@ pub fn expand_struct_place<'tcx, P: PlaceImpl<'tcx> + std::marker::Copy>(
                     places.push(P::from_mir_place(field_place));
                 }
             }
-        }
+        },
         ty::Tuple(slice) => {
             for (index, arg) in slice.iter().enumerate() {
                 if Some(index) != without_field {
@@ -153,7 +141,7 @@ pub fn expand_struct_place<'tcx, P: PlaceImpl<'tcx> + std::marker::Copy>(
                     places.push(P::from_mir_place(field_place));
                 }
             }
-        }
+        },
         ty::Closure(_, substs) => {
             for (index, subst_ty) in substs.as_closure().upvar_tys().iter().enumerate() {
                 if Some(index) != without_field {
@@ -161,7 +149,7 @@ pub fn expand_struct_place<'tcx, P: PlaceImpl<'tcx> + std::marker::Copy>(
                     places.push(P::from_mir_place(field_place));
                 }
             }
-        }
+        },
         ty::Generator(_, substs, _) => {
             for (index, subst_ty) in substs.as_generator().upvar_tys().iter().enumerate() {
                 if Some(index) != without_field {
@@ -169,7 +157,7 @@ pub fn expand_struct_place<'tcx, P: PlaceImpl<'tcx> + std::marker::Copy>(
                     places.push(P::from_mir_place(field_place));
                 }
             }
-        }
+        },
         ty => unreachable!("ty={:?}", ty),
     }
     places
@@ -185,12 +173,8 @@ pub fn expand_one_level<'tcx>(
     guide_place: Place<'tcx>,
 ) -> (Place<'tcx>, Vec<Place<'tcx>>) {
     let index = current_place.projection.len();
-    let new_projection = tcx.mk_place_elems_from_iter(
-        current_place
-            .projection
-            .iter()
-            .chain([guide_place.projection[index]]),
-    );
+    let new_projection =
+        tcx.mk_place_elems_from_iter(current_place.projection.iter().chain([guide_place.projection[index]]));
     let new_current_place = Place(mir::Place {
         local: current_place.local,
         projection: new_projection,
@@ -198,7 +182,7 @@ pub fn expand_one_level<'tcx>(
     let other_places = match guide_place.projection[index] {
         mir::ProjectionElem::Field(projected_field, _field_ty) => {
             expand_struct_place(current_place, mir, tcx, Some(projected_field.index()))
-        }
+        },
         mir::ProjectionElem::Deref
         | mir::ProjectionElem::Index(..)
         | mir::ProjectionElem::ConstantIndex { .. }
@@ -223,10 +207,7 @@ pub(crate) fn expand<'tcx>(
     mut minuend: Place<'tcx>,
     subtrahend: Place<'tcx>,
 ) -> Vec<Place<'tcx>> {
-    assert!(
-        is_prefix(subtrahend, minuend),
-        "The minuend must be the prefix of the subtrahend."
-    );
+    assert!(is_prefix(subtrahend, minuend), "The minuend must be the prefix of the subtrahend.");
     let mut place_set = Vec::new();
     while minuend.projection.len() < subtrahend.projection.len() {
         let (new_minuend, places) = expand_one_level(mir, tcx, minuend, subtrahend);
@@ -253,8 +234,7 @@ pub(crate) fn collapse<'tcx>(
         guide_place: Place<'tcx>,
     ) {
         if current_place != guide_place {
-            let (new_current_place, mut expansion) =
-                expand_one_level(mir, tcx, current_place, guide_place);
+            let (new_current_place, mut expansion) = expand_one_level(mir, tcx, current_place, guide_place);
             recurse(mir, tcx, places, new_current_place, guide_place);
             expansion.push(new_current_place);
             if expansion.iter().all(|place| places.contains(place)) {
@@ -289,11 +269,7 @@ pub fn remove_place_from_set<'tcx>(
     }
 }
 
-pub fn is_copy<'tcx>(
-    tcx: ty::TyCtxt<'tcx>,
-    ty: ty::Ty<'tcx>,
-    param_env: ty::ParamEnv<'tcx>,
-) -> bool {
+pub fn is_copy<'tcx>(tcx: ty::TyCtxt<'tcx>, ty: ty::Ty<'tcx>, param_env: ty::ParamEnv<'tcx>) -> bool {
     if let ty::TyKind::Ref(_, _, mutability) = ty.kind() {
         // Shared references are copy, mutable references are not.
         // `type_implements_trait` doesn't consider that.
@@ -327,12 +303,12 @@ pub fn get_blocked_place<'tcx>(tcx: TyCtxt<'tcx>, borrowed: Place<'tcx>) -> Plac
                     projection: tcx.mk_place_elems(place_ref.projection),
                 })
                 .into();
-            }
+            },
             mir::ProjectionElem::Field(..)
             | mir::ProjectionElem::Downcast(..)
             | mir::ProjectionElem::OpaqueCast(..) => {
                 // Continue
-            }
+            },
         }
     }
     borrowed

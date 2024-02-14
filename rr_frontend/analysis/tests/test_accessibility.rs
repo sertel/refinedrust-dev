@@ -1,13 +1,11 @@
 mod utils;
 
+use std::ffi::OsStr;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
+use std::{env, fmt, fs};
+
 use glob::glob;
-use std::{
-    env,
-    ffi::OsStr,
-    fmt, fs,
-    path::{Path, PathBuf},
-    process::{Command, Stdio},
-};
 use utils::*;
 
 /// Prepend paths to an environment variable
@@ -20,7 +18,7 @@ fn env_prepend_path(name: &str, value: Vec<PathBuf>, cmd: &mut Command) {
     match env::join_paths(parts) {
         Ok(new_value) => {
             cmd.env(name, new_value);
-        }
+        },
         Err(err) => panic!("Error: {:?}", err),
     }
 }
@@ -36,9 +34,7 @@ fn add_to_loader_path(paths: Vec<PathBuf>, cmd: &mut Command) {
     env_prepend_path(LOADER_PATH, paths, cmd);
 }
 
-fn generate_program_testing_accessible_paths(
-    program_path: impl AsRef<OsStr> + fmt::Debug,
-) -> Vec<String> {
+fn generate_program_testing_accessible_paths(program_path: impl AsRef<OsStr> + fmt::Debug) -> Vec<String> {
     let compiler_sysroot = PathBuf::from(find_sysroot());
     let compiler_bin = compiler_sysroot.join("bin");
     let compiler_lib = compiler_sysroot.join("lib");
@@ -78,17 +74,12 @@ fn generate_program_testing_accessible_paths(
         panic!("Test case unexpectedly failed. See the output for details.");
     }
 
-    stdout
-        .to_string()
-        .split("\n/* NEW PROGRAM */\n\n")
-        .map(|s| s.to_string())
-        .collect()
+    stdout.to_string().split("\n/* NEW PROGRAM */\n\n").map(|s| s.to_string()).collect()
 }
 
 fn check_compile_pass(cwd: impl AsRef<Path>, program_path: impl AsRef<OsStr> + fmt::Debug) {
     let mut cmd = Command::new("rustc");
-    cmd.args(["--edition=2018", "--crate-type=lib", "-Zpolonius"])
-        .arg(&program_path);
+    cmd.args(["--edition=2018", "--crate-type=lib", "-Zpolonius"]).arg(&program_path);
     println!("Running {:?}", cmd);
     let output = cmd
         .current_dir(cwd)
@@ -119,15 +110,8 @@ fn collect_standalone_test_programs() -> Vec<PathBuf> {
         //"../prusti-tests/tests/verify*/pass/no-annotations/*.rs",
     ];
     for glob_path in &glob_paths {
-        let mut new_programs: Vec<_> = glob(glob_path)
-            .unwrap()
-            .map(|result| result.unwrap())
-            .collect();
-        println!(
-            "Collected {} test programs from {:?}",
-            new_programs.len(),
-            glob_path
-        );
+        let mut new_programs: Vec<_> = glob(glob_path).unwrap().map(|result| result.unwrap()).collect();
+        println!("Collected {} test programs from {:?}", new_programs.len(), glob_path);
         assert!(!new_programs.is_empty());
         new_programs.sort();
         programs.append(&mut new_programs);
@@ -151,32 +135,18 @@ fn test_accessibility() {
     println!("Output directory: {:?}", out_dir);
 
     for (test_num, test_program) in test_programs.iter().enumerate() {
-        println!(
-            "Testing on {:?} ({}/{})",
-            test_program,
-            test_num,
-            test_programs.len()
-        );
+        println!("Testing on {:?} ({}/{})", test_program, test_num, test_programs.len());
         let gen_programs = generate_program_testing_accessible_paths(test_program);
         assert!(!gen_programs.is_empty());
         println!("The analysis generated {} programs", gen_programs.len());
         let limit = 10;
         if gen_programs.len() > limit {
-            println!(
-                "Too many generated programs. Only the first {} will be considered.",
-                limit
-            );
+            println!("Too many generated programs. Only the first {} will be considered.", limit);
         }
         for (gen_num, gen_program) in gen_programs.iter().take(limit).enumerate() {
             let test_filename = test_program.file_name().unwrap().to_str().unwrap();
-            let gen_path =
-                out_dir.join(format!("{:03}_{:02}_{}", test_num, gen_num, test_filename));
-            println!(
-                "Generated program: {:?} ({}/{})",
-                gen_path,
-                gen_num,
-                gen_programs.len()
-            );
+            let gen_path = out_dir.join(format!("{:03}_{:02}_{}", test_num, gen_num, test_filename));
+            println!("Generated program: {:?} ({}/{})", gen_path, gen_num, gen_programs.len());
             println!("┌─── Begin of generated program ───┐");
             println!("{}", gen_program);
             println!("└──── End of generated program ────┘");

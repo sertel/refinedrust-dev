@@ -7,4 +7,5 @@
 pub mod local_set;
 pub mod place_set;
 
-pub use self::{local_set::LocalSet, place_set::PlaceSet};
+pub use self::local_set::LocalSet;
+pub use self::place_set::PlaceSet;

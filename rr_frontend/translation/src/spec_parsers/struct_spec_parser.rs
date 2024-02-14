@@ -4,14 +4,13 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
+use attribute_parse as parse;
 /// Parsing of RefinedRust struct specifications.
 use log::info;
-
+use parse::{Parse, Peek};
+use radium::specs;
 use rustc_ast::ast::AttrItem;
-use radium::specs as specs;
 
-use attribute_parse as parse;
-use parse::{Peek, Parse};
 use crate::spec_parsers::parse_utils::*;
 
 pub trait InvariantSpecParser {
@@ -26,14 +25,20 @@ pub trait InvariantSpecParser {
     /// - rr::refines for the inner refinement
     ///
     /// Returns whether a Boolean stating whether a rr::refines attribute was included.
-    fn parse_invariant_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], params: &'a [specs::LiteralTyParam], lfts: &'a [(Option<String>, specs::Lft)]) -> Result<(specs::InvariantSpec, bool), String>;
+    fn parse_invariant_spec<'a>(
+        &'a mut self,
+        ty_name: &str,
+        attrs: &'a [&'a AttrItem],
+        params: &'a [specs::LiteralTyParam],
+        lfts: &'a [(Option<String>, specs::Lft)],
+    ) -> Result<(specs::InvariantSpec, bool), String>;
 }
 
 /// Parse a binder pattern with an optional Coq type annotation, e.g.
 /// `"(x, y)" : "(Z * Z)%type"`
 struct RfnPattern {
-    rfn_pat : specs::CoqPattern,
-    rfn_type : Option<specs::CoqType>,
+    rfn_pat: specs::CoqPattern,
+    rfn_type: Option<specs::CoqType>,
 }
 
 impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
@@ -46,10 +51,15 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
             input.parse::<_, parse::MToken![:]>(meta)?;
             let ty: parse::LitStr = input.parse(meta)?;
             let (ty, _) = process_coq_literal(ty.value().as_str(), *meta);
-            Ok(RfnPattern {rfn_pat: pat, rfn_type: Some(specs::CoqType::Literal(ty))})
-        }
-        else {
-            Ok(RfnPattern {rfn_pat: pat, rfn_type: None})
+            Ok(RfnPattern {
+                rfn_pat: pat,
+                rfn_type: Some(specs::CoqType::Literal(ty)),
+            })
+        } else {
+            Ok(RfnPattern {
+                rfn_pat: pat,
+                rfn_type: None,
+            })
         }
     }
 }
@@ -111,8 +121,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     panic!("invalid macro command: {:?}", macro_cmd.value());
                 },
             }
-        }
-        else {
+        } else {
             let name_or_prop_str: parse::LitStr = input.parse(meta)?;
             if parse::Colon::peek(input) {
                 // this is a name
@@ -125,8 +134,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 // TODO: should we use annot_meta?
 
                 Ok(MetaIProp::Pure(pure_str, Some(name_str)))
-            }
-            else {
+            } else {
                 // this is a
                 let (lit, _) = process_coq_literal(&name_or_prop_str.value(), *meta);
                 Ok(MetaIProp::Pure(lit, None))
@@ -148,12 +156,8 @@ impl<'tcx, U> parse::Parse<U> for InvariantSpecFlags {
         match mode.value().as_str() {
             "persistent" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Persistent)),
             "plain" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Plain)),
-            "na" => {
-                Ok(InvariantSpecFlags(specs::InvariantSpecFlags::NonAtomic))
-            },
-            "atomic" => {
-                Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Atomic))
-            },
+            "na" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::NonAtomic)),
+            "atomic" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Atomic)),
             _ => {
                 panic!("invalid ADT mode: {:?}", mode.value())
             },
@@ -161,10 +165,7 @@ impl<'tcx, U> parse::Parse<U> for InvariantSpecFlags {
     }
 }
 
-
-pub struct VerboseInvariantSpecParser {
-
-}
+pub struct VerboseInvariantSpecParser {}
 
 impl VerboseInvariantSpecParser {
     pub fn new() -> Self {
@@ -173,11 +174,14 @@ impl VerboseInvariantSpecParser {
 }
 
 impl InvariantSpecParser for VerboseInvariantSpecParser {
-
-    fn parse_invariant_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], params: &'a [specs::LiteralTyParam], lfts: &'a [(Option<String>, specs::Lft)])
-            -> Result<(specs::InvariantSpec, bool), String>
-    {
-        fn str_err(e : parse::ParseError) -> String {
+    fn parse_invariant_spec<'a>(
+        &'a mut self,
+        ty_name: &str,
+        attrs: &'a [&'a AttrItem],
+        params: &'a [specs::LiteralTyParam],
+        lfts: &'a [(Option<String>, specs::Lft)],
+    ) -> Result<(specs::InvariantSpec, bool), String> {
+        fn str_err(e: parse::ParseError) -> String {
             format!("{:?}", e)
         }
 
@@ -229,11 +233,10 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                             MetaIProp::Type(ty) => {
                                 type_invariants.push(ty);
                             },
-                            MetaIProp::Pure(p, name) => {
-                                match name {
-                                    None => invariants.push((specs::IProp::Pure(p), specs::InvariantMode::All)),
-                                    Some(n) => invariants.push((specs::IProp::PureWithName(p, n), specs::InvariantMode::All)),
-                                }
+                            MetaIProp::Pure(p, name) => match name {
+                                None => invariants.push((specs::IProp::Pure(p), specs::InvariantMode::All)),
+                                Some(n) => invariants
+                                    .push((specs::IProp::PureWithName(p, n), specs::InvariantMode::All)),
                             },
                         }
                     },
@@ -249,8 +252,7 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                         let term = IdentOrTerm::parse(&buffer, &meta).map_err(str_err)?;
                         if let Some(_) = abstracted_refinement {
                             return Err("multiple refines specifications given".to_string());
-                        }
-                        else {
+                        } else {
                             abstracted_refinement = Some(term.to_string());
                         }
                     },
@@ -273,14 +275,12 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
             existentials.into_iter().map(|a| (a.name, a.ty)).collect(),
             invariants,
             type_invariants,
-            abstracted_refinement
+            abstracted_refinement,
         );
 
         Ok((spec, refinement_included))
     }
 }
-
-
 
 /// A parsed specification for a field.
 pub struct StructFieldSpec<'def> {
@@ -294,20 +294,24 @@ pub trait StructFieldSpecParser<'def> {
     /// Parse attributes on a struct field as a type specification.
     /// Supported attributes:
     /// - rr::field([r @ ] type)
-    fn parse_field_spec<'a>(&'a mut self, field_name: &str, attrs: &'a[&'a AttrItem]) -> Result<StructFieldSpec<'def>, String>;
+    fn parse_field_spec<'a>(
+        &'a mut self,
+        field_name: &str,
+        attrs: &'a [&'a AttrItem],
+    ) -> Result<StructFieldSpec<'def>, String>;
 }
-
 
 /// Parses attributes on a field to a `StructFieldSpec`, using a given default type for the field
 /// in case none is annotated.
 pub struct VerboseStructFieldSpecParser<'a, 'def, F>
-    where F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>
+where
+    F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
     /// The translated Rust field type that is used as a default.
     field_type: &'a specs::Type<'def>,
 
     /// the type parameters of this struct
-    params: &'a[specs::LiteralTyParam],
+    params: &'a [specs::LiteralTyParam],
 
     lfts: &'a [(Option<String>, specs::Lft)],
 
@@ -320,10 +324,23 @@ pub struct VerboseStructFieldSpecParser<'a, 'def, F>
 }
 
 impl<'a, 'def, F> VerboseStructFieldSpecParser<'a, 'def, F>
-    where F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>
+where
+    F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
-    pub fn new(field_type: &'a specs::Type<'def>, params: &'a [specs::LiteralTyParam], lfts: &'a [(Option<String>, specs::Lft)], expect_rfn: bool, make_literal: F) -> Self {
-        Self { field_type, params, lfts, expect_rfn, make_literal}
+    pub fn new(
+        field_type: &'a specs::Type<'def>,
+        params: &'a [specs::LiteralTyParam],
+        lfts: &'a [(Option<String>, specs::Lft)],
+        expect_rfn: bool,
+        make_literal: F,
+    ) -> Self {
+        Self {
+            field_type,
+            params,
+            lfts,
+            expect_rfn,
+            make_literal,
+        }
     }
 
     fn make_type(&self, lit: LiteralType, ty: &specs::Type<'def>) -> specs::Type<'def> {
@@ -336,11 +353,12 @@ impl<'a, 'def, F> VerboseStructFieldSpecParser<'a, 'def, F>
         // we need this in order to be able to specify the invariant spec separately.
 
         info!("making type: {:?}, {:?}", lit, ty);
-        let lit_ty =  specs::LiteralType {
+        let lit_ty = specs::LiteralType {
             rust_name: None,
             type_term: lit.ty.to_string(),
             refinement_type: specs::CoqType::Infer,
-            syn_type: st };
+            syn_type: st,
+        };
         let lit_ref = (&self.make_literal)(lit_ty);
         let lit_use = specs::LiteralTypeUse::new_with_annot(lit_ref, vec![], lit.meta);
 
@@ -349,10 +367,15 @@ impl<'a, 'def, F> VerboseStructFieldSpecParser<'a, 'def, F>
 }
 
 impl<'a, 'def, F> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'a, 'def, F>
-    where F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>
+where
+    F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
-    fn parse_field_spec(&mut self, field_name: &str, attrs: &[&AttrItem]) -> Result<StructFieldSpec<'def>, String> {
-        fn str_err(e : parse::ParseError) -> String {
+    fn parse_field_spec(
+        &mut self,
+        field_name: &str,
+        attrs: &[&AttrItem],
+    ) -> Result<StructFieldSpec<'def>, String> {
+        fn str_err(e: parse::ParseError) -> String {
             format!("{:?}", e)
         }
 
@@ -382,8 +405,7 @@ impl<'a, 'def, F> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'
                                 buffer.parse::<_, parse::MToken![@]>(&meta).map_err(str_err)?;
                                 expect_ty = true;
                             }
-                        }
-                        else {
+                        } else {
                             expect_ty = true;
                         }
 
@@ -391,13 +413,13 @@ impl<'a, 'def, F> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'
                             let ty = LiteralType::parse(&buffer, &meta).map_err(str_err)?;
                             if let None = field_type {
                                 field_type = Some(self.make_type(ty, self.field_type));
-                            }
-                            else {
-                                return Err(format!("field attribute specified twice for field {:?}", field_name));
+                            } else {
+                                return Err(format!(
+                                    "field attribute specified twice for field {:?}",
+                                    field_name
+                                ));
                             }
                         }
-
-
                     },
                     _ => {
                         return Err(format!("unknown attribute for struct field specification: {:?}", args));
@@ -408,9 +430,15 @@ impl<'a, 'def, F> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'
 
         let spec;
         if let Some(ty) = field_type {
-            spec = StructFieldSpec{ty, rfn: parsed_rfn};
+            spec = StructFieldSpec {
+                ty,
+                rfn: parsed_rfn,
+            };
         } else {
-            spec = StructFieldSpec{ty: self.field_type.clone(), rfn: parsed_rfn};
+            spec = StructFieldSpec {
+                ty: self.field_type.clone(),
+                rfn: parsed_rfn,
+            };
         }
         Ok(spec)
     }

@@ -5,12 +5,11 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 #![deny(unused_must_use)]
+use std::env;
+use std::path::PathBuf;
+use std::process::Command;
+
 use serde::Deserialize;
-use std::{
-    env,
-    path::PathBuf,
-    process::Command,
-};
 
 pub fn get_current_executable_dir() -> PathBuf {
     env::current_exe()
@@ -41,7 +40,7 @@ fn env_prepend_path(name: &str, value: Vec<PathBuf>, cmd: &mut Command) {
     match env::join_paths(parts) {
         Ok(new_value) => {
             cmd.env(name, new_value);
-        }
+        },
         Err(err) => panic!("Error: {err:?}"),
     }
 }

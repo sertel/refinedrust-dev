@@ -2,9 +2,9 @@
 #![feature(let_chains)]
 
 pub mod code;
-pub mod specs;
 pub mod coq;
+pub mod specs;
 
-pub use specs::*;
 pub use code::*;
 pub use coq::*;
+pub use specs::*;

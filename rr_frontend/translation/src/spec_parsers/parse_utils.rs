@@ -4,17 +4,14 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-/// This provides some general utilities for RefinedRust-specific attribute parsing.
-
-use radium::specs as specs;
+use std::collections::HashSet;
 
 use attribute_parse as parse;
-use parse::{Peek, Parse, ParseStream, MToken, ParseResult};
-
-use regex::{self, Regex, Captures};
 use lazy_static::lazy_static;
-
-use std::collections::HashSet;
+use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
+/// This provides some general utilities for RefinedRust-specific attribute parsing.
+use radium::specs;
+use regex::{self, Captures, Regex};
 
 /// Parse either a literal string (a term/pattern) or an identifier, e.g.
 /// `x`, `z`, `"w"`, `"(a, b)"`
@@ -23,13 +20,15 @@ pub enum IdentOrTerm {
     Ident(String),
     Term(String),
 }
-impl<'tcx, U> parse::Parse<U> for IdentOrTerm where U: ?Sized {
+impl<'tcx, U> parse::Parse<U> for IdentOrTerm
+where
+    U: ?Sized,
+{
     fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
         if let Ok(ident) = parse::Ident::parse(input, meta) {
             // it's an identifer
             Ok(IdentOrTerm::Ident(ident.value()))
-        }
-        else {
+        } else {
             parse::LitStr::parse(input, meta).map(|s| IdentOrTerm::Term(s.value()))
         }
     }
@@ -66,9 +65,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
                 "raw" => {
                     raw = specs::TypeIsRaw::Yes;
                 },
-                _ => {
-                    return Err(parse::ParseError::OtherErr(loc.unwrap(), "Unsupported flag".to_string()))
-                },
+                _ => return Err(parse::ParseError::OtherErr(loc.unwrap(), "Unsupported flag".to_string())),
             }
         }
 
@@ -81,14 +78,22 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
             let ty: parse::LitStr = input.parse(meta)?;
             let (ty, meta) = process_coq_literal(&ty.value(), *meta);
 
-            Ok(LiteralTypeWithRef {rfn, ty: Some(ty), raw, meta})
-        }
-        else {
-            Ok(LiteralTypeWithRef {rfn, ty: None, raw, meta: specs::TypeAnnotMeta::empty()})
+            Ok(LiteralTypeWithRef {
+                rfn,
+                ty: Some(ty),
+                raw,
+                meta,
+            })
+        } else {
+            Ok(LiteralTypeWithRef {
+                rfn,
+                ty: None,
+                raw,
+                meta: specs::TypeAnnotMeta::empty(),
+            })
         }
     }
 }
-
 
 /// Parse a type annotation.
 #[derive(Debug)]
@@ -101,7 +106,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralType {
         let ty: parse::LitStr = input.parse(meta)?;
         let (ty, meta) = process_coq_literal(&ty.value(), *meta);
 
-        Ok(LiteralType {ty, meta})
+        Ok(LiteralType { ty, meta })
     }
 }
 
@@ -143,14 +148,15 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for RRParam {
             let ty: parse::LitStr = input.parse(meta)?;
             let (ty, _) = process_coq_literal(&ty.value(), *meta);
             let ty = specs::CoqType::Literal(ty);
-            Ok(RRParam{name, ty})
-        }
-        else {
-            Ok(RRParam{name, ty: specs::CoqType::Infer})
+            Ok(RRParam { name, ty })
+        } else {
+            Ok(RRParam {
+                name,
+                ty: specs::CoqType::Infer,
+            })
         }
     }
 }
-
 
 /// Parse a list of comma-separated parameter declarations.
 #[derive(Debug)]
@@ -159,8 +165,11 @@ pub(crate) struct RRParams {
 }
 impl<'tcx, 'a> Parse<ParseMeta<'a>> for RRParams {
     fn parse(input: ParseStream, meta: &ParseMeta) -> ParseResult<Self> {
-        let params: parse::Punctuated<RRParam, MToken![,]> = parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
-        Ok(RRParams{params: params.into_iter().collect()})
+        let params: parse::Punctuated<RRParam, MToken![,]> =
+            parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
+        Ok(RRParams {
+            params: params.into_iter().collect(),
+        })
     }
 }
 
@@ -182,14 +191,18 @@ impl<'a, U> Parse<U> for CoqPath {
             let module: parse::LitStr = input.parse(meta)?;
             let module = module.value();
 
-            Ok(CoqPath(specs::CoqPath { path: Some(path_or_module.to_string()), module }))
-        }
-        else {
-            Ok(CoqPath(specs::CoqPath {path: None, module: path_or_module.to_string()}))
+            Ok(CoqPath(specs::CoqPath {
+                path: Some(path_or_module.to_string()),
+                module,
+            }))
+        } else {
+            Ok(CoqPath(specs::CoqPath {
+                path: None,
+                module: path_or_module.to_string(),
+            }))
         }
     }
 }
-
 
 pub type ParseMeta<'a> = (&'a [specs::LiteralTyParam], &'a [(Option<String>, specs::Lft)]);
 
@@ -233,7 +246,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         for (name, lft) in lfts.iter() {
             if let Some(name) = name {
                 if name == search {
-                    return Some(lft.clone())
+                    return Some(lft.clone());
                 }
             }
         }
@@ -250,7 +263,8 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
                 format!("{}{}", &c[1], &param.refinement_type)
             },
             None => format!("ERR"),
-    }});
+        }
+    });
 
     let cs = RE_ST_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
@@ -261,7 +275,8 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
                 format!("{}(ty_syn_type {})", &c[1], &param.type_term)
             },
             None => "ERR".to_string(),
-    }});
+        }
+    });
     let cs = RE_LY_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
@@ -271,7 +286,8 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
                 format!("{}(use_layout_alg' (ty_syn_type {}))", &c[1], &param.type_term)
             },
             None => "ERR".to_string(),
-    }});
+        }
+    });
     let cs = RE_TY_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
@@ -281,7 +297,8 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
                 format!("{}{}", &c[1], &param.type_term)
             },
             None => format!("ERR"),
-    }});
+        }
+    });
     let cs = RE_LFT_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let lft = lookup_lft_name(t);
@@ -293,9 +310,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
             None => "ERR".to_string(),
         }
     });
-    let cs = RE_LIT.replace_all(&cs, |c: &Captures<'_>| {
-        format!("{}", &c[1])
-    });
+    let cs = RE_LIT.replace_all(&cs, |c: &Captures<'_>| format!("{}", &c[1]));
 
     (cs.to_string(), specs::TypeAnnotMeta::new(literal_tyvars, literal_lfts))
 }
