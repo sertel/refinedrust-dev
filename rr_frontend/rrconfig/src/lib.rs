@@ -42,6 +42,7 @@ lazy_static! {
                 .set_default("cargo_path", "cargo")?
                 .set_default("cargo_command", "check")?
                 .set_default("admit_proofs", false)?
+                .set_default("lib_load_paths", Vec::<String>::new())?
                 .set_default("work_dir", ".")?;
 
             // 2. Override with the optional TOML file "RefinedRust.toml" (if there is any)
@@ -90,7 +91,12 @@ fn make_path_absolute(path: &str) -> PathBuf {
     }
     else {
         let base_path_buf = std::path::PathBuf::from(base_path);
-        base_path_buf.join(path_buf).clean()
+        if base_path_buf.is_absolute() {
+            base_path_buf.join(path_buf).clean()
+        }
+        else {
+            env::current_dir().unwrap().join(base_path_buf).join(path_buf).clean()
+        }
     }
 }
 
@@ -134,6 +140,17 @@ pub fn dump_borrowck_info() -> bool {
 pub fn log_dir() -> PathBuf {
     make_path_absolute(&read_setting::<String>("log_dir"))
 }
+
+/// Get the paths in which to search for RefinedRust library declarations.
+pub fn lib_load_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new(); 
+    let s = read_setting::<Vec<String>>("lib_load_paths");
+    for p in s {
+        paths.push(make_path_absolute(&p));
+    }
+    paths
+}
+
 
 /// The hotword with which specification attributes should begin.
 pub fn spec_hotword() -> String {

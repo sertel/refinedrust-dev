@@ -4477,6 +4477,8 @@ Section ltype_def.
 End ltype_def.
 
 Notation "# x" := (PlaceIn x) (at level 9) : stdpp_scope.
+Notation "'<#>' x" := (fmap (M := list) PlaceIn x) (at level 30).
+Notation "'<#>@{' A '}' x" := (fmap (M := A) PlaceIn x) (at level 30).
 Notation "👻 γ" := (PlaceGhost γ) (at level 9) : stdpp_scope.
 Notation "◁ ty" := (OfTy ty) (at level 15) : bi_scope.
 

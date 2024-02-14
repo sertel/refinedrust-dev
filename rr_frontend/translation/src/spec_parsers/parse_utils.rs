@@ -89,6 +89,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
     }
 }
 
+
 /// Parse a type annotation.
 #[derive(Debug)]
 pub struct LiteralType {
@@ -190,7 +191,7 @@ impl<'a, U> Parse<U> for CoqPath {
 }
 
 
-pub type ParseMeta<'a> = (&'a [specs::TyParamNames], &'a [(Option<String>, specs::Lft)]);
+pub type ParseMeta<'a> = (&'a [specs::LiteralTyParam], &'a [(Option<String>, specs::Lft)]);
 
 /// Processes a literal Coq term annotated via an attribute.
 /// In particular, processes escapes `{...}` and replaces them via their interpretation, see
@@ -208,7 +209,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
     let lfts = meta.1;
 
     let mut literal_lfts: HashSet<String> = HashSet::new();
-    let mut literal_tyvars: HashSet<specs::TyParamNames> = HashSet::new();
+    let mut literal_tyvars: HashSet<specs::LiteralTyParam> = HashSet::new();
 
     /* regexes:
      * - '{\s*rt_of\s+([[:alpha:]])\s*}' replace by lookup of the refinement type name
@@ -246,7 +247,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         match param {
             Some(param) => {
                 literal_tyvars.insert(param.clone());
-                format!("{}{}", &c[1], &param.rt_name)
+                format!("{}{}", &c[1], &param.refinement_type)
             },
             None => format!("ERR"),
     }});
@@ -257,7 +258,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         match param {
             Some(param) => {
                 literal_tyvars.insert(param.clone());
-                format!("{}(ty_syn_type {})", &c[1], &param.ty_name)
+                format!("{}(ty_syn_type {})", &c[1], &param.type_term)
             },
             None => "ERR".to_string(),
     }});
@@ -267,7 +268,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         match param {
             Some(param) => {
                 literal_tyvars.insert(param.clone());
-                format!("{}(use_layout_alg' (ty_syn_type {}))", &c[1], &param.ty_name)
+                format!("{}(use_layout_alg' (ty_syn_type {}))", &c[1], &param.type_term)
             },
             None => "ERR".to_string(),
     }});
@@ -277,7 +278,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         match param {
             Some(param) => {
                 literal_tyvars.insert(param.clone());
-                format!("{}{}", &c[1], &param.ty_name)
+                format!("{}{}", &c[1], &param.type_term)
             },
             None => format!("ERR"),
     }});

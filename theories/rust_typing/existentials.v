@@ -738,19 +738,18 @@ From iris.proofmode Require Import coq_tactics reduction string_ident.
 (* Recursively destruct a product in hypothesis H, using the given name as template. *)
 Ltac destruct_product_hypothesis name H :=
   match goal with
-  | H : _ * _ |- _ => let tmp1 := fresh "tmp" in
-                      let tmp2 := fresh "tmp" in
+  | H : (_ * _)%type |- _ => let tmp1 := fresh name in
+                      let tmp2 := fresh name in
                       destruct H as [tmp1 tmp2];
                       destruct_product_hypothesis name tmp1;
                       destruct_product_hypothesis name tmp2
-  |           |- _ => let id := fresh name in
-                      rename H into id
+  |           |- _ => idtac
   end.
 
 Ltac prepare_initial_coq_context :=
   (* The automation assumes that all products in the context are destructed, see liForall *)
   repeat lazymatch goal with
-  | H : _ * _ |- _ => destruct_product_hypothesis H H
+  | H : (_ * _)%type |- _ => destruct_product_hypothesis H H
   | H : unit |- _ => destruct H
   end.
 Ltac iTypeOfGoal := match goal with |- envs_entails _ ?Δ => Δ end.

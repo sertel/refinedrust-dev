@@ -9,6 +9,7 @@
 
 
 #![feature(box_patterns)]
+#![feature(let_chains)]
 #![feature(rustc_private)]
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -60,15 +61,20 @@ mod arg_folder;
 use environment::Environment;
 use function_body::FunctionTranslator;
 use type_translator::TypeTranslator;
-use function_body::ProcedureScope;
+use function_body::{ProcedureScope, ProcedureMode};
 
-use spec_parsers::verbose_function_spec_parser::get_shim_attrs;
+use spec_parsers::verbose_function_spec_parser::{get_shim_attrs, get_export_as_attr};
 use spec_parsers::module_attr_parser as mod_parser;
 use mod_parser::ModuleAttrParser;
 use spec_parsers::crate_attr_parser as crate_parser;
 use crate_parser::CrateAttrParser;
 
 use topological_sort::TopologicalSort;
+
+use std::fs::File;
+
+use attribute_parse as parse;
+use parse::{Peek, Parse, ParseStream, MToken, ParseResult};
 
 use rrconfig;
 
@@ -99,91 +105,170 @@ fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
     defn_order
 }
 
-/// Order struct defs in the order in which we should emit them for respecting dependencies.
-/// Complexity O(n^2), it's currently rather inefficient, but due to small numbers it should be fine.
-// TODO: we should also take into account enums here (e.g. if a struct refers to an enum)
-fn order_struct_defs<'tcx>(env: &Environment<'tcx>, defs: &[DefId]) -> Vec<DefId> {
-    let mut out = Vec::new();
-    let mut altered = true;
-    let need_to_visit: HashSet<DefId> = defs.iter().cloned().collect();
-
-
-    // compute dependencies
-    let mut dependencies: HashMap<DefId, HashSet<DefId>> = HashMap::new();
-    for did in defs.iter() {
-        let mut deps = HashSet::new();
-        let ty: ty::Ty<'tcx> = env.tcx().type_of(*did).instantiate_identity();
-        match ty.kind() {
-            ty::TyKind::Adt(adt, _) => {
-                let variants = &adt.variants();
-                for v in variants.iter() {
-                    if v.def_id != *did {
-                        // skip if this is not the variant we were actually looking for
-                        continue;
-                    }
-                    for f in v.fields.iter() {
-                        let field_ty = env.tcx().type_of(f.did).instantiate_identity();
-                        // check if the field_ty is also an ADT -- if so, add it to the dependencies
-                        match field_ty.kind() {
-                            ty::TyKind::Adt(adt2, _) => {
-                                // TODO depending on how we handle enums, this may need to change
-                                if need_to_visit.contains(&adt2.did()) {
-                                    deps.insert(adt2.did());
-                                }
-                                // also check the variants
-                                for v2 in adt2.variants().iter() {
-                                    if need_to_visit.contains(&v2.def_id) {
-                                        deps.insert(v2.def_id);
-                                    }
-                                }
-                            },
-                            // fine
-                            _ => (),
-                        }
-                    }
-
-                }
-            }
-            _ => {
-                //let adt = env.tcx().adt_def(did);
-                panic!("unexpected ty for {:?} : {:?}", did, ty.kind());
-            },
-        }
-        dependencies.insert(*did, deps);
-    }
-
-    let mut visited: HashSet<DefId> = HashSet::new();
-    while altered {
-        altered = false;
-
-        for did in defs.iter() {
-            if visited.contains(did) {
-                continue;
-            }
-            // check that all dependencies are already there
-            let deps = dependencies.get(did).unwrap();
-            let need_dep = deps.iter().any(|did2| !visited.contains(did2));
-            if !need_dep {
-                out.push(*did);
-                visited.insert(*did);
-                altered = true;
-            }
-        }
-    }
-
-    out
-}
-
 pub struct VerificationCtxt<'tcx, 'rcx> {
     env: &'rcx Environment<'tcx>,
     procedure_registry: ProcedureScope<'rcx>,
     type_translator: &'rcx TypeTranslator<'rcx, 'tcx>,
     functions: &'rcx [LocalDefId],
-    extra_imports: HashSet<radium::CoqPath>,
+    /// the second component determines whether to include it in the code file as well
+    extra_imports: HashSet<(radium::CoqPath, bool)>,
     coq_path_prefix: String,
+    shim_registry: shim_registry::ShimRegistry<'rcx>,
 }
 
 impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
+
+    fn extract_def_path(path: rustc_hir::definitions::DefPath) -> Vec<String> {
+        let mut components = Vec::new();
+        for p in path.data.iter() {
+            if let Some(name) =  p.data.get_opt_name() {
+                components.push(name.as_str().to_string());
+            }
+        }
+        components
+    }
+
+    fn get_path_for_shim(&self, did: DefId) -> Vec<&str> {
+        let attrs = self.env.get_attributes(did);
+        //info!("get_path_for_shim has attrs {:?}", attrs);
+
+        let mut path = None;
+        if crate::utils::has_tool_attr(attrs, "export_as") {
+            let filtered_attrs = crate::utils::filter_tool_attrs(attrs);
+            path = Some(get_export_as_attr(filtered_attrs.as_slice()).unwrap());
+        }
+        else {
+            // Check for an annotation on the surrounding impl
+            if let Some(impl_did) = self.env.tcx().impl_of_method(did) {
+                let attrs = self.env.get_attributes(impl_did);
+                if crate::utils::has_tool_attr(attrs, "export_as") {
+                    let filtered_attrs = crate::utils::filter_tool_attrs(attrs);
+                    let mut path_prefix = get_export_as_attr(filtered_attrs.as_slice()).unwrap();
+
+                    // push the last component of this path
+                    let def_path = self.env.tcx().def_path(did);
+                    let mut this_path = Self::extract_def_path(def_path);
+                    path_prefix.push(this_path.pop().unwrap());
+                    path = Some(path_prefix)
+                }
+
+            }
+        }
+        if path.is_none() {
+            let def_path = self.env.tcx().def_path(did);
+            path = Some(Self::extract_def_path(def_path));
+        }
+
+        let path = path.unwrap();
+        let interned_path = self.shim_registry.intern_path(path);
+        interned_path
+    }
+
+    fn make_shim_function_entry(&self, did: DefId, spec_name: &str) -> Option<shim_registry::FunctionShim> {
+        let mut is_method = false;
+        if let Some(mode) = self.procedure_registry.lookup_function_mode(&did) {
+            if mode == ProcedureMode::Prove || mode == ProcedureMode::OnlySpec || mode == ProcedureMode::TrustMe {
+                match self.env.tcx().visibility(did) {
+                    // only export public items
+                    ty::Visibility::Public => {
+                        if self.env.tcx().impl_of_method(did).is_some() {
+                            is_method = true;
+                        }
+
+                        let interned_path = self.get_path_for_shim(did);
+
+                        let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
+                        info!("Found function path {:?} for did {:?} with name {:?}", interned_path, did, name);
+
+                        let a = shim_registry::FunctionShim {
+                            path: interned_path,
+                            is_method,
+                            name,
+                            spec_name: spec_name.to_string(),
+                        };
+                        return Some(a);
+                    },
+                    ty::Visibility::Restricted(_) => {
+                        // don't  export
+                    },
+
+                }
+
+            }
+        }
+        None
+    }
+
+    fn make_adt_shim_entry(&self, did: DefId, syntype: &str, reftype: &str, semtype: &str) -> Option<shim_registry::AdtShim> {
+        info!("making shim entry for {:?}", did);
+        if did.is_local() {
+            match self.env.tcx().visibility(did) {
+                // only export public items
+                ty::Visibility::Public => {
+                    let interned_path = self.get_path_for_shim(did);
+                    let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
+
+                    info!("Found adt path {:?} for did {:?} with name {:?}", interned_path, did, name);
+
+                    let a = shim_registry::AdtShim {
+                        path: interned_path,
+                        refinement_type: reftype.to_string(),
+                        syn_type: syntype.to_string(),
+                        sem_type: semtype.to_string(),
+                    };
+                    return Some(a);
+                },
+                ty::Visibility::Restricted(_) => {
+                    // don't  export
+                },
+            }
+        }
+
+        None
+    }
+
+    fn generate_module_summary(&self, module_path: &str, module: &str, name: &str, path: &Path) {
+        let mut function_shims = Vec::new();
+        let mut adt_shims = Vec::new();
+
+        let variant_defs = self.type_translator.get_variant_defs();
+        let enum_defs = self.type_translator.get_enum_defs();
+
+        for (did, entry) in variant_defs.iter() {
+            let entry = entry.borrow();
+            if let Some(entry) = entry.as_ref() {
+                if let Some(shim) = self.make_adt_shim_entry(*did, entry.st_def_name(), &entry.public_rt_def_name(), entry.public_type_name()) {
+                    adt_shims.push(shim);
+                }
+            }
+        }
+        for (did, entry) in enum_defs.iter() {
+            let entry = entry.borrow();
+            if let Some(entry) = entry.as_ref() {
+                if let Some (shim) = self.make_adt_shim_entry(*did, entry.st_def_name(), &entry.public_rt_def_name(), entry.public_type_name()) {
+                    adt_shims.push(shim);
+                }
+            }
+        }
+
+        for (did, fun) in self.procedure_registry.iter_code() {
+            if let Some(shim) = self.make_shim_function_entry(*did, &fun.spec.spec_name) {
+                function_shims.push(shim);
+            }
+        }
+
+        for (did, fun) in self.procedure_registry.iter_only_spec() {
+            if let Some(shim) = self.make_shim_function_entry(*did, &fun.spec_name) {
+                function_shims.push(shim);
+            }
+        }
+
+        info!("Generated module summary ADTs: {:?}", adt_shims);
+        info!("Generated module summary functions: {:?}", function_shims);
+
+        let interface_file = File::create(path).unwrap();
+        shim_registry::write_shims(interface_file, module_path, module, name, adt_shims, function_shims);
+    }
 
     /// Write specifications of a verification unit.
     fn write_specifications(&self, spec_path: &Path, code_path: &Path, stem: &str) {
@@ -193,14 +278,15 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         spec_file.write(format!("\
             From caesium Require Import lang notation.\n\
             From refinedrust Require Import typing shims.\n\
-            From {}.{} Require Import generated_code_{}.\n", self.coq_path_prefix, stem, stem).as_bytes()).unwrap();
-        self.extra_imports.iter().map(|path| spec_file.write(format!("{}", path).as_bytes()).unwrap()).count();
+            From {}.{} Require Export generated_code_{}.\n", self.coq_path_prefix, stem, stem).as_bytes()).unwrap();
+        self.extra_imports.iter().map(|(path, _)| spec_file.write(format!("{}", path).as_bytes()).unwrap()).count();
         spec_file.write("\n".as_bytes()).unwrap();
 
         code_file.write("\
             From caesium Require Import lang notation.\n\
             From refinedrust Require Import typing shims.\n\
             ".as_bytes()).unwrap();
+        self.extra_imports.iter().map(|(path, include)| { if *include { code_file.write(format!("{}", path).as_bytes()).unwrap(); } }).count();
 
         // write structs and enums
         // we need to do a bit of work to order them right
@@ -320,7 +406,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     From refinedrust Require Import typing shims.\n\
                     From {}.{stem} Require Import generated_code_{stem} generated_specs_{stem}.\n",
                     self.coq_path_prefix).as_bytes()).unwrap();
-                self.extra_imports.iter().map(|path| template_file.write(format!("{}", path).as_bytes()).unwrap()).count();
+                self.extra_imports.iter().map(|(path, _)| template_file.write(format!("{}", path).as_bytes()).unwrap()).count();
                 template_file.write("\n".as_bytes()).unwrap();
 
                 template_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
@@ -413,6 +499,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             fs::create_dir_all(base_dir_path.as_path()).unwrap();
         }
 
+        let coq_module_path = format!("{}.{}", self.coq_path_prefix, stem);
+        let generated_module_path = format!("{}.generated", coq_module_path);
+        let proof_module_path = format!("{}.proofs", coq_module_path);
+
         // write gitignore file
         let gitignore_path = base_dir_path.as_path().join(format!(".gitignore"));
         if !gitignore_path.exists() {
@@ -422,7 +512,6 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 proofs/dune").unwrap();
         }
 
-
         // build the path for generated files
         base_dir_path.push("generated");
         let generated_dir_path = base_dir_path.clone();
@@ -431,7 +520,13 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // build the path for proof files
         base_dir_path.pop();
         base_dir_path.push("proofs");
-        let proof_dir_path = base_dir_path.as_path();
+        let proof_dir_path = base_dir_path.clone();
+        let proof_dir_path = proof_dir_path.as_path();
+
+        // build the path for the interface file
+        base_dir_path.pop();
+        base_dir_path.push("interface.rrlib");
+        self.generate_module_summary(&generated_module_path, &format!("generated_specs_{}", stem), stem, base_dir_path.as_path());
 
         // write generated (subdirectory "generated")
         info!("outputting generated code to {}", generated_dir_path.to_str().unwrap());
@@ -459,13 +554,13 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write dune meta file
         let mut dune_file = io::BufWriter::new(fs::File::create(generated_dune_path.as_path()).unwrap());
-        let extra_theories: Vec<_> = self.extra_imports.iter().filter_map(|path| path.path.clone()).collect();
+        let extra_theories: Vec<_> = self.extra_imports.iter().filter_map(|(path, _)| path.path.clone()).collect();
         write!(dune_file, "\
             ; Generated by [refinedrust], do not edit.\n\
             (coq.theory\n\
              (flags -w -notation-overridden -w -redundant-canonical-projection)\n\
-             (name {}.{}.generated)\n\
-             (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust {}))", self.coq_path_prefix, stem, extra_theories.join(" ")).unwrap();
+             (name {generated_module_path})\n\
+             (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust {}))", extra_theories.join(" ")).unwrap();
 
         // write proofs (subdirectory "proofs")
         let make_proof_file_name = |name| { format!("proof_{}.v", name) };
@@ -526,54 +621,96 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             ; Generated by [refinedrust], do not edit.\n\
             (coq.theory\n\
              (flags -w -notation-overridden -w -redundant-canonical-projection)\n\
-             (name {}.{stem}.proofs)\n\
+             (name {proof_module_path})\n\
              (modules {})\n\
              (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust {} {}.{}.generated))",
-            self.coq_path_prefix, proof_modules.join(" "), extra_theories.join(" "), self.coq_path_prefix, stem).unwrap();
+            proof_modules.join(" "), extra_theories.join(" "), self.coq_path_prefix, stem).unwrap();
     }
 }
 
 /// Register shims in the procedure registry.
-fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
-    // register shims
-    let arena = Arena::new();
-    let shim_registry = shim_registry::ShimRegistry::new(&arena).unwrap();
-    for (path, kind, name, spec) in shim_registry.get_shims().iter() {
+fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<(), String> {
+
+
+    for shim in vcx.shim_registry.get_function_shims().iter() {
         let did;
-        match kind {
-            shim_registry::ShimKind::Function => {
-                did = utils::try_resolve_did(vcx.env.tcx(), &path)
-            },
-            shim_registry::ShimKind::Method => {
-                did = utils::try_resolve_method_did(vcx.env.tcx(), &path)
-            },
+        if shim.is_method {
+            did = utils::try_resolve_method_did(vcx.env.tcx(), &shim.path);
+        } else {
+            did = utils::try_resolve_did(vcx.env.tcx(), &shim.path);
         };
 
         match did {
             Some(did) => {
                 // register as usual in the procedure registry
-                info!("registering shim for {:?}", path);
-                let meta = function_body::ProcedureMeta::new(spec.to_string(), name.to_string(), function_body::ProcedureMode::Shim);
+                info!("registering shim for {:?}", shim.path);
+                let meta = function_body::ProcedureMeta::new(shim.spec_name.to_string(), shim.name.to_string(), function_body::ProcedureMode::Shim);
                 vcx.procedure_registry.register_function(&did, meta);
             },
             _ => {
-                panic!("cannot find defid for shim {:?}", path);
+                println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
             }
         }
     }
+
+    for shim in vcx.shim_registry.get_adt_shims().iter() {
+        if let Some(did) = utils::try_resolve_did(vcx.env.tcx(), &shim.path) {
+            let lit = radium::LiteralType {
+                rust_name: None,
+                type_term: shim.sem_type.clone(),
+                syn_type: radium::SynType::Literal(shim.syn_type.clone()),
+                refinement_type: radium::CoqType::Literal(shim.refinement_type.clone()),
+            };
+            if let Err(e) = vcx.type_translator.register_adt_shim(did, lit) {
+                println!("Warning: {}", e);
+            }
+        }
+        else {
+            println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
+        }
+    }
+
+    // add the extra imports
+    vcx.extra_imports.extend(vcx.shim_registry.get_extra_imports().iter().map(|x| (x.clone(), true)));
+
+    Ok(())
+}
+
+fn get_most_restrictive_function_mode<'tcx, 'rcx>(vcx: &VerificationCtxt<'tcx, 'rcx>, did: DefId) -> function_body::ProcedureMode {
+    let mut mode = function_body::ProcedureMode::Prove;
+
+    let attrs = vcx.env.get_attributes(did);
+    let v = crate::utils::filter_tool_attrs(attrs);
+
+    // check if this is a purely spec function; if so, skip.
+    if crate::utils::has_tool_attr(attrs, "shim") {
+        mode = function_body::ProcedureMode::Shim;
+    }
+
+    if crate::utils::has_tool_attr(attrs, "trust_me") {
+        mode = function_body::ProcedureMode::TrustMe;
+    }
+    else if crate::utils::has_tool_attr(attrs, "only_spec") {
+        mode = function_body::ProcedureMode::OnlySpec;
+    }
+    else if crate::utils::has_tool_attr(attrs, "ignore") {
+        info!("Function {:?} will be ignored", did);
+        mode = function_body::ProcedureMode::Ignore;
+    }
+
+    mode
 }
 
 /// Register functions of the crate in the procedure registry.
 fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     for &f in vcx.functions {
-        let mut mode = function_body::ProcedureMode::Prove;
 
-        let attrs = vcx.env.get_attributes(f.to_def_id());
-        let v = crate::utils::filter_tool_attrs(attrs);
+        let mut mode = get_most_restrictive_function_mode(vcx, f.to_def_id());
 
-        // check if this is a purely spec function; if so, skip.
-        if crate::utils::has_tool_attr(attrs, "shim") {
+        if mode == function_body::ProcedureMode::Shim {
             // TODO better error message
+            let attrs = vcx.env.get_attributes(f.to_def_id());
+            let v = crate::utils::filter_tool_attrs(attrs);
             let annot = get_shim_attrs(v.as_slice()).unwrap();
 
             info!("Registering shim: {:?} as spec: {}, code: {}", f.to_def_id(), annot.spec_name, annot.code_name);
@@ -583,15 +720,13 @@ fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             continue;
         }
 
-        if crate::utils::has_tool_attr(attrs, "trust_me") {
-            mode = function_body::ProcedureMode::TrustMe;
+        if mode == function_body::ProcedureMode::Prove && let Some(impl_did) = vcx.env.tcx().impl_of_method(f.to_def_id()) {
+            mode = get_most_restrictive_function_mode(vcx, impl_did);
         }
-        else if crate::utils::has_tool_attr(attrs, "only_spec") {
-            mode = function_body::ProcedureMode::OnlySpec;
-        }
-        else if crate::utils::has_tool_attr(attrs, "ignore") {
-            info!("Function {:?} will be ignored", f);
-            mode = function_body::ProcedureMode::Ignore;
+
+        if mode == function_body::ProcedureMode::Shim {
+            warn!("Nonsensical shim attribute on impl; ignoring");
+            mode = function_body::ProcedureMode::Prove;
         }
 
         let fname = type_translator::strip_coq_ident(&vcx.env.get_item_name(f.to_def_id()));
@@ -684,17 +819,23 @@ pub fn get_filtered_functions<'tcx>(env: &Environment<'tcx>) -> Vec<LocalDefId> 
     functions.extend(closures);
 
     let functions_with_spec: Vec<_> = functions.into_iter().filter(|id| {
+        let mut prove = false;
         if env.has_any_tool_attribute(id.to_def_id()) {
+            prove = true;
             if env.has_tool_attribute(id.to_def_id(), "skip") {
                 warn!("Function {:?} will be skipped due to a rr::skip annotation", id);
-                false
+                prove= false;
             }
             else {
-                true
+                if let Some(impl_did) = env.tcx().impl_of_method(id.to_def_id()) {
+                    if env.has_tool_attribute(impl_did, "skip") {
+                        warn!("Function {:?} will be skipped due to a rr::skip annotation on impl", id);
+                        prove = false;
+                    }
+                }
             }
-        } else {
-            false
         }
+        prove
     }).collect();
 
     for f in functions_with_spec.iter() {
@@ -720,9 +861,46 @@ pub fn get_module_attributes<'tcx>(env: &Environment<'tcx>) -> Result<HashMap<Lo
     Ok(attrs)
 }
 
+/// Find RefinedRust modules in the given loadpath.
+fn scan_loadpath(path: &Path, storage: &mut HashMap<String, std::path::PathBuf>) -> io::Result<()> {
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                scan_loadpath(path.as_path(), storage)?;
+            }
+            else if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if Some("rrlib") == ext.to_str() {
+                        // try to open this rrlib file
+                        let f = File::open(path.clone())?;
+                        if let Some(name) = shim_registry::is_valid_refinedrust_module(f) {
+                            storage.insert(name, path);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Find RefinedRust modules in the given loadpaths.
+fn scan_loadpaths(paths: &[std::path::PathBuf]) -> io::Result<HashMap<String, std::path::PathBuf>> {
+    let mut found_lib_files: HashMap<String, std::path::PathBuf> = HashMap::new();
+
+    for path in paths.iter() {
+        scan_loadpath(path, &mut found_lib_files)?;
+    }
+
+    Ok(found_lib_files)
+}
+
 
 /// Translate a crate, creating a `VerificationCtxt` in the process.
-pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F)
+pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F) -> Result<(), String>
     where F: Fn(VerificationCtxt<'tcx, '_>) -> ()
 {
     let env = Environment::new(tcx);
@@ -734,26 +912,59 @@ pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F)
     info!("Found crate attributes: {:?}", crate_attrs);
     // parse crate attributes
     let mut crate_parser = crate_parser::VerboseCrateAttrParser::new();
-    let crate_spec = crate_parser.parse_crate_attrs(&crate_attrs).unwrap();
+    let crate_spec = crate_parser.parse_crate_attrs(&crate_attrs)?;
 
     let path_prefix = crate_spec.prefix.unwrap_or("refinedrust.examples".to_string());
     info!("Setting Coq path prefix: {:?}", path_prefix);
 
     // get module attributes
-    let module_attrs = get_module_attributes(&env).unwrap();
+    let module_attrs = get_module_attributes(&env)?;
 
+    // process imports
     let mut imports: HashSet<radium::CoqPath> = HashSet::new();
-
     crate_spec.imports.into_iter().map(|path| imports.insert(path)).count();
-    module_attrs.into_values().into_iter().map(|attrs| attrs.imports.into_iter().map(|path| imports.insert(path)).count()).count();
+    module_attrs.values().map(|attrs| attrs.imports.iter().map(|path| imports.insert(path.clone())).count()).count();
     info!("Importing extra Coq files: {:?}", imports);
+
+    // process includes
+    let mut includes: HashSet<String> = HashSet::new();
+    crate_spec.includes.into_iter().map(|name| includes.insert(name)).count();
+    module_attrs.into_values().into_iter().map(|attrs| attrs.includes.into_iter().map(|name| includes.insert(name)).count()).count();
+    info!("Including RefinedRust modules: {:?}", includes);
+
 
     let functions = get_filtered_functions(&env);
 
     let struct_arena = Arena::new();
     let enum_arena = Arena::new();
-    let type_translator = TypeTranslator::new(env, &struct_arena, &enum_arena);
+    let shim_arena = Arena::new();
+    let type_translator = TypeTranslator::new(env, &struct_arena, &enum_arena, &shim_arena);
     let procedure_registry = ProcedureScope::new();
+    let shim_string_arena = Arena::new();
+    let mut shim_registry = shim_registry::ShimRegistry::empty(&shim_string_arena);
+
+    // add includes to the shim registry
+    let library_load_paths = rrconfig::lib_load_paths();
+    let found_libs = scan_loadpaths(&library_load_paths).map_err(|e| e.to_string())?;
+    info!("Found the following RefinedRust libraries in the loadpath: {:?}", found_libs);
+    for incl in includes.iter() {
+        if let Some(p) = found_libs.get(incl) {
+            let f = File::open(p).map_err(|e| e.to_string())?;
+            shim_registry.add_source(f)?;
+        }
+        else {
+            println!("Warning: did not find library {} in loadpath", incl);
+        }
+    }
+
+    // register shims from the shim config
+    match rrconfig::shim_file() {
+        None => (),
+        Some(file) => {
+            let f = File::open(file).map_err(|a| a.to_string())?;
+            shim_registry.add_source(f)?;
+        },
+    }
 
     // first register names for all the procedures, to resolve mutual dependencies
     let mut vcx = VerificationCtxt {
@@ -761,15 +972,18 @@ pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F)
         functions: functions.as_slice(),
         type_translator: &type_translator,
         procedure_registry,
-        extra_imports: imports,
+        extra_imports: imports.into_iter().map(|x| (x, false)).collect(),
         coq_path_prefix: path_prefix,
+        shim_registry
     };
 
     register_functions(&mut vcx);
 
-    register_shims(&mut vcx);
+    register_shims(&mut vcx)?;
 
     translate_functions(&mut vcx);
 
     continuation(vcx);
+
+    Ok(())
 }

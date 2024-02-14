@@ -983,8 +983,10 @@ Ltac solve_goal_normalized_prepare_hook ::=
 
 
 (** User facing tactic calls *)
+Ltac sidecond_hammer_it := 
+  prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook.
 Ltac sidecond_hammer :=
-  prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook
+  unshelve sidecond_hammer_it; sidecond_hammer_it
 .
 Ltac sidecond_solver :=
   unshelve_sidecond; sidecond_hook.

@@ -16,3 +16,4 @@
 
 -Q _build/default/case_studies/extra_proofs/tests/enums refinedrust.extra_proofs.tests.enums
 
+-Q _build/default/stdlib/vec/target/verify/vec stdlib.alloc.vec

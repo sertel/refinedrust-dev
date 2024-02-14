@@ -23,6 +23,7 @@ pub trait ModuleAttrParser {
 #[derive(Debug, Clone)]
 pub struct ModuleAttrs {
     pub imports: Vec<specs::CoqPath>,
+    pub includes: Vec<String>,
 }
 
 pub struct VerboseModuleAttrParser {
@@ -42,6 +43,7 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
 
         let meta = ();
         let mut imports: Vec<specs::CoqPath> = Vec::new();
+        let mut includes: Vec<String> = Vec::new();
 
         for &it in attrs.iter() {
             let ref path_segs = it.path.segments;
@@ -54,12 +56,16 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
                         let path: parse_utils::CoqPath = buffer.parse(&meta).map_err(str_err)?;
                         imports.push(path.into());
                     },
+                    "include" => {
+                        let name: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                        includes.push(name.value());
+                    },
                     _ => {
                         return Err(format!("unknown attribute for module specification: {:?}", args));
                     },
                 }
             }
         }
-        Ok(ModuleAttrs { imports })
+        Ok(ModuleAttrs { imports, includes })
     }
 }

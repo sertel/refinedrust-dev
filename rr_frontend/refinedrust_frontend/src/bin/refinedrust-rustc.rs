@@ -73,8 +73,13 @@ fn override_queries(_session: &Session, local: &mut Providers, _: &mut ExternPro
 /// Main entry point to the frontend that is called by the driver.
 /// This translates a crate.
 pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
-    // TODO Also think about putting different modules into different Coq files.
-    translation::generate_coq_code(tcx, |vcx| vcx.write_coq_files());
+    match translation::generate_coq_code(tcx, |vcx| vcx.write_coq_files()) {
+        Ok(_) => (),
+        Err(e) => {
+            println!("Frontend failed with error {:?}", e);
+            std::process::exit(1)
+        }
+    }
 
     if rrconfig::check_proofs() {
         if cfg!(target_os = "windows") {
