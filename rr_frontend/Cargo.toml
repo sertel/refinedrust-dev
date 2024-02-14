@@ -1,11 +1,47 @@
 [workspace]
 members = [
     "analysis",
-    "translation",
-    "rr_rustc_interface",
     "annotations",
     "attribute_parse",
     "radium",
+    "refinedrust_frontend",
+    "rr_rustc_interface",
     "rrconfig",
-    "refinedrust_frontend"
+    "translation"
 ]
+resolver = "2"
+
+[workspace.dependencies]
+analysis.path = "analysis"
+attribute_parse.path = "attribute_parse"
+radium.path = "radium"
+rr_rustc_interface.path = "rr_rustc_interface"
+rrconfig.path = "rrconfig"
+translation.path = "translation"
+
+compiletest_rs = "0.10"
+config = "0.14"
+csv = "1"
+datafrog = "2"
+derive_more = { version = "1.0.0-beta.6", features = ["full"] }
+env_logger = "0.11"
+fs_extra = "1"
+glob = "0.3"
+indent_write = "2"
+lazy_static = "1"
+log = "0.4"
+path-clean = "1"
+regex = "1"
+rustc-hash = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+syn = { version = "2", features = ["full", "parsing"] }
+toml = "0.8"
+topological-sort = "0.2"
+typed-arena = "2"
+unicode-xid = "0.2"
+
+[workspace.package]
+edition = "2021"
+repository = "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev"
+version = "0.1.0"
