@@ -1,29 +1,30 @@
 [package]
-name = "refinedrust_translate"
-version = "0.1.0"
-edition = "2021"
+name = "refinedrust_frontend"
+authors = ["ETH Zurich", "The RefinedRust Developers and Contributors"]
+license = "MPL-2.0 AND BSD-3-Clause"
+
+edition.workspace = true
+repository.workspace = true
+version.workspace = true
 
 [[bin]]
-name="refinedrust-rustc"
-test=false
-doctest=false
+name = "refinedrust-rustc"
+test = false
+doctest = false
 
 [[bin]]
-name="cargo-refinedrust"
-test=false
-doctest=false
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+name = "cargo-refinedrust"
+test = false
+doctest = false
 
 [dependencies]
-log = "0.4"
-env_logger = "0.7.1"
-fs_extra = "1.3.0"
+rr_rustc_interface.workspace = true
+rrconfig.workspace = true
+translation.workspace = true
 
-translation = { path = "../translation" }
-rr_rustc_interface = { path = "../rr_rustc_interface" }
-rrconfig = { path = "../rrconfig" }
-
+log.workspace = true
+env_logger.workspace = true
+fs_extra.workspace = true
 
 [package.metadata.rust-analyzer]
-rustc_private=true
+rustc_private = true

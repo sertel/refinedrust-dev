@@ -1,11 +1,14 @@
 [package]
 name = "radium"
-version = "0.1.0"
-edition = "2021"
+authors = ["The RefinedRust Developers and Contributors"]
+license = "BSD-3-Clause"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+edition.workspace = true
+repository.workspace = true
+version.workspace = true
 
 [dependencies]
-log = "0.4"
-rrconfig = { path = "../rrconfig" }
-indent_write = "2.2.0"
+rrconfig.workspace = true
+
+indent_write.workspace = true
+log.workspace = true

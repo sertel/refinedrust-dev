@@ -1,28 +1,29 @@
 [package]
 name = "translation"
-version = "0.1.0"
-edition = "2018"
+authors = ["ETH Zurich", "The RefinedRust Developers and Contributors"]
+license = "MPL-2.0 AND BSD-3-Clause"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+edition.workspace = true
+repository.workspace = true
+version.workspace = true
+
 [dependencies]
-log = "0.4"
-datafrog = "2.0.1"
-env_logger = "0.7.1"
-regex = "1"
-rustc-hash = "1.1.0"
-csv = "1.1"
-lazy_static = "1.4.0"
-typed-arena = "2.0.1"
-serde_json = "1.0"
-serde = {version = "1.0.130", features = ["derive"]}
-topological-sort = "0.2.2"
+analysis.workspace = true
+attribute_parse.workspace = true
+radium.workspace = true
+rr_rustc_interface.workspace = true
+rrconfig.workspace = true
 
-analysis = { path = "../analysis" }
-radium = { path = "../radium" }
-rr_rustc_interface = { path = "../rr_rustc_interface" }
-attribute_parse = { path = "../attribute_parse" }
-rrconfig = { path = "../rrconfig" }
-
+csv.workspace = true
+datafrog.workspace = true
+lazy_static.workspace = true
+log.workspace = true
+regex.workspace = true
+rustc-hash.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+topological-sort.workspace = true
+typed-arena.workspace = true
 
 [package.metadata.rust-analyzer]
-rustc_private=true
+rustc_private = true
