@@ -4,22 +4,20 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    abstract_interpretation::AbstractState, mir_utils::location_to_stmt_str, AnalysisError,
-};
-use rr_rustc_interface::{
-    data_structures::{
-        fingerprint::Fingerprint,
-        fx::{FxHashMap, FxHashSet},
-        stable_hasher::{HashStable, StableHasher},
-    },
-    middle::{mir, ty::TyCtxt},
-};
-use serde::{ser::SerializeMap, Serialize, Serializer};
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+
+use rr_rustc_interface::data_structures::fingerprint::Fingerprint;
+use rr_rustc_interface::data_structures::fx::{FxHashMap, FxHashSet};
+use rr_rustc_interface::data_structures::stable_hasher::{HashStable, StableHasher};
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::ty::TyCtxt;
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
+
+use crate::abstract_interpretation::AbstractState;
+use crate::mir_utils::location_to_stmt_str;
+use crate::AnalysisError;
 
 /// A set of definition locations and function parameter indices per Local,
 /// meaning that the Local might still have the value
@@ -44,9 +42,7 @@ pub enum DefLocation {
 impl<'mir, 'tcx: 'mir> fmt::Debug for ReachingDefsState<'mir, 'tcx> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // ignore mir
-        f.debug_struct("ReachingDefsState")
-            .field("reaching_defs", &self.reaching_defs)
-            .finish()
+        f.debug_struct("ReachingDefsState").field("reaching_defs", &self.reaching_defs).finish()
     }
 }
 
@@ -88,7 +84,7 @@ impl<'mir, 'tcx: 'mir> Serialize for ReachingDefsState<'mir, 'tcx> {
                         // Include the location to differentiate between same statement on
                         // different lines.
                         location_vec.push(format!("{l:?}: {stmt}"));
-                    }
+                    },
                     DefLocation::Parameter(idx) => location_vec.push(format!("arg{idx}")),
                 }
             }
@@ -99,10 +95,7 @@ impl<'mir, 'tcx: 'mir> Serialize for ReachingDefsState<'mir, 'tcx> {
 }
 
 impl<'mir, 'tcx: 'mir> ReachingDefsState<'mir, 'tcx> {
-    pub(super) fn apply_statement_effect(
-        &mut self,
-        location: mir::Location,
-    ) -> Result<(), AnalysisError> {
+    pub(super) fn apply_statement_effect(&mut self, location: mir::Location) -> Result<(), AnalysisError> {
         let stmt = &self.mir[location.block].statements[location.statement_index];
         if let mir::StatementKind::Assign(box (ref target, _)) = stmt.kind {
             if let Some(local) = target.as_local() {
@@ -144,23 +137,22 @@ impl<'mir, 'tcx: 'mir> ReachingDefsState<'mir, 'tcx> {
                     // while keeping all others
                     if target.is_some() {
                         if let Some(local) = destination.as_local() {
-                            let location_set =
-                                cleanup_state.reaching_defs.entry(local).or_default();
+                            let location_set = cleanup_state.reaching_defs.entry(local).or_default();
                             location_set.insert(DefLocation::Assignment(location));
                         }
                     }
                     res_vec.push((bb, cleanup_state));
                 }
-            }
+            },
             mir::TerminatorKind::InlineAsm { .. } => {
                 return Err(AnalysisError::UnsupportedStatement(location));
-            }
+            },
             _ => {
                 for bb in terminator.successors() {
                     // no assignment -> no change of state
                     res_vec.push((bb, self.clone()));
                 }
-            }
+            },
         }
 
         Ok(res_vec)

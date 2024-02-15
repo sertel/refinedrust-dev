@@ -4,15 +4,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
+
+use log::{debug, trace};
+use rustc_middle::mir::{self, BasicBlock, Body as Mir, TerminatorKind};
+use rustc_middle::ty::{self, Ty, TyCtxt};
+use rustc_span::Span;
+
 use super::loops;
 use crate::data::ProcedureDefId;
-use rustc_middle::mir::{self, Body as Mir};
-use rustc_middle::mir::{BasicBlock, TerminatorKind};
-use rustc_middle::ty::{self, Ty, TyCtxt};
-use std::rc::Rc;
-use std::collections::{HashSet, HashMap};
-use rustc_span::Span;
-use log::{trace, debug};
 use crate::environment::mir_utils::RealEdges;
 use crate::environment::Environment;
 
@@ -78,7 +79,6 @@ impl<'tcx> Procedure<'tcx> {
         // }
         // types.into_iter().collect()
         unimplemented!();
-
     }
 
     /// Get definition ID of the procedure.
@@ -174,7 +174,8 @@ impl<'tcx> Procedure<'tcx> {
                     ..
                 }),
             ..
-        } = self.mir[bbi].terminator().kind {
+        } = self.mir[bbi].terminator().kind
+        {
             if let ty::TyKind::FnDef(def_id, ..) = c.ty().kind() {
                 // let func_proc_name = self.tcx.absolute_item_path_str(def_id);
                 let func_proc_name = self.tcx.def_path_str(*def_id);
@@ -232,9 +233,11 @@ struct BasicBlockNode {
     predecessors: HashSet<BasicBlock>,
 }
 
-fn _blocks_definitely_leading_to<'a>(bb_graph: &'a HashMap<BasicBlock, BasicBlockNode>,
-                                 target: BasicBlock,
-                                 blocks: &'a mut HashSet<BasicBlock>) -> &'a mut HashSet<BasicBlock> {
+fn _blocks_definitely_leading_to<'a>(
+    bb_graph: &'a HashMap<BasicBlock, BasicBlockNode>,
+    target: BasicBlock,
+    blocks: &'a mut HashSet<BasicBlock>,
+) -> &'a mut HashSet<BasicBlock> {
     for pred in bb_graph[&target].predecessors.iter() {
         debug!("target: {:#?}, pred: {:#?}", target, pred);
         if bb_graph[pred].successors.len() == 1 {
@@ -246,7 +249,10 @@ fn _blocks_definitely_leading_to<'a>(bb_graph: &'a HashMap<BasicBlock, BasicBloc
     blocks
 }
 
-fn blocks_definitely_leading_to(bb_graph: &HashMap<BasicBlock, BasicBlockNode>, target: BasicBlock) -> HashSet<BasicBlock> {
+fn blocks_definitely_leading_to(
+    bb_graph: &HashMap<BasicBlock, BasicBlockNode>,
+    target: BasicBlock,
+) -> HashSet<BasicBlock> {
     let mut blocks = HashSet::new();
     _blocks_definitely_leading_to(bb_graph, target, &mut blocks);
     blocks

@@ -4,8 +4,9 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use std::fmt::{Write, Formatter, Display};
-use std::fmt as fmt;
+use std::fmt;
+use std::fmt::{Display, Formatter, Write};
+
 use indent_write::fmt::IndentWriter;
 
 pub(crate) const BASE_INDENT: &'static str = "  ";
@@ -27,7 +28,6 @@ impl fmt::Display for CoqPath {
     }
 }
 
-
 /// Represents an application of a term to an rhs.
 /// (commonly used for layouts and instantiating them with generics).
 #[derive(Hash, Clone, Debug, Eq, PartialEq)]
@@ -38,20 +38,25 @@ pub struct CoqAppTerm<T> {
 
 impl<T> CoqAppTerm<T> {
     pub fn new(lhs: T, rhs: Vec<String>) -> Self {
-        Self {lhs, rhs}
+        Self { lhs, rhs }
     }
 
-    pub fn new_lhs(lhs : T) -> Self {
-        Self {lhs, rhs: Vec::new()}
+    pub fn new_lhs(lhs: T) -> Self {
+        Self {
+            lhs,
+            rhs: Vec::new(),
+        }
     }
 }
 
-impl<T> fmt::Display for CoqAppTerm<T> where T: Display {
+impl<T> fmt::Display for CoqAppTerm<T>
+where
+    T: Display,
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.rhs.len() == 0 {
             write!(f, "{}", self.lhs)
-        }
-        else {
+        } else {
             write!(f, "({}", self.lhs)?;
             for r in self.rhs.iter() {
                 write!(f, " ({})", r)?;
@@ -60,10 +65,6 @@ impl<T> fmt::Display for CoqAppTerm<T> where T: Display {
         }
     }
 }
-
-
-
-
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum CoqName {
@@ -140,11 +141,9 @@ impl Display for CoqType {
             Self::Prod(v) => {
                 if v.len() == 0 {
                     write!(f, "unit")
-                }
-                else if v.len() == 1 {
+                } else if v.len() == 1 {
                     v[0].fmt(f)
-                }
-                else {
+                } else {
                     write!(f, "(")?;
                     let mut need_sep = false;
                     for t in v.iter() {
@@ -200,9 +199,7 @@ impl CoqType {
                 }
                 return true;
             },
-            Self::Ttype(box ty) => {
-                ty.is_closed()
-            },
+            Self::Ttype(box ty) => ty.is_closed(),
             Self::PlaceRfn(t) => t.is_closed(),
             Self::Literal(..) => true,
             Self::Infer => true,
@@ -231,7 +228,6 @@ impl CoqType {
                 for t in v.iter_mut() {
                     t.subst(substi);
                 }
-
             },
             Self::PList(_, tys) => {
                 for t in tys.iter_mut() {
@@ -325,8 +321,7 @@ pub enum CoqProofItem {
 impl Display for CoqProofItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Literal(lit) =>
-                write!(f, "{}.", lit)
+            Self::Literal(lit) => write!(f, "{}.", lit),
         }
     }
 }
@@ -383,7 +378,7 @@ pub enum CoqDefBody {
     /// a proof script invoking Ltac tactics
     Script(CoqProofScript, CoqProofScriptTerminator),
     /// a proof term
-    Term(GallinaTerm)
+    Term(GallinaTerm),
 }
 
 impl Display for CoqDefBody {
@@ -417,7 +412,7 @@ impl Display for CoqInstanceDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.name {
             Some(ref name) => write!(f, "Instance {} {} : {}{}", name, self.params, self.ty, self.body),
-            None => write!(f, "Instance {} : {}{}", self.params, self.ty, self.body)
+            None => write!(f, "Instance {} : {}{}", self.params, self.ty, self.body),
         }
     }
 }

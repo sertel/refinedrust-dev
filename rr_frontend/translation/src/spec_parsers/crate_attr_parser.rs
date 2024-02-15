@@ -4,19 +4,17 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use rustc_ast::ast::AttrItem;
-use radium::specs as specs;
-
 use attribute_parse as parse;
+use radium::specs;
+use rustc_ast::ast::AttrItem;
+
 use crate::spec_parsers::parse_utils;
-
-
 
 /// Parse attributes on a crate.
 /// Permitted attributes:
 /// - rr::import("A.B.C", "D"), which will import the Coq path "A.B.C.D"
 pub trait CrateAttrParser {
-    fn parse_crate_attrs<'a>(&'a mut self, attrs: &'a[&'a AttrItem]) -> Result<CrateAttrs, String>;
+    fn parse_crate_attrs<'a>(&'a mut self, attrs: &'a [&'a AttrItem]) -> Result<CrateAttrs, String>;
 }
 
 #[derive(Debug, Clone)]
@@ -26,9 +24,7 @@ pub struct CrateAttrs {
     pub includes: Vec<String>,
 }
 
-
-pub struct VerboseCrateAttrParser {
-}
+pub struct VerboseCrateAttrParser {}
 
 impl VerboseCrateAttrParser {
     pub fn new() -> Self {
@@ -37,8 +33,8 @@ impl VerboseCrateAttrParser {
 }
 
 impl CrateAttrParser for VerboseCrateAttrParser {
-    fn parse_crate_attrs<'a>(&'a mut self, attrs: &'a[&'a AttrItem]) -> Result<CrateAttrs, String> {
-        fn str_err(e : parse::ParseError) -> String {
+    fn parse_crate_attrs<'a>(&'a mut self, attrs: &'a [&'a AttrItem]) -> Result<CrateAttrs, String> {
+        fn str_err(e: parse::ParseError) -> String {
             format!("{:?}", e)
         }
 
@@ -46,7 +42,6 @@ impl CrateAttrParser for VerboseCrateAttrParser {
         let mut imports: Vec<specs::CoqPath> = Vec::new();
         let mut includes: Vec<String> = Vec::new();
         let mut prefix: Option<String> = None;
-
 
         for &it in attrs.iter() {
             let ref path_segs = it.path.segments;
@@ -66,10 +61,9 @@ impl CrateAttrParser for VerboseCrateAttrParser {
                     "coq_prefix" => {
                         let path: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
                         if let Some(_) = prefix {
-                            return Err(format!("multiple rr::coq_prefix attributes have been provided"))
+                            return Err(format!("multiple rr::coq_prefix attributes have been provided"));
                         }
                         prefix = Some(path.value().to_string());
-
                     },
                     _ => {
                         return Err(format!("unknown attribute for crate specification: {:?}", args));
@@ -77,6 +71,10 @@ impl CrateAttrParser for VerboseCrateAttrParser {
                 }
             }
         }
-        Ok(CrateAttrs { imports, prefix , includes})
+        Ok(CrateAttrs {
+            imports,
+            prefix,
+            includes,
+        })
     }
 }

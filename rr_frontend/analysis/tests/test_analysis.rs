@@ -3,9 +3,11 @@
 
 mod utils;
 
+use std::env;
+use std::path::PathBuf;
+
 /// Source: https://github.com/rust-lang/miri/blob/master/tests/compiletest.rs
 use compiletest_rs as compiletest;
-use std::{env, path::PathBuf};
 use utils::*;
 
 fn run_tests(mode: &str, path: &str, custom_args: Vec<String>) {
@@ -36,34 +38,16 @@ fn run_tests(mode: &str, path: &str, custom_args: Vec<String>) {
 fn test_runner(_tests: &[&()]) {
     env::set_var("RUST_BACKTRACE", "1");
 
-    run_tests(
-        "ui",
-        "tests/test_cases/reaching_definitions",
-        vec!["--analysis=ReachingDefsAnalysis".into()],
-    );
-    run_tests(
-        "ui",
-        "tests/test_cases/definitely_initialized",
-        vec!["--analysis=DefinitelyInitializedAnalysis".into()],
-    );
-    run_tests(
-        "ui",
-        "tests/test_cases/relaxed_definitely_initialized",
-        vec!["--analysis=RelaxedDefinitelyInitializedAnalysis".into()],
-    );
-    run_tests(
-        "ui",
-        "tests/test_cases/maybe_borrowed",
-        vec!["--analysis=MaybeBorrowedAnalysis".into()],
-    );
-    run_tests(
-        "ui",
-        "tests/test_cases/definitely_accessible",
-        vec!["--analysis=DefinitelyAccessibleAnalysis".into()],
-    );
-    run_tests(
-        "ui",
-        "tests/test_cases/framing",
-        vec!["--analysis=FramingAnalysis".into()],
-    );
+    run_tests("ui", "tests/test_cases/reaching_definitions", vec!["--analysis=ReachingDefsAnalysis".into()]);
+    run_tests("ui", "tests/test_cases/definitely_initialized", vec![
+        "--analysis=DefinitelyInitializedAnalysis".into(),
+    ]);
+    run_tests("ui", "tests/test_cases/relaxed_definitely_initialized", vec![
+        "--analysis=RelaxedDefinitelyInitializedAnalysis".into(),
+    ]);
+    run_tests("ui", "tests/test_cases/maybe_borrowed", vec!["--analysis=MaybeBorrowedAnalysis".into()]);
+    run_tests("ui", "tests/test_cases/definitely_accessible", vec![
+        "--analysis=DefinitelyAccessibleAnalysis".into(),
+    ]);
+    run_tests("ui", "tests/test_cases/framing", vec!["--analysis=FramingAnalysis".into()]);
 }

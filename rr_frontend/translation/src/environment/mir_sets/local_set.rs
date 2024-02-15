@@ -4,7 +4,8 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use rr_rustc_interface::{data_structures::fx::FxHashSet, middle::mir};
+use rr_rustc_interface::data_structures::fx::FxHashSet;
+use rr_rustc_interface::middle::mir;
 
 /// A set of MIR places.
 ///
@@ -20,12 +21,15 @@ impl LocalSet {
     pub fn new() -> Self {
         Self::default()
     }
+
     pub fn contains_prefix_of(&self, place: mir::Place) -> bool {
         self.locals.contains(&place.local)
     }
+
     pub fn iter(&self) -> impl Iterator<Item = &mir::Local> {
         self.locals.iter()
     }
+
     #[allow(clippy::should_implement_trait)]
     pub fn into_iter(self) -> impl Iterator<Item = mir::Local> {
         self.locals.into_iter()

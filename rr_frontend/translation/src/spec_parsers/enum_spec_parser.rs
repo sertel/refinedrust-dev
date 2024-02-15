@@ -4,12 +4,12 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use rustc_ast::ast::AttrItem;
-use radium::specs as specs;
-
 use attribute_parse as parse;
-use crate::spec_parsers::parse_utils::*;
 use parse::Peek;
+use radium::specs;
+use rustc_ast::ast::AttrItem;
+
+use crate::spec_parsers::parse_utils::*;
 
 /// An attribute spec parser handles the parsing of the attributes of the whole enum and relevant
 /// attributes on the variants at once.
@@ -19,16 +19,23 @@ use parse::Peek;
 ///
 /// Supported attributes for the enum variants:
 /// - rr::pattern: specifies the Coq pattern of the refinement type that matches this variant
-/// - rr::refinement: specifies the refinement of the struct for this variant in the scope
-///     introduced by the pattern. Can be omitted if the variant does not have any fields.
+/// - rr::refinement: specifies the refinement of the struct for this variant in the scope introduced by the
+///   pattern. Can be omitted if the variant does not have any fields.
 pub trait EnumSpecParser {
-    fn parse_enum_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem], variant_attrs: &[Vec<&'a AttrItem>], params: &'a [specs::LiteralTyParam], lfts: &'a [(Option<String>, specs::Lft)]) -> Result<specs::EnumSpec, String>;
+    fn parse_enum_spec<'a>(
+        &'a mut self,
+        ty_name: &str,
+        attrs: &'a [&'a AttrItem],
+        variant_attrs: &[Vec<&'a AttrItem>],
+        params: &'a [specs::LiteralTyParam],
+        lfts: &'a [(Option<String>, specs::Lft)],
+    ) -> Result<specs::EnumSpec, String>;
 }
 
 #[derive(Debug)]
 pub struct EnumPattern {
     pub pat: String,
-    pub args: Vec<String>
+    pub args: Vec<String>,
 }
 
 impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
@@ -44,18 +51,21 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
             input.parse::<_, parse::MToken![$]>(meta)?;
 
             // parse a sequence of args
-            let parsed_args: parse::Punctuated<parse::LitStr, parse::MToken![,]> = parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
-            args = parsed_args.into_iter().map(|s| {
-                let (arg, _) = process_coq_literal(&s.value(), *meta);
-                arg }).collect();
+            let parsed_args: parse::Punctuated<parse::LitStr, parse::MToken![,]> =
+                parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
+            args = parsed_args
+                .into_iter()
+                .map(|s| {
+                    let (arg, _) = process_coq_literal(&s.value(), *meta);
+                    arg
+                })
+                .collect();
         }
-        Ok(EnumPattern {pat, args})
+        Ok(EnumPattern { pat, args })
     }
 }
 
-
-pub struct VerboseEnumSpecParser {
-}
+pub struct VerboseEnumSpecParser {}
 
 impl VerboseEnumSpecParser {
     pub fn new() -> Self {
@@ -64,11 +74,15 @@ impl VerboseEnumSpecParser {
 }
 
 impl EnumSpecParser for VerboseEnumSpecParser {
-    fn parse_enum_spec<'a>(&'a mut self, ty_name: &str, attrs: &'a[&'a AttrItem],
-                           variant_attrs: &[Vec<&'a AttrItem>],
-                           params: &'a [specs::LiteralTyParam],
-                           lfts: &'a [(Option<String>, specs::Lft)]) -> Result<specs::EnumSpec, String> {
-        fn str_err(e : parse::ParseError) -> String {
+    fn parse_enum_spec<'a>(
+        &'a mut self,
+        ty_name: &str,
+        attrs: &'a [&'a AttrItem],
+        variant_attrs: &[Vec<&'a AttrItem>],
+        params: &'a [specs::LiteralTyParam],
+        lfts: &'a [(Option<String>, specs::Lft)],
+    ) -> Result<specs::EnumSpec, String> {
+        fn str_err(e: parse::ParseError) -> String {
             format!("{:?}", e)
         }
         let meta = (params, lfts);
@@ -125,7 +139,6 @@ impl EnumSpecParser for VerboseEnumSpecParser {
                 let refinement = refinement.unwrap_or("-[]".to_string());
                 variant_patterns.push((pattern.pat, pattern.args, refinement));
             }
-
         }
 
         if let Some(rfn_type) = rfn_type {
@@ -134,10 +147,8 @@ impl EnumSpecParser for VerboseEnumSpecParser {
                 variant_patterns,
             };
             Ok(enum_spec)
-        }
-        else {
+        } else {
             Err(format!("No refined_by clause provided for enum {:?}", ty_name))
         }
     }
 }
-

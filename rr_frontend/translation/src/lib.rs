@@ -6,77 +6,65 @@
 
 // TODO: remove this
 #![allow(dead_code)]
-
-
 #![feature(box_patterns)]
 #![feature(let_chains)]
 #![feature(rustc_private)]
-extern crate rustc_driver;
-extern crate rustc_errors;
-extern crate rustc_interface;
-extern crate rustc_middle;
-extern crate rustc_hir;
-extern crate rustc_index;
 extern crate rustc_abi;
 extern crate rustc_ast;
-extern crate rustc_span;
-extern crate rustc_trait_selection;
+extern crate rustc_attr;
 extern crate rustc_borrowck;
 extern crate rustc_data_structures;
+extern crate rustc_driver;
+extern crate rustc_errors;
+extern crate rustc_hir;
+extern crate rustc_index;
+extern crate rustc_interface;
+extern crate rustc_middle;
 extern crate rustc_session;
-extern crate rustc_attr;
+extern crate rustc_span;
 extern crate rustc_target;
+extern crate rustc_trait_selection;
 extern crate rustc_type_ir;
 
 extern crate polonius_engine;
 
-use log::{info, warn, error};
-
-use rustc_hir::{def_id::DefId, def_id::LocalDefId};
-use rustc_middle::ty as ty;
-use rustc_middle::ty::TyCtxt;
-
+use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::{self, Write, Read};
+use std::io::{self, Read, Write};
 use std::path::Path;
 
+use log::{error, info, warn};
+use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_middle::ty;
+use rustc_middle::ty::TyCtxt;
 use typed_arena::Arena;
 
-use std::collections::{HashSet, HashMap};
-
-mod spec_parsers;
-mod utils;
+mod arg_folder;
+mod base;
+mod checked_op_analysis;
+mod data;
 pub mod environment;
 mod force_matches_macro;
-mod data;
 mod function_body;
-mod shim_registry;
-mod checked_op_analysis;
-mod tyvars;
-mod base;
-mod type_translator;
 mod inclusion_tracker;
-mod arg_folder;
-
-use environment::Environment;
-use function_body::FunctionTranslator;
-use type_translator::TypeTranslator;
-use function_body::{ProcedureScope, ProcedureMode};
-
-use spec_parsers::verbose_function_spec_parser::{get_shim_attrs, get_export_as_attr};
-use spec_parsers::module_attr_parser as mod_parser;
-use mod_parser::ModuleAttrParser;
-use spec_parsers::crate_attr_parser as crate_parser;
-use crate_parser::CrateAttrParser;
-
-use topological_sort::TopologicalSort;
+mod shim_registry;
+mod spec_parsers;
+mod type_translator;
+mod tyvars;
+mod utils;
 
 use std::fs::File;
 
-use attribute_parse as parse;
-use parse::{Peek, Parse, ParseStream, MToken, ParseResult};
-
-use rrconfig;
+use crate_parser::CrateAttrParser;
+use environment::Environment;
+use function_body::{FunctionTranslator, ProcedureMode, ProcedureScope};
+use mod_parser::ModuleAttrParser;
+use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
+use spec_parsers::verbose_function_spec_parser::{get_export_as_attr, get_shim_attrs};
+use spec_parsers::{crate_attr_parser as crate_parser, module_attr_parser as mod_parser};
+use topological_sort::TopologicalSort;
+use type_translator::TypeTranslator;
+use {attribute_parse as parse, rrconfig};
 
 /// Order ADT definitions topologically.
 fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
@@ -99,7 +87,7 @@ fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
             panic!("RefinedRust does not currently support mutually recursive types");
         }
         // only track actual definitions
-        defn_order.extend(next.into_iter().filter(|x| { defs.contains(&x) }));
+        defn_order.extend(next.into_iter().filter(|x| defs.contains(&x)));
     }
 
     defn_order
@@ -117,11 +105,10 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
 }
 
 impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
-
     fn extract_def_path(path: rustc_hir::definitions::DefPath) -> Vec<String> {
         let mut components = Vec::new();
         for p in path.data.iter() {
-            if let Some(name) =  p.data.get_opt_name() {
+            if let Some(name) = p.data.get_opt_name() {
                 components.push(name.as_str().to_string());
             }
         }
@@ -136,8 +123,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         if crate::utils::has_tool_attr(attrs, "export_as") {
             let filtered_attrs = crate::utils::filter_tool_attrs(attrs);
             path = Some(get_export_as_attr(filtered_attrs.as_slice()).unwrap());
-        }
-        else {
+        } else {
             // Check for an annotation on the surrounding impl
             if let Some(impl_did) = self.env.tcx().impl_of_method(did) {
                 let attrs = self.env.get_attributes(impl_did);
@@ -151,7 +137,6 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     path_prefix.push(this_path.pop().unwrap());
                     path = Some(path_prefix)
                 }
-
             }
         }
         if path.is_none() {
@@ -167,7 +152,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     fn make_shim_function_entry(&self, did: DefId, spec_name: &str) -> Option<shim_registry::FunctionShim> {
         let mut is_method = false;
         if let Some(mode) = self.procedure_registry.lookup_function_mode(&did) {
-            if mode == ProcedureMode::Prove || mode == ProcedureMode::OnlySpec || mode == ProcedureMode::TrustMe {
+            if mode == ProcedureMode::Prove
+                || mode == ProcedureMode::OnlySpec
+                || mode == ProcedureMode::TrustMe
+            {
                 match self.env.tcx().visibility(did) {
                     // only export public items
                     ty::Visibility::Public => {
@@ -178,7 +166,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                         let interned_path = self.get_path_for_shim(did);
 
                         let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
-                        info!("Found function path {:?} for did {:?} with name {:?}", interned_path, did, name);
+                        info!(
+                            "Found function path {:?} for did {:?} with name {:?}",
+                            interned_path, did, name
+                        );
 
                         let a = shim_registry::FunctionShim {
                             path: interned_path,
@@ -191,15 +182,19 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     ty::Visibility::Restricted(_) => {
                         // don't  export
                     },
-
                 }
-
             }
         }
         None
     }
 
-    fn make_adt_shim_entry(&self, did: DefId, syntype: &str, reftype: &str, semtype: &str) -> Option<shim_registry::AdtShim> {
+    fn make_adt_shim_entry(
+        &self,
+        did: DefId,
+        syntype: &str,
+        reftype: &str,
+        semtype: &str,
+    ) -> Option<shim_registry::AdtShim> {
         info!("making shim entry for {:?}", did);
         if did.is_local() {
             match self.env.tcx().visibility(did) {
@@ -237,7 +232,12 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         for (did, entry) in variant_defs.iter() {
             let entry = entry.borrow();
             if let Some(entry) = entry.as_ref() {
-                if let Some(shim) = self.make_adt_shim_entry(*did, entry.st_def_name(), &entry.public_rt_def_name(), entry.public_type_name()) {
+                if let Some(shim) = self.make_adt_shim_entry(
+                    *did,
+                    entry.st_def_name(),
+                    &entry.public_rt_def_name(),
+                    entry.public_type_name(),
+                ) {
                     adt_shims.push(shim);
                 }
             }
@@ -245,7 +245,12 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         for (did, entry) in enum_defs.iter() {
             let entry = entry.borrow();
             if let Some(entry) = entry.as_ref() {
-                if let Some (shim) = self.make_adt_shim_entry(*did, entry.st_def_name(), &entry.public_rt_def_name(), entry.public_type_name()) {
+                if let Some(shim) = self.make_adt_shim_entry(
+                    *did,
+                    entry.st_def_name(),
+                    &entry.public_rt_def_name(),
+                    entry.public_type_name(),
+                ) {
                     adt_shims.push(shim);
                 }
             }
@@ -275,18 +280,41 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let mut spec_file = io::BufWriter::new(fs::File::create(spec_path).unwrap());
         let mut code_file = io::BufWriter::new(fs::File::create(code_path).unwrap());
 
-        spec_file.write(format!("\
+        spec_file
+            .write(
+                format!(
+                    "\
             From caesium Require Import lang notation.\n\
             From refinedrust Require Import typing shims.\n\
-            From {}.{} Require Export generated_code_{}.\n", self.coq_path_prefix, stem, stem).as_bytes()).unwrap();
-        self.extra_imports.iter().map(|(path, _)| spec_file.write(format!("{}", path).as_bytes()).unwrap()).count();
+            From {}.{} Require Export generated_code_{}.\n",
+                    self.coq_path_prefix, stem, stem
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        self.extra_imports
+            .iter()
+            .map(|(path, _)| spec_file.write(format!("{}", path).as_bytes()).unwrap())
+            .count();
         spec_file.write("\n".as_bytes()).unwrap();
 
-        code_file.write("\
+        code_file
+            .write(
+                "\
             From caesium Require Import lang notation.\n\
             From refinedrust Require Import typing shims.\n\
-            ".as_bytes()).unwrap();
-        self.extra_imports.iter().map(|(path, include)| { if *include { code_file.write(format!("{}", path).as_bytes()).unwrap(); } }).count();
+            "
+                .as_bytes(),
+            )
+            .unwrap();
+        self.extra_imports
+            .iter()
+            .map(|(path, include)| {
+                if *include {
+                    code_file.write(format!("{}", path).as_bytes()).unwrap();
+                }
+            })
+            .count();
 
         // write structs and enums
         // we need to do a bit of work to order them right
@@ -316,8 +344,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     spec_file.write(inv_spec.as_bytes()).unwrap();
                     spec_file.write("\n".as_bytes()).unwrap();
                 }
-            }
-            else {
+            } else {
                 let eu_ref = enum_defs.get(did).unwrap().borrow();
                 info!("writing enum {:?}, {:?}", did, eu_ref);
                 let eu = eu_ref.as_ref().unwrap();
@@ -336,9 +363,14 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // TODO
 
         // write translated source code of functions
-        code_file.write("Section code.\n\
+        code_file
+            .write(
+                "Section code.\n\
             Context `{!typeGS Σ}.\n\
-            Open Scope printing_sugar.\n\n".as_bytes()).unwrap();
+            Open Scope printing_sugar.\n\n"
+                    .as_bytes(),
+            )
+            .unwrap();
 
         for (_, fun) in self.procedure_registry.iter_code() {
             code_file.write(fun.code.caesium_fmt().as_bytes()).unwrap();
@@ -348,20 +380,26 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         code_file.write("End code.".as_bytes()).unwrap();
 
         // write function specs
-        spec_file.write("\
+        spec_file
+            .write(
+                "\
             Section specs.\n\
-            Context `{!typeGS Σ}.\n\n".as_bytes()).unwrap();
+            Context `{!typeGS Σ}.\n\n"
+                    .as_bytes(),
+            )
+            .unwrap();
         for (_, fun) in self.procedure_registry.iter_code() {
             if fun.spec.has_spec() {
                 if fun.spec.args.len() != fun.code.get_argument_count() {
-                    warn!("Function specification for {} is missing arguments",  fun.name());
+                    warn!("Function specification for {} is missing arguments", fun.name());
                 }
                 spec_file.write(format!("{}", fun.spec).as_bytes()).unwrap();
                 spec_file.write("\n\n".as_bytes()).unwrap();
-            }
-            else {
+            } else {
                 warn!("No specification for {}", fun.name());
-                spec_file.write(format!("(* No specification provided for {} *)\n\n", fun.name()).as_bytes()).unwrap();
+                spec_file
+                    .write(format!("(* No specification provided for {} *)\n\n", fun.name()).as_bytes())
+                    .unwrap();
             }
         }
 
@@ -370,15 +408,19 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             if spec.has_spec() {
                 spec_file.write(format!("{}", spec).as_bytes()).unwrap();
                 spec_file.write("\n\n".as_bytes()).unwrap();
-            }
-            else {
-                spec_file.write(format!("(* No specification provided for {} *)\n\n", spec.function_name).as_bytes()).unwrap();
+            } else {
+                spec_file
+                    .write(
+                        format!("(* No specification provided for {} *)\n\n", spec.function_name).as_bytes(),
+                    )
+                    .unwrap();
             }
         }
 
         // Include extra specs
         if let Some(extra_specs_path) = rrconfig::extra_specs_file() {
-            writeln!(spec_file, "(* Included specifications from configured file {:?} *)", extra_specs_path).unwrap();
+            writeln!(spec_file, "(* Included specifications from configured file {:?} *)", extra_specs_path)
+                .unwrap();
             let mut extra_specs_file = io::BufReader::new(fs::File::open(extra_specs_path).unwrap());
 
             let mut extra_specs_string = String::new();
@@ -391,7 +433,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     }
 
     /// Write proof templates for a verification unit.
-    fn write_templates<F>(&self, file_path: F, stem: &str) where F : Fn(&str) -> std::path::PathBuf {
+    fn write_templates<F>(&self, file_path: F, stem: &str)
+    where
+        F: Fn(&str) -> std::path::PathBuf,
+    {
         // write templates
         // each function gets a separate file in order to parallelize
         for (did, fun) in self.procedure_registry.iter_code() {
@@ -401,31 +446,43 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
 
             if fun.spec.has_spec() && mode.needs_proof() {
-                template_file.write(format!("\
+                template_file
+                    .write(
+                        format!(
+                            "\
                     From caesium Require Import lang notation.\n\
                     From refinedrust Require Import typing shims.\n\
                     From {}.{stem} Require Import generated_code_{stem} generated_specs_{stem}.\n",
-                    self.coq_path_prefix).as_bytes()).unwrap();
-                self.extra_imports.iter().map(|(path, _)| template_file.write(format!("{}", path).as_bytes()).unwrap()).count();
+                            self.coq_path_prefix
+                        )
+                        .as_bytes(),
+                    )
+                    .unwrap();
+                self.extra_imports
+                    .iter()
+                    .map(|(path, _)| template_file.write(format!("{}", path).as_bytes()).unwrap())
+                    .count();
                 template_file.write("\n".as_bytes()).unwrap();
 
                 template_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
 
-                template_file.write("\
+                template_file
+                    .write(
+                        "\
                     Section proof.\n\
-                    Context `{!typeGS Σ}.\n".as_bytes()).unwrap();
+                    Context `{!typeGS Σ}.\n"
+                            .as_bytes(),
+                    )
+                    .unwrap();
 
                 fun.generate_lemma_statement(&mut template_file).unwrap();
 
                 write!(template_file, "End proof.\n\n").unwrap();
 
                 fun.generate_proof_prelude(&mut template_file).unwrap();
-
-            }
-            else if !fun.spec.has_spec() {
+            } else if !fun.spec.has_spec() {
                 write!(template_file, "(* No specification provided *)").unwrap();
-            }
-            else {
+            } else {
                 write!(template_file, "(* Function is trusted *)").unwrap();
             }
         }
@@ -437,7 +494,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     }
 
     /// Write proofs for a verification unit.
-    fn write_proofs<F>(&self, file_path: F, stem: &str) where F : Fn(&str) -> std::path::PathBuf {
+    fn write_proofs<F>(&self, file_path: F, stem: &str)
+    where
+        F: Fn(&str) -> std::path::PathBuf,
+    {
         // write proofs
         // each function gets a separate file in order to parallelize
         for (did, fun) in self.procedure_registry.iter_code() {
@@ -446,18 +506,23 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             if path.exists() {
                 info!("Proof file for function {} already exists, skipping creation", fun.name());
                 continue;
-            }
-            else if self.check_function_needs_proof(*did, fun) {
+            } else if self.check_function_needs_proof(*did, fun) {
                 info!("Proof file for function {} does not yet exist, creating", fun.name());
 
                 let mut proof_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
 
-                write!(proof_file, "\
+                write!(
+                    proof_file,
+                    "\
                     From caesium Require Import lang notation.\n\
                     From refinedrust Require Import typing shims.\n\
                     From {}.{stem}.generated Require Import generated_code_{stem} generated_specs_{stem}.\n\
                     From {}.{stem}.generated Require Import generated_template_{}.\n",
-                    self.coq_path_prefix, self.coq_path_prefix, fun.name()).unwrap();
+                    self.coq_path_prefix,
+                    self.coq_path_prefix,
+                    fun.name()
+                )
+                .unwrap();
                 // Note: we do not import the self.extra_imports explicitly, as we rely on them
                 // being re-exported from the template -- we want to be stable under changes of the
                 // extras
@@ -465,10 +530,14 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
                 proof_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
 
-
-                proof_file.write("\
+                proof_file
+                    .write(
+                        "\
                     Section proof.\n\
-                    Context `{!typeGS Σ}.\n".as_bytes()).unwrap();
+                    Context `{!typeGS Σ}.\n"
+                            .as_bytes(),
+                    )
+                    .unwrap();
 
                 fun.generate_proof(&mut proof_file).unwrap();
 
@@ -480,7 +549,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     /// Write Coq files for this verification unit.
     pub fn write_coq_files(&self) {
         // use the crate_name for naming
-        let crate_name: rustc_span::symbol::Symbol = self.env.tcx().crate_name(rustc_span::def_id::LOCAL_CRATE);
+        let crate_name: rustc_span::symbol::Symbol =
+            self.env.tcx().crate_name(rustc_span::def_id::LOCAL_CRATE);
         let stem = crate_name.as_str();
 
         // create output directory
@@ -507,9 +577,13 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let gitignore_path = base_dir_path.as_path().join(format!(".gitignore"));
         if !gitignore_path.exists() {
             let mut gitignore_file = io::BufWriter::new(fs::File::create(gitignore_path.as_path()).unwrap());
-            write!(gitignore_file, "\
+            write!(
+                gitignore_file,
+                "\
                 generated\n\
-                proofs/dune").unwrap();
+                proofs/dune"
+            )
+            .unwrap();
         }
 
         // build the path for generated files
@@ -526,20 +600,23 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // build the path for the interface file
         base_dir_path.pop();
         base_dir_path.push("interface.rrlib");
-        self.generate_module_summary(&generated_module_path, &format!("generated_specs_{}", stem), stem, base_dir_path.as_path());
+        self.generate_module_summary(
+            &generated_module_path,
+            &format!("generated_specs_{}", stem),
+            stem,
+            base_dir_path.as_path(),
+        );
 
         // write generated (subdirectory "generated")
         info!("outputting generated code to {}", generated_dir_path.to_str().unwrap());
         if let Err(_) = fs::read_dir(generated_dir_path) {
             warn!("Output directory {:?} does not exist, creating directory", generated_dir_path);
             fs::create_dir_all(generated_dir_path).unwrap();
-        }
-        else {
+        } else {
             // purge contents
             info!("Removing the contents of the generated directory");
             fs::remove_dir_all(generated_dir_path).unwrap();
             fs::create_dir(generated_dir_path).unwrap();
-
         }
 
         let code_path = generated_dir_path.join(format!("generated_code_{}.v", stem));
@@ -550,20 +627,26 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         self.write_specifications(spec_path.as_path(), code_path.as_path(), &stem);
 
         // write templates
-        self.write_templates(|name| { generated_dir_path.join(format!("generated_template_{}.v", name)) }, &stem);
+        self.write_templates(|name| generated_dir_path.join(format!("generated_template_{}.v", name)), &stem);
 
         // write dune meta file
         let mut dune_file = io::BufWriter::new(fs::File::create(generated_dune_path.as_path()).unwrap());
-        let extra_theories: Vec<_> = self.extra_imports.iter().filter_map(|(path, _)| path.path.clone()).collect();
-        write!(dune_file, "\
+        let extra_theories: Vec<_> =
+            self.extra_imports.iter().filter_map(|(path, _)| path.path.clone()).collect();
+        write!(
+            dune_file,
+            "\
             ; Generated by [refinedrust], do not edit.\n\
             (coq.theory\n\
              (flags -w -notation-overridden -w -redundant-canonical-projection)\n\
              (name {generated_module_path})\n\
-             (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust {}))", extra_theories.join(" ")).unwrap();
+             (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust {}))",
+            extra_theories.join(" ")
+        )
+        .unwrap();
 
         // write proofs (subdirectory "proofs")
-        let make_proof_file_name = |name| { format!("proof_{}.v", name) };
+        let make_proof_file_name = |name| format!("proof_{}.v", name);
 
         info!("using {} as proof directory", proof_dir_path.to_str().unwrap());
         if let Ok(read) = fs::read_dir(proof_dir_path) {
@@ -585,25 +668,22 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     if let Some(filename) = filename.to_str() {
                         if filename == "dune" {
                             continue;
-                        }
-                        else if proof_files_to_generate.contains(filename) {
+                        } else if proof_files_to_generate.contains(filename) {
                             continue;
-                        }
-                        else {
-                            println!("Warning: Proof file {filename} does not have a matching Rust function to verify.");
+                        } else {
+                            println!(
+                                "Warning: Proof file {filename} does not have a matching Rust function to verify."
+                            );
                         }
                     }
                 }
             }
-
-
-        }
-        else {
+        } else {
             warn!("Output directory {:?} does not exist, creating directory", proof_dir_path);
             fs::create_dir_all(proof_dir_path).unwrap();
         }
 
-        self.write_proofs(|name| { proof_dir_path.join(format!("proof_{}.v", name)) }, &stem);
+        self.write_proofs(|name| proof_dir_path.join(format!("proof_{}.v", name)), &stem);
 
         // explicitly spell out the proof modules we want to compile so we don't choke on stale
         // proof files
@@ -630,8 +710,6 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
 /// Register shims in the procedure registry.
 fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<(), String> {
-
-
     for shim in vcx.shim_registry.get_function_shims().iter() {
         let did;
         if shim.is_method {
@@ -644,12 +722,16 @@ fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<
             Some(did) => {
                 // register as usual in the procedure registry
                 info!("registering shim for {:?}", shim.path);
-                let meta = function_body::ProcedureMeta::new(shim.spec_name.to_string(), shim.name.to_string(), function_body::ProcedureMode::Shim);
+                let meta = function_body::ProcedureMeta::new(
+                    shim.spec_name.to_string(),
+                    shim.name.to_string(),
+                    function_body::ProcedureMode::Shim,
+                );
                 vcx.procedure_registry.register_function(&did, meta);
             },
             _ => {
                 println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
-            }
+            },
         }
     }
 
@@ -664,19 +746,22 @@ fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<
             if let Err(e) = vcx.type_translator.register_adt_shim(did, lit) {
                 println!("Warning: {}", e);
             }
-        }
-        else {
+        } else {
             println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
         }
     }
 
     // add the extra imports
-    vcx.extra_imports.extend(vcx.shim_registry.get_extra_imports().iter().map(|x| (x.clone(), true)));
+    vcx.extra_imports
+        .extend(vcx.shim_registry.get_extra_imports().iter().map(|x| (x.clone(), true)));
 
     Ok(())
 }
 
-fn get_most_restrictive_function_mode<'tcx, 'rcx>(vcx: &VerificationCtxt<'tcx, 'rcx>, did: DefId) -> function_body::ProcedureMode {
+fn get_most_restrictive_function_mode<'tcx, 'rcx>(
+    vcx: &VerificationCtxt<'tcx, 'rcx>,
+    did: DefId,
+) -> function_body::ProcedureMode {
     let mut mode = function_body::ProcedureMode::Prove;
 
     let attrs = vcx.env.get_attributes(did);
@@ -689,11 +774,9 @@ fn get_most_restrictive_function_mode<'tcx, 'rcx>(vcx: &VerificationCtxt<'tcx, '
 
     if crate::utils::has_tool_attr(attrs, "trust_me") {
         mode = function_body::ProcedureMode::TrustMe;
-    }
-    else if crate::utils::has_tool_attr(attrs, "only_spec") {
+    } else if crate::utils::has_tool_attr(attrs, "only_spec") {
         mode = function_body::ProcedureMode::OnlySpec;
-    }
-    else if crate::utils::has_tool_attr(attrs, "ignore") {
+    } else if crate::utils::has_tool_attr(attrs, "ignore") {
         info!("Function {:?} will be ignored", did);
         mode = function_body::ProcedureMode::Ignore;
     }
@@ -704,7 +787,6 @@ fn get_most_restrictive_function_mode<'tcx, 'rcx>(vcx: &VerificationCtxt<'tcx, '
 /// Register functions of the crate in the procedure registry.
 fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     for &f in vcx.functions {
-
         let mut mode = get_most_restrictive_function_mode(vcx, f.to_def_id());
 
         if mode == function_body::ProcedureMode::Shim {
@@ -713,8 +795,17 @@ fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             let v = crate::utils::filter_tool_attrs(attrs);
             let annot = get_shim_attrs(v.as_slice()).unwrap();
 
-            info!("Registering shim: {:?} as spec: {}, code: {}", f.to_def_id(), annot.spec_name, annot.code_name);
-            let meta = function_body::ProcedureMeta::new(annot.spec_name, annot.code_name, function_body::ProcedureMode::Shim);
+            info!(
+                "Registering shim: {:?} as spec: {}, code: {}",
+                f.to_def_id(),
+                annot.spec_name,
+                annot.code_name
+            );
+            let meta = function_body::ProcedureMeta::new(
+                annot.spec_name,
+                annot.code_name,
+                function_body::ProcedureMode::Shim,
+            );
             vcx.procedure_registry.register_function(&f.to_def_id(), meta);
 
             continue;
@@ -757,8 +848,14 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
 
         info!("Translating function {}", fname);
 
-
-        let translator = FunctionTranslator::new(&vcx.env, meta, proc, attrs, &vcx.type_translator, &vcx.procedure_registry);
+        let translator = FunctionTranslator::new(
+            &vcx.env,
+            meta,
+            proc,
+            attrs,
+            &vcx.type_translator,
+            &vcx.procedure_registry,
+        );
 
         if mode.is_only_spec() {
             // Only generate a spec
@@ -776,12 +873,14 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                     println!("Encountered error: {:?}", err);
                     println!("Skipping function {}", fname);
                     if !rrconfig::skip_unsupported_features() {
-                        exit_with_error(&format!("Encountered error when translating function {}, stopping...", fname));
+                        exit_with_error(&format!(
+                            "Encountered error when translating function {}, stopping...",
+                            fname
+                        ));
                     }
-                }
+                },
             }
-        }
-        else {
+        } else {
             // Fully translate the function
             match translator.and_then(|t| t.translate()) {
                 Ok(fun) => {
@@ -797,9 +896,12 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                     println!("Encountered error: {:?}", err);
                     println!("Skipping function {}", fname);
                     if !rrconfig::skip_unsupported_features() {
-                        exit_with_error(&format!("Encountered error when translating function {}, stopping...", fname));
+                        exit_with_error(&format!(
+                            "Encountered error when translating function {}, stopping...",
+                            fname
+                        ));
                     }
-                }
+                },
             }
         }
     }
@@ -818,25 +920,27 @@ pub fn get_filtered_functions<'tcx>(env: &Environment<'tcx>) -> Vec<LocalDefId> 
     info!("Found {} function(s) and {} closure(s)", functions.len(), closures.len());
     functions.extend(closures);
 
-    let functions_with_spec: Vec<_> = functions.into_iter().filter(|id| {
-        let mut prove = false;
-        if env.has_any_tool_attribute(id.to_def_id()) {
-            prove = true;
-            if env.has_tool_attribute(id.to_def_id(), "skip") {
-                warn!("Function {:?} will be skipped due to a rr::skip annotation", id);
-                prove= false;
-            }
-            else {
-                if let Some(impl_did) = env.tcx().impl_of_method(id.to_def_id()) {
-                    if env.has_tool_attribute(impl_did, "skip") {
-                        warn!("Function {:?} will be skipped due to a rr::skip annotation on impl", id);
-                        prove = false;
+    let functions_with_spec: Vec<_> = functions
+        .into_iter()
+        .filter(|id| {
+            let mut prove = false;
+            if env.has_any_tool_attribute(id.to_def_id()) {
+                prove = true;
+                if env.has_tool_attribute(id.to_def_id(), "skip") {
+                    warn!("Function {:?} will be skipped due to a rr::skip annotation", id);
+                    prove = false;
+                } else {
+                    if let Some(impl_did) = env.tcx().impl_of_method(id.to_def_id()) {
+                        if env.has_tool_attribute(impl_did, "skip") {
+                            warn!("Function {:?} will be skipped due to a rr::skip annotation on impl", id);
+                            prove = false;
+                        }
                     }
                 }
             }
-        }
-        prove
-    }).collect();
+            prove
+        })
+        .collect();
 
     for f in functions_with_spec.iter() {
         info!("Function {:?} has a spec and will be processed", f);
@@ -845,7 +949,9 @@ pub fn get_filtered_functions<'tcx>(env: &Environment<'tcx>) -> Vec<LocalDefId> 
 }
 
 /// Get and parse all module attributes.
-pub fn get_module_attributes<'tcx>(env: &Environment<'tcx>) -> Result<HashMap<LocalDefId, mod_parser::ModuleAttrs>, String> {
+pub fn get_module_attributes<'tcx>(
+    env: &Environment<'tcx>,
+) -> Result<HashMap<LocalDefId, mod_parser::ModuleAttrs>, String> {
     let modules = env.get_modules();
     let mut attrs = HashMap::new();
     info!("collected modules: {:?}", modules);
@@ -855,7 +961,6 @@ pub fn get_module_attributes<'tcx>(env: &Environment<'tcx>) -> Result<HashMap<Lo
         let mut module_parser = mod_parser::VerboseModuleAttrParser::new();
         let module_spec = module_parser.parse_module_attrs(*m, &module_attrs)?;
         attrs.insert(*m, module_spec);
-
     }
 
     Ok(attrs)
@@ -869,8 +974,7 @@ fn scan_loadpath(path: &Path, storage: &mut HashMap<String, std::path::PathBuf>)
             let path = entry.path();
             if path.is_dir() {
                 scan_loadpath(path.as_path(), storage)?;
-            }
-            else if path.is_file() {
+            } else if path.is_file() {
                 if let Some(ext) = path.extension() {
                     if Some("rrlib") == ext.to_str() {
                         // try to open this rrlib file
@@ -898,10 +1002,10 @@ fn scan_loadpaths(paths: &[std::path::PathBuf]) -> io::Result<HashMap<String, st
     Ok(found_lib_files)
 }
 
-
 /// Translate a crate, creating a `VerificationCtxt` in the process.
 pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F) -> Result<(), String>
-    where F: Fn(VerificationCtxt<'tcx, '_>) -> ()
+where
+    F: Fn(VerificationCtxt<'tcx, '_>) -> (),
 {
     let env = Environment::new(tcx);
     let env: &Environment = &*Box::leak(Box::new(env));
@@ -923,15 +1027,21 @@ pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F) -> Result<
     // process imports
     let mut imports: HashSet<radium::CoqPath> = HashSet::new();
     crate_spec.imports.into_iter().map(|path| imports.insert(path)).count();
-    module_attrs.values().map(|attrs| attrs.imports.iter().map(|path| imports.insert(path.clone())).count()).count();
+    module_attrs
+        .values()
+        .map(|attrs| attrs.imports.iter().map(|path| imports.insert(path.clone())).count())
+        .count();
     info!("Importing extra Coq files: {:?}", imports);
 
     // process includes
     let mut includes: HashSet<String> = HashSet::new();
     crate_spec.includes.into_iter().map(|name| includes.insert(name)).count();
-    module_attrs.into_values().into_iter().map(|attrs| attrs.includes.into_iter().map(|name| includes.insert(name)).count()).count();
+    module_attrs
+        .into_values()
+        .into_iter()
+        .map(|attrs| attrs.includes.into_iter().map(|name| includes.insert(name)).count())
+        .count();
     info!("Including RefinedRust modules: {:?}", includes);
-
 
     let functions = get_filtered_functions(&env);
 
@@ -951,8 +1061,7 @@ pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F) -> Result<
         if let Some(p) = found_libs.get(incl) {
             let f = File::open(p).map_err(|e| e.to_string())?;
             shim_registry.add_source(f)?;
-        }
-        else {
+        } else {
             println!("Warning: did not find library {} in loadpath", incl);
         }
     }
@@ -974,7 +1083,7 @@ pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F) -> Result<
         procedure_registry,
         extra_imports: imports.into_iter().map(|x| (x, false)).collect(),
         coq_path_prefix: path_prefix,
-        shim_registry
+        shim_registry,
     };
 
     register_functions(&mut vcx);

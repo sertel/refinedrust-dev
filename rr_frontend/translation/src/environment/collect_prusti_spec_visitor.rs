@@ -4,12 +4,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::environment::Environment;
-use rr_rustc_interface::hir as hir;
-use rustc_hir::def_id::LocalDefId;
-use rustc_middle::ty::TyCtxt;
-use rustc_hir::intravisit::Visitor;
 use log::trace;
+use rr_rustc_interface::hir;
+use rustc_hir::def_id::LocalDefId;
+use rustc_hir::intravisit::Visitor;
+use rustc_middle::ty::TyCtxt;
+
+use crate::environment::Environment;
 
 pub struct CollectPrustiSpecVisitor<'a, 'tcx: 'a> {
     env: &'a Environment<'tcx>,
@@ -62,20 +63,17 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
             let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
             trace!("Add fn item {} to result", item_def_path);
             self.functions.push(def_id);
-        }
-        else if let hir::ItemKind::Const(_, _, _) = item.kind {
+        } else if let hir::ItemKind::Const(_, _, _) = item.kind {
             let def_id = item.hir_id().owner.def_id;
             let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
             trace!("Add const {} to result", item_def_path);
             self.consts.push(def_id);
-        }
-        else if let hir::ItemKind::Static(..) = item.kind {
+        } else if let hir::ItemKind::Static(..) = item.kind {
             let def_id = item.hir_id().owner.def_id;
             let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
             trace!("Add static {} to result", item_def_path);
             self.statics.push(def_id);
-        }
-        else if let hir::ItemKind::Mod(..) = item.kind {
+        } else if let hir::ItemKind::Mod(..) = item.kind {
             let def_id = item.hir_id().owner.def_id;
             let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
             trace!("Add module {} to result", item_def_path);

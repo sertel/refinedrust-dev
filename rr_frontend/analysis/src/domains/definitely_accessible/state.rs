@@ -4,20 +4,20 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    mir_utils::{is_prefix, Place},
-    PointwiseState,
-};
-use log::info;
-use rr_rustc_interface::{
-    abi::FieldIdx,
-    data_structures::fx::{FxHashMap, FxHashSet},
-    middle::{mir, ty, ty::TyCtxt},
-    span::source_map::SourceMap,
-    target::abi::VariantIdx,
-};
-use serde::{ser::SerializeMap, Serialize, Serializer};
 use std::fmt;
+
+use log::info;
+use rr_rustc_interface::abi::FieldIdx;
+use rr_rustc_interface::data_structures::fx::{FxHashMap, FxHashSet};
+use rr_rustc_interface::middle::ty::TyCtxt;
+use rr_rustc_interface::middle::{mir, ty};
+use rr_rustc_interface::span::source_map::SourceMap;
+use rr_rustc_interface::target::abi::VariantIdx;
+use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
+
+use crate::mir_utils::{is_prefix, Place};
+use crate::PointwiseState;
 
 #[derive(Clone, Default, Eq, PartialEq)]
 pub struct DefinitelyAccessibleState<'tcx> {
@@ -55,18 +55,14 @@ impl<'tcx> Serialize for DefinitelyAccessibleState<'tcx> {
 
         let mut definitely_accessible_set: Vec<_> = self.definitely_accessible.iter().collect();
         definitely_accessible_set.sort_unstable();
-        let definitely_accessible_strings: Vec<_> = definitely_accessible_set
-            .into_iter()
-            .map(|place| format!("{place:?}"))
-            .collect();
+        let definitely_accessible_strings: Vec<_> =
+            definitely_accessible_set.into_iter().map(|place| format!("{place:?}")).collect();
         seq.serialize_entry("accessible", &definitely_accessible_strings)?;
 
         let mut definitely_owned_set: Vec<_> = self.definitely_owned.iter().collect();
         definitely_owned_set.sort_unstable();
-        let definitely_owned_strings: Vec<_> = definitely_owned_set
-            .into_iter()
-            .map(|place| format!("{place:?}"))
-            .collect();
+        let definitely_owned_strings: Vec<_> =
+            definitely_owned_set.into_iter().map(|place| format!("{place:?}")).collect();
         seq.serialize_entry("owned", &definitely_owned_strings)?;
 
         seq.end()
@@ -110,8 +106,7 @@ impl<'mir, 'tcx: 'mir> PointwiseState<'mir, 'tcx, DefinitelyAccessibleState<'tcx
                         let line_num = line.line_index + 1;
                         info!("Statement {location:?} is on a single line at {line_num}");
                         // Check that it parses as a statement
-                        let line_seems_stmt =
-                            syn::parse_str::<syn::Stmt>(&result[line.line_index]).is_ok();
+                        let line_seems_stmt = syn::parse_str::<syn::Stmt>(&result[line.line_index]).is_ok();
                         if !line_seems_stmt {
                             info!("Statement {location:?} doesn't parse as a statement");
                             continue;
@@ -162,11 +157,7 @@ impl<'mir, 'tcx: 'mir> PointwiseState<'mir, 'tcx, DefinitelyAccessibleState<'tcx
     }
 }
 
-fn pretty_print_place<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    body: &mir::Body<'tcx>,
-    place: Place<'tcx>,
-) -> Option<String> {
+fn pretty_print_place<'tcx>(tcx: TyCtxt<'tcx>, body: &mir::Body<'tcx>, place: Place<'tcx>) -> Option<String> {
     let mut pieces = vec![];
 
     // Open parenthesis
@@ -174,7 +165,7 @@ fn pretty_print_place<'tcx>(
         match elem {
             mir::ProjectionElem::Deref => pieces.push("(*".to_string()),
             mir::ProjectionElem::Field(..) => pieces.push("(".to_string()),
-            _ => {}
+            _ => {},
         }
     }
 
@@ -209,24 +200,24 @@ fn pretty_print_place<'tcx>(
         match elem {
             mir::ProjectionElem::Deref => {
                 pieces.push(")".to_string());
-            }
+            },
             mir::ProjectionElem::Downcast(_, variant_index) => {
                 prev_ty = proj_base.ty(body, tcx).ty;
                 variant = Some(variant_index);
-            }
+            },
             mir::ProjectionElem::Field(field, field_ty) => {
                 let field_name = describe_field_from_ty(tcx, prev_ty, field, variant)?;
                 pieces.push(format!(".{field_name})"));
                 prev_ty = field_ty;
                 variant = None;
-            }
+            },
             mir::ProjectionElem::Index(..)
             | mir::ProjectionElem::ConstantIndex { .. }
             | mir::ProjectionElem::OpaqueCast(..)
             | mir::ProjectionElem::Subslice { .. } => {
                 // It's not possible to move-out or borrow an individual element.
                 unreachable!()
-            }
+            },
         }
     }
 
@@ -253,18 +244,18 @@ fn describe_field_from_ty(
                     def.non_enum_variant()
                 };
                 Some(variant.fields[field].ident(tcx).to_string())
-            }
+            },
             ty::TyKind::Tuple(_) => Some(field.index().to_string()),
             ty::TyKind::Ref(_, ty, _) | ty::TyKind::RawPtr(ty::TypeAndMut { ty, .. }) => {
                 describe_field_from_ty(tcx, ty, field, variant_index)
-            }
+            },
             ty::TyKind::Array(ty, _) | ty::TyKind::Slice(ty) => {
                 describe_field_from_ty(tcx, ty, field, variant_index)
-            }
+            },
             ty::TyKind::Closure(..) | ty::TyKind::Generator(..) => {
                 // Supporting these cases is complex
                 None
-            }
+            },
             _ => unreachable!("Unexpected type `{:?}`", ty),
         }
     }

@@ -4,21 +4,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    abstract_interpretation::AnalysisResult,
-    domains::{DefinitelyAccessibleAnalysis, DefinitelyAccessibleState, FramingState},
-    mir_utils::{get_blocked_place, remove_place_from_set},
-    PointwiseState,
-};
-use rr_rustc_interface::{
-    borrowck::consumers::BodyWithBorrowckFacts,
-    middle::{
-        mir,
-        mir::visit::{NonMutatingUseContext, PlaceContext, Visitor},
-        ty::TyCtxt,
-    },
-    span::def_id::DefId,
-};
+use rr_rustc_interface::borrowck::consumers::BodyWithBorrowckFacts;
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::mir::visit::{NonMutatingUseContext, PlaceContext, Visitor};
+use rr_rustc_interface::middle::ty::TyCtxt;
+use rr_rustc_interface::span::def_id::DefId;
+
+use crate::abstract_interpretation::AnalysisResult;
+use crate::domains::{DefinitelyAccessibleAnalysis, DefinitelyAccessibleState, FramingState};
+use crate::mir_utils::{get_blocked_place, remove_place_from_set};
+use crate::PointwiseState;
 
 pub struct FramingAnalysis<'mir, 'tcx: 'mir> {
     tcx: TyCtxt<'tcx>,
@@ -27,11 +22,7 @@ pub struct FramingAnalysis<'mir, 'tcx: 'mir> {
 }
 
 impl<'mir, 'tcx: 'mir> FramingAnalysis<'mir, 'tcx> {
-    pub fn new(
-        tcx: TyCtxt<'tcx>,
-        def_id: DefId,
-        body_with_facts: &'mir BodyWithBorrowckFacts<'tcx>,
-    ) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>, def_id: DefId, body_with_facts: &'mir BodyWithBorrowckFacts<'tcx>) -> Self {
         FramingAnalysis {
             tcx,
             def_id,
@@ -40,8 +31,7 @@ impl<'mir, 'tcx: 'mir> FramingAnalysis<'mir, 'tcx> {
     }
 
     pub fn run_analysis(&self) -> AnalysisResult<PointwiseState<'mir, 'tcx, FramingState<'tcx>>> {
-        let acc_analysis =
-            DefinitelyAccessibleAnalysis::new(self.tcx, self.def_id, self.body_with_facts);
+        let acc_analysis = DefinitelyAccessibleAnalysis::new(self.tcx, self.def_id, self.body_with_facts);
         let accessibility = acc_analysis.run_analysis()?;
         let body = &self.body_with_facts.body;
         let mut analysis_state = PointwiseState::default(body);
@@ -54,9 +44,9 @@ impl<'mir, 'tcx: 'mir> FramingAnalysis<'mir, 'tcx> {
                     block,
                     statement_index,
                 };
-                let acc_before = accessibility.lookup_before(location).unwrap_or_else(|| {
-                    panic!("No 'accessibility' state before location {location:?}")
-                });
+                let acc_before = accessibility
+                    .lookup_before(location)
+                    .unwrap_or_else(|| panic!("No 'accessibility' state before location {location:?}"));
                 let mut compute_framing = ComputeFramingState::initial(body, self.tcx, acc_before);
                 if let Some(stmt) = body.stmt_at(location).left() {
                     compute_framing.visit_statement(stmt, location);
@@ -97,44 +87,23 @@ impl<'mir, 'tcx: 'mir> ComputeFramingState<'mir, 'tcx> {
 }
 
 impl<'mir, 'tcx: 'mir> Visitor<'tcx> for ComputeFramingState<'mir, 'tcx> {
-    fn visit_place(
-        &mut self,
-        place: &mir::Place<'tcx>,
-        context: PlaceContext,
-        _location: mir::Location,
-    ) {
+    fn visit_place(&mut self, place: &mir::Place<'tcx>, context: PlaceContext, _location: mir::Location) {
         let place = (*place).into();
         match context {
-            PlaceContext::MutatingUse(_)
-            | PlaceContext::NonMutatingUse(NonMutatingUseContext::Move) => {
+            PlaceContext::MutatingUse(_) | PlaceContext::NonMutatingUse(NonMutatingUseContext::Move) => {
                 // No permission can be framed
                 let blocked_place = get_blocked_place(self.tcx, place);
-                remove_place_from_set(
-                    self.body,
-                    self.tcx,
-                    blocked_place,
-                    &mut self.state.framed_owned,
-                );
-                remove_place_from_set(
-                    self.body,
-                    self.tcx,
-                    blocked_place,
-                    &mut self.state.framed_accessible,
-                );
-            }
+                remove_place_from_set(self.body, self.tcx, blocked_place, &mut self.state.framed_owned);
+                remove_place_from_set(self.body, self.tcx, blocked_place, &mut self.state.framed_accessible);
+            },
             PlaceContext::NonMutatingUse(_) => {
                 // Read permission can be framed
                 let frozen_place = get_blocked_place(self.tcx, place);
-                remove_place_from_set(
-                    self.body,
-                    self.tcx,
-                    frozen_place,
-                    &mut self.state.framed_owned,
-                );
-            }
+                remove_place_from_set(self.body, self.tcx, frozen_place, &mut self.state.framed_owned);
+            },
             PlaceContext::NonUse(_) => {
                 // Any permission can be framed
-            }
+            },
         }
     }
 }

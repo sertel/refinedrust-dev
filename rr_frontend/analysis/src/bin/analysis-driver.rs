@@ -4,41 +4,34 @@
 // https://github.com/rust-lang/miri/blob/master/benches/helpers/miri_helper.rs
 // https://github.com/rust-lang/rust/blob/master/src/test/run-make-fulldeps/obtain-borrowck/driver.rs
 
-use analysis::{
-    abstract_interpretation::FixpointEngine,
-    domains::{
-        DefinitelyAccessibleAnalysis, DefinitelyInitializedAnalysis, FramingAnalysis,
-        MaybeBorrowedAnalysis, ReachingDefsAnalysis,
-    },
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use analysis::abstract_interpretation::FixpointEngine;
+use analysis::domains::{
+    DefinitelyAccessibleAnalysis, DefinitelyInitializedAnalysis, FramingAnalysis, MaybeBorrowedAnalysis,
+    ReachingDefsAnalysis,
 };
-use rr_rustc_interface::{
-    ast::ast,
-    borrowck::consumers::{self, BodyWithBorrowckFacts},
-    data_structures::fx::FxHashMap,
-    driver::Compilation,
-    errors,
-    hir::def_id::{DefId, LocalDefId},
-    interface::{interface, Config, Queries},
-    middle::{
-        query::{queries::mir_borrowck::ProvidedValue, ExternProviders, Providers},
-        ty,
-    },
-    polonius_engine::{Algorithm, Output},
-    session::{self, Attribute, EarlyErrorHandler, Session},
-};
-use std::{cell::RefCell, rc::Rc};
+use rr_rustc_interface::ast::ast;
+use rr_rustc_interface::borrowck::consumers::{self, BodyWithBorrowckFacts};
+use rr_rustc_interface::data_structures::fx::FxHashMap;
+use rr_rustc_interface::driver::Compilation;
+use rr_rustc_interface::errors;
+use rr_rustc_interface::hir::def_id::{DefId, LocalDefId};
+use rr_rustc_interface::interface::{interface, Config, Queries};
+use rr_rustc_interface::middle::query::queries::mir_borrowck::ProvidedValue;
+use rr_rustc_interface::middle::query::{ExternProviders, Providers};
+use rr_rustc_interface::middle::ty;
+use rr_rustc_interface::polonius_engine::{Algorithm, Output};
+use rr_rustc_interface::session::{self, Attribute, EarlyErrorHandler, Session};
 
 struct OurCompilerCalls {
     args: Vec<String>,
 }
 
-fn get_attributes(
-    tcx: ty::TyCtxt<'_>,
-    def_id: DefId,
-) -> &[rr_rustc_interface::ast::ast::Attribute] {
+fn get_attributes(tcx: ty::TyCtxt<'_>, def_id: DefId) -> &[rr_rustc_interface::ast::ast::Attribute] {
     if let Some(local_def_id) = def_id.as_local() {
-        tcx.hir()
-            .attrs(tcx.hir().local_def_id_to_hir_id(local_def_id))
+        tcx.hir().attrs(tcx.hir().local_def_id_to_hir_id(local_def_id))
     } else {
         tcx.item_attrs(def_id)
     }
@@ -50,28 +43,26 @@ fn get_attribute<'tcx>(
     segment1: &str,
     segment2: &str,
 ) -> Option<&'tcx Attribute> {
-    get_attributes(tcx, def_id)
-        .iter()
-        .find(|attr| match &attr.kind {
-            ast::AttrKind::Normal(normal_attr) => match &normal_attr.item {
-                ast::AttrItem {
-                    path:
-                        ast::Path {
-                            span: _,
-                            segments,
-                            tokens: _,
-                        },
-                    args: ast::AttrArgs::Empty,
-                    tokens: _,
-                } => {
-                    segments.len() == 2
-                        && segments[0].ident.as_str() == segment1
-                        && segments[1].ident.as_str() == segment2
-                }
-                _ => false,
+    get_attributes(tcx, def_id).iter().find(|attr| match &attr.kind {
+        ast::AttrKind::Normal(normal_attr) => match &normal_attr.item {
+            ast::AttrItem {
+                path:
+                    ast::Path {
+                        span: _,
+                        segments,
+                        tokens: _,
+                    },
+                args: ast::AttrArgs::Empty,
+                tokens: _,
+            } => {
+                segments.len() == 2
+                    && segments[0].ident.as_str() == segment1
+                    && segments[1].ident.as_str() == segment2
             },
             _ => false,
-        })
+        },
+        _ => false,
+    })
 }
 
 mod mir_storage {
@@ -118,11 +109,8 @@ mod mir_storage {
 
 #[allow(clippy::needless_lifetimes)]
 fn mir_borrowck<'tcx>(tcx: ty::TyCtxt<'tcx>, def_id: LocalDefId) -> ProvidedValue<'tcx> {
-    let body_with_facts = consumers::get_body_with_borrowck_facts(
-        tcx,
-        def_id,
-        consumers::ConsumerOptions::PoloniusOutputFacts,
-    );
+    let body_with_facts =
+        consumers::get_body_with_borrowck_facts(tcx, def_id, consumers::ConsumerOptions::PoloniusOutputFacts);
     // SAFETY: This is safe because we are feeding in the same `tcx` that is
     // going to be used as a witness when pulling out the data.
     unsafe {
@@ -177,79 +165,64 @@ impl rr_rustc_interface::driver::Callbacks for OurCompilerCalls {
 
             // sort according to argument span to ensure deterministic output
             local_def_ids.sort_unstable_by_key(|id| {
-                get_attribute(tcx, id.to_def_id(), "analyzer", "run")
-                    .unwrap()
-                    .span
+                get_attribute(tcx, id.to_def_id(), "analyzer", "run").unwrap().span
             });
 
             for &local_def_id in local_def_ids {
-                println!(
-                    "Result for function {}():",
-                    tcx.item_name(local_def_id.to_def_id())
-                );
+                println!("Result for function {}():", tcx.item_name(local_def_id.to_def_id()));
 
                 // SAFETY: This is safe because we are feeding in the same `tcx`
                 // that was used to store the data.
-                let mut body_with_facts =
-                    unsafe { self::mir_storage::retrieve_mir_body(tcx, local_def_id) };
+                let mut body_with_facts = unsafe { self::mir_storage::retrieve_mir_body(tcx, local_def_id) };
                 body_with_facts.output_facts = Some(Rc::new(Output::compute(
                     body_with_facts.input_facts.as_ref().unwrap(),
                     Algorithm::Naive,
                     true,
                 )));
-                assert!(!body_with_facts
-                    .input_facts
-                    .as_ref()
-                    .unwrap()
-                    .cfg_edge
-                    .is_empty());
+                assert!(!body_with_facts.input_facts.as_ref().unwrap().cfg_edge.is_empty());
                 let body = &body_with_facts.body;
 
                 match abstract_domain {
                     "ReachingDefsAnalysis" => {
-                        let result = ReachingDefsAnalysis::new(tcx, local_def_id.to_def_id(), body)
+                        let result =
+                            ReachingDefsAnalysis::new(tcx, local_def_id.to_def_id(), body).run_fwd_analysis();
+                        match result {
+                            Ok(state) => {
+                                println!("{}", serde_json::to_string_pretty(&state).unwrap())
+                            },
+                            Err(e) => eprintln!("{}", e.to_pretty_str(body)),
+                        }
+                    },
+                    "DefinitelyInitializedAnalysis" => {
+                        let result = DefinitelyInitializedAnalysis::new(tcx, local_def_id.to_def_id(), body)
                             .run_fwd_analysis();
                         match result {
                             Ok(state) => {
                                 println!("{}", serde_json::to_string_pretty(&state).unwrap())
-                            }
+                            },
                             Err(e) => eprintln!("{}", e.to_pretty_str(body)),
                         }
-                    }
-                    "DefinitelyInitializedAnalysis" => {
+                    },
+                    "RelaxedDefinitelyInitializedAnalysis" => {
                         let result =
-                            DefinitelyInitializedAnalysis::new(tcx, local_def_id.to_def_id(), body)
+                            DefinitelyInitializedAnalysis::new_relaxed(tcx, local_def_id.to_def_id(), body)
                                 .run_fwd_analysis();
                         match result {
                             Ok(state) => {
                                 println!("{}", serde_json::to_string_pretty(&state).unwrap())
-                            }
+                            },
                             Err(e) => eprintln!("{}", e.to_pretty_str(body)),
                         }
-                    }
-                    "RelaxedDefinitelyInitializedAnalysis" => {
-                        let result = DefinitelyInitializedAnalysis::new_relaxed(
-                            tcx,
-                            local_def_id.to_def_id(),
-                            body,
-                        )
-                        .run_fwd_analysis();
-                        match result {
-                            Ok(state) => {
-                                println!("{}", serde_json::to_string_pretty(&state).unwrap())
-                            }
-                            Err(e) => eprintln!("{}", e.to_pretty_str(body)),
-                        }
-                    }
+                    },
                     "MaybeBorrowedAnalysis" => {
                         let analyzer = MaybeBorrowedAnalysis::new(tcx, &body_with_facts);
                         match analyzer.run_analysis() {
                             Ok(state) => {
                                 println!("{}", serde_json::to_string_pretty(&state).unwrap())
-                            }
+                            },
                             Err(e) => eprintln!("{}", e.to_pretty_str(body)),
                         }
-                    }
+                    },
                     "DefinitelyAccessibleAnalysis" => {
                         let analyzer = DefinitelyAccessibleAnalysis::new(
                             tcx,
@@ -259,20 +232,19 @@ impl rr_rustc_interface::driver::Callbacks for OurCompilerCalls {
                         match analyzer.run_analysis() {
                             Ok(state) => {
                                 println!("{}", serde_json::to_string_pretty(&state).unwrap());
-                            }
+                            },
                             Err(e) => eprintln!("{}", e.to_pretty_str(body)),
                         }
-                    }
+                    },
                     "FramingAnalysis" => {
-                        let analyzer =
-                            FramingAnalysis::new(tcx, local_def_id.to_def_id(), &body_with_facts);
+                        let analyzer = FramingAnalysis::new(tcx, local_def_id.to_def_id(), &body_with_facts);
                         match analyzer.run_analysis() {
                             Ok(state) => {
                                 println!("{}", serde_json::to_string_pretty(&state).unwrap());
-                            }
+                            },
                             Err(e) => eprintln!("{}", e.to_pretty_str(body)),
                         }
-                    }
+                    },
                     _ => panic!("Unknown domain argument: {abstract_domain}"),
                 }
             }

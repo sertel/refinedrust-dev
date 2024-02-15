@@ -14,13 +14,13 @@
 //! current statement `x` was allocated with `StorageLive(x)` and was not
 //! deallocated with `StorageDead(x)`.
 
+use analysis::abstract_interpretation::{AbstractState, FixpointEngine};
+use analysis::domains::DefinitelyAllocatedAnalysis;
+use rr_rustc_interface::hir::def_id::DefId;
+use rr_rustc_interface::middle::mir;
+
 use super::initialization::AnalysisResult;
 use crate::environment::mir_sets::LocalSet;
-use analysis::{
-    abstract_interpretation::{AbstractState, FixpointEngine},
-    domains::DefinitelyAllocatedAnalysis,
-};
-use rr_rustc_interface::{hir::def_id::DefId, middle::mir};
 
 /// The result of the definitely allocated analysis.
 pub type DefinitelyAllocatedAnalysisResult = AnalysisResult<LocalSet>;
@@ -32,13 +32,7 @@ pub fn compute_definitely_allocated<'a, 'tcx: 'a>(
     let analysis = DefinitelyAllocatedAnalysis::new(def_id, body);
     let pointwise_state = analysis
         .run_fwd_analysis()
-        .map_err(|e| {
-            panic!(
-                "Error while analyzing function at {:?}: {}",
-                body.span,
-                e.to_pretty_str(body)
-            )
-        })
+        .map_err(|e| panic!("Error while analyzing function at {:?}: {}", body.span, e.to_pretty_str(body)))
         .unwrap();
 
     // Convert the pointwise_state to analysis_result.
@@ -49,12 +43,7 @@ pub fn compute_definitely_allocated<'a, 'tcx: 'a>(
         let mut location = bb.start_location();
         analysis_result.before_block.insert(
             bb,
-            pointwise_state
-                .lookup_before(location)
-                .unwrap()
-                .get_def_allocated_locals()
-                .clone()
-                .into(),
+            pointwise_state.lookup_before(location).unwrap().get_def_allocated_locals().clone().into(),
         );
         while location.statement_index < num_statements {
             // `location` identifies a statement
@@ -73,10 +62,9 @@ pub fn compute_definitely_allocated<'a, 'tcx: 'a>(
             }
         }
         let state_after_block = opt_state_after_block.unwrap_or_else(|| analysis.new_bottom());
-        analysis_result.after_statement.insert(
-            location,
-            state_after_block.get_def_allocated_locals().clone().into(),
-        );
+        analysis_result
+            .after_statement
+            .insert(location, state_after_block.get_def_allocated_locals().clone().into());
     }
     analysis_result
 }

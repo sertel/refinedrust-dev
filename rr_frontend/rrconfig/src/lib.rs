@@ -4,17 +4,18 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 //
-use config::{Config, Environment, File, FileFormat};
 use std::env;
-use std::{sync::RwLock, path::PathBuf};
-use serde::Deserialize;
+use std::path::PathBuf;
+use std::sync::RwLock;
+
+use config::{Config, Environment, File, FileFormat};
 use lazy_static::lazy_static;
-use path_clean::PathClean;
-
 use log::info;
+use path_clean::PathClean;
+use serde::Deserialize;
 
-pub mod launch;
 pub mod arg_value;
+pub mod launch;
 
 lazy_static! {
     // Is this RwLock<..> necessary?
@@ -88,13 +89,11 @@ fn make_path_absolute(path: &str) -> PathBuf {
     let path_buf = std::path::PathBuf::from(path);
     if path_buf.is_absolute() {
         path_buf
-    }
-    else {
+    } else {
         let base_path_buf = std::path::PathBuf::from(base_path);
         if base_path_buf.is_absolute() {
             base_path_buf.join(path_buf).clean()
-        }
-        else {
+        } else {
             env::current_dir().unwrap().join(base_path_buf).join(path_buf).clean()
         }
     }
@@ -143,14 +142,13 @@ pub fn log_dir() -> PathBuf {
 
 /// Get the paths in which to search for RefinedRust library declarations.
 pub fn lib_load_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new(); 
+    let mut paths = Vec::new();
     let s = read_setting::<Vec<String>>("lib_load_paths");
     for p in s {
         paths.push(make_path_absolute(&p));
     }
     paths
 }
-
 
 /// The hotword with which specification attributes should begin.
 pub fn spec_hotword() -> String {

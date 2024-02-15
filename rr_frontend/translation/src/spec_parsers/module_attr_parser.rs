@@ -4,20 +4,22 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use rustc_ast::ast::AttrItem;
-use rustc_hir::{def_id::DefId, def_id::LocalDefId};
-use radium::specs as specs;
-use crate::spec_parsers::parse_utils;
-
 use attribute_parse as parse;
+use radium::specs;
+use rustc_ast::ast::AttrItem;
+use rustc_hir::def_id::{DefId, LocalDefId};
 
-
+use crate::spec_parsers::parse_utils;
 
 /// Parse attributes on a module.
 /// Permitted attributes:
 /// - rr::import("A.B.C", "D"), which will import the Coq path "A.B.C.D"
 pub trait ModuleAttrParser {
-    fn parse_module_attrs<'a>(&'a mut self, did: LocalDefId, attrs: &'a[&'a AttrItem]) -> Result<ModuleAttrs, String>;
+    fn parse_module_attrs<'a>(
+        &'a mut self,
+        did: LocalDefId,
+        attrs: &'a [&'a AttrItem],
+    ) -> Result<ModuleAttrs, String>;
 }
 
 #[derive(Debug, Clone)]
@@ -26,8 +28,7 @@ pub struct ModuleAttrs {
     pub includes: Vec<String>,
 }
 
-pub struct VerboseModuleAttrParser {
-}
+pub struct VerboseModuleAttrParser {}
 
 impl VerboseModuleAttrParser {
     pub fn new() -> Self {
@@ -36,8 +37,12 @@ impl VerboseModuleAttrParser {
 }
 
 impl ModuleAttrParser for VerboseModuleAttrParser {
-    fn parse_module_attrs<'a>(&'a mut self, _did: LocalDefId, attrs: &'a[&'a AttrItem]) -> Result<ModuleAttrs, String> {
-        fn str_err(e : parse::ParseError) -> String {
+    fn parse_module_attrs<'a>(
+        &'a mut self,
+        _did: LocalDefId,
+        attrs: &'a [&'a AttrItem],
+    ) -> Result<ModuleAttrs, String> {
+        fn str_err(e: parse::ParseError) -> String {
             format!("{:?}", e)
         }
 

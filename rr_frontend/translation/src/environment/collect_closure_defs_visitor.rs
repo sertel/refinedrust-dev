@@ -1,9 +1,10 @@
-use rustc_hir::intravisit::{Visitor, walk_expr};
-use rustc_hir as hir;
-use rustc_middle::hir::map::Map;
-use crate::environment::Environment;
 use log::trace;
+use rustc_hir as hir;
 use rustc_hir::def_id::LocalDefId;
+use rustc_hir::intravisit::{walk_expr, Visitor};
+use rustc_middle::hir::map::Map;
+
+use crate::environment::Environment;
 
 pub struct CollectClosureDefsVisitor<'env, 'tcx: 'env> {
     env: &'env Environment<'tcx>,
@@ -19,13 +20,12 @@ impl<'env, 'tcx> CollectClosureDefsVisitor<'env, 'tcx> {
             result: Vec::new(),
         }
     }
+
     pub fn get_closure_defs(self) -> Vec<LocalDefId> {
         self.result
     }
 
-    pub fn run(&mut self) {
-
-    }
+    pub fn run(&mut self) {}
 }
 
 impl<'env, 'tcx> Visitor<'tcx> for CollectClosureDefsVisitor<'env, 'tcx> {
@@ -40,13 +40,14 @@ impl<'env, 'tcx> Visitor<'tcx> for CollectClosureDefsVisitor<'env, 'tcx> {
         if let hir::ExprKind::Closure(hir::Closure {
             def_id: local_def_id,
             ..
-        }) = expr.kind {
+        }) = expr.kind
+        {
             let _tcx = self.env.tcx();
             let item_def_path = self.env.get_item_def_path(local_def_id.to_def_id());
             trace!("Add closure {} to result", item_def_path);
             self.result.push(*local_def_id);
         }
 
-        walk_expr (self, expr)
+        walk_expr(self, expr)
     }
 }

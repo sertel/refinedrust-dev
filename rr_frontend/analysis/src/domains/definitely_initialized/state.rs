@@ -4,14 +4,19 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{abstract_interpretation::AbstractState, mir_utils::*, AnalysisError};
-use rr_rustc_interface::{
-    data_structures::fx::FxHashSet,
-    middle::{mir, ty::TyCtxt},
-    span::def_id::DefId,
-};
-use serde::{ser::SerializeSeq, Serialize, Serializer};
-use std::{collections::BTreeSet, fmt, mem};
+use std::collections::BTreeSet;
+use std::{fmt, mem};
+
+use rr_rustc_interface::data_structures::fx::FxHashSet;
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::ty::TyCtxt;
+use rr_rustc_interface::span::def_id::DefId;
+use serde::ser::SerializeSeq;
+use serde::{Serialize, Serializer};
+
+use crate::abstract_interpretation::AbstractState;
+use crate::mir_utils::*;
+use crate::AnalysisError;
 
 /// A set of MIR places that are definitely initialized at a program point
 ///
@@ -124,16 +129,11 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
 
         // First, check that the place is not already marked as
         // definitely initialized.
-        if !self
-            .def_init_places
-            .iter()
-            .any(|&current| is_prefix(place, current))
-        {
+        if !self.def_init_places.iter().any(|&current| is_prefix(place, current)) {
             // To maintain the invariant that we do not have a place and its
             // prefix in the set, we remove all places for which the given
             // one is a prefix.
-            self.def_init_places
-                .retain(|&current| !is_prefix(current, place));
+            self.def_init_places.retain(|&current| !is_prefix(current, place));
             self.def_init_places.insert(place);
             // If all fields of a struct are definitely initialized,
             // just keep info that the struct is definitely initialized.
@@ -156,8 +156,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
         for old_place in old_places {
             if is_prefix(place, old_place) {
                 // We are uninitializing a field of the place `old_place`.
-                self.def_init_places
-                    .extend(expand(self.mir, self.tcx, old_place, place));
+                self.def_init_places.extend(expand(self.mir, self.tcx, old_place, place));
             } else if is_prefix(old_place, place) {
                 // We are uninitializing a place of which only some
                 // fields are initialized. Just remove all initialized
@@ -213,26 +212,26 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                     | mir::Rvalue::UnaryOp(_, ref operand)
                     | mir::Rvalue::Use(ref operand) => {
                         self.apply_operand_effect(operand, move_out_copy_types);
-                    }
+                    },
                     mir::Rvalue::BinaryOp(_, box (ref operand1, ref operand2))
                     | mir::Rvalue::CheckedBinaryOp(_, box (ref operand1, ref operand2)) => {
                         self.apply_operand_effect(operand1, move_out_copy_types);
                         self.apply_operand_effect(operand2, move_out_copy_types);
-                    }
+                    },
                     mir::Rvalue::Aggregate(_, ref operands) => {
                         for operand in operands.iter() {
                             self.apply_operand_effect(operand, move_out_copy_types);
                         }
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
 
                 self.set_place_initialised(target);
-            }
+            },
             mir::StatementKind::StorageDead(local) => {
                 self.set_place_uninitialised(local.into());
-            }
-            _ => {}
+            },
+            _ => {},
         }
 
         Ok(())
@@ -256,7 +255,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                 for bb in terminator.successors() {
                     res_vec.push((bb, new_state.clone()));
                 }
-            }
+            },
             mir::TerminatorKind::Drop {
                 place,
                 target,
@@ -270,7 +269,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                     // imprecision for error states
                     res_vec.push((bb, Self::new_top(self.def_id, self.mir, self.tcx)));
                 }
-            }
+            },
             mir::TerminatorKind::Call {
                 ref func,
                 ref args,
@@ -292,7 +291,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                     // imprecision for error states
                     res_vec.push((bb, Self::new_top(self.def_id, self.mir, self.tcx)));
                 }
-            }
+            },
             mir::TerminatorKind::Assert {
                 ref cond,
                 target,
@@ -306,7 +305,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                     // imprecision for error states
                     res_vec.push((bb, Self::new_top(self.def_id, self.mir, self.tcx)));
                 }
-            }
+            },
             mir::TerminatorKind::Yield {
                 ref value,
                 resume,
@@ -321,17 +320,17 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
                     // imprecision for error states
                     res_vec.push((bb, Self::new_top(self.def_id, self.mir, self.tcx)));
                 }
-            }
+            },
             mir::TerminatorKind::InlineAsm { .. } => {
-                return Err(AnalysisError::UnsupportedStatement(location))
-            }
+                return Err(AnalysisError::UnsupportedStatement(location));
+            },
 
             _ => {
                 for bb in terminator.successors() {
                     // no operation -> no change of state
                     res_vec.push((bb, self.clone()));
                 }
-            }
+            },
         }
 
         Ok(res_vec)
@@ -341,10 +340,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
 impl<'mir, 'tcx: 'mir> AbstractState for DefinitelyInitializedState<'mir, 'tcx> {
     fn is_bottom(&self) -> bool {
         if self.def_init_places.len() == self.mir.local_decls.len() {
-            self.mir
-                .local_decls
-                .indices()
-                .all(|local| self.def_init_places.contains(&local.into()))
+            self.mir.local_decls.indices().all(|local| self.def_init_places.contains(&local.into()))
         } else {
             false
         }

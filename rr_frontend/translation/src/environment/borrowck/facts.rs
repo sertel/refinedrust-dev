@@ -4,11 +4,12 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use polonius_engine::FactTypes;
-use rustc_borrowck::consumers::{RustcFacts, LocationTable, RichLocation};
-use rustc_middle::mir;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
+
+use polonius_engine::FactTypes;
+use rustc_borrowck::consumers::{LocationTable, RichLocation, RustcFacts};
+use rustc_middle::mir;
 
 pub type Region = <RustcFacts as FactTypes>::Origin;
 pub type Loan = <RustcFacts as FactTypes>::Loan;
@@ -75,13 +76,7 @@ pub struct Point {
 
 impl std::fmt::Display for Point {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:?}:{:?}:{:?}",
-            self.location.block,
-            self.location.statement_index,
-            self.typ
-        )
+        write!(f, "{:?}:{:?}:{:?}", self.location.block, self.location.statement_index, self.typ)
     }
 }
 
@@ -105,28 +100,22 @@ impl Interner {
     pub fn get_point(&self, index: PointIndex) -> Point {
         // self.points.get_element(index)
         match self.location_table.to_location(index) {
-            RichLocation::Start(location) => {
-                Point {
-                    location, typ: PointType::Start
-                }
-            }
-            RichLocation::Mid(location) => {
-                Point {
-                    location, typ: PointType::Mid
-                }
-            }
+            RichLocation::Start(location) => Point {
+                location,
+                typ: PointType::Start,
+            },
+            RichLocation::Mid(location) => Point {
+                location,
+                typ: PointType::Mid,
+            },
         }
     }
 
     pub fn get_location(&self, index: PointIndex) -> mir::Location {
         // self.points.get_element(index)
         match self.location_table.to_location(index) {
-            RichLocation::Start(location) => {
-                location
-            }
-            RichLocation::Mid(location) => {
-                location
-            }
+            RichLocation::Start(location) => location,
+            RichLocation::Mid(location) => location,
         }
     }
 }

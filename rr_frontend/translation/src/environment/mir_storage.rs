@@ -12,10 +12,13 @@
 //! that is used to show that the lifetime that the client provided is indeed
 //! `'tcx`.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::thread_local;
+
+use rustc_borrowck::consumers::BodyWithBorrowckFacts;
 use rustc_hir::def_id::LocalDefId;
 use rustc_middle::ty::TyCtxt;
-use rustc_borrowck::consumers::BodyWithBorrowckFacts;
-use std::{cell::RefCell, collections::HashMap, thread_local};
 
 thread_local! {
     pub static SHARED_STATE:
@@ -33,8 +36,7 @@ pub unsafe fn store_mir_body<'tcx>(
     body_with_facts: BodyWithBorrowckFacts<'tcx>,
 ) {
     // SAFETY: See the module level comment.
-    let body_with_facts: BodyWithBorrowckFacts<'static> =
-        unsafe { std::mem::transmute(body_with_facts) };
+    let body_with_facts: BodyWithBorrowckFacts<'static> = unsafe { std::mem::transmute(body_with_facts) };
     SHARED_STATE.with(|state| {
         let mut map = state.borrow_mut();
         assert!(map.insert(def_id, body_with_facts).is_none());

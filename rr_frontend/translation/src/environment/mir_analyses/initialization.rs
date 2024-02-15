@@ -16,17 +16,16 @@
 //! the set at the same time. For example, having `x.f` and `x.f.g` in
 //! `S` at the same time is illegal.
 
-use crate::environment::mir_sets::PlaceSet;
-use analysis::{
-    abstract_interpretation::{AbstractState, FixpointEngine},
-    domains::DefinitelyInitializedAnalysis,
-};
+use analysis::abstract_interpretation::{AbstractState, FixpointEngine};
+use analysis::domains::DefinitelyInitializedAnalysis;
 //use prusti_common::Stopwatch;
 use rr_rustc_interface::{
     data_structures::fx::FxHashMap,
     hir::def_id::DefId,
     middle::{mir, ty::TyCtxt},
 };
+
+use crate::environment::mir_sets::PlaceSet;
 
 pub struct AnalysisResult<T> {
     /// The state before the basic block.
@@ -43,6 +42,7 @@ impl<T> AnalysisResult<T> {
             after_statement: FxHashMap::default(),
         }
     }
+
     /// Get the initialization set before the first statement of the
     /// basic block.
     pub fn get_before_block(&self, bb: mir::BasicBlock) -> &T {
@@ -50,6 +50,7 @@ impl<T> AnalysisResult<T> {
             .get(&bb)
             .unwrap_or_else(|| panic!("Missing initialization info for block {:?}", bb))
     }
+
     /// Get the initialization set after the statement.
     /// If `location.statement_index` is equal to the number of statements,
     /// returns the initialization set after the terminator.
@@ -71,13 +72,7 @@ pub fn compute_definitely_initialized<'a, 'tcx: 'a>(
     let analysis = DefinitelyInitializedAnalysis::new(tcx, def_id, body);
     let pointwise_state = analysis
         .run_fwd_analysis()
-        .map_err(|e| {
-            panic!(
-                "Error while analyzing function at {:?}: {}",
-                body.span,
-                e.to_pretty_str(body)
-            )
-        })
+        .map_err(|e| panic!("Error while analyzing function at {:?}: {}", body.span, e.to_pretty_str(body)))
         .unwrap();
 
     // Convert the pointwise_state to analysis_result.
@@ -86,20 +81,13 @@ pub fn compute_definitely_initialized<'a, 'tcx: 'a>(
     for (bb, bb_data) in body.basic_blocks.iter_enumerated() {
         let num_statements = bb_data.statements.len();
         let mut location = bb.start_location();
-        analysis_result.before_block.insert(
-            bb,
-            pointwise_state
-                .lookup_before(location)
-                .unwrap()
-                .get_def_init_mir_places()
-                .into(),
-        );
+        analysis_result
+            .before_block
+            .insert(bb, pointwise_state.lookup_before(location).unwrap().get_def_init_mir_places().into());
         while location.statement_index < num_statements {
             // `location` identifies a statement
             let state = pointwise_state.lookup_after(location).unwrap();
-            analysis_result
-                .after_statement
-                .insert(location, state.get_def_init_mir_places().into());
+            analysis_result.after_statement.insert(location, state.get_def_init_mir_places().into());
             location = location.successor_within_block();
         }
         // `location` identifies a terminator

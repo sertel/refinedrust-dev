@@ -4,8 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use rustc_middle::mir;
-use rustc_middle::ty;
+use rustc_middle::{mir, ty};
 
 pub trait AllPlaces<'tcx> {
     /// Returns all places that are below the given local variable. Right now, this only handles
@@ -27,4 +26,3 @@ impl<'tcx> AllPlaces<'tcx> for mir::Local {
         places
     }
 }
-

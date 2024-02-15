@@ -4,23 +4,23 @@
 // https://github.com/rust-lang/miri/blob/master/benches/helpers/miri_helper.rs
 // https://github.com/rust-lang/rust/blob/master/src/test/run-make-fulldeps/obtain-borrowck/driver.rs
 
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::rc::Rc;
+
 use analysis::domains::DefinitelyAccessibleAnalysis;
-use rr_rustc_interface::{
-    borrowck::consumers::{self, BodyWithBorrowckFacts},
-    data_structures::fx::FxHashMap,
-    driver::Compilation,
-    errors, hir,
-    hir::def_id::LocalDefId,
-    interface::{interface, Config, Queries},
-    middle::{
-        query::{queries::mir_borrowck::ProvidedValue, ExternProviders, Providers},
-        ty,
-    },
-    polonius_engine::{Algorithm, Output},
-    session::{self, EarlyErrorHandler, Session},
-    span::FileName,
-};
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use rr_rustc_interface::borrowck::consumers::{self, BodyWithBorrowckFacts};
+use rr_rustc_interface::data_structures::fx::FxHashMap;
+use rr_rustc_interface::driver::Compilation;
+use rr_rustc_interface::hir::def_id::LocalDefId;
+use rr_rustc_interface::interface::{interface, Config, Queries};
+use rr_rustc_interface::middle::query::queries::mir_borrowck::ProvidedValue;
+use rr_rustc_interface::middle::query::{ExternProviders, Providers};
+use rr_rustc_interface::middle::ty;
+use rr_rustc_interface::polonius_engine::{Algorithm, Output};
+use rr_rustc_interface::session::{self, EarlyErrorHandler, Session};
+use rr_rustc_interface::span::FileName;
+use rr_rustc_interface::{errors, hir};
 
 struct OurCompilerCalls {
     args: Vec<String>,
@@ -70,11 +70,8 @@ mod mir_storage {
 
 #[allow(clippy::needless_lifetimes)]
 fn mir_borrowck<'tcx>(tcx: ty::TyCtxt<'tcx>, def_id: LocalDefId) -> ProvidedValue<'tcx> {
-    let body_with_facts = consumers::get_body_with_borrowck_facts(
-        tcx,
-        def_id,
-        consumers::ConsumerOptions::PoloniusOutputFacts,
-    );
+    let body_with_facts =
+        consumers::get_body_with_borrowck_facts(tcx, def_id, consumers::ConsumerOptions::PoloniusOutputFacts);
     // SAFETY: This is safe because we are feeding in the same `tcx` that is
     // going to be used as a witness when pulling out the data.
     unsafe {
@@ -128,7 +125,7 @@ impl rr_rustc_interface::driver::Callbacks for OurCompilerCalls {
                         | hir::Node::TraitItem(hir::TraitItem {
                             kind: hir::TraitItemKind::Fn(..),
                             ..
-                        }) => {}
+                        }) => {},
                         _ => return None,
                     }
 
@@ -156,9 +153,7 @@ impl rr_rustc_interface::driver::Callbacks for OurCompilerCalls {
                     // Skip functions that are in an external file.
                     let source_file = session.source_map().lookup_source_file(mir_span.data().lo);
                     if let FileName::Real(filename) = &source_file.name {
-                        if session.local_crate_source_file()
-                            != filename.local_path().map(PathBuf::from)
-                        {
+                        if session.local_crate_source_file() != filename.local_path().map(PathBuf::from) {
                             return None;
                         }
                     } else {
@@ -176,30 +171,19 @@ impl rr_rustc_interface::driver::Callbacks for OurCompilerCalls {
 
             // Generate and print the programs with the additional statements to check accessibility.
             for (num, (local_def_id, body_with_facts)) in def_ids_with_body.iter().enumerate() {
-                assert!(!body_with_facts
-                    .input_facts
-                    .as_ref()
-                    .unwrap()
-                    .cfg_edge
-                    .is_empty());
+                assert!(!body_with_facts.input_facts.as_ref().unwrap().cfg_edge.is_empty());
                 let body = &body_with_facts.body;
 
                 if num > 0 {
                     println!("\n/* NEW PROGRAM */\n");
                 }
 
-                let analyzer = DefinitelyAccessibleAnalysis::new(
-                    tcx,
-                    local_def_id.to_def_id(),
-                    body_with_facts,
-                );
+                let analyzer =
+                    DefinitelyAccessibleAnalysis::new(tcx, local_def_id.to_def_id(), body_with_facts);
                 match analyzer.run_analysis() {
                     Ok(state) => {
-                        println!(
-                            "{}",
-                            state.generate_test_program(tcx, session.source_map(),)
-                        );
-                    }
+                        println!("{}", state.generate_test_program(tcx, session.source_map(),));
+                    },
                     Err(e) => eprintln!("{}", e.to_pretty_str(body)),
                 }
             }

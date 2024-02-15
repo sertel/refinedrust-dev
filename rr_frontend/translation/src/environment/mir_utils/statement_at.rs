@@ -23,8 +23,7 @@ impl<'tcx> StatementAt<'tcx> for mir::Body<'tcx> {
                     "cannot retrieve statement at {:?}, because the basic block is too short",
                     location
                 );
-            }
+            },
         }
     }
 }
-

@@ -5,8 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use rustc_index::Idx;
-use rustc_middle::mir;
-use rustc_middle::ty;
+use rustc_middle::{mir, ty};
 
 pub trait ArgsForMir<'tcx> {
     fn get_args(&self) -> Vec<(mir::Local, ty::Ty<'tcx>)>;

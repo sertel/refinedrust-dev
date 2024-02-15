@@ -7,27 +7,26 @@
 
 #![feature(box_patterns)]
 #![feature(rustc_private)]
+extern crate rustc_borrowck;
 extern crate rustc_driver;
+extern crate rustc_hir;
 extern crate rustc_interface;
 extern crate rustc_middle;
-extern crate rustc_hir;
 extern crate rustc_session;
-extern crate rustc_borrowck;
 
-use log::{debug, info};
-use rustc_hir::def_id::LocalDefId;
-use rustc_middle::query::{queries::mir_borrowck, Providers, ExternProviders};
 use std::env;
-
-use rustc_driver::Compilation;
-use rustc_interface::Config;
-use rustc_middle::ty::TyCtxt;
-use rustc_session::Session;
-
 use std::process::Command;
 
-use translation::environment::mir_storage;
+use log::{debug, info};
+use rustc_driver::Compilation;
+use rustc_hir::def_id::LocalDefId;
+use rustc_interface::Config;
+use rustc_middle::query::queries::mir_borrowck;
+use rustc_middle::query::{ExternProviders, Providers};
+use rustc_middle::ty::TyCtxt;
+use rustc_session::Session;
 use translation;
+use translation::environment::mir_storage;
 
 const BUG_REPORT_URL: &str = "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev/-/issues/new";
 
@@ -42,15 +41,14 @@ fn get_rr_version_info() -> String {
 }
 
 /// Callbacks for the RefinedRust frontend.
-struct RRCompilerCalls {
-}
+struct RRCompilerCalls {}
 
 // From Prusti.
 fn mir_borrowck<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> mir_borrowck::ProvidedValue<'tcx> {
     let body_with_facts = rustc_borrowck::consumers::get_body_with_borrowck_facts(
         tcx,
         def_id,
-        rustc_borrowck::consumers::ConsumerOptions::PoloniusOutputFacts
+        rustc_borrowck::consumers::ConsumerOptions::PoloniusOutputFacts,
     );
     // SAFETY: This is safe because we are feeding in the same `tcx` that is
     // going to be used as a witness when pulling out the data.
@@ -72,23 +70,22 @@ fn override_queries(_session: &Session, local: &mut Providers, _: &mut ExternPro
 
 /// Main entry point to the frontend that is called by the driver.
 /// This translates a crate.
-pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
+pub fn analyze<'tcx>(tcx: TyCtxt<'tcx>) {
     match translation::generate_coq_code(tcx, |vcx| vcx.write_coq_files()) {
         Ok(_) => (),
         Err(e) => {
             println!("Frontend failed with error {:?}", e);
             std::process::exit(1)
-        }
+        },
     }
 
     if rrconfig::check_proofs() {
         if cfg!(target_os = "windows") {
             println!("Cannot run proof checker on Windows.");
-        }
-        else if let Some(dir_str) = rrconfig::output_dir() {
+        } else if let Some(dir_str) = rrconfig::output_dir() {
             let dir_path = std::path::PathBuf::from(&dir_str);
 
-           info!("calling type checker in {:?}", dir_path);
+            info!("calling type checker in {:?}", dir_path);
 
             let status = Command::new("dune")
                 .arg("build")
@@ -102,7 +99,7 @@ pub fn analyze<'tcx>(tcx : TyCtxt<'tcx>) {
 }
 
 impl rustc_driver::Callbacks for RRCompilerCalls {
-    fn config(&mut self, config : &mut Config) {
+    fn config(&mut self, config: &mut Config) {
         assert!(config.override_queries.is_none());
         if !rrconfig::no_verify() {
             config.override_queries = Some(override_queries);
@@ -111,17 +108,16 @@ impl rustc_driver::Callbacks for RRCompilerCalls {
 
     fn after_analysis<'tcx>(
         &mut self,
-        _ : &rustc_interface::interface::Compiler,
-        queries : &'tcx rustc_interface::Queries<'tcx>
+        _: &rustc_interface::interface::Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
         if !rrconfig::no_verify() {
             // Analyze the crate and inspect the types under the cursor.
             queries.global_ctxt().unwrap().enter(|tcx| {
-                    analyze(tcx);
+                analyze(tcx);
             });
             Compilation::Stop
-        }
-        else {
+        } else {
             // TODO: We also need this to properly compile deps.
             // However, for deps I'd ideally anyways have be_rustc??
             Compilation::Continue
@@ -136,7 +132,6 @@ fn main() {
     if rrconfig::be_rustc() {
         rustc_driver::main();
     }
-
 
     // otherwise, initialize our loggers
     env_logger::init();
@@ -182,14 +177,13 @@ fn main() {
                         }
                         rustc_args.push(arg);
                     }
-                }
+                },
             }
         }
     }
     debug!("rustc arguments: {:?}", rustc_args);
 
     let exit_code = rustc_driver::catch_with_exit_code(move || {
-
         if rustc_args.get(1).map(|s| s.as_ref()) == Some("-vV") {
             // When cargo queries the verbose rustc version,
             // also print the RR version to stdout.
@@ -217,10 +211,7 @@ fn main() {
             if rrconfig::dump_debug_info() {
                 rustc_args.push(format!(
                     "-Zdump-mir-dir={}",
-                    rrconfig::log_dir()
-                        .join("mir")
-                        .to_str()
-                        .expect("failed to configure dump-mir-dir")
+                    rrconfig::log_dir().join("mir").to_str().expect("failed to configure dump-mir-dir")
                 ));
                 rustc_args.push("-Zdump-mir=all".to_owned());
                 rustc_args.push("-Zdump-mir-graphviz".to_owned());
@@ -245,5 +236,3 @@ fn main() {
 
     std::process::exit(exit_code)
 }
-
-

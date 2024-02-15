@@ -1,13 +1,10 @@
-use rustc_middle::ty::{Ty, TyCtxt, GenericArg, TypeFolder, GenericArgKind, self, Binder,ParamConst};
 use rustc_middle::ty::visit::*;
-
+use rustc_middle::ty::{self, Binder, GenericArg, GenericArgKind, ParamConst, Ty, TyCtxt, TypeFolder};
+pub use rustc_type_ir::fold::{TypeFoldable, TypeSuperFoldable};
 pub use rustc_type_ir::visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor};
-pub use rustc_type_ir::fold::{TypeSuperFoldable, TypeFoldable};
-
 
 /// A version of the `ArgFolder` in rustc_middle::src::ty::generic_args that skips over `ReVar`
 /// (instead of triggering a bug).
-
 
 struct ArgFolder<'a, 'tcx> {
     tcx: TyCtxt<'tcx>,
@@ -23,10 +20,7 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for ArgFolder<'a, 'tcx> {
         self.tcx
     }
 
-    fn fold_binder<T: TypeFoldable<TyCtxt<'tcx>>>(
-        &mut self,
-        t: ty::Binder<'tcx, T>,
-    ) -> ty::Binder<'tcx, T> {
+    fn fold_binder<T: TypeFoldable<TyCtxt<'tcx>>>(&mut self, t: ty::Binder<'tcx, T>) -> ty::Binder<'tcx, T> {
         self.binders_passed += 1;
         let t = t.super_fold_with(self);
         self.binders_passed -= 1;
@@ -39,9 +33,7 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for ArgFolder<'a, 'tcx> {
         fn region_param_out_of_range(data: ty::EarlyBoundRegion, args: &[GenericArg<'_>]) -> ! {
             panic!(
                 "Region parameter out of range when substituting in region {} (index={}, args = {:?})",
-                data.name,
-                data.index,
-                args,
+                data.name, data.index, args,
             )
         }
 
@@ -50,9 +42,7 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for ArgFolder<'a, 'tcx> {
         fn region_param_invalid(data: ty::EarlyBoundRegion, other: GenericArgKind<'_>) -> ! {
             panic!(
                 "Unexpected parameter {:?} when substituting in region {} (index={})",
-                other,
-                data.name,
-                data.index
+                other, data.name, data.index
             )
         }
 
@@ -69,7 +59,7 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for ArgFolder<'a, 'tcx> {
                     Some(other) => region_param_invalid(data, other),
                     None => region_param_out_of_range(data, self.args),
                 }
-            }
+            },
             ty::ReLateBound(..)
             | ty::ReFree(_)
             | ty::ReStatic
@@ -118,11 +108,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
     fn type_param_expected(&self, p: ty::ParamTy, ty: Ty<'tcx>, kind: GenericArgKind<'tcx>) -> ! {
         panic!(
             "expected type for `{:?}` ({:?}/{}) but found {:?} when substituting, args={:?}",
-            p,
-            ty,
-            p.index,
-            kind,
-            self.args,
+            p, ty, p.index, kind, self.args,
         )
     }
 
@@ -131,10 +117,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
     fn type_param_out_of_range(&self, p: ty::ParamTy, ty: Ty<'tcx>) -> ! {
         panic!(
             "type parameter `{:?}` ({:?}/{}) out of range when substituting, args={:?}",
-            p,
-            ty,
-            p.index,
-            self.args,
+            p, ty, p.index, self.args,
         )
     }
 
@@ -152,19 +135,10 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
 
     #[cold]
     #[inline(never)]
-    fn const_param_expected(
-        &self,
-        p: ty::ParamConst,
-        ct: ty::Const<'tcx>,
-        kind: GenericArgKind<'tcx>,
-    ) -> ! {
+    fn const_param_expected(&self, p: ty::ParamConst, ct: ty::Const<'tcx>, kind: GenericArgKind<'tcx>) -> ! {
         panic!(
             "expected const for `{:?}` ({:?}/{}) but found {:?} when substituting args={:?}",
-            p,
-            ct,
-            p.index,
-            kind,
-            self.args,
+            p, ct, p.index, kind, self.args,
         )
     }
 
@@ -173,10 +147,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
     fn const_param_out_of_range(&self, p: ty::ParamConst, ct: ty::Const<'tcx>) -> ! {
         panic!(
             "const parameter `{:?}` ({:?}/{}) out of range when substituting args={:?}",
-            p,
-            ct,
-            p.index,
-            self.args,
+            p, ct, p.index, self.args,
         )
     }
 
@@ -207,7 +178,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
     /// As a second example, consider this twist:
     ///
     /// ```
-    /// type FuncTuple<A> = (A,fn(A));
+    /// type FuncTuple<A> = (A, fn(A));
     /// type MetaFuncTuple = for<'a> fn(FuncTuple<&'a i32>);
     /// ```
     ///
@@ -241,6 +212,10 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
 }
 
 pub fn ty_instantiate<'tcx>(x: Ty<'tcx>, tcx: TyCtxt<'tcx>, args: &[GenericArg<'tcx>]) -> Ty<'tcx> {
-    let mut folder = ArgFolder { tcx, args, binders_passed: 0 };
+    let mut folder = ArgFolder {
+        tcx,
+        args,
+        binders_passed: 0,
+    };
     x.fold_with(&mut folder)
 }

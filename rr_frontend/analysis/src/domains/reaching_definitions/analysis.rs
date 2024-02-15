@@ -4,15 +4,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{
-    abstract_interpretation::{AnalysisResult, FixpointEngine},
-    domains::{DefLocation, ReachingDefsState},
-};
-use rr_rustc_interface::{
-    data_structures::fx::{FxHashMap, FxHashSet},
-    middle::{mir, ty::TyCtxt},
-    span::def_id::DefId,
-};
+use rr_rustc_interface::data_structures::fx::{FxHashMap, FxHashSet};
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::ty::TyCtxt;
+use rr_rustc_interface::span::def_id::DefId;
+
+use crate::abstract_interpretation::{AnalysisResult, FixpointEngine};
+use crate::domains::{DefLocation, ReachingDefsState};
 
 pub struct ReachingDefsAnalysis<'mir, 'tcx: 'mir> {
     tcx: TyCtxt<'tcx>,
@@ -68,11 +66,7 @@ impl<'mir, 'tcx: 'mir> FixpointEngine<'mir, 'tcx> for ReachingDefsAnalysis<'mir,
         false
     }
 
-    fn apply_statement_effect(
-        &self,
-        state: &mut Self::State,
-        location: mir::Location,
-    ) -> AnalysisResult<()> {
+    fn apply_statement_effect(&self, state: &mut Self::State, location: mir::Location) -> AnalysisResult<()> {
         state.apply_statement_effect(location)
     }
 

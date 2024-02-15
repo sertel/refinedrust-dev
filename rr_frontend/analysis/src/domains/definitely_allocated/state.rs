@@ -4,10 +4,16 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use crate::{abstract_interpretation::AbstractState, AnalysisError};
-use rr_rustc_interface::{data_structures::fx::FxHashSet, middle::mir};
-use serde::{ser::SerializeSeq, Serialize, Serializer};
-use std::{collections::BTreeSet, fmt};
+use std::collections::BTreeSet;
+use std::fmt;
+
+use rr_rustc_interface::data_structures::fx::FxHashSet;
+use rr_rustc_interface::middle::mir;
+use serde::ser::SerializeSeq;
+use serde::{Serialize, Serializer};
+
+use crate::abstract_interpretation::AbstractState;
+use crate::AnalysisError;
 
 /// A set of MIR locals that are definitely allocated at a program point
 #[derive(Clone)]
@@ -71,19 +77,16 @@ impl<'mir, 'tcx: 'mir> DefinitelyAllocatedState<'mir, 'tcx> {
         self.def_allocated_locals.remove(&local);
     }
 
-    pub(super) fn apply_statement_effect(
-        &mut self,
-        location: mir::Location,
-    ) -> Result<(), AnalysisError> {
+    pub(super) fn apply_statement_effect(&mut self, location: mir::Location) -> Result<(), AnalysisError> {
         let statement = &self.mir[location.block].statements[location.statement_index];
         match statement.kind {
             mir::StatementKind::StorageLive(local) => {
                 self.set_local_allocated(local);
-            }
+            },
             mir::StatementKind::StorageDead(local) => {
                 self.set_place_unallocated(local);
-            }
-            _ => {}
+            },
+            _ => {},
         }
         Ok(())
     }
@@ -108,8 +111,7 @@ impl<'mir, 'tcx: 'mir> AbstractState for DefinitelyAllocatedState<'mir, 'tcx> {
 
     /// The lattice join intersects the two sets of locals
     fn join(&mut self, other: &Self) {
-        self.def_allocated_locals
-            .retain(|local| other.def_allocated_locals.contains(local));
+        self.def_allocated_locals.retain(|local| other.def_allocated_locals.contains(local));
     }
 
     fn widen(&mut self, _previous: &Self) {

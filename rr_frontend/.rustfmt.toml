@@ -1,0 +1,28 @@
+edition = "2021"
+version = "Two"
+required_version = "1.6.0"
+
+# Enable features
+format_code_in_doc_comments = true
+normalize_doc_attributes = true
+reorder_impl_items = true
+wrap_comments = true
+
+# Set the width of lines
+chain_width = 90
+comment_width = 110
+max_width = 110
+use_small_heuristics = "Max"
+
+# Specific width
+struct_lit_width=18
+struct_variant_width=35
+
+# Import handling
+group_imports = "StdExternalCrate"
+imports_granularity = "Module"
+
+# Stylish choices
+match_block_trailing_comma = true
+overflow_delimited_expr = true
+

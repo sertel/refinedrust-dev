@@ -4,16 +4,13 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use rustc_middle::ty as ty;
-use rustc_middle::ty::{Ty, TyCtxt, TyKind};
-
 use std::collections::{HashMap, HashSet};
 
+use rustc_middle::ty;
+use rustc_middle::ty::{Ty, TyCtxt, TyKind};
 use ty::TypeSuperFoldable;
 
-
 use crate::base::*;
-
 
 /// A `TypeFolder` that gathers all the type variables.
 pub struct TyVarFolder<'tcx> {
@@ -53,13 +50,10 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyVarFolder<'tcx> {
                 self.tyvars.insert(param.clone());
                 t
             },
-            _ => {
-                t.super_fold_with(self)
-            },
+            _ => t.super_fold_with(self),
         }
     }
 }
-
 
 struct TyVarRenameFolder<'tcx> {
     tcx: TyCtxt<'tcx>,
@@ -100,10 +94,9 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyVarRenameFolder<'tcx> {
     fn fold_ty(&mut self, t: Ty<'tcx>) -> Ty<'tcx> {
         match t.kind() {
             TyKind::Param(param) => {
-                if let Some (new_param) = self.name_map.get(&param) {
+                if let Some(new_param) = self.name_map.get(&param) {
                     Ty::new_param(self.interner(), new_param.index, new_param.name)
-                }
-                else {
+                } else {
                     // create another type param
                     let new_index = self.new_subst.len() as u32;
                     // reuse the name
@@ -117,9 +110,7 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyVarRenameFolder<'tcx> {
                     new_ty
                 }
             },
-            _ => {
-                t.super_fold_with(self)
-            },
+            _ => t.super_fold_with(self),
         }
     }
 }
@@ -130,9 +121,7 @@ pub struct TyRegionEraseFolder<'tcx> {
 }
 impl<'tcx> TyRegionEraseFolder<'tcx> {
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
-        TyRegionEraseFolder {
-            tcx,
-        }
+        TyRegionEraseFolder { tcx }
     }
 }
 impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyRegionEraseFolder<'tcx> {
@@ -148,7 +137,7 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyRegionEraseFolder<'tcx> {
         t.super_fold_with(self)
     }
 
-    fn fold_region(&mut self, _ : ty::Region<'tcx>) -> ty::Region<'tcx> {
+    fn fold_region(&mut self, _: ty::Region<'tcx>) -> ty::Region<'tcx> {
         ty::Region::new_from_kind(self.interner(), ty::RegionKind::ReErased)
     }
 }
@@ -188,9 +177,7 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyRegionCollectFolder<'tcx> {
             ty::RegionKind::ReVar(r) => {
                 self.regions.push(r);
             },
-            _ => {
-
-            },
+            _ => {},
         }
         r
     }

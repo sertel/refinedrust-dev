@@ -7,11 +7,7 @@
 #[macro_export]
 macro_rules! force_matches {
     ($ex:expr, $patt:pat => $ret:expr, $err:expr) => {
-        if let $patt = $ex {
-            $ret
-        } else {
-            unreachable!($err)
-        }
+        if let $patt = $ex { $ret } else { unreachable!($err) }
     };
     ($ex:expr, $patt:pat => $ret:expr) => {
         if let $patt = $ex {

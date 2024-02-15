@@ -4,19 +4,16 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
+use datafrog as df;
+
+pub use crate::base::*;
 /// The InclusionTracker maintains a set of dynamic lifetime inclusions holding in the RefinedRust
 /// type system at given program points.
 /// This is used for the lifetime annotation generation.
-
 use crate::environment::polonius_info::PoloniusInfo;
-
-pub use crate::base::*;
-
-
-use datafrog as df;
 /// Track inclusions between regions that are known to hold at the current point of the translation.
 /// Distinguishes static and dynamic inclusions for the purpose of the translation.
-pub struct InclusionTracker<'a, 'tcx : 'a> {
+pub struct InclusionTracker<'a, 'tcx: 'a> {
     info: &'a PoloniusInfo<'a, 'tcx>,
 
     // base facts about static inclusion
@@ -38,7 +35,7 @@ pub struct InclusionTracker<'a, 'tcx : 'a> {
     invalidated: bool,
 }
 
-impl<'a, 'tcx : 'a> InclusionTracker<'a, 'tcx> {
+impl<'a, 'tcx: 'a> InclusionTracker<'a, 'tcx> {
     pub fn new(info: &'a PoloniusInfo<'a, 'tcx>) -> Self {
         InclusionTracker {
             info,
@@ -91,7 +88,11 @@ impl<'a, 'tcx : 'a> InclusionTracker<'a, 'tcx> {
         self.invalidated = false;
     }
 
-    fn compute_transitive_closure(&self, iteration: &mut df::Iteration, base: &df::Variable::<(Region, Region, PointIndex)>) {
+    fn compute_transitive_closure(
+        &self,
+        iteration: &mut df::Iteration,
+        base: &df::Variable<(Region, Region, PointIndex)>,
+    ) {
         let incl1 = iteration.variable_indistinct::<(PointIndex, (Region, Region))>("incl1");
         let incl2 = iteration.variable_indistinct::<((Region, PointIndex), Region)>("incl2");
         let incl3 = iteration.variable_indistinct::<((Region, PointIndex), Region)>("incl3");

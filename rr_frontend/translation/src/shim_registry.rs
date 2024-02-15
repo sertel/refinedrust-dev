@@ -9,13 +9,12 @@
 /// Provides deserialization from a JSON file defining this registry.
 extern crate serde_json;
 
-use log::{info};
-
-use serde::{Deserialize, Serialize};
-use typed_arena::Arena;
-
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
+
+use log::info;
+use serde::{Deserialize, Serialize};
+use typed_arena::Arena;
 
 type Path<'a> = Vec<&'a str>;
 
@@ -165,16 +164,26 @@ impl<'a> ShimRegistry<'a> {
         let v: Vec<serde_json::Value>;
         match deser {
             serde_json::Value::Object(obj) => {
-                let path = obj.get("refinedrust_path").ok_or(format!("Missing attribute \"refinedrust_path\""))?;
-                let path = path.as_str().ok_or(format!("Expected string for \"refinedrust_path\" attribute"))?;
+                let path =
+                    obj.get("refinedrust_path").ok_or(format!("Missing attribute \"refinedrust_path\""))?;
+                let path =
+                    path.as_str().ok_or(format!("Expected string for \"refinedrust_path\" attribute"))?;
 
-                let module = obj.get("refinedrust_module").ok_or(format!("Missing attribute \"refinedrust_module\""))?;
-                let module = module.as_str().ok_or(format!("Expected string for \"refinedrust_module\" attribute"))?;
+                let module = obj
+                    .get("refinedrust_module")
+                    .ok_or(format!("Missing attribute \"refinedrust_module\""))?;
+                let module =
+                    module.as_str().ok_or(format!("Expected string for \"refinedrust_module\" attribute"))?;
 
-                let name = obj.get("refinedrust_name").ok_or(format!("Missing attribute \"refinedrust_name\""))?;
-                let name = name.as_str().ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
+                let name =
+                    obj.get("refinedrust_name").ok_or(format!("Missing attribute \"refinedrust_name\""))?;
+                let name =
+                    name.as_str().ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
 
-                let coq_path = radium::specs::CoqPath{ path: Some(path.to_string()), module: module.to_string()};
+                let coq_path = radium::specs::CoqPath {
+                    path: Some(path.to_string()),
+                    module: module.to_string(),
+                };
                 self.imports.push(coq_path);
 
                 let arr = obj.get("items").ok_or(format!("Missing attribute \"items\""))?;
@@ -184,9 +193,7 @@ impl<'a> ShimRegistry<'a> {
             serde_json::Value::Array(arr) => {
                 v = arr;
             },
-            _ => {
-                return Err("invalid Json format".to_string())
-            }
+            _ => return Err("invalid Json format".to_string()),
         }
 
         for i in v.into_iter() {
@@ -202,13 +209,12 @@ impl<'a> ShimRegistry<'a> {
                 };
 
                 self.adt_shims.push(entry);
-            }
-            else {
+            } else {
                 let b: ShimFunctionEntry = serde_json::value::from_value(i).map_err(|e| e.to_string())?;
                 let path = self.intern_path(b.path);
                 let entry = FunctionShim {
                     path,
-                    is_method: kind==ShimKind::Method,
+                    is_method: kind == ShimKind::Method,
                     name: b.name,
                     spec_name: b.spec,
                 };
@@ -234,7 +240,14 @@ impl<'a> ShimRegistry<'a> {
 }
 
 /// Write serialized representation of shims to a file.
-pub fn write_shims<'a>(f: File, load_path: &str, load_module: &str, name: &str, adt_shims: Vec<AdtShim<'a>>, function_shims: Vec<FunctionShim<'a>>) {
+pub fn write_shims<'a>(
+    f: File,
+    load_path: &str,
+    load_module: &str,
+    name: &str,
+    adt_shims: Vec<AdtShim<'a>>,
+    function_shims: Vec<FunctionShim<'a>>,
+) {
     let writer = BufWriter::new(f);
 
     let mut values = Vec::new();

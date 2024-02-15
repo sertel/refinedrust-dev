@@ -4,11 +4,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use rr_rustc_interface::data_structures::fx::FxHashSet;
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::ty::TyCtxt;
+
 use crate::utils::{self, is_prefix};
-use rr_rustc_interface::{
-    data_structures::fx::FxHashSet,
-    middle::{mir, ty::TyCtxt},
-};
 
 /// A set of MIR places.
 ///
@@ -24,14 +24,15 @@ impl<'tcx> PlaceSet<'tcx> {
     pub fn new() -> Self {
         Self::default()
     }
+
     pub fn contains(&self, place: mir::Place<'tcx>) -> bool {
         self.places.contains(&place)
     }
+
     pub fn contains_prefix_of(&self, place: mir::Place<'tcx>) -> bool {
-        self.places
-            .iter()
-            .any(|potential_prefix| is_prefix(&place, potential_prefix))
+        self.places.iter().any(|potential_prefix| is_prefix(&place, potential_prefix))
     }
+
     pub fn check_invariant(&self) {
         for place1 in self.places.iter() {
             for place2 in self.places.iter() {
@@ -52,13 +53,16 @@ impl<'tcx> PlaceSet<'tcx> {
             }
         }
     }
+
     pub fn iter<'a>(&'a self) -> impl Iterator<Item = &'a mir::Place<'tcx>> {
         self.places.iter()
     }
+
     #[allow(clippy::should_implement_trait)]
     pub fn into_iter(self) -> impl Iterator<Item = mir::Place<'tcx>> {
         self.places.into_iter()
     }
+
     /// Insert `place`.
     pub fn insert(&mut self, place: mir::Place<'tcx>, mir: &mir::Body<'tcx>, tcx: TyCtxt<'tcx>) {
         self.check_invariant();
@@ -76,6 +80,7 @@ impl<'tcx> PlaceSet<'tcx> {
         }
         self.check_invariant();
     }
+
     /// Remove `place`.
     pub fn remove(&mut self, place: mir::Place<'tcx>, mir: &mir::Body<'tcx>, tcx: TyCtxt<'tcx>) {
         self.check_invariant();
@@ -126,6 +131,7 @@ impl<'tcx> PlaceSet<'tcx> {
         self.places = places.into_iter().collect();
         self.check_invariant();
     }
+
     /// Compute the intersection of the two place sets.
     pub fn merge(place_set1: &PlaceSet<'tcx>, place_set2: &PlaceSet<'tcx>) -> PlaceSet<'tcx> {
         place_set1.check_invariant();
@@ -147,6 +153,7 @@ impl<'tcx> PlaceSet<'tcx> {
         result.check_invariant();
         result
     }
+
     /// This function fixes the invariant.
     pub fn deduplicate(&mut self) {
         let old_places = std::mem::take(&mut self.places);
@@ -173,6 +180,7 @@ impl<'tcx> PlaceSet<'tcx> {
         }
         self.check_invariant();
     }
+
     /// Compute the union of the two place sets.
     ///
     /// Note that this function may break the invariant that we never
