@@ -1,8 +1,9 @@
+# This file expects two variables: `NIX_CI_CACHE_PUB_KEY` and `NIX_CI_CACHE_PRIV_KEY`
+# Those variables can be generated with: `nix-store --generate-binary-cache-key ci_nix_store priv.pem pub.pem`
+
 stages: [ nix-cache, lint, build, tests ]
 
 variables:
-  NIX_CI_CACHE_PUB_KEY: "ci_nix_store:PrLrhCBBIPW9ZQIyDJ4q+BEcT9JUDxa5pQawc5w8pKU="
-  NIX_CI_CACHE_PRIV_KEY: "ci_nix_store:PNgPTN7SJq+jXFXNIkg/SZ9dwwvJxghxRn1wU7dpezg+suuEIEEg9b1lAjIMnir4ERxP0lQPFrmlBrBznDykpQ=="
   NIX_STORE_ARTIFACTS_PATH: ".ci_nix_artifacts"
   NIX_STORE_CACHE_PATH: ".ci_nix_cache"
 
