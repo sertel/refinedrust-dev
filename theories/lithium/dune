@@ -1,6 +1,6 @@
 (coq.theory
  (name lithium)
- (package coq-lithium)
+ (package refinedrust)
  (flags :standard -w -notation-overridden -w -redundant-canonical-projection)
  (synopsis "Lithium")
  (theories stdpp iris RecordUpdate Ltac2))

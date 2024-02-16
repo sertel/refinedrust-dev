@@ -1,4 +1,4 @@
 (coq.theory
 (flags -w -notation-overridden -w -redundant-canonical-projection)
 (name refinedrust.extra_proofs.tests.enums)
-(theories caesium lithium refinedrust))
+(theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust))
