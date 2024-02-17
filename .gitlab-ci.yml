@@ -36,9 +36,10 @@ default:
 .build_to_artifacts:
   artifacts:
     paths: [ "${NIX_STORE_ARTIFACTS_PATH}" ]
+    when: always
 
   script:
-   - !reference [.build_to_cache, script]
+   - !reference [ .build_to_cache, script ]
 
    # To avoid generating large `artifacts` without cluttering the `cache`, an overlay on top of the nix store must be used.
    # So, one of the following solutions can be used:
