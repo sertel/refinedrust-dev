@@ -1,6 +1,6 @@
 (coq.theory
  (name lithium.benchmarks)
- (package coq-lithium)
+ (package refinedrust)
  (flags :standard -w -notation-overridden -w -redundant-canonical-projection)
  (synopsis "Lithium benchmarks")
  (theories lithium))

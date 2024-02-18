@@ -58,12 +58,11 @@ export BUILDDEP_OPAM_BODY
 
 # Create a virtual Opam package with the same deps as RefinedC, but no
 # build.
-builddep/refinedrust-builddep.opam: refinedrust.opam coq-lithium.opam Makefile
+builddep/refinedrust-builddep.opam: refinedrust.opam Makefile
 	@echo "# Creating builddep package."
 	@mkdir -p builddep
 	@echo "$$BUILDDEP_OPAM_BODY" > $@
-	@opam show -f depends: ./coq-lithium.opam >> $@
-	@opam show -f depends: ./refinedrust.opam | sed 's/"coq-lithium".*//g' >> $@
+	@opam show -f depends: ./refinedrust.opam >> $@
 	@echo "]" >> $@
 
 # Install the virtual Opam package to ensure that:
