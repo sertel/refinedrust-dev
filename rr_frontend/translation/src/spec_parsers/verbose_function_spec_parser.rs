@@ -23,22 +23,6 @@ pub trait FunctionSpecParser<'def> {
     ) -> Result<(), String>;
 }
 
-/// Parse an assumed Coq context item, e.g.
-/// `"`{ghost_mapG Σ Z Z}"`.
-#[derive(Debug)]
-struct RRCoqContextItem {
-    item: String,
-}
-impl<U> parse::Parse<U> for RRCoqContextItem
-where
-    U: ?Sized,
-{
-    fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
-        let item: parse::LitStr = input.parse(meta)?;
-        Ok(RRCoqContextItem { item: item.value() })
-    }
-}
-
 /// A sequence of refinements with optional types, e.g.
 /// `"42" @ "int i32", "1337", "(a, b)"`
 #[derive(Debug)]
@@ -316,12 +300,19 @@ where
                     },
                     "context" => {
                         let context_item = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
-                        builder.spec.add_coq_param(
-                            specs::CoqName::Unnamed,
-                            specs::CoqType::Literal(context_item.item),
-                            true,
-                        )?;
-                        //spec.add_coq_context_item(context_item.item);
+                        if context_item.at_end {
+                            builder.spec.add_late_coq_param(
+                                specs::CoqName::Unnamed,
+                                specs::CoqType::Literal(context_item.item),
+                                true,
+                            )?;
+                        } else {
+                            builder.spec.add_coq_param(
+                                specs::CoqName::Unnamed,
+                                specs::CoqType::Literal(context_item.item),
+                                true,
+                            )?;
+                        }
                     },
                     _ => {
                         info!("ignoring function attribute: {:?}", args);

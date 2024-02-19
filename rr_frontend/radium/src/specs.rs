@@ -345,6 +345,10 @@ pub struct TypeAnnotMeta {
 }
 
 impl TypeAnnotMeta {
+    pub fn is_empty(&self) -> bool {
+        self.escaped_lfts.is_empty() && self.escaped_tyvars.is_empty()
+    }
+
     pub fn empty() -> TypeAnnotMeta {
         TypeAnnotMeta {
             escaped_lfts: HashSet::new(),
@@ -798,6 +802,8 @@ pub struct InvariantSpec {
     /// the specification of the abstracted refinement under a context where rfn_pat is bound
     abstracted_refinement: Option<CoqPattern>,
     // TODO add stuff for non-atomic/atomic invariants
+    /// name, type, implicit or not
+    coq_params: Vec<CoqParam>,
 }
 
 impl InvariantSpec {
@@ -811,6 +817,7 @@ impl InvariantSpec {
         invariants: Vec<(IProp, InvariantMode)>,
         ty_own_invariants: Vec<TyOwnSpec>,
         abstracted_refinement: Option<CoqPattern>,
+        coq_params: Vec<CoqParam>,
     ) -> Self {
         match flags {
             InvariantSpecFlags::Persistent => {
@@ -830,6 +837,7 @@ impl InvariantSpec {
             invariants,
             ty_own_invariants,
             abstracted_refinement,
+            coq_params,
         }
     }
 
@@ -1091,7 +1099,17 @@ impl InvariantSpec {
             }
             out.push_str(".\n");
         }
-        out.push_str("\n");
+
+        // write coq parameters
+        write!(out, "{} (* Additional parameters *)\n", indent).unwrap();
+        if !self.coq_params.is_empty() {
+            write!(out, "{}Context", indent).unwrap();
+            for param in self.coq_params.iter() {
+                write!(out, " {}", param).unwrap();
+            }
+            write!(out, ".\n").unwrap();
+        }
+        write!(out, "\n").unwrap();
 
         // get the applied base_rfn_type
         let rfn_instantiations: Vec<String> =
@@ -2545,13 +2563,45 @@ pub struct LoopSpec {
     pub func_predicate: IPropPredicate,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct CoqParam {
+    pub name: CoqName,
+    pub ty: CoqType,
+    pub implicit: bool,
+}
+
+impl CoqParam {
+    pub fn new(name: CoqName, ty: CoqType, implicit: bool) -> Self {
+        Self { name, ty, implicit }
+    }
+
+    pub fn format(&self, f: &mut Formatter, make_implicits: bool) -> fmt::Result {
+        if self.implicit { 
+            if make_implicits {
+                write!(f, "`{{{}}}", self.ty)
+            }
+            else {
+                write!(f, "`({})", self.ty)
+            }
+        } else {
+            write!(f, "({} : {})", self.name, self.ty)
+        }
+    }
+}
+
+impl Display for CoqParam {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        self.format(f, true)
+    }
+}
+
 /**
  * A Caesium function specification.
  */
 #[derive(Debug)]
 pub struct FunctionSpec<'def> {
     /// Coq-level parameters the typing statement needs (bool is for implicit or not)
-    pub coq_params: Vec<(CoqName, CoqType, bool)>,
+    pub coq_params: Vec<CoqParam>,
     /// Function name
     pub function_name: String,
     /// The name of the spec
@@ -2598,15 +2648,11 @@ impl<'def> FunctionSpec<'def> {
         if self.coq_params.len() == 0 {
         } else {
             let mut need_sep = false;
-            for (name, t, implicit) in self.coq_params.iter() {
+            for param in self.coq_params.iter() {
                 if need_sep {
                     out.push_str(" ");
                 }
-                if *implicit {
-                    out.push_str(format!("`{{{}}}", t).as_str());
-                } else {
-                    out.push_str(format!("({} : {})", name, t).as_str());
-                }
+                out.push_str(format!("{}", param).as_str());
                 need_sep = true;
             }
         }
@@ -2712,7 +2758,8 @@ impl<'def> Display for FunctionSpec<'def> {
 #[derive(Debug)]
 pub struct FunctionSpecBuilder<'def> {
     /// Coq-level parameters the typing statement needs, bool is true if implicit
-    coq_params: Vec<(CoqName, CoqType, bool)>,
+    coq_params: Vec<CoqParam>,
+    late_coq_params: Vec<CoqParam>,
 
     lifetimes: Vec<Lft>,
     params: Vec<(CoqName, CoqType)>,
@@ -2734,6 +2781,7 @@ impl<'def> FunctionSpecBuilder<'def> {
     pub fn new() -> Self {
         Self {
             coq_params: Vec::new(),
+            late_coq_params: Vec::new(),
             lifetimes: Vec::new(),
             params: Vec::new(),
             ty_params: Vec::new(),
@@ -2810,16 +2858,28 @@ impl<'def> FunctionSpecBuilder<'def> {
         Ok(())
     }
 
-    /// Add a Coq-level param.
+    /// Add a Coq-level param that comes before the type parameters.
     pub fn add_coq_param(&mut self, name: CoqName, t: CoqType, implicit: bool) -> Result<(), String> {
         self.ensure_coq_not_bound(&name)?;
-        self.coq_params.push((name, t, implicit));
+        self.coq_params.push(CoqParam::new(name, t, implicit));
+        Ok(())
+    }
+
+    /// Add a Coq-level param that comes after the type parameters.
+    pub fn add_late_coq_param(&mut self, name: CoqName, t: CoqType, implicit: bool) -> Result<(), String> {
+        self.ensure_coq_not_bound(&name)?;
+        self.late_coq_params.push(CoqParam::new(name, t, implicit));
         Ok(())
     }
 
     /// Variant of [add_coq_param] that can never fail and makes the parameter anonymous.
     pub fn add_unnamed_coq_param(&mut self, t: CoqType, implicit: bool) {
-        self.coq_params.push((CoqName::Unnamed, t, implicit));
+        self.coq_params.push(CoqParam::new(CoqName::Unnamed, t, implicit));
+    }
+
+    /// Variant of [add_late_coq_param] that can never fail and makes the parameter anonymous.
+    pub fn add_unnamed_late_coq_param(&mut self, t: CoqType, implicit: bool) {
+        self.late_coq_params.push(CoqParam::new(CoqName::Unnamed, t, implicit));
     }
 
     /// Add a new universal lifetime constraint.
@@ -2901,7 +2961,8 @@ impl<'def> FunctionSpecBuilder<'def> {
     /// `name` is the designated name of the function.
     /// `code_params` are the parameters the code body needs to be provided (e.g., locations of
     /// other functions).
-    pub fn into_function_spec(self, name: &str, spec_name: &str) -> FunctionSpec<'def> {
+    pub fn into_function_spec(mut self, name: &str, spec_name: &str) -> FunctionSpec<'def> {
+        self.coq_params.extend(self.late_coq_params.into_iter());
         let ret = self.ret.unwrap_or(TypeWithRef::make_unit());
         FunctionSpec {
             function_name: name.to_string(),

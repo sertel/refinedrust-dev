@@ -37,6 +37,7 @@ Finally, the `returns` clause specifies a refinement (and optionally, a type) fo
 | `ensures` | specify a postcondition | multiple | `#[rr::ensures("x > y")]` |
 | `exists`  | specify an existential for the postcondition | multiple | `#[rr::exists("x" : "Z")]` |
 | `observe` | shortcut for specifying observations on ghost variables | single | `#[rr::observe("γ": "x + 2")]` |
+| `context` | add an unnamed implicit parameter to the context | single | `#[rr::context("ghost_varG Σ Z")]` |
 
 There are further attributes that influence the proof-checking behaviour:
 | Keyword   | Purpose                      | Properties | Example                          |
@@ -54,6 +55,7 @@ The following attributes are also available on impls and then influence all func
 | `trust_me`  | generate and type-check the specifications and code, but do not generate proofs | none   | `#[rr::trust_me]` |
 | `only_spec`  | only generate and type-check the specifications, but do not generate the code | none   | `#[rr::only_spec]` |
 | `skip`  | ignore this block completely | none   | `#[rr::skip]` |
+| `context` | add an unnamed implicit parameter to the context | single | `#[rr::context("ghost_varG Σ Z")]` |
 
 
 ## Struct attributes
@@ -65,6 +67,7 @@ The following attributes are also available on impls and then influence all func
 | `refines` | Optionally specify the refinement of the raw struct type (can only be used when no refinements are specified via `field` attributes on the struct's fields) | single | `#[rr::refines("-[a; b]")]` |
 | `mode`  | Specifies the sharing mode of the defined type: either `plain` (the default, invariants are shared on a best-effort basis for the sharing invariant) or `persistent` (all invariants need to be shareable) | `#[rr::mode("plain")]` |
 | `export_as` | influence the exported path in the generated RefinedRust library interface for import in other proofs | a Rust path | `#[rr::export_as(std::vec::Vec)]` |
+| `context` | add an unnamed implicit parameter to the context in which the invariant is declared | single | `#[rr::context("ghost_varG Σ Z")]` |
 
 Invariants on structs can be prefixed by `#own` or `#shr` to only include the invariant in the struct's ownership or sharing predicate, respectively, e.g.: `#[rr::invariant(#own "freeable l len")]`.
 
