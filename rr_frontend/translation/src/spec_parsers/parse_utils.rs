@@ -204,6 +204,33 @@ impl<'a, U> Parse<U> for CoqPath {
     }
 }
 
+/// Parse an assumed Coq context item, e.g.
+/// `"`{ghost_mapG Σ Z Z}"`.
+#[derive(Debug)]
+pub struct RRCoqContextItem {
+    pub item: String,
+    /// true if this should be put at the end of the dependency list, e.g. if it depends on type
+    /// parameters
+    pub at_end: bool,
+}
+impl<'a> parse::Parse<ParseMeta<'a>> for RRCoqContextItem {
+    fn parse(input: parse::ParseStream, meta: &ParseMeta<'a>) -> parse::ParseResult<Self> {
+        let item: parse::LitStr = input.parse(meta)?;
+        let (item_str, annot_meta) = process_coq_literal(&item.value(), *meta);
+
+        let mut at_end = false;
+        if !annot_meta.is_empty() {
+            at_end = true;
+        }
+
+        //annot_meta.
+        Ok(RRCoqContextItem {
+            item: item_str,
+            at_end,
+        })
+    }
+}
+
 pub type ParseMeta<'a> = (&'a [specs::LiteralTyParam], &'a [(Option<String>, specs::Lft)]);
 
 /// Processes a literal Coq term annotated via an attribute.

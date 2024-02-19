@@ -986,12 +986,14 @@ impl<'def> Function<'def> {
         // write coq parameters
         if !self.spec.coq_params.is_empty() || !self.other_functions.is_empty() {
             write!(f, "∀ ")?;
-            for (n, ty, imp) in self.spec.coq_params.iter() {
-                if !imp {
-                    write!(f, "({n} : {ty}) ")?;
+            for param in self.spec.coq_params.iter() {
+                // TODO use CoqParam::format instead
+                if param.implicit {
+                    write!(f, "`({})", param.ty)?;
                 } else {
-                    write!(f, "`({ty}) ")?;
+                    write!(f, "({} : {})", param.name, param.ty)?;
                 }
+                write!(f, " ")?;
             }
 
             // assume locations for other functions
@@ -1060,9 +1062,9 @@ impl<'def> Function<'def> {
         write!(f, "] (type_of_{} ", self.name())?;
 
         // write type args (passed to the type definition)
-        for (n, _, imp) in self.spec.coq_params.iter() {
-            if !imp {
-                write!(f, "{} ", n)?;
+        for param in self.spec.coq_params.iter() {
+            if !param.implicit {
+                write!(f, "{} ", param.name)?;
             }
         }
 
@@ -1085,9 +1087,9 @@ impl<'def> Function<'def> {
         // intros spec params
         if !self.spec.coq_params.is_empty() {
             write!(f, "intros")?;
-            for (n, _, imp) in self.spec.coq_params.iter() {
-                if !imp {
-                    write!(f, " {n}")?;
+            for param in self.spec.coq_params.iter() {
+                if !param.implicit {
+                    write!(f, " {}", param.name)?;
                 } else {
                     write!(f, " ?")?;
                 }

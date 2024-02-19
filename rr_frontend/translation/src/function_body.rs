@@ -185,7 +185,7 @@ pub struct FunctionTranslator<'a, 'def, 'tcx> {
     /// registry of other procedures
     procedure_registry: &'a ProcedureScope<'def>,
     /// attributes on this function
-    attrs: &'a [Attribute],
+    attrs: &'a [&'a rustc_ast::ast::AttrItem],
     /// polonius info for this function
     info: &'a PoloniusInfo<'a, 'tcx>,
     /// translator for types
@@ -204,7 +204,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         env: &'def Environment<'tcx>,
         meta: ProcedureMeta,
         proc: Procedure<'tcx>,
-        attrs: &'a [Attribute],
+        attrs: &'a [&'a rustc_ast::ast::AttrItem],
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
         proc_registry: &'a ProcedureScope<'def>,
     ) -> Result<Self, TranslationError> {
@@ -410,8 +410,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
     /// Parse and process attributes of this function.
     fn process_attrs(&mut self) -> Result<(), TranslationError> {
-        let a = self.attrs;
-        let v = crate::utils::filter_tool_attrs(a);
+        let v = self.attrs;
         let inputs = &self.inputs;
         let output = &self.output;
 
@@ -436,7 +435,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                         ty_translator.intern_literal(lit)
                     });
                 parser
-                    .parse_function_spec(v.as_slice(), &mut self.translated_fn)
+                    .parse_function_spec(v, &mut self.translated_fn)
                     .map_err(|e| TranslationError::AttributeError(e))?;
                 Ok(())
             },
@@ -642,7 +641,7 @@ struct BodyTranslator<'a, 'def, 'tcx> {
     /// registry of other procedures
     procedure_registry: &'a ProcedureScope<'def>,
     /// attributes on this function
-    attrs: &'a [Attribute],
+    attrs: &'a [&'a rustc_ast::ast::AttrItem],
     /// polonius info for this function
     info: &'a PoloniusInfo<'a, 'tcx>,
     /// local lifetimes: the LHS is the lifetime name, the RHS are the super lifetimes

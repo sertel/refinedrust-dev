@@ -23,6 +23,7 @@ pub trait InvariantSpecParser {
     /// - rr::exists
     /// - rr::invariant
     /// - rr::refines for the inner refinement
+    /// - rr::context for context items that are required to be available in the definition
     ///
     /// Returns whether a Boolean stating whether a rr::refines attribute was included.
     fn parse_invariant_spec<'a>(
@@ -203,6 +204,8 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
         // use Plain as the default
         let mut inv_flags = specs::InvariantSpecFlags::Plain;
 
+        let mut params: Vec<specs::CoqParam> = Vec::new();
+
         for &it in attrs.iter() {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
@@ -256,6 +259,14 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                             abstracted_refinement = Some(term.to_string());
                         }
                     },
+                    "context" => {
+                        let param = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
+                        params.push(specs::CoqParam::new(
+                            specs::CoqName::Unnamed,
+                            specs::CoqType::Literal(param.item),
+                            true,
+                        ));
+                    },
                     _ => {
                         //skip, this may be part of an enum spec
                         ()
@@ -276,6 +287,7 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
             invariants,
             type_invariants,
             abstracted_refinement,
+            params,
         );
 
         Ok((spec, refinement_included))

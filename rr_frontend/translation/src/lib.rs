@@ -829,6 +829,17 @@ fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     }
 }
 
+fn propagate_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
+    if let Some(ident) = it.path.segments.get(1) {
+        match ident.ident.as_str() {
+            "context" => true,
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
 /// Translate functions of the crate, assuming they were previously registered.
 fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     for &f in vcx.functions {
@@ -837,6 +848,13 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         let meta = vcx.procedure_registry.lookup_function(&f.to_def_id()).unwrap();
 
         let attrs = vcx.env.get_attributes(f.to_def_id());
+        let mut filtered_attrs = crate::utils::filter_tool_attrs(attrs);
+        // also add selected attributes from the surrounding impl
+        if let Some(impl_did) = vcx.env.tcx().impl_of_method(f.to_def_id()) {
+            let impl_attrs = vcx.env.get_attributes(impl_did);
+            let filtered_impl_attrs = crate::utils::filter_tool_attrs(impl_attrs);
+            filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
+        }
 
         let mode = meta.get_mode();
         if mode.is_shim() {
@@ -852,7 +870,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             &vcx.env,
             meta,
             proc,
-            attrs,
+            &filtered_attrs,
             &vcx.type_translator,
             &vcx.procedure_registry,
         );
