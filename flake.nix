@@ -120,6 +120,8 @@
               };
 
             propagatedBuildInputs = with coq.pkgs; [coq-record-update equations lambda-rust];
+
+            preBuild = "dune() { command dune $@ --display=short; }";
             useDune = true;
           };
 
