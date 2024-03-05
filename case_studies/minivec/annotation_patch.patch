@@ -1,0 +1,63 @@
+115a116,117
+>   (* TODO fix update of lft name map here, manually added *)
+>    annot: CopyLftNameAnnot "plft15" "plft23";
+121c123,124
+<    "xr" <-{ PtrOp } CallE std_option_Option_unwrap_def_muti32_loc ["plft6"] [@{expr} use{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } ("__9")];
+---
+>    (* TODO: currently this erroneously generates an instantiation for a lifetime ["plft7"]. Manually removed it. *)
+>    "xr" <-{ PtrOp } CallE std_option_Option_unwrap_def_muti32_loc [] [@{expr} use{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } ("__9")];
+141a145,146
+>    (* TODO fix update of lft name map here, manually added *)
+>    annot: CopyLftNameAnnot "plft18" "plft24";
+152c157,158
+<    "__18" <-{ PtrOp } CallE std_option_Option_unwrap_def_muti32_loc ["plft9"] [@{expr} use{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } ("__19")];
+---
+>    (* TODO: currently this erroneously generates an instantiation for a lifetime ["plft10"]. Manually removed it. *)
+>    "__18" <-{ PtrOp } CallE std_option_Option_unwrap_def_muti32_loc [] [@{expr} use{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } ("__19")];
+1066c1072,1076
+<    "ret" <-{ PtrOp } AnnotExpr 0 (GetLftNamesAnnot (LftNameTreeRef "plft14" (LftNameTreeLeaf))) (&ref{ Mut, Some (RSTTyVar "T"), "plft4" } (!{ PtrOp } ( "p" )));
+---
+>   (* TODO: I edited the code, some of the annotations are currently wrong *)
+>    annot: StartLftAnnot "llft6" ["plft10"];
+>    "__0" <-{ PtrOp } AnnotExpr 0 (GetLftNamesAnnot (LftNameTreeRef "plft14" (LftNameTreeLeaf))) (&ref{ Mut, Some (RSTTyVar "T"), "llft6" } (!{ PtrOp } ( "p" )));
+>    annot: ExtendLftAnnot "llft6";
+>    (*
+1072a1083
+>    *)
+1122a1134,1135
+>    (* TODO manually inserted *)
+>    annot: CopyLftNameAnnot "plft13" "plft16";
+1129c1142,1146
+<    "__0" <-{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } EnumInit ((std_option_Option_els ((PtrSynType)))) "Some" (RSTLitType ["std_option_Option_ty"] [RSTRef Mut "placeholder_lft" (RSTTyVar "T")]) (StructInit ((std_option_Option_Some_sls ((PtrSynType)))) [("0", use{ PtrOp } ("__7") : expr)]);
+---
+>    (* TODO inserted the right lifetime manually *)
+>    "__0" <-{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } EnumInit ((std_option_Option_els ((PtrSynType)))) "Some" (RSTLitType ["std_option_Option_ty"] [RSTRef Mut "plft12" (RSTTyVar "T")]) (StructInit ((std_option_Option_Some_sls ((PtrSynType)))) [("0", use{ PtrOp } ("__7") : expr)]);
+>    (* TODO manually inserted extendlft *)
+>    annot: ExtendLftAnnot "llft4";
+>    annot: ExtendLftAnnot "llft5";
+1134c1151,1152
+<    "__0" <-{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } EnumInit ((std_option_Option_els ((PtrSynType)))) "None" (RSTLitType ["std_option_Option_ty"] [RSTRef Mut "placeholder_lft" (RSTTyVar "T")]) (StructInit (std_option_Option_None_sls) []);
+---
+>   (* TODO inserted the right lifetime manually *)
+>    "__0" <-{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } EnumInit ((std_option_Option_els ((PtrSynType)))) "None" (RSTLitType ["std_option_Option_ty"] [RSTRef Mut "plft10" (RSTTyVar "T")]) (StructInit (std_option_Option_None_sls) []);
+1178c1196,1197
+<    annot: StartLftAnnot "plft4" [];
+---
+>    (* TODO: manually constrained this by "ulft_1",  maybe this should just be copylftannot instead? *)
+>    annot: StartLftAnnot "plft4" ["ulft_1"];
+1181a1201,1202
+>    (* TODO: manually added *)
+>    annot: ExtendLftAnnot "plft7";
+1229a1251,1252
+>    (* TODO manually inserted *)
+>    annot: CopyLftNameAnnot "plft13" "plft16";
+1236c1259,1260
+<    "__0" <-{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } EnumInit ((std_option_Option_els ((PtrSynType)))) "Some" (RSTLitType ["std_option_Option_ty"] [RSTRef Shr "placeholder_lft" (RSTTyVar "T")]) (StructInit ((std_option_Option_Some_sls ((PtrSynType)))) [("0", use{ PtrOp } ("__7") : expr)]);
+---
+>    (* TODO manually inserted the right lifetime *)
+>    "__0" <-{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } EnumInit ((std_option_Option_els ((PtrSynType)))) "Some" (RSTLitType ["std_option_Option_ty"] [RSTRef Shr "plft12" (RSTTyVar "T")]) (StructInit ((std_option_Option_Some_sls ((PtrSynType)))) [("0", use{ PtrOp } ("__7") : expr)]);
+1241c1265,1266
+<    "__0" <-{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } EnumInit ((std_option_Option_els ((PtrSynType)))) "None" (RSTLitType ["std_option_Option_ty"] [RSTRef Shr "placeholder_lft" (RSTTyVar "T")]) (StructInit (std_option_Option_None_sls) []);
+---
+>   (* TODO manually inserted the right lifetime *)
+>    "__0" <-{ (use_op_alg' ((std_option_Option_st ((PtrSynType))))) } EnumInit ((std_option_Option_els ((PtrSynType)))) "None" (RSTLitType ["std_option_Option_ty"] [RSTRef Shr "plft15" (RSTTyVar "T")]) (StructInit (std_option_Option_None_sls) []);

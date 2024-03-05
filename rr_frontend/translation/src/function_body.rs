@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 use log::{info, warn};
 use radium;
@@ -108,19 +108,19 @@ impl ProcedureMeta {
 
 pub struct ProcedureScope<'def> {
     /// maps the defid to (code_name, spec_name, name)
-    name_map: HashMap<DefId, ProcedureMeta>,
+    name_map: BTreeMap<DefId, ProcedureMeta>,
     /// track the actually translated functions
-    translated_functions: HashMap<DefId, radium::Function<'def>>,
+    translated_functions: BTreeMap<DefId, radium::Function<'def>>,
     /// track the functions with just a specification (rr::only_spec)
-    specced_functions: HashMap<DefId, radium::FunctionSpec<'def>>,
+    specced_functions: BTreeMap<DefId, radium::FunctionSpec<'def>>,
 }
 
 impl<'def> ProcedureScope<'def> {
     pub fn new() -> Self {
         Self {
-            name_map: HashMap::new(),
-            translated_functions: HashMap::new(),
-            specced_functions: HashMap::new(),
+            name_map: BTreeMap::new(),
+            translated_functions: BTreeMap::new(),
+            specced_functions: BTreeMap::new(),
         }
     }
 
@@ -163,12 +163,12 @@ impl<'def> ProcedureScope<'def> {
     }
 
     /// Iterate over the functions we have generated code for.
-    pub fn iter_code(&self) -> std::collections::hash_map::Iter<'_, DefId, radium::Function<'def>> {
+    pub fn iter_code(&self) -> std::collections::btree_map::Iter<'_, DefId, radium::Function<'def>> {
         self.translated_functions.iter()
     }
 
     /// Iterate over the functions we have generated only specs for.
-    pub fn iter_only_spec(&self) -> std::collections::hash_map::Iter<'_, DefId, radium::FunctionSpec<'def>> {
+    pub fn iter_only_spec(&self) -> std::collections::btree_map::Iter<'_, DefId, radium::FunctionSpec<'def>> {
         self.specced_functions.iter()
     }
 }
@@ -235,31 +235,30 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // color code: red: dying loan, pink: becoming a zombie; green: is zombie
                 crate::environment::dump_borrowck_info(&*env, &proc.get_id(), &info);
 
-                let mut universal_lifetimes = Vec::new();
-                let mut user_lifetime_names = Vec::new();
+                let mut universal_lifetimes = HashMap::new();
 
                 // we create a substitution that replaces early bound regions with their Polonius
                 // region variables
                 let mut subst_early_bounds: Vec<ty::GenericArg<'tcx>> = Vec::new();
                 let mut num_early_bounds = 0;
-                for a in substs.iter() {
+                for a in params.iter() {
                     match a.unpack() {
                         ty::GenericArgKind::Lifetime(r) => {
                             // skip over 0 = static
-                            let revar =
-                                ty::Region::new_var(env.tcx(), ty::RegionVid::from_u32(num_early_bounds + 1));
+                            let next_id = ty::RegionVid::from_u32(num_early_bounds + 1);
+                            let revar = ty::Region::new_var(env.tcx(), next_id);
                             num_early_bounds += 1;
                             subst_early_bounds.push(ty::GenericArg::from(revar));
 
                             match *r {
                                 ty::RegionKind::ReEarlyBound(r) => {
+                                    let name = strip_coq_ident(r.name.as_str());
                                     universal_lifetimes
-                                        .push(strip_coq_ident(&format!("ulft_{}", r.name.to_string())));
-                                    user_lifetime_names.push(Some(strip_coq_ident(r.name.as_str())));
+                                        .insert(next_id, (format!("ulft_{}", name), Some(name)));
                                 },
                                 _ => {
-                                    universal_lifetimes.push(format!("ulft{}", num_early_bounds));
-                                    user_lifetime_names.push(None);
+                                    universal_lifetimes
+                                        .insert(next_id, (format!("ulft_{}", num_early_bounds), None));
                                 },
                             }
                             //println!("early region {}", r);
@@ -274,18 +273,26 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // add names for late bound region variables
                 let mut num_late_bounds = 0;
                 for b in sig.bound_vars().iter() {
+                    let next_id = ty::RegionVid::from_u32(num_early_bounds + num_late_bounds + 1);
                     match b {
                         ty::BoundVariableKind::Region(r) => {
                             match r {
                                 ty::BoundRegionKind::BrNamed(_, sym) => {
-                                    universal_lifetimes
-                                        .push(strip_coq_ident(&format!("ulft_{}", sym.to_string())));
-                                    user_lifetime_names.push(Some(strip_coq_ident(sym.as_str())));
+                                    let mut region_name = strip_coq_ident(sym.as_str());
+                                    if region_name == "_" {
+                                        region_name = format!("{}", next_id.as_usize());
+                                        universal_lifetimes
+                                            .insert(next_id, (format!("ulft_{}", region_name), None));
+                                    } else {
+                                        universal_lifetimes.insert(
+                                            next_id,
+                                            (format!("ulft_{}", region_name), Some(region_name)),
+                                        );
+                                    }
                                 },
                                 ty::BoundRegionKind::BrAnon(_) => {
                                     universal_lifetimes
-                                        .push(format!("ulft{}", num_early_bounds + num_late_bounds + 1));
-                                    user_lifetime_names.push(None);
+                                        .insert(next_id, (format!("ulft_{}", next_id.as_usize()), None));
                                 },
                                 _ => (),
                             }
@@ -314,14 +321,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     .collect();
                 let output = ty_instantiate(late_sig.output(), env.tcx(), subst_early_bounds);
 
-                info!("Have lifetime parameters: {:?} {:?}", universal_lifetimes, user_lifetime_names);
+                info!("Have lifetime parameters: {:?}", universal_lifetimes);
 
                 // add universal lifetimes to the spec
-                for (lft, name) in universal_lifetimes.iter().zip(user_lifetime_names.into_iter()) {
-                    //let lft = info::AtomicRegion::Universal(info::UniversalRegionKind::Local,
-                    // ty::RegionVid::from_u32(1+r));
+                for (_, (lft, name)) in universal_lifetimes.iter() {
                     translated_fn
-                        .add_universal_lifetime(name, lft.to_string())
+                        .add_universal_lifetime(name.clone(), lft.to_string())
                         .map_err(|e| TranslationError::UnknownError(e))?;
                 }
 
@@ -340,6 +345,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 }
 
                 // enter the procedure
+                let universal_lifetimes: Vec<_> = universal_lifetimes.into_iter().map(|(x, y)| y.0).collect();
                 ty_translator.enter_procedure(&params, universal_lifetimes)?;
                 // add generic args to the fn
                 let generics = ty_translator.generic_scope.borrow();
@@ -712,8 +718,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     s: Box::new(translated_bb),
                 };
             }
-            let bb_name = Self::make_bb_name(&initial_bb_idx);
-            self.translated_fn.code.add_basic_block(bb_name, translated_bb);
+            self.translated_fn.code.add_basic_block(initial_bb_idx.as_usize(), translated_bb);
         } else {
             info!("No basic blocks");
         }
@@ -721,8 +726,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         while let Some(bb_idx) = self.bb_queue.pop() {
             let ref bb = basic_blocks[bb_idx];
             let translated_bb = self.translate_basic_block(bb_idx, bb)?;
-            let bb_name = Self::make_bb_name(&bb_idx);
-            self.translated_fn.code.add_basic_block(bb_name, translated_bb);
+            self.translated_fn.code.add_basic_block(bb_idx.as_usize(), translated_bb);
         }
 
         // assume that all generics are layoutable
@@ -757,7 +761,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // - have a function that takes the def_id and then parses the attributes into a loop invariant
         for (head, did) in self.loop_specs.iter() {
             let spec = self.parse_attributes_on_loop_spec_closure(head, did);
-            self.translated_fn.register_loop_invariant(Self::make_bb_name(head), spec);
+            self.translated_fn.register_loop_invariant(head.as_usize(), spec);
         }
 
         // generate dependencies on other procedures.
@@ -808,16 +812,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             }
         }
         initial_arg_mapping
-    }
-
-    /// Generate a unique string identifier for a basic block.
-    /// This function is deterministic, so subsequent calls with the same `BasicBlock` will always
-    /// generate the same name.
-    fn make_bb_name(bb_idx: &BasicBlock) -> String {
-        // NOTE: initial bb name needs to line up with radium::FunctionCode::initial_bb!
-        let mut bb_name = "_bb".to_string();
-        bb_name.push_str(&bb_idx.index().to_string());
-        bb_name
     }
 
     /// Generate a key for generics to index into our map of other required procedures.
@@ -1337,7 +1331,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         target: &BasicBlock,
     ) -> Result<radium::Stmt, TranslationError> {
         self.enqueue_basic_block(*target);
-        let res_stmt = radium::Stmt::GotoBlock(Self::make_bb_name(target));
+        let res_stmt = radium::Stmt::GotoBlock(target.as_usize());
 
         let loop_info = self.proc.loop_info();
         if loop_info.is_loop_head(*target) {
@@ -2630,9 +2624,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             // translate to unit literal
                             Ok(radium::Expr::Literal(radium::Literal::LitZST))
                         } else {
-                            let struct_use = self
-                                .ty_translator
-                                .generate_tuple_use(operand_types.iter().map(|r| *r), None)?;
+                            let struct_use = self.ty_translator.generate_tuple_use(
+                                operand_types.iter().map(|r| *r),
+                                TranslationState::InFunction,
+                            )?;
                             let sl = struct_use.generate_struct_layout_spec_term();
                             let initializers: Vec<_> = translated_ops
                                 .into_iter()
@@ -2651,8 +2646,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                         if adt_def.is_struct() {
                             let variant = adt_def.variant(variant);
-                            let struct_use =
-                                self.ty_translator.generate_struct_use(variant.def_id, args, None)?;
+                            let struct_use = self.ty_translator.generate_struct_use(
+                                variant.def_id,
+                                args,
+                                TranslationState::InFunction,
+                            )?;
                             if struct_use.is_unit() {
                                 Ok(radium::Expr::Literal(radium::Literal::LitZST))
                             } else {
@@ -2670,8 +2668,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             }
                         } else if adt_def.is_enum() {
                             let variant_def = adt_def.variant(variant);
-                            let struct_use =
-                                self.ty_translator.generate_enum_variant_use(did, variant, args, None)?;
+                            let struct_use = self.ty_translator.generate_enum_variant_use(
+                                did,
+                                variant,
+                                args,
+                                TranslationState::InFunction,
+                            )?;
                             let sl = struct_use.generate_struct_layout_spec_term();
                             let initializers: Vec<_> = translated_ops
                                 .into_iter()
@@ -2682,7 +2684,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 sls: radium::CoqAppTerm::new_lhs(sl),
                                 components: initializers,
                             };
-                            let enum_use = self.ty_translator.generate_enum_use(adt_def, args, None)?;
+                            let enum_use = self.ty_translator.generate_enum_use(
+                                adt_def,
+                                args,
+                                TranslationState::InFunction,
+                            )?;
                             let els = enum_use.generate_enum_layout_spec_term();
 
                             let scope = self.ty_translator.generic_scope.borrow();
@@ -3056,8 +3062,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 },
                 ProjectionElem::Field(f, _) => {
                     // `t` is the type of the field we are accessing!
-                    let ty =
-                        self.ty_translator.generate_structlike_use(&cur_ty.ty, cur_ty.variant_index, None)?;
+                    let ty = self.ty_translator.generate_structlike_use(
+                        &cur_ty.ty,
+                        cur_ty.variant_index,
+                        TranslationState::InFunction,
+                    )?;
                     if let radium::Type::Struct(su) = ty {
                         let struct_sls = su.generate_struct_layout_spec_term();
                         let name = self.ty_translator.get_field_name_of(

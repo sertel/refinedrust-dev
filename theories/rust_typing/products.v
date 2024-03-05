@@ -38,40 +38,6 @@ Definition is_struct_ot `{typeGS Σ} (sls : struct_layout_spec) (tys : list rtyp
   end.
 Global Typeclasses Opaque is_struct_ot.
 
-(* Problem:
-    the sl is embedded in the StructOp.
-    We require that the sls matches this sl.
-    Then we have also the ots for the fields. We should require that the types at those fields are compatible with that.
-    We should get automatically that the sl is compatible with the fields..
-
-
-   we could also use sl_has_members I guess, though.
-   -
- *)
-
-(*
-Definition is_struct_ot `{typeGS Σ} (sls : struct_layout_spec) (tys : list rtype) (ot : op_type) (mt : memcast_compat_type) :=
-  length (sls.(sls_fields)) = length tys ∧
-  match ot with
-  | StructOp sl ots =>
-      (* padding bits will be garbled, so we cannot fulfill MCId *)
-      mt ≠ MCId ∧
-      (* sl is a valid layout for this sls *)
-      use_struct_layout_alg sls = Some sl ∧
-      length ots = length tys ∧
-      (* pointwise, the members have the right op_type and a layout matching the optype *)
-      foldr (λ ty, and (let '(ty, (x, ly), ot) := ty in (ty.(rt_ty) : type _).(ty_has_op_type) ot mt ∧ ot_layout ot = ly))
-            True (zip (zip tys (field_members sl.(sl_members))) ots)
-  | UntypedOp ly =>
-      (* ly is a valid layout for this sls *)
-      ∃ sl, use_struct_layout_alg sls = Some sl ∧ ly = sl ∧
-      (* pointwise, the members have the right op type *)
-      foldr (λ ty, and (let '(ty, (x, ly)) := ty in (ty.(rt_ty) : type _).(ty_has_op_type) (UntypedOp ly) mt))
-            True (zip tys (field_members sl.(sl_members)))
-  | _ => False
-  end.
- *)
-
 Lemma is_struct_ot_layout `{typeGS Σ} sls sl tys ot mt :
   use_struct_layout_alg sls = Some sl →
   is_struct_ot sls tys ot mt → ot_layout ot = sl.

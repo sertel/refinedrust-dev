@@ -74,7 +74,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let (type_str, annot_meta3) = process_coq_literal(&type_str.value(), *meta);
                     annot_meta.join(&annot_meta3);
 
-                    let spec = specs::TyOwnSpec::new(loc_str, rfn_str, type_str, annot_meta);
+                    let spec = specs::TyOwnSpec::new(loc_str, rfn_str, type_str, false, annot_meta);
                     Ok(MetaIProp::Type(spec))
                 },
                 "iris" => {

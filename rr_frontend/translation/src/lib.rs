@@ -81,7 +81,9 @@ fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
 
     let mut defn_order = Vec::new();
     while !topo.is_empty() {
-        let next = topo.pop_all();
+        let mut next = topo.pop_all();
+        // sort these by lexicographic order
+        next.sort();
         if next.is_empty() {
             // dependency cycle detected
             panic!("RefinedRust does not currently support mutually recursive types");

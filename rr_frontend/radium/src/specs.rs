@@ -741,10 +741,10 @@ pub struct TyOwnSpec {
 }
 
 impl TyOwnSpec {
-    pub fn new(loc: String, rfn: String, ty: String, annot_meta: TypeAnnotMeta) -> Self {
+    pub fn new(loc: String, rfn: String, ty: String, with_later: bool, annot_meta: TypeAnnotMeta) -> Self {
         TyOwnSpec {
             loc,
-            with_later: true,
+            with_later,
             rfn,
             ty,
             annot_meta,

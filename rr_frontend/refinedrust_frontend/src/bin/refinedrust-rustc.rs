@@ -25,8 +25,8 @@ use rustc_middle::query::queries::mir_borrowck;
 use rustc_middle::query::{ExternProviders, Providers};
 use rustc_middle::ty::TyCtxt;
 use rustc_session::Session;
-use translation;
 use translation::environment::mir_storage;
+use {shlex, translation};
 
 const BUG_REPORT_URL: &str = "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev/-/issues/new";
 
@@ -76,6 +76,24 @@ pub fn analyze<'tcx>(tcx: TyCtxt<'tcx>) {
         Err(e) => {
             println!("Frontend failed with error {:?}", e);
             std::process::exit(1)
+        },
+    }
+
+    match rrconfig::post_generation_hook() {
+        None => (),
+        Some(s) => {
+            if let Some(parts) = shlex::split(&s) {
+                let work_dir = rrconfig::absolute_work_dir();
+                let dir_path = std::path::PathBuf::from(&work_dir);
+                info!("running post-generation hook in {:?}: {:?}", dir_path, s);
+
+                let status = Command::new(&parts[0])
+                    .args(&parts[1..])
+                    .current_dir(&dir_path)
+                    .status()
+                    .expect("failed to execute process");
+                println!("Post-generation hook finished with {status}");
+            }
         },
     }
 

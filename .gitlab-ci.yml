@@ -95,12 +95,7 @@ tests:
      for folder in ${DIR}
      do
          cd $folder
-         nix shell -c cargo refinedrust
+         RUST_LOG=info nix shell -c cargo refinedrust
          cd -
          nix shell -c dune build --display=short --root=.
      done
-   - |
-     cd ..
-     echo "(lang dune 3.8)" >| rr_frontend/dune-project
-     echo "(using coq 0.8)" >> rr_frontend/dune-project
-     nix shell -c dune build --display=short --root=rr_frontend

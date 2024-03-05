@@ -4,9 +4,10 @@ From refinedrust Require Import axioms base.
 Require Import Coq.Program.Equality.
 Local Set Universe Polymorphism.
 
-(** This file is copied and modified from Yusuke Matsushita's RustHornBelt project. *)
-
-(* TODO: Coq.Program.Equality and dependent destruct introduce axioms. Can I eliminate that? *)
+(** * Heterogeneous lists *)
+(** This file is copied and extended from Yusuke Matsushita's RustHornBelt project
+  https://gitlab.mpi-sws.org/iris/lambda-rust/-/tree/masters/rusthornbelt?ref_type=heads
+*)
 
 (** List.nth with better pattern matching *)
 Fixpoint lnth {A} (d: A) (xl: list A) (i: nat) : A :=
@@ -474,28 +475,6 @@ Inductive HForall_1 (Φ: ∀X, F X → G X → Prop)
 | HForall_1_cons {X Xl} (x: _ X) y (xl: _ Xl) yl :
     Φ _ x y → HForall_1 Φ xl yl → HForall_1 Φ (x +:: xl) (y -:: yl).
 
-(*
-Inductive HForall_1' {H: A → A → Type} (Φ: ∀X Y, F X → H X Y → Prop)
-  : ∀{Xl Yl}, hlist F Xl → plist2 H Xl Yl → Prop :=
-| HForall_1'_nil: HForall_1' Φ +[] (-[]: plist2 _ [] [])
-| HForall_1'_cons {X Y Xl Yl} x z xl zl :
-    Φ _ _ x z → HForall_1' Φ xl zl →
-    HForall_1' Φ (x +:: xl) (z -:: zl: plist2 _ (X :: Xl) (Y :: Yl)).
-
-Inductive HForall2_1 {H: A → A → Type} (Φ: ∀X Y, F X → G Y → H X Y → Prop)
-  : ∀{Xl Yl}, hlist F Xl → hlist G Yl → plist2 H Xl Yl → Prop :=
-| HForall2_1_nil: HForall2_1 Φ +[] +[] -[]
-| HForall2_1_cons {X Y Xl Yl} (x: _ X) (y: _ Y) z (xl: _ Xl) (yl: _ Yl) zl :
-    Φ _ _ x y z → HForall2_1 Φ xl yl zl → HForall2_1 Φ (x +:: xl) (y +:: yl) (z -:: zl).
-
-Inductive HForall2_2flip {H K: A → A → Type} (Φ: ∀X Y, F X → G Y → H X Y → K Y X → Prop)
-  : ∀{Xl Yl}, hlist F Xl → hlist G Yl → plist2 H Xl Yl → plist2 K Yl Xl → Prop :=
-| HForall2_2flip_nil: HForall2_2flip Φ +[] +[] -[] -[]
-| HForall2_2flip_cons {X Y Xl Yl} (x: _ X) (y: _ Y) z w (xl: _ Xl) (yl: _ Yl) zl wl :
-    Φ _ _ x y z w → HForall2_2flip Φ xl yl zl wl →
-    HForall2_2flip Φ (x +:: xl) (y +:: yl) (z -:: zl) (w -:: wl).
- *)
-
 Inductive HForallTwo (Φ: ∀X, F X → G X → Prop) : ∀{Xl}, hlist F Xl → hlist G Xl → Prop :=
 | HForallTwo_nil: HForallTwo Φ +[] +[]
 | HForallTwo_cons {X Xl} (x: _ X) y (xl: _ Xl) yl :
@@ -515,13 +494,6 @@ Lemma HForall_1_nth {Xl D} (Φ: ∀X, F X → G X → Prop)
   (d: _ D) d' (xl: _ Xl) yl i :
   Φ _ d d' → HForall_1 Φ xl yl → Φ _ (hnth d xl i) (pnth d' yl i).
 Proof. move=> ? All. move: i. elim All; [done|]=> > ???. by case. Qed.
-
-(*
-Lemma HForall_1'_nth {H: A → A → Type} {Xl Yl D D'} (Φ: ∀X Y, F X → H X Y → Prop)
-  (d: _ D) (d': _ D') xl (yl: plist2 _ Xl Yl) i :
-  Φ _ _ d d' → HForall_1' Φ xl yl → Φ _ _ (hnth d xl i) (p2nth d' yl i).
-Proof. move=> ? All. move: i. elim All; [done|]=> > ???. by case. Qed.
- *)
 
 Lemma HForallTwo_nth {Xl D}
   (Φ: ∀X, F X → G X → Prop) (d: _ D) d' (xl: _ Xl) yl i :
@@ -611,12 +583,6 @@ Canonical Structure hlistO := Ofe (hlist F Xl) hlist_ofe_mixin.
 End hlist_ofe.
 
 Arguments hlistO {_} _ _.
-
-(* FIXME : this is to improve the corresponding hints defined in Iris,
-   which are not able to find the canonical structure for hlist, probably
-   because this is using eapply and its different unification algorithm. *)
-(*Global Hint Extern 0 (Equiv _) => refine (ofe_equiv _); shelve : typeclass_instances.*)
-(*Global Hint Extern 0 (Dist _) => refine (ofe_dist _); shelve : typeclass_instances.*)
 
 Section hlist_ofe_lemmas.
 Context {A} {F: A → ofe} {Xl : list A}.
@@ -769,15 +735,6 @@ Fixpoint big_sepHL_2' {B} {F G: A → Type} {Xl} (Φ: ∀X, nat → B → F X �
 Definition big_sepHL_2 {B} {F G: A → Type} {Xl} (Φ: ∀X, nat → B → F X → G X → PROP) (wl : list B) (xl: hlist F Xl) (yl: plist G Xl) : PROP :=
   big_sepHL_2' Φ 0%nat wl xl yl.
 
-(*
-Fixpoint big_sepHL2_1 {F: A → _} {G H Xl Yl} (Φ: ∀X Y, F X → G Y → H X Y → PROP)
-  (xl: hlist F Xl) (yl: hlist G Yl) (zl: plist2 H Xl Yl) : PROP :=
-  match xl, yl, zl with
-  | +[], +[], _ => True
-  | x +:: xl', y +:: yl', z -:: zl' => Φ _ _ x y z ∗ big_sepHL2_1 Φ xl' yl' zl'
-  | _, _, _ => False
-  end%I.
- *)
 End big_sep.
 
 Notation "[∗ hlist] x ∈ xl , P" := (big_sepHL (λ _ _ x, P%I) xl)

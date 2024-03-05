@@ -102,6 +102,15 @@ pub struct TypeTranslator<'def, 'tcx> {
     pub generic_scope: RefCell<Vec<Option<radium::LiteralTyParam>>>,
 }
 
+/// Why are we translating this type?
+#[derive(PartialEq, Debug)]
+pub enum TranslationState<'a> {
+    /// This type is used in a function
+    InFunction,
+    /// We are generating the definition of an ADT and this type is used in there
+    TranslateAdt(&'a mut HashSet<DefId>),
+}
+
 impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     pub fn new(
         env: &'def Environment<'tcx>,
@@ -313,8 +322,9 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         ty: &Ty<'tcx>,
         variant: Option<rustc_target::abi::VariantIdx>,
-        adt_deps: Option<&mut HashSet<DefId>>,
+        adt_deps: TranslationState,
     ) -> Result<radium::Type<'def>, TranslationError> {
+        let in_function = adt_deps == TranslationState::InFunction;
         match ty.kind() {
             TyKind::Adt(adt, args) => {
                 // Check if we have a shim
@@ -357,7 +367,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         adt_def: ty::AdtDef<'tcx>,
         args: F,
-        mut adt_deps: Option<&mut HashSet<DefId>>,
+        mut adt_deps: TranslationState,
     ) -> Result<radium::AbstractEnumUse<'def>, TranslationError>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
@@ -365,15 +375,18 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         info!("generating enum use for {:?}", adt_def.did());
         self.register_adt(adt_def)?;
 
+        let in_function = adt_deps == TranslationState::InFunction;
         let enum_ref: radium::AbstractEnumRef<'def> = self.lookup_enum(adt_def.did())?;
         let params = self.translate_generic_args(args, adt_deps)?;
         let key = AdtUseKey::new(adt_def.did(), &params);
         let enum_use = radium::AbstractEnumUse::new(enum_ref, params);
 
         // track this enum use for the current function
-        let mut enum_uses = self.enum_uses.borrow_mut();
-        if !enum_uses.contains_key(&key) {
-            enum_uses.insert(key, enum_use.clone());
+        if in_function {
+            let mut enum_uses = self.enum_uses.borrow_mut();
+            if !enum_uses.contains_key(&key) {
+                enum_uses.insert(key, enum_use.clone());
+            }
         }
 
         Ok(enum_use)
@@ -397,7 +410,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     fn translate_generic_args<F>(
         &self,
         args: F,
-        mut adt_deps: Option<&mut HashSet<DefId>>,
+        mut adt_deps: TranslationState,
     ) -> Result<Vec<radium::Type<'def>>, TranslationError>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
@@ -408,10 +421,11 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         for arg in args.into_iter() {
             if let Some(arg_ty) = arg.as_type() {
                 let mut translated_ty;
-                if let Some(ref mut adt_deps) = adt_deps {
-                    translated_ty = self.translate_type_with_deps(&arg_ty, Some(&mut *adt_deps))?;
+                if let TranslationState::TranslateAdt(ref mut adt_deps) = adt_deps {
+                    translated_ty = self
+                        .translate_type_with_deps(&arg_ty, TranslationState::TranslateAdt(&mut *adt_deps))?;
                 } else {
-                    translated_ty = self.translate_type_with_deps(&arg_ty, None)?;
+                    translated_ty = self.translate_type_with_deps(&arg_ty, TranslationState::InFunction)?;
                 }
                 // we need to substitute in the variables according to the function scope
                 translated_ty.subst_params(generic_env.as_slice());
@@ -431,7 +445,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         variant_id: DefId,
         args: F,
-        mut adt_deps: Option<&mut HashSet<DefId>>,
+        mut adt_deps: TranslationState,
     ) -> Result<radium::AbstractStructUse<'def>, TranslationError>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
@@ -443,15 +457,18 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             return Ok(radium::AbstractStructUse::new_unit());
         }
 
+        let in_function = adt_deps == TranslationState::InFunction;
         let struct_ref: radium::AbstractStructRef<'def> = self.lookup_adt_variant(variant_id)?;
         let params = self.translate_generic_args(args, adt_deps)?;
         let key = AdtUseKey::new(variant_id, &params);
         let struct_use = radium::AbstractStructUse::new(struct_ref, params, radium::TypeIsRaw::No);
 
         // generate the struct use key
-        let mut struct_uses = self.struct_uses.borrow_mut();
-        if !struct_uses.contains_key(&key) {
-            struct_uses.insert(key, struct_use.clone());
+        if in_function {
+            let mut struct_uses = self.struct_uses.borrow_mut();
+            if !struct_uses.contains_key(&key) {
+                struct_uses.insert(key, struct_use.clone());
+            }
         }
 
         Ok(struct_use)
@@ -463,7 +480,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         adt_id: DefId,
         variant_idx: rustc_target::abi::VariantIdx,
         args: F,
-        mut adt_deps: Option<&mut HashSet<DefId>>,
+        mut adt_deps: TranslationState,
     ) -> Result<radium::AbstractStructUse<'def>, TranslationError>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
@@ -501,22 +518,25 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     pub fn generate_tuple_use<F>(
         &self,
         tys: F,
-        mut adt_deps: Option<&mut HashSet<DefId>>,
+        mut adt_deps: TranslationState,
     ) -> Result<radium::AbstractStructUse<'def>, TranslationError>
     where
         F: IntoIterator<Item = Ty<'tcx>>,
     {
         let tys = tys.into_iter();
 
+        let in_function = adt_deps == TranslationState::InFunction;
         let generic_args: Vec<_> = tys.into_iter().map(|ty| ty.into()).collect();
         let params = self.translate_generic_args(generic_args, adt_deps)?;
 
         let num_components = params.len();
         let struct_ref = self.get_tuple_struct_ref(num_components);
 
-        // TODO: don't generate duplicates
         let struct_use = radium::AbstractStructUse::new(struct_ref, params, radium::TypeIsRaw::Yes);
-        self.tuple_uses.borrow_mut().push(struct_use.clone());
+        if in_function {
+            // TODO: don't generate duplicates
+            self.tuple_uses.borrow_mut().push(struct_use.clone());
+        }
 
         Ok(struct_use)
     }
@@ -611,7 +631,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let translate_adt = || {
             let struct_name = strip_coq_ident(&ty.ident(tcx).to_string());
             let (variant_def, invariant_def) =
-                self.make_adt_variant(&struct_name, ty, adt, &ty_param_defs, Some(&mut adt_deps))?;
+                self.make_adt_variant(&struct_name, ty, adt, &ty_param_defs, &mut adt_deps)?;
 
             let mut struct_def = radium::AbstractStruct::new(variant_def, ty_param_defs);
             if let Some(invariant_def) = invariant_def {
@@ -649,7 +669,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         ty: &'tcx ty::VariantDef,
         adt: ty::AdtDef,
         ty_param_defs: &[radium::LiteralTyParam],
-        mut adt_deps: Option<&mut HashSet<DefId>>,
+        mut adt_deps: &mut HashSet<DefId>,
     ) -> Result<(radium::AbstractVariant<'def>, Option<radium::InvariantSpec>), TranslationError> {
         info!("adt variant: {:?}", ty);
 
@@ -712,12 +732,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let attrs = crate::utils::filter_tool_attrs(attrs);
 
             let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
-            let mut ty;
-            if let Some(ref mut adt_deps) = adt_deps {
-                ty = self.translate_type_with_deps(&f_ty, Some(&mut *adt_deps))?;
-            } else {
-                ty = self.translate_type_with_deps(&f_ty, None)?;
-            }
+            let mut ty =
+                self.translate_type_with_deps(&f_ty, TranslationState::TranslateAdt(&mut *adt_deps))?;
 
             // substitute all the type parameters by literals
             ty.subst_params(&ty_env);
@@ -1024,7 +1040,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
                 // IMPORTANT: use the full enum's ty_param_defs to account for indexing
                 let (variant_def, invariant_def) =
-                    self.make_adt_variant(struct_name.as_str(), v, def, &ty_param_defs, Some(&mut adt_deps))?;
+                    self.make_adt_variant(struct_name.as_str(), v, def, &ty_param_defs, &mut adt_deps)?;
 
                 // IMPORTANT: use the subset of actually used params for the definition
                 let mut struct_def = radium::AbstractStruct::new(variant_def, these_param_defs);
@@ -1133,22 +1149,23 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
     /// Translate type.
     pub fn translate_type(&self, ty: &Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
-        self.translate_type_with_deps(ty, None)
+        self.translate_type_with_deps(ty, TranslationState::InFunction)
     }
 
     fn generate_adt_shim_use(
         &self,
         adt: &ty::AdtDef<'tcx>,
         substs: ty::GenericArgsRef<'tcx>,
-        mut adt_deps: Option<&mut HashSet<DefId>>,
+        adt_deps: TranslationState,
     ) -> Result<radium::Type<'def>, TranslationError> {
+        let in_function = adt_deps == TranslationState::InFunction;
         if let Some(shim) = self.lookup_adt_shim(adt.did()) {
             let params = self.translate_generic_args(substs.iter(), adt_deps)?;
             // track this shim use for the current function
             let key = AdtUseKey::new(adt.did(), &params);
             let shim_use = radium::LiteralTypeUse::new(shim, params);
             let mut shim_uses = self.shim_uses.borrow_mut();
-            if !shim_uses.contains_key(&key) {
+            if !shim_uses.contains_key(&key) && in_function {
                 shim_uses.insert(key, shim_use.clone());
             }
             Ok(radium::Type::Literal(shim_use))
@@ -1165,7 +1182,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     pub fn translate_type_with_deps(
         &self,
         ty: &Ty<'tcx>,
-        mut adt_deps: Option<&mut HashSet<DefId>>,
+        mut adt_deps: TranslationState,
     ) -> Result<radium::Type<'def>, TranslationError> {
         match ty.kind() {
             TyKind::Char => Ok(radium::Type::Char),
@@ -1231,7 +1248,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     // make this unit
                     Ok(radium::Type::Unit)
                 } else {
-                    if let Some(ref mut adt_deps) = adt_deps {
+                    if let TranslationState::TranslateAdt(ref mut adt_deps) = adt_deps {
                         adt_deps.insert(adt.did());
                     }
 

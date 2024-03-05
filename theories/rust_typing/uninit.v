@@ -2,6 +2,8 @@ From refinedrust Require Export type uninit_def.
 From refinedrust Require Import programs ltype_rules value.
 Set Default Proof Using "Type".
 
+(** * Typing rules for the uninit type *)
+
 Section lemmas.
   Context `{!typeGS Σ}.
 
@@ -121,7 +123,8 @@ li_tactic (compute_layout_goal (ty_syn_type ty1)) (λ ly1,
       assert (ly4 = ly2) as -> by by eapply syn_type_has_layout_inj.
       done. }
     iSplitL.
-    { iMod (ofty_own_split_value_untyped with "Hl") as "(%v & Hv & Hl)"; [done.. | ].
+    { iMod lc_zero as "Hlc".
+      iMod (ofty_own_split_value_untyped_lc with "[Hlc] Hl") as "(%v & Hv & Hl)"; [done.. | ].
       iPoseProof (ty_own_ghost_drop with "Hv") as "Hb"; first done.
       iApply (logical_step_wand with "Hb"). iModIntro. iIntros "$".
       iApply (ofty_owned_subtype_aligned with "[] Hl"); [done | | ].

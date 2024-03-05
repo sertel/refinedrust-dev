@@ -133,7 +133,7 @@
 
           buildInputs = [rust.toolchain];
           nativeBuildInputs = with pkgs;
-            [makeWrapper]
+            [makeWrapper pkgs.gnupatch]
             ++ lib.optionals stdenv.isDarwin [libzip];
 
           postInstall = with pkgs.lib.strings; ''
@@ -152,7 +152,7 @@
           paths = coq.toolchain ++ [packages.frontend rust.toolchain];
 
           pathsToLink = ["/bin"];
-          nativeBuildInputs = [pkgs.makeWrapper];
+          nativeBuildInputs = [pkgs.makeWrapper pkgs.gnupatch];
           postBuild = with pkgs.lib.strings; ''
             wrapProgram $out/bin/dune \
               --set COQPATH "${makeSearchPath "lib/coq/${coq.version}/user-contrib" (fetchCoqDeps packages.theories)}"

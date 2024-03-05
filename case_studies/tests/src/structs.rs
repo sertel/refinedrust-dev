@@ -39,15 +39,24 @@ impl EvenInt {
     #[rr::params("x", "γ")]
     #[rr::args(#raw "(#(-[#x]), γ)")]
     #[rr::requires("(x + 1 ≤ MaxInt i32)%Z")]
-    #[rr::ensures(#iris "gvar_pobs γ (-[#(x+1)%Z] : plist place_rfn _)")]
+    #[rr::observe("γ": "(-[#(x+1)%Z] : plist place_rfn _)")]
     fn add(&mut self) {
         self.num += 1;
+    }
+
+    #[rr::params("x", "γ", "y")]
+    #[rr::args("(#x, γ)", "#y")]
+    #[rr::requires("(x + y ∈ i32)%Z")]
+    #[rr::observe("γ": "(x+y)")]
+    #[rr::tactics("apply Zeven_plus_Zeven; solve_goal.")]
+    pub fn add_even(&mut self, other: &Self) {
+        self.num += other.num;
     }
 
     #[rr::params("x", "γ")]
     #[rr::args("(#x, γ)")]
     #[rr::requires("(x + 2 ≤ MaxInt i32)%Z")]
-    #[rr::ensures(#iris "gvar_pobs γ (x+2)")]
+    #[rr::observe("γ": "(x+2)")]
     #[rr::tactics("rewrite -Z.add_assoc; apply Zeven_plus_Zeven; solve_goal.")]
     pub fn add_two(&mut self) {
         self.num;

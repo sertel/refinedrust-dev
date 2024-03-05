@@ -17,7 +17,7 @@ clean:
 frontend:
 	cd rr_frontend && ./refinedrust build && ./refinedrust install
 
-RUST_SRC = stdlib/vec case_studies/paper-examples case_studies/tests
+RUST_SRC = stdlib/vec case_studies/paper-examples case_studies/tests case_studies/minivec
 
 %.gen: % phony
 	cd $< && cargo refinedrust
