@@ -2,4 +2,4 @@
 (coq.theory
 (flags -w -notation-overridden -w -redundant-canonical-projection)
 (name refinedrust.examples.minivec_patched)
-(theories caesium lithium refinedrust))
+(theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust))
