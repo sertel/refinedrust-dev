@@ -2576,13 +2576,8 @@ impl CoqParam {
     }
 
     pub fn format(&self, f: &mut Formatter, make_implicits: bool) -> fmt::Result {
-        if self.implicit { 
-            if make_implicits {
-                write!(f, "`{{{}}}", self.ty)
-            }
-            else {
-                write!(f, "`({})", self.ty)
-            }
+        if self.implicit {
+            if make_implicits { write!(f, "`{{{}}}", self.ty) } else { write!(f, "`({})", self.ty) }
         } else {
             write!(f, "({} : {})", self.name, self.ty)
         }
