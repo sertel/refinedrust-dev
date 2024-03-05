@@ -1,72 +1,106 @@
-image: $CI_REGISTRY/gaeher/rust-ci
+# This file expects two variables: `NIX_CI_CACHE_PUB_KEY` and `NIX_CI_CACHE_PRIV_KEY`
+# Those variables can be generated with: `nix-store --generate-binary-cache-key ci_nix_store priv.pem pub.pem`
 
-stages:
-  - build
+stages: [ nix-cache, lint, build, tests ]
 
 variables:
-  # dune takes care of parallelization itself and does not like running in parallel
-  CPU_CORES: "1"
-  MAKE_TARGET: "all_with_examples"
-  OCAML: "ocaml-variants.4.14.0+options ocaml-option-flambda"
+  NIX_STORE_ARTIFACTS_PATH: ".ci_nix_artifacts"
+  NIX_STORE_CACHE_PATH: ".ci_nix_cache"
 
-.template: &template
-  stage: build
-  tags:
-  - fp
-  script:
-  - git clone https://gitlab.mpi-sws.org/iris/ci.git ci -b opam2
-  - source "$HOME/.cargo/env"
-  - ci/buildjob
+default:
+  image: nixos/nix:2.20.1
+  interruptible: true
+  tags: [ fp ]
+
+  before_script:
+   - echo "experimental-features = nix-command flakes" >> /etc/nix/nix.conf
+   - echo "substituters = file://$(pwd)/${NIX_STORE_ARTIFACTS_PATH} file://$(pwd)/${NIX_STORE_CACHE_PATH} https://cache.nixos.org" >> /etc/nix/nix.conf
+   - echo "trusted-public-keys = ${NIX_CI_CACHE_PUB_KEY} cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" >> /etc/nix/nix.conf
+
+   # Since the cache is not guaranteed to be available, it is preferable to build the dependencies for each job (which is no-op if the cache is available)
+   - nix build --print-build-logs .#theories.inputDerivation
+   - nix build --print-build-logs .#frontend.inputDerivation
+
   cache:
-    key: "$CI_JOB_NAME"
-    paths:
-    - _opam/
-    - ~/.opam
-    - ~/.rustup/toolchains
-    - ~/.rustup/update-hashes
-    - ~/.rustup/settings.toml
-    #- rr_frontend/target/
-  only:
-  - main@lgaeher/refinedrust-dev
-  - /^ci/@lgaeher/refinedrust-dev
-  - /^time/@lgaeher/refinedrust-dev
-  except:
-  - triggers
-  - schedules
-  - api
+    key:
+      files: [ flake.lock, flake.nix ]
+    paths: [ "${NIX_STORE_CACHE_PATH}" ]
 
-## Build jobs
-#build-coq.8.17.0-timing:
-  #<<: *template
-  #variables:
-    #OPAM_PINS: "coq version 8.17.0"
-    #DENY_WARNINGS: "1"
-    #OPAM_PKG: "1"
-  #only:
-  #- main@lgaeher/refinedrust-dev
-  #- /^time/@lgaeher/refinedrust-dev
-  # timing only for master and time/ branches
-  #tags:
-  #- fp-timing
 
-build-coq.8.17.1:
-  <<: *template
+.build_to_cache:
+  script:
+   - nix build --print-build-logs ${NIX_DERIVATION}
+   - nix store sign --key-file <(echo "${NIX_CI_CACHE_PRIV_KEY}") --recursive ${NIX_DERIVATION}
+   - nix copy --to "file://$(pwd)/${NIX_STORE_CACHE_PATH}" ${NIX_DERIVATION}
+
+.build_to_artifacts:
+  artifacts:
+    paths: [ "${NIX_STORE_ARTIFACTS_PATH}" ]
+    when: always
+
+  script:
+   - !reference [ .build_to_cache, script ]
+
+   # To avoid generating large `artifacts` without cluttering the `cache`, an overlay on top of the nix store must be used.
+   # So, one of the following solutions can be used:
+   #  1. Using the `local-overlay` feature, but still in RFC (https://github.com/NixOS/rfcs/pull/152)
+   #  2. Using OverlayFS, but SYS_ADMIN capability is required
+   #  3. Moving files around, which is not the best way to do
+   - mkdir -p "${NIX_STORE_ARTIFACTS_PATH}/nar"
+   - nix path-info ${NIX_DERIVATION} | xargs -r basename -a | cut -d'-' -f1 | xargs -r printf -- "${NIX_STORE_CACHE_PATH}/%s.narinfo\0" | xargs -r0 mv -v -t "${NIX_STORE_ARTIFACTS_PATH}" || true
+   - find "${NIX_STORE_ARTIFACTS_PATH}" -name "*.narinfo" -type f -print0 | xargs -r0 grep -oPh "(?<=URL:\ ).*" | xargs -r printf -- "${NIX_STORE_CACHE_PATH}/%s\0" | xargs -r0 mv -v -t ${NIX_STORE_ARTIFACTS_PATH}/nar || true
+
+
+nix-cache:
+  stage: nix-cache
   variables:
-    OPAM_PINS: "coq version 8.17.1 coq-lambda-rust.dev git git+https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr"
-    #DENY_WARNINGS: "1"
-  only:
-  - main@lgaeher/refinedrust-dev
-  - /^ci/@lgaeher/refinedrust-dev
+    NIX_DERIVATION: .#theories.inputDerivation .#frontend.inputDerivation nixpkgs#gnumake
+  extends: .build_to_cache
 
-trigger-iris.dev:
-  <<: *template
+clippy:
+  stage: lint
+  allow_failure: true
+  script:
+   - cd rr_frontend
+   - nix develop -c cargo clippy --all-targets --all-features --no-deps
+
+fmt:
+  stage: lint
+  script:
+   - cd rr_frontend
+   - nix develop -c cargo fmt --check
+
+theories:
+  stage: build
   variables:
-    STDPP_REPO: "iris/stdpp"
-    IRIS_REPO: "iris/iris"
-    RR_RUST_VERSION: "HEAD"
-    OPAM_PINS: "coq version 8.17.1 coq-lambda-rust.dev git git+https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr  coq-stdpp.dev git git+https://gitlab.mpi-sws.org/$STDPP_REPO#$STDPP_REV   coq-iris.dev git git+https://gitlab.mpi-sws.org/$IRIS_REPO#$IRIS_REV"
-  except:
-  only:
-  - triggers
-  - schedules
-  - api
+    NIX_DERIVATION: .#theories
+  extends: .build_to_artifacts
+
+frontend:
+  stage: build
+  variables:
+    NIX_DERIVATION: .#frontend
+  extends: .build_to_artifacts
+
+tests:
+  stage: tests
+  script:
+   - export DIR=$(nix run nixpkgs#gnumake -- -np | grep -oPh "(?<=RUST_SRC = ).*")
+   - mkdir .ci_tmp
+   - echo ${DIR} | xargs -r -n 1 | cut -d'/' -f1 | uniq | xargs -r mv -v -t .ci_tmp
+   - cd .ci_tmp
+   - echo "(lang dune 3.8)" >| dune-project
+   - echo "(using coq 0.8)" >> dune-project
+   - |
+     for folder in ${DIR}
+     do
+         cd $folder
+         nix shell -c cargo refinedrust
+         cd -
+         nix shell -c dune build --display=short --root=.
+     done
+   - |
+     cd ..
+     echo "(lang dune 3.8)" >| rr_frontend/dune-project
+     echo "(using coq 0.8)" >> rr_frontend/dune-project
+     nix shell -c dune build --display=short --root=rr_frontend
