@@ -363,6 +363,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Generate the use of an enum.
+    // TODO: handle shims
     pub fn generate_enum_use<F>(
         &self,
         adt_def: ty::AdtDef<'tcx>,
@@ -441,6 +442,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Generate the use of a struct.
+    // TODO handle the case that this is a shim
     pub fn generate_struct_use<F>(
         &self,
         variant_id: DefId,

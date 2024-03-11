@@ -254,7 +254,6 @@ Section subltype.
   Context `{!typeGS Σ}.
 
   (** Box *)
-  (*  Admitted because the proofs are very similar to OwnedPtr and they are going to be removed soon when Box is no longer a primitive but defined in terms of OwnedPtr. *)
   Local Lemma box_ltype_incl'_shared_in {rt1 rt2} (lt1 : ltype rt1) (lt2 : ltype rt2) κ' r1 r2 :
     ltype_incl (Shared (κ')) r1 r2 lt1 lt2 -∗
     ltype_incl' (Shared κ') #(r1) #(r2) (BoxLtype lt1) (BoxLtype lt2).
