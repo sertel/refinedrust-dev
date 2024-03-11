@@ -17,14 +17,14 @@ clean:
 frontend:
 	cd rr_frontend && ./refinedrust build && ./refinedrust install
 
-RUST_SRC = stdlib/vec case_studies/paper-examples case_studies/tests case_studies/minivec
+RUST_SRC = case_studies/minivec stdlib/vec stdlib/option case_studies/paper-examples case_studies/tests
 
 %.gen: % phony
 	cd $< && cargo refinedrust
 .PHONY: phony
 
 generate_all: $(addsuffix .gen, $(RUST_SRC))
-  
+
 
 .PHONY: generate_all
 
