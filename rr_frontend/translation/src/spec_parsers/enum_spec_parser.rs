@@ -102,6 +102,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
                         let (ty, _) = process_coq_literal(ty.value().as_str(), meta);
                         rfn_type = Some(specs::CoqType::Literal(ty));
                     },
+                    "export_as" => {},
                     _ => {
                         return Err(format!("unknown attribute for enum specification: {:?}", args));
                     },

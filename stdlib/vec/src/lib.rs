@@ -1,12 +1,13 @@
 #![feature(register_tool)]
 #![register_tool(rr)]
 #![feature(custom_inner_attributes)]
+#![rr::include("option")]
+#![rr::include("alloc")]
 
 #![feature(allocator_api)]
 #![rr::coq_prefix("stdlib.alloc")]
 
-use std::alloc::{Allocator, AllocError, Layout};
-use std::ptr::NonNull;
+use std::alloc::{Allocator, Global};
 
 
 #[rr::refined_by("xs" : "list (place_rfn {rt_of T})")]
@@ -18,22 +19,6 @@ pub struct Vec<T, A: Allocator = Global> {
     #[rr::field("y")]
     _y: A,
 }
-
-#[rr::export_as(alloc::alloc::Global)]
-pub struct Global {
-
-}
-
-unsafe impl Allocator for Global {
-    fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
-        unimplemented!();
-    }
-
-    unsafe fn deallocate(&self, ptr: NonNull<u8>, layout: Layout) {
-        unimplemented!();
-    }
-}
-
 
 #[rr::export_as(alloc::vec::Vec)]
 #[rr::trust_me]

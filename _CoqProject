@@ -17,3 +17,8 @@
 -Q _build/default/case_studies/extra_proofs/tests/enums refinedrust.extra_proofs.tests.enums
 
 -Q _build/default/stdlib/vec/target/verify/vec stdlib.alloc.vec
+-Q _build/default/stdlib/option/target/verify/option stdlib.option.option
+-Q _build/default/stdlib/alloc/target/verify/alloc stdlib.alloc.alloc
+-Q _build/default/stdlib/spin/target/verify/spin stdlib.spin.spin
+-Q _build/default/stdlib/spin/theories/ stdlib.spin.theories
+
