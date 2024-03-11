@@ -318,17 +318,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         match ty.kind() {
             TyKind::Adt(adt, args) => {
                 // Check if we have a shim
-                if let Some(shim) = self.lookup_adt_shim(adt.did()) {
-                    let params = self.translate_generic_args(args.iter(), adt_deps)?;
-                    // track this shim use for the current function
-                    let key = AdtUseKey::new(adt.did(), &params);
-                    let shim_use = radium::LiteralTypeUse::new(shim, params);
-                    let mut shim_uses = self.shim_uses.borrow_mut();
-                    if !shim_uses.contains_key(&key) {
-                        shim_uses.insert(key, shim_use.clone());
-                    }
-
-                    Ok(radium::Type::Literal(shim_use))
+                if let Some(_) = self.lookup_adt_shim(adt.did()) {
+                    self.generate_adt_shim_use(adt, args, adt_deps)
                 } else if adt.is_box() {
                     // TODO: for now, Box gets a special treatment and is not accurately
                     // translated. Reconsider this later on
@@ -1145,6 +1136,30 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         self.translate_type_with_deps(ty, None)
     }
 
+    fn generate_adt_shim_use(
+        &self,
+        adt: &ty::AdtDef<'tcx>,
+        substs: ty::GenericArgsRef<'tcx>,
+        mut adt_deps: Option<&mut HashSet<DefId>>,
+    ) -> Result<radium::Type<'def>, TranslationError> {
+        if let Some(shim) = self.lookup_adt_shim(adt.did()) {
+            let params = self.translate_generic_args(substs.iter(), adt_deps)?;
+            // track this shim use for the current function
+            let key = AdtUseKey::new(adt.did(), &params);
+            let shim_use = radium::LiteralTypeUse::new(shim, params);
+            let mut shim_uses = self.shim_uses.borrow_mut();
+            if !shim_uses.contains_key(&key) {
+                shim_uses.insert(key, shim_use.clone());
+            }
+            Ok(radium::Type::Literal(shim_use))
+        } else {
+            Err(TranslationError::UnknownError(format!(
+                "generate_adt_shim_use called for unknown adt shim {:?}",
+                adt.did()
+            )))
+        }
+    }
+
     /// Translate types, while placing the DefIds of ADTs that this type uses in the adt_deps
     /// argument, if provided.
     pub fn translate_type_with_deps(
@@ -1219,7 +1234,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     if let Some(ref mut adt_deps) = adt_deps {
                         adt_deps.insert(adt.did());
                     }
-                    if adt.is_struct() {
+
+                    if let Some(_) = self.lookup_adt_shim(adt.did()) {
+                        self.generate_adt_shim_use(adt, substs, adt_deps)
+                    } else if adt.is_struct() {
                         self.generate_structlike_use(ty, None, adt_deps)
                     } else if adt.is_enum() {
                         let eu = self.generate_enum_use(*adt, *substs, adt_deps)?;

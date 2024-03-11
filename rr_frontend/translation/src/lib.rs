@@ -746,6 +746,7 @@ fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<
             if let Err(e) = vcx.type_translator.register_adt_shim(did, lit) {
                 println!("Warning: {}", e);
             }
+            info!("Resolved ADT shim {:?} as {:?} did", shim, did);
         } else {
             println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
         }
