@@ -1,124 +1,8 @@
-(* TODO: something breaks with the lft logic notations as soon as we import this *)
-(*From refinedc.lang Require Import rust.*)
 From iris.bi Require Export fractional.
 From refinedrust Require Export base.
 From refinedrust Require Export ghost_var_dfrac.
 
-
-(*
-Section retraction.
-  Context {X Y : Type}.
-  Record retraction (f : X → Y) (g : Y → option X) := {
-    retraction_left_inv : ∀ x, g (f x) = Some x;
-    retraction_right_inv : ∀ y x, g y = Some x → f x = y;
-  }.
-
-  (* TODO: lemmas about this *)
-End retraction.
-Arguments retraction_left_inv { _ _ _ _ }.
-Arguments retraction_right_inv { _ _ _ _ }.
-
-(** Closed-world refinement *)
-Section rfn.
-  Context (RT : Type).
-
-  Class RTInj (C : Type → Type) := {
-    RTInj_into : C RT → RT;
-    RTInj_match : RT → option (C RT);
-    RTInj_retraction : retraction RTInj_into RTInj_match;
-  }.
-
-  Global Instance RTInj_inj `{RTInj C} : Inj (=) (=) (RTInj_into).
-  Proof.
-    intros a b Heq. specialize (retraction_left_inv RTInj_retraction a). rewrite Heq.
-    rewrite (retraction_left_inv RTInj_retraction). intros [= <-]; done.
-  Qed.
-End rfn.
-Global Arguments RTInj_into {_ _ _}.
-Global Arguments RTInj_match {_ _ _}.
-
-Section test.
-  Context {RT}
-    `{RTInj RT (const Z)}
-    `{RTInj RT list}
-  .
-
-  Definition Z_rt : RT := RTInj_into 5%Z.
-  Definition list_rt : RT := RTInj_into [RTInj_into 42%Z; Z_rt].
-
-  Definition match_list (x : RT) :=
-    if RTInj_match (C := list) x is Some xs then
-      if RTInj_match (C := const Z) (hd (RTInj_into 0%Z) xs) is Some 42%Z then true else false
-      else false.
-
-  Eval hnf in (match_list list_rt).
-
-
-
-  (* Of course, this doesn't simplify, and simplification/matching is needed a lot in the typing rules. *)
-  (* Q is: can I hide that sufficiently in the typing rules, so that it doesn't actually happen?
-      Ideally, the interface would remain very much the same as it is now.
-
-
-     In principle: Since everything is anyways indexed, I could just do the injection only at the ghost-variable uses.
-      At all other places, just keep it as it is now. This should be relatively easy to encapsulate while not complicating the typing rules much.
-     We might even be able to completely encapsulate that in the ghostvar assertions.
-      - for that, RTInj needs to be able to compose constructors structurally... that seems hard.
-        currently, we'd need to insert the injections everywhere manually at every nesting point.
-
-
-
-
-      Point: I need to somehow compose these injections. That seems difficult.
-
-      e.g. for mutable refs. I need to know that I can inject the refinement type of the nested thing, and that I have the suitable constructor available.
-      How do I do that? For the nested thing, would assume RTInj (const rt).
-      That is hard to demonstrate.
-   *)
-
-
-  (* Otherwise, we could either:
-    - use a lot of symbolic reasoning to do these things. That's not so nice, tbh.
-    - define one instantiation statically when we do the typechecking so it can compute, instead of defining it just for adequacy.
-        We can still keep the whole type system generic over it, but when we actually want to verify programs, we instantiate a global typeclass to declare the refinement type.
-        Of course, Q: how to verify libraries generically. Verifying libraries is a pretty big point for us, esp. around generics.
-          Point: in the generic code, the generic refinement is a leaf that doesn't need any interaction computation.
-          It's fine if there is a `RTInj_into r` that doesn't simplify or so.
-              Might I need RTInj_match (RTInj_into r) and simplify that? I think not, since all my typing rules that want to match will fall into the "type is opaque" case, so I can't simplify anyways and won't even try to do that.
-        Caveat that remains: I need to reinstantiate the type everytime.
-
-        Can I define the type with an "extension point"?
-            I want to take the union of some types without loosing computationality.
-
-
-
-
-   *)
-
-
-  (* Or just do refinements where we treat the injections as purely symbolic, i.e. everywhere in the typing rules we also have the injections.
-    Essentially, the injections would be at similar palces as the place_rfn, since that is how we are able to nest them?
-
-
-    ltypes are refined by place_rfn RT.
-    Ghost variables will store an RT.
-
-    mut_ref.own_val κ v (r: RT, γ) :=
-       gvar_obs γ r ∗
-       &pin κ ( ∃ r', gvar_auth γ r' ∗ ∃ r'' : rt, RT_match r' = Some r'' ∗ inner.own ... )
-
-    then get gvar_obs γ r, without the knowledge that it actually is something of the right type. but maybe that is fine.
-
-    mut_lty_own κ l (r : place_rfn (RT * gname)) (Owned wl) :=
-      ∃ r', rfn_interp_owned r r' ∗
-
-
-
-
-   *)
-
-End test.
-   *)
+(** * Borrow variables *)
 
 Section sigma.
   Record RT : Type := RT_into {
@@ -151,9 +35,6 @@ Section sigma.
 
 End sigma.
 
-(* NOTE: In principle, I'd like to keep the refinements themselves as-is. Just for the ghost variables, I want to pack stuff up. Maybe the bundling into the sigma types is a good way to achieve that.
-    Potentially, that even works as a general abstraction in the gvar interface.
-  *)
 Section ghost_variables.
   Context `{!ghost_varG Σ RT} {T : Type}.
   Implicit Types (γ : gname) (t : T).

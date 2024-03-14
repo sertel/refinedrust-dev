@@ -1,5 +1,5 @@
 From iris.proofmode Require Import coq_tactics reduction string_ident.
-From refinedrust Require Import programs arrays automation.
+From refinedrust Require Import programs arrays automation value.
 
 
 (** * Proofmode support for manual proofs *)
@@ -169,6 +169,33 @@ Section updateable_rules.
     [set_solver.. | ].
     iPoseProof ("HT" with "Hl He") as "Ha".
     iModIntro. iExists _. iFrame.
+  Qed.
+
+  Lemma updateable_extract_value l : 
+    find_in_context (FindLoc l updateable_π) (λ '(existT rt (lt, r, bk)),
+      ∃ wl ty r', ⌜bk = Owned wl⌝ ∗ ⌜lt = ◁ty⌝ ∗ ⌜r = #r'⌝ ∗
+      prove_with_subtype updateable_E updateable_L false ProveDirect (£ (Nat.b2n wl)) (λ L2 κs R, R -∗
+      li_tactic (compute_layout_goal ty.(ty_syn_type)) (λ ly,
+      (∀ v3, v3 ◁ᵥ{updateable_π} r' @ ty -∗ 
+        l ◁ₗ[updateable_π, Owned wl] #v3 @ (◁ value_t (UntypedSynType ly)) -∗
+        updateable_core updateable_π updateable_E L2))))
+    ⊢ P.
+  Proof.
+    iIntros "HT".
+    unshelve iApply add_updateable; first apply _.
+    iIntros "#CTX #HE HL Hna".
+    rewrite /FindLoc /find_in_context.
+    iDestruct "HT" as ([rt [[lt r] bk]]) "(Ha & Hb)"; simpl.
+    iDestruct "Hb" as "(%wl & %ty & %r' & -> & -> & -> & HT)".
+    rewrite /compute_layout_goal. simpl.
+    rewrite /prove_with_subtype.
+    iMod ("HT" with "[] [] CTX HE HL") as "(%L2 & %κs & %R & HR & HL & HT)"; [solve_ndisj.. | ].
+    iMod ("HR") as "(Hcred & HR)".
+    iDestruct ("HT" with "HR") as "(%ly & %Hst & HT)".
+    iMod (ofty_own_split_value_untyped_lc with "Hcred Ha") as "Ha"; [done.. | ].
+    iDestruct "Ha" as "(%v & Hv & Hl)".
+    iPoseProof ("HT" with "Hv Hl") as "HT".
+    iModIntro. iExists _. iFrame. 
   Qed.
 
   (* TODO: add lemma for unfolding / subtyping? *)

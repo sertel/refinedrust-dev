@@ -11,10 +11,13 @@
 
 -Q _build/default/case_studies/tests/output/tests refinedrust.examples.tests
 -Q _build/default/case_studies/paper-examples/output/paper_examples refinedrust.examples.paper_examples
+-Q _build/default/case_studies/minivec/output/minivec refinedrust.examples.minivec
+
 
 
 
 -Q _build/default/case_studies/extra_proofs/tests/enums refinedrust.extra_proofs.tests.enums
+-Q _build/default/case_studies/extra_proofs/minivec refinedrust.extra_proofs.minivec
 
 -Q _build/default/stdlib/vec/target/verify/vec stdlib.alloc.vec
 -Q _build/default/stdlib/option/target/verify/option stdlib.option.option

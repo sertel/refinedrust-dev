@@ -4,6 +4,8 @@ From stdpp Require Import base.
 From iris Require Import prelude.
 Require Import Coq.Logic.EqdepFacts.
 
+(** We assume proof irrelevance. *)
+
 Lemma proof_irrelevance (P : Prop) (p1 p2 : P) : p1 = p2.
 Proof. apply proof_irrelevance. Qed.
 

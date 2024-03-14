@@ -2,18 +2,7 @@ From caesium Require Import derived.
 From refinedrust Require Export base type.
 From refinedrust Require Import programs uninit ltypes ltype_rules.
 
-(**
-  Boxes copy the refinement of their inner type.
-  They fully own their memory, and thus allow deallocation (in their drop implementation).
-  TODO: actually have drop impls for types.
-*)
-
-(* NOTE:
-    this is not an accurate model of Rust's box type.
-    (Rust's actual box is a struct with two fields: a Unique and an Allocator)
-    We can instead use this as a simplified model for now,
-    as long as we don't actually strive to verify Rust's actual Box implementation.
- *)
+(** * Box *)
 
 Section box.
   Context `{typeGS Σ} {rt} `{Inhabited rt} (inner : type rt).

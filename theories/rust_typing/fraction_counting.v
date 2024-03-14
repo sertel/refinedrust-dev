@@ -5,7 +5,7 @@ From iris.algebra Require Import frac.
 From iris Require Import prelude options.
 Set Default Proof Using "Type".
 
-(** * Ghost state for turning fractional permissions into counting permissions *)
+(** * Ghost state for turning fractional permissions into counting permissions, used by our lifetime contexts *)
 
 
 Class fraction_mapG Σ := {

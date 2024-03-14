@@ -8,6 +8,8 @@ The frontend implementation can be found in the `rr_frontend` subfolder.
 Case studies and tests can be found in the `case_studies` subfolder.
 Stdlib interfaces (without proofs) can be found in the `stdlib` subfolder.
 
+The file `paper_mapping.md` in this repository contains more details on how to map the contents of the RefinedRust paper to this repository.
+
 ### For the `theories` subfolder:
 * the `caesium` subfolder contains the Radium operational semantics, an adaptation of RefinedC's Caesium semantics.
 * the `lithium` subfolder contains RefinedC's Lithium separation logic automation engine with very lightweight modifications.
@@ -125,6 +127,7 @@ These include:
 | `verify_deps` | Boolean | Verify dependencies or not |
 | `admit_proofs` | Boolean | Skip Coq's `Qed` check and instead run `Admitted` |
 | `extra_specs` | Relative/absolute path | File whose contents will be inlined at the end of the generated specs file |
+| `post_generation_hook` | Command | Run a command after code generation and before proof checking |
 | `lib_load_paths` | Array of relative/absolute paths to directories | Search these paths (recursively) for RefinedRust libraries |
 
 The path to the config file can also be specified via the environment variable `RR_CONFIG`.

@@ -4,8 +4,9 @@ From refinedrust Require Import programs ltype_rules.
 
 Local Definition ref_layout := void_ptr.
 
-Global Hint Extern 4 (Inhabited _) => refine (populate _); assumption : typeclass_instances.
+(*Global Hint Extern 4 (Inhabited _) => refine (populate _); assumption : typeclass_instances.*)
 
+(** * Mutable references *)
 Section mut_ref.
   Context `{typeGS Σ} {rt} (inner : type rt).
   Implicit Types (κ : lft) (γ : gname).
@@ -39,8 +40,6 @@ Section mut_ref.
           loc_in_bounds l 0 void*.(ly_size) ∗
           loc_in_bounds li 0 ly.(ly_size) ∗
           inner.(ty_sidecond) ∗
-          (* TODO add loc_in_bounds and ty_sidecond *)
-          (* no delayed sharing, we can strip the laters right away due to flexilaters *)
           (* we still need a later for contractiveness *)
           ▷ □ (|={lftE}=> inner.(ty_shr) (κ⊓κ') tid r' li))%I;
     (* NOTE: we cannot descend below the borrow here to get more information recursively.
@@ -74,16 +73,6 @@ Section mut_ref.
   Qed.
   Next Obligation.
     (* initiate sharing *)
-    (* we will need to change some things for this to work:
-        - the interpretation of place_rfn for shared should accept the Ghost case, and just state True
-
-      possible alternative solutions:
-       - maybe allow types to restrict when they are shareable? (not when they are in an inconsistent state)
-        => this is not great, since sharing of nested types will have nasty requirements.
-       - alternatively allow the sharing operation to update the refinement
-          => not cool. we'd have to update the outer refinement too, and that does not really work.
-    *)
-
     (*
        Plan:
        - get the borrow containing the credit + atime.
@@ -101,8 +90,6 @@ Section mut_ref.
         - can now prove the conclusion.
 
     *)
-
-    (* TODO: use the new pinned_bor unnesting law *)
 
     iIntros (κ E κ' l ly π [r γ] q ?) "#[LFT TIME] Htok %Hst %Hly _ Hb".
     iApply fupd_logical_step.
@@ -1668,13 +1655,10 @@ End rules.
 Global Typeclasses Opaque mut_ref.
 Notation "&mut< κ , τ >" := (mut_ref τ κ) (only printing, format "'&mut<' κ , τ '>'") : stdpp_scope.
 
-(** ** Shared references *)
+(** * Shared references *)
 Section shr_ref.
   Context `{typeGS Σ} {rt} (inner : type rt).
   Implicit Types (κ : lft).
-
-  (* TODO might be able to eliminate this by placing the existential quantifier over the inner refinement differently. *)
-  Context `{Inhabited rt}.
 
   (* this is almost a simple type, but we have to be careful with
     the sharing predicate: we want to obtain the knowledge that l points to

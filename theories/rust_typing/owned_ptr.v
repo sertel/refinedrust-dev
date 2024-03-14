@@ -2,10 +2,12 @@ From caesium Require Import derived.
 From refinedrust Require Export base type.
 From refinedrust Require Import programs uninit ltypes.
 
+(** * Owned pointers as value types. *)
+(** This isn't fully developed currently, but should eventually replace the primitive Box type *)
+
+
 Section owned_ptr.
-  Context `{typeGS Σ} {rt}
-  (*`{Inhabited rt} *)
-  (inner : type rt).
+  Context `{typeGS Σ} {rt} (inner : type rt).
 
   Program Definition owned_ptr : type (place_rfn rt * loc) := {|
     ty_sidecond := True;

@@ -25,6 +25,7 @@ translation.workspace = true
 log.workspace = true
 env_logger.workspace = true
 fs_extra.workspace = true
+shlex.workspace = true
 
 [package.metadata.rust-analyzer]
 rustc_private = true

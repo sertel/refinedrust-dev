@@ -10,6 +10,8 @@ From refinedrust Require Import fraction_counting util.
 From iris.prelude Require Import options.
 Set Default Proof Using "Type".
 
+(** * Lifetime contexts for keeping track of which lifetimes are alive *)
+
 Class lctxGS Σ := LctxGS {
   (* maps local lifetime names to their corresponding ghost name *)
   lctx_name_inG :: ghost_mapG Σ lft gname;

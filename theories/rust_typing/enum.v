@@ -3,6 +3,9 @@ From refinedrust Require Import uninit int int_rules.
 From refinedrust Require Import products programs.
 Set Default Proof Using "Type".
 
+(** * Enums *)
+(** Enum support is currently WIP as some of the typing rules are incomplete *)
+
 Section union.
   Context `{!typeGS Σ}.
 

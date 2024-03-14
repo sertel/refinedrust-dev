@@ -66,7 +66,7 @@ where
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(PartialOrd, Ord, Clone, Debug, PartialEq, Eq)]
 pub enum CoqName {
     Named(String),
     Unnamed,

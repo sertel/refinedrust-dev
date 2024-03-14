@@ -4,45 +4,6 @@ Set Default Proof Using "Type".
 
 (** * Existential types and invariants *)
 
-  (*  Flow when using OpenedLtype:
-        1. OpenedLtype lt_cur lt_inner lt_full   (where lt_cur and lt_inner do not necessarily have the same refinement type?)
-        2. OpenedLtype lt_cur2 lt_inner lt_full
-        3. (close) CoreableLtype lt_full (requiring that lt_cur2 is unblockable to lt_inner)
-            - this contains a closing viewshift that can go from the core of lt_inner to lt_full.
-              This is proved when initially unfolding into OpenedLtype.
-            - in the Uniq case of Coreable, pinned borrows play a big role.
-              in the pinned part, we have lt_full. in the current part, we have lt_inner, with a vs to lt_full.
-              => we must already set this up when originally opening up the OpenedLtype -- the VS needs to give us the possibility to close with a different ltype that is unblockable to lt_inner.
-            - the important part that let's us close stuff above again: the core of Coreable is lt_full.
-              i.e. we need to show imp_unblockable
-
-        How does the first part of 3. look for different types?
-        - for our plain stuff, already need to show that the new refinement satisfies the invariant again.
-          This depends on the invariant.
-        - for Cell: we can't borrow below when closing the invariant. Here, we will have a very strong condition: the refinement is allowed to change, but the type has to be directly shiftable to the original type.
-          This will be a condition for the contained type at folding time (we can disregard the place_cond we get from nested folding).
-  *)
-
-(*
-  How do we generally formulate a version where P is not persistent?
-  -> challenge: specifying sharing.
-
-  e.g. what should the thing for Vec look like?
-  - we have ltype ownership in P, which is not persistent.
-    (e.g.: specify a specific Pshr, which is persistent. Then need to know that we can do P ==∗ Pshr.)
-    We could require the shared ltype, and thus that it is contained in a borrow.
-    -> for that, need specific instances for ltypes where sharing is actually persistent. In our case it is fine, as we should not have opened ltypes there.
-    Can we have a general sharing mechanism for ltype ownership, which would be required here?
-    - in the case of ◁ ty, it should work at least for the Owned case. Probably also for Uniq.
-    - in general, only if it is does not contain OpenedLtype or BlockedLtype; but ShrBlocked should be fine.
-       (but for shrblocked only under conditions: the sharing lifetime must be at most as long as the existing shrblocked -- lifting this seems possible, but more complicated)
-      Sharing below pinned borrows uses the new reborrow/unnesting laws.
-  -
-
-
- *)
-(*Definition ltype_shareable := .... *)
-
 (** ** Existential types with "simple" invariants that are tacked on via a separating conjunction *)
 (* Note: this does not allow for, e.g., Cell or Mutex -- we will need a different version using non-atomic/atomic invariants for those *)
 

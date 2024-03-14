@@ -5,12 +5,11 @@
 
 use std::vec::Vec;
 
-#[rr::skip]
 #[rr::returns("()")]
 fn init_vec() {
     let mut v: Vec<i32> = Vec::new();
 
     v.push(42);
-    v.pop();
+    assert!(v.pop().unwrap() == 42);
 
 }

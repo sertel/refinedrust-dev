@@ -4,6 +4,8 @@ From refinedrust Require Export base type lft_contexts annotations ltypes progra
 From refinedrust Require Import ltype_rules.
 Set Default Proof Using "Type".
 
+(** * Core rules of the type system *)
+
 Section typing.
   Context `{typeGS Σ}.
   (* NOTE: find_in_context instances should always have a sep conj in their premise, even if the LHS is just [True].
@@ -866,8 +868,6 @@ Section typing.
   Global Instance prove_place_cond_coreable_l_Uniq_inst E L {rt1 rt2} (lt1 : ltype rt1) (lt2 : ltype rt2) κs κ γ :
     ProvePlaceCond E L (Uniq κ γ) (CoreableLtype κs lt1) lt2 | 5 := λ T, i2p (prove_place_cond_coreable_l_Uniq E L lt1 lt2 κs κ γ T).
 
-  (* TODO: lemmas for shrblocked *)
-
   (* NOTE: unfolding lemmas should have lower priority than the primitive ones. *)
 
   (** find obs *)
@@ -1121,7 +1121,6 @@ Section typing.
   Qed.
   (* No instance here, as we may not always want to do that. *)
 
-  (* TODO: need some machinery to simplify the ltype_core in the conclusions. *)
   (* NOTE: we make the assumption that, even for fully-owned places, we want to keep the invariant structure, and not just unfold it completely and forget about the invariants. This is why we keep it open when the refinement type is different, even though we could in principle also close it to any lt_cur'.
 
     Is there a better criterion for this than the refinement type?
@@ -1260,7 +1259,6 @@ Section typing.
             (* show that lt_cur' is a subtype of lt_inner and then fold to lt_full *)
             weak_subltype E L' (Owned false) (r') (#ri) (lt_cur') lt_inner (
               (* re-establish the invariant *)
-              (* TODO: should be modulo unblocking *)
               ∃ rf,
               prove_with_subtype E L' true ProveWithStratify (Cpre ri rf) (λ L'' κs R2,
               (* either fold to coreable, or to the core of lt_full *)
@@ -2075,18 +2073,24 @@ Section typing.
 
 
   Import EqNotations.
+  (** Entry point for checking reads *)
   Lemma type_read π E L T T' e ot :
+    (** Decompose the expression *)
     IntoPlaceCtx π E e T' →
-    T' L (λ L' K l, find_in_context (FindLoc l π) (λ '(existT rto (lt1, r1, b)),
+    T' L (λ L' K l,
+      (** Find the type assignment *)
+      find_in_context (FindLoc l π) (λ '(existT rto (lt1, r1, b)),
+      (** Check the place access *)
       typed_place π E L' l lt1 r1 b b K (λ (L1 : llctx) (κs : list lft) (l2 : loc) (b2 bmin : bor_kind) rti (lt2 : ltype rti) (ri2 : place_rfn rti) (strong : option $ strong_ctx rti) (weak : option $ weak_ctx rto rti),
-        (* unblock etc. *)
+        (** Stratify *)
         stratify_ltype_unblock π E L1 StratRefoldOpened l2 lt2 ri2 b2 (λ L2 R rt3 lt3 ri3,
-        (* certify that this stratification is allowed, or otherwise commit to a strong update *)
+        (** Omitted from the paper: Certify that this stratification is allowed, or otherwise commit to a strong update *)
         prove_place_cond E L2 bmin lt2 lt3 (λ upd,
         prove_place_rfn_cond (if upd is ResultWeak _ then true else false) bmin ri2 ri3 (
+        (** Require the stratified place to be a value type *)
         (* TODO remove this and instead have a [ltype_read_as] TC or so. Currently this will prevent us from reading from ShrBlocked*)
         cast_ltype_to_type E L2 lt3 (λ ty3,
-        (* end reading *)
+        (** Finish reading *)
         typed_read_end π E L2 l2 (◁ ty3) ri3 b2 bmin (if strong is Some _ then AllowStrong else AllowWeak) ot (λ L3 v rt3 ty3 r3 rt2' lt2' ri2' upd2,
         typed_place_finish π E L3 strong weak (access_result_meet upd upd2) R (llft_elt_toks κs) l b lt2' ri2' (λ L4, T L4 v _ ty3 r3))
       )))))))%I
@@ -2149,9 +2153,12 @@ Section typing.
       iModIntro. iExists _, _, _, _. iFrame.
   Qed.
 
-  (* [type_read_end] instance that does a copy *)
+  (** [type_read_end] instance that does a copy *)
   Lemma type_read_ofty_copy E L {rt} π (T : typed_read_end_cont_t rt) b2 bmin br l (ty : type rt) r ot `{!Copyable ty}:
-    (⌜ty_has_op_type ty ot MCCopy⌝ ∗ ⌜lctx_bor_kind_alive E L b2⌝ ∗ ∀ v, T L v rt ty r rt (◁ ty) (PlaceIn r) (ResultWeak eq_refl))
+    (** We have to show that the type allows reads *)
+    (⌜ty_has_op_type ty ot MCCopy⌝ ∗ ⌜lctx_bor_kind_alive E L b2⌝ ∗
+      (** The place is left as-is *)
+      ∀ v, T L v rt ty r rt (◁ ty) (#r) (ResultWeak eq_refl))
     ⊢ typed_read_end π E L l (◁ ty) (#r) b2 bmin br ot T.
   Proof.
     iIntros "(%Hot & %Hal & Hs)" (F ???) "#CTX #HE HL Hna".
@@ -2572,34 +2579,41 @@ Section typing.
   Qed.
   (* NOTE: instances for [typed_addr_of_mut_end] are in alias_ptr.v *)
 
+  (** Top-level rule for creating a mutable borrow *)
   Lemma type_borrow_mut E L T T' e κ π (orty : option rust_type) :
+    (** Decompose the expression *)
     IntoPlaceCtx π E e T' →
-    T' L (λ L1 K l, find_in_context (FindLoc l π) (λ '(existT rto (lt1, r1, b)),
-      (* place *)
+    T' L (λ L1 K l,
+      (** Find the type assignment in the context *)
+      find_in_context (FindLoc l π) (λ '(existT rto (lt1, r1, b)),
+      (** Check the place access *)
       typed_place π E L1 l lt1 r1 b b K (λ L2 κs (l2 : loc) (b2 bmin : bor_kind) rti (lt2 : ltype rti) (ri2 : place_rfn rti) strong weak,
-        (* find the credit context to give the borrow-step a time receipt *)
+        (** Omitted from paper: find the credit context to give the borrow-step a time receipt *)
         find_in_context (FindCreditStore) (λ '(n, m),
-        (* stratify *)
+        (** Stratify *)
         stratify_ltype_unblock π E L2 StratRefoldFull l2 lt2 ri2 b2 (λ L3 R rt2' lt2' ri2',
-        (* certify that this stratification is allowed, or otherwise commit to a strong update *)
+        (** Omitted from paper: Certify that this stratification is allowed, or otherwise commit to a strong update *)
         prove_place_cond E L3 bmin lt2 lt2' (λ upd,
         prove_place_rfn_cond (if upd is ResultWeak _ then true else false) bmin ri2 ri2' (
-        (* needs to be a type *)
+        (** The result of the stratification needs to be a value type *)
         ∃ ty2 ri2'',
         ⌜ri2' = #ri2''⌝ ∗
         mut_eqltype E L3 lt2' (◁ ty2) (
-                (* use the type annotation; but only if we are at an Owned place -- below mutable references (e.g. when reborrowing) our options for subtyping are much more limited.
-          TODO: we could conceivably still do something here, if we require the type transformation to be injective in a sense. *)
+        (** Omitted from the paper: There is optionally a type annotation for the content of the borrow which is generated by the frontend.
+           We use this type annotation, but only if we are at an Owned place -- below mutable references (e.g. when reborrowing) our options for subtyping are much more limited. *)
         typed_option_map (option_combine orty (match bmin with Owned _ => Some () | _ => None end))
           (λ '(rty, _) (T : sigT (λ rt, type rt * rt * access_result rt2' rt)%type → _),
+          (** Find the lifetime name mapping *)
           find_in_context (FindNamedLfts) (λ M, named_lfts M -∗
+          (** Interpret the type annotation *)
           li_tactic (interpret_rust_type_goal M rty) (λ '(existT rt3 ty3),
           (* TODO it would be really nice to have a stronger form of subtyping here that also supports unfolding/folding of invariants *)
             ∃ ri3, weak_subtype E L3 ri2'' ri3 ty2 ty3 (T (existT rt3 (ty3, ri3, ResultStrong)))
           )))
           (existT rt2' (ty2, ri2'', access_result_refl)) (λ '(existT rt4 (ty4, ri4, upd')),
-          (* finish borrow *)
+          (** finish borrow *)
           typed_borrow_mut_end π E L3 κ l2 ty4 (#ri4) b2 bmin (λ (γ : gname) (lt5 : ltype rt4) (r5 : place_rfn rt4),
+          (** return the credit store *)
           credit_store n m -∗
           typed_place_finish π E L3 strong weak (access_result_meet upd upd') R (llft_elt_toks κs) l b
           lt5 r5 (λ L4, T L4 (val_of_loc l2) γ rt4 ty4 ri4)))))))))))
@@ -2692,12 +2706,14 @@ Section typing.
       iSplitR; done.
   Qed.
 
-
+  (** Finish a mutable borrow *)
   Lemma type_borrow_mut_end E L π κ l (rt : Type) (ty : type rt) (r : place_rfn rt) b2 bmin T:
+    (** Check that the place is owned in a way which allows borrows *)
     ⌜bor_kind_mut_borrowable b2⌝ ∗
     ⌜lctx_bor_kind_incl E L (Uniq κ inhabitant) bmin⌝ ∗
-    (* require this for the mutable reference case, to be able to access [b2] *)
+    (** The lifetime at which we borrow still needs to be alive *)
     ⌜lctx_lft_alive E L κ⌝ ∗
+    (** Then, the place becomes blocked *)
     (∀ γ, T γ (BlockedLtype ty κ) (PlaceGhost γ))
     ⊢ typed_borrow_mut_end π E L κ l ty (r) b2 bmin T.
   Proof.

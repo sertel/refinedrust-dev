@@ -1,6 +1,4 @@
 From refinedrust Require Export type ltypes programs .
-  (*program_rules.*)
-(*From refinedrust Require Import ltype_rules.*)
 From refinedrust Require Import uninit.
 From iris Require Import options.
 
@@ -12,7 +10,7 @@ Section type.
 
   (** We refine by [option (place_rfn rt)] in order to borrow the optional contents.
      Note that this really makes it isomorphic to [MaybeUninit<T>] in our model,
-     which is a struct and thus would also get the place wrapper. *)
+     which is a union and thus would also get the place wrapper. *)
   Program Definition maybe_uninit {rt} (T : type rt) : type (option (place_rfn rt)) := {|
     ty_own_val π r v :=
       match r with

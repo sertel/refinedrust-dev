@@ -1,38 +1,21 @@
 #![feature(register_tool)]
 #![register_tool(rr)]
 #![feature(custom_inner_attributes)]
-#![feature(let_else)]
-//#![rr::header("From refinedrust.examples Require Import alloc_shims.")]
+#![rr::import("refinedrust.extra_proofs.minivec", "minivec")]
+#![rr::include("option")]
 
 /// Vec implementation from https://doc.rust-lang.org/nomicon/vec/vec-final.html
 
 use std::marker::PhantomData;
 use std::mem;
-use std::ops::{Deref, DerefMut};
-use std::ptr::{self, NonNull};
+use std::ptr;
 
-#[rr::returns("()")]
-fn get_mut_client() {
-
-    //let mut x = vec![100, 200, 300];
-    let mut x = Vec::new();
-    x.push(100);
-    x.push(200);
-    x.push(300);
-
-    let xr = x.get_mut(1).unwrap();
-    assert!(*xr == 200);
-    *xr = 42;
-    assert!(*x.get_mut(1).unwrap() == 42);
-}
-
+mod client;
 
 
 /// This creates a wrapper around the Rust Alloc API that always fails on allocation failures.
 /// The methods will be fully replaced by shims that implement the same functionality in terms of
 /// the primitives of our language model.
-/// TODO: we may gradually refine these abstractions to get closer to the actual Rust APIs.
-///
 /// General assumptions we make:
 /// - the global allocator has _not_ been reconfigured to not abort on allocation failure,
 ///   in particular we assume that the allocation failure handler does not panic.
@@ -101,37 +84,16 @@ mod RRAlloc {
 }
 
 /// A wrapper module around ptr operations we need.
-/// TODO: gradually refine the shims here. We could for instance also just have a shim
-/// for the `copy_nonoverlapping` intrinsic and properly implement the rest on top.
 mod RRPtr {
-    use std::ptr;
     use std::ptr::NonNull;
 
-    #[rr::shim("ptr_write", "type_of_ptr_write")]
-    pub unsafe fn write<T>(dst: *mut T, src: T) {
-        // shim just does a typed write in Caesium
-        ptr::write(dst, src)
-    }
-
-    #[rr::shim("ptr_read", "type_of_ptr_read")]
-    pub unsafe fn read<T>(src: *const T) -> T {
-        // shim just does a typed read in Caesium
-        ptr::read(src)
-    }
-
-    #[rr::shim("ptr_copy", "type_of_ptr_copy")]
-    pub unsafe fn copy<T>(src: *const T, dst: *mut T, count: usize) {
-        // the shim will implement this via a loop with untyped reads/writes
-        ptr::copy(src, dst, count)
-    }
 
     #[rr::shim("ptr_dangling", "type_of_ptr_dangling")]
     pub fn dangling<T>() -> *mut T{
         NonNull::dangling().as_ptr()
     }
 
-    // TODO: we currently only need these shims because we cannot register shims for std::mut_ptr::add etc. properly in the frontend.
-    // Need to figure out how to get their DefIds properly.
+    // We only need these shims because we cannot get their DefIds in the frontend currently..
     #[rr::shim("ptr_offset", "type_of_ptr_offset")]
     pub unsafe fn mut_offset<T>(ptr: *mut T, count: isize) -> *mut T {
         ptr.offset(count)
@@ -230,14 +192,13 @@ pub struct RawVec<T> {
 #[rr::refined_by("xs" : "list (place_rfn {rt_of T})")]
 #[rr::exists("cap" : "nat", "l" : "loc", "len" : "nat", "els")]
 #[rr::invariant(#type "l" : "els" @ "array_t (maybe_uninit {T}) cap")]
-#[rr::invariant("xs = project_vec_els len els")]
-#[rr::invariant("∀ i, (0 ≤ i < len)%nat → els !! i = Some (#(Some (xs !!! i)))")]
-#[rr::invariant("∀ i, (len ≤ i < cap)%nat → els !! i = Some (#None)")]
-#[rr::invariant("len = length xs")]
-#[rr::invariant("len ≤ cap")]
+#[rr::invariant("Hxs" : "xs = project_vec_els len els")]
+#[rr::invariant("Hlook_1": "∀ i, (0 ≤ i < len)%nat → els !! i = Some (#(Some (xs !!! i)))")]
+#[rr::invariant("Hlook_2": "∀ i, (len ≤ i < cap)%nat → els !! i = Some (#None)")]
+#[rr::invariant("Hlen_eq": "len = length xs")]
+#[rr::invariant("Hcap": "len ≤ cap")]
 // invariant due to GEP / ptr::offset limits: the total size of the allocation should not exceed isize::max bytes
 // we need the ZST case to know that we never call grow except when we have reached the capacity limit
-// TODO would be nice if we could deduplicate that with RawVec.
 #[rr::invariant("if decide (size_of_st {st_of T} = 0%nat) then cap = Z.to_nat (MaxInt usize_t) else (size_of_array_in_bytes {st_of T} cap ≤ MaxInt isize_t)%Z")]
 pub struct Vec<T> {
     #[rr::field("(l, cap)")]
@@ -263,36 +224,10 @@ impl<T> RawVec<T> {
         self.cap
     }
 
-    // needed for VecDeque
-    pub fn with_capacity(capacity: usize) -> Self {
-        if mem::size_of::<T>() == 0 || capacity == 0 {
-            Self {
-                ptr: RRPtr::dangling(),
-                cap: capacity,
-                _marker: PhantomData,
-            }
-        }
-        else {
-            assert!(
-                RRAlloc::check_array_layoutable::<T>(capacity),
-                "Allocation too large"
-            );
-
-            let ptr = unsafe { RRAlloc::alloc_array::<T>(capacity) };
-
-            Self {
-                ptr: ptr as *const T,
-                cap: capacity,
-                _marker: PhantomData,
-            }
-        }
-    }
-
     #[rr::exists("l" : "loc", "cap" : "nat")]
     #[rr::ensures("cap = if decide (size_of_st {st_of T} = 0%nat) then Z.to_nat (MaxInt usize_t) else 0%nat")]
     #[rr::ensures(#type "l" : "(replicate cap #None)" @ "array_t (maybe_uninit {T}) cap")]
     #[rr::returns("(l, cap)")]
-    #[rr::tactics("all: rewrite /size_of_array_in_bytes; simplify_layout_goal; lia.")]
     pub fn new() -> Self {
         // !0 is usize::MAX. This branch should be stripped at compile time.
         let cap = if mem::size_of::<T>() == 0 { !0 } else { 0 };
@@ -300,18 +235,18 @@ impl<T> RawVec<T> {
         // `NonNull::dangling()` doubles as "unallocated" and "zero-sized allocation"
         RawVec {
             ptr: RRPtr::dangling(),
-            cap: cap,
+            cap,
             _marker: PhantomData,
         }
     }
 
     #[rr::params("l", "xs", "cap" : "nat", "γ")]
     #[rr::args("(#(l, cap), γ)")]
-    #[rr::requires("(size_of_array_in_bytes {st_of T} (2 * cap) ≤ MaxInt isize_t)%Z")]
-    #[rr::requires("(size_of_st {st_of T} > 0)%Z")]
+    #[rr::requires("Hsz": "(size_of_array_in_bytes {st_of T} (2 * cap) ≤ MaxInt isize_t)%Z")]
+    #[rr::requires("Hnot_sz": "(size_of_st {st_of T} > 0)%Z")]
     #[rr::requires(#type "l" : "xs" @ "array_t (maybe_uninit {T}) cap")]
     #[rr::exists("new_cap" : "nat", "l'" : "loc")]
-    #[rr::ensures(#iris "gvar_pobs γ (l', new_cap)")]
+    #[rr::observe("γ": "(l', new_cap)")]
     #[rr::ensures(#type "l'" : "(xs ++ replicate (new_cap - cap) #None)" @ "array_t (maybe_uninit {T}) new_cap")]
     #[rr::ensures("new_cap > cap")]
     #[rr::ensures("(size_of_array_in_bytes {st_of T} new_cap ≤ MaxInt isize_t)%Z")]
@@ -321,7 +256,8 @@ impl<T> RawVec<T> {
 
         // since we set the capacity to usize::MAX when T has size 0,
         // getting to here necessarily means the Vec is overfull.
-        assert!(mem::size_of::<T>() != 0, "capacity overflow");
+        // capacity overflow?
+        assert!(mem::size_of::<T>() != 0);
         // from here on: can assume we don't have a ZST
 
         let new_cap = if self.cap == 0 {
@@ -338,10 +274,8 @@ impl<T> RawVec<T> {
         // Ensure that the new allocation doesn't exceed `isize::MAX` bytes.
         // This limit is due to GEP / ptr::offset taking isize offsets, so Rust std generally
         // limits allocations to isize::MAX bytes.
-        assert!(
-            RRAlloc::check_array_layoutable::<T>(new_cap),
-            "Allocation too large"
-        );
+        // Allocation too large?
+        assert!(RRAlloc::check_array_layoutable::<T>(new_cap));
 
         let new_ptr = if self.cap == 0 {
             unsafe { RRAlloc::alloc_array::<T>(new_cap) }
@@ -364,8 +298,6 @@ impl<T> Vec<T> {
     // private function, take an unfolded type
     // we do not move ownership out, but return an alias to the ptr
     #[rr::params("l" : "loc", "cap" : "nat", "len" : "Z")]
-    // TODO: clarify the semantics of the raw part.
-    //#[rr::args(#raw "#-[#(l, cap); #len]")]
     #[rr::args(#raw "#(-[#(l, cap); #len])" @ "shr_ref (Vec_ty {T}) {'a}")]
     #[rr::returns("l" @ "alias_ptr_t")]
     fn ptr<'a>(&'a self) -> *mut T {
@@ -374,8 +306,6 @@ impl<T> Vec<T> {
 
     // private function, take an unfolded type
     #[rr::params("l" : "loc", "cap" : "nat", "len" : "Z")]
-    // TODO: clarify the semantics of the raw part.
-    //#[rr::args(#raw "#(-[#(l, cap); #len])")]
     #[rr::args(#raw "#(-[#(l, cap); #len])" @ "shr_ref (Vec_ty {T}) {'a}")]
     #[rr::returns("cap")]
     fn cap<'a>(&'a self) -> usize {
@@ -399,9 +329,9 @@ impl<T> Vec<T> {
 
     #[rr::params("xs", "γ", "x")]
     #[rr::args("(#xs, γ)", "x")]
-    #[rr::requires("(length xs < MaxInt usize_t)%Z")]
-    #[rr::requires("(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ MaxInt isize_t)%Z")]
-    #[rr::ensures(#iris "gvar_pobs γ (xs ++ [ #x])")]
+    #[rr::requires("Hlen_cap": "(length xs < MaxInt usize_t)%Z")]
+    #[rr::requires("Hsz": "(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ MaxInt isize_t)%Z")]
+    #[rr::observe("γ": "xs ++ [ #x]")]
     pub fn push(&mut self, elem: T) {
         if self.len == self.cap() {
             self.buf.grow();
@@ -417,9 +347,9 @@ impl<T> Vec<T> {
     }
 
     #[rr::params("xs", "γ")]
-    #[rr::args("(#(fmap (M:=list) PlaceIn xs), γ)")]
-    #[rr::returns("fmap PlaceIn (last xs)")]
-    #[rr::ensures(#iris "gvar_pobs γ (take (length xs - 1) (fmap (M:=list) PlaceIn xs))")]
+    #[rr::args("(#(<#> xs), γ)")]
+    #[rr::returns("<#>@{option} (last xs)")]
+    #[rr::observe("γ": "(take (length xs - 1) (<#> xs))")]
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
             None
@@ -429,15 +359,17 @@ impl<T> Vec<T> {
         }
     }
 
+    // Not currently verified
+    #[rr::trust_me]
     #[rr::params("xs", "γ", "i" : "nat", "x")]
-    #[rr::args("(#xs, γ)", "Z.of_nat i", "x")]
+    #[rr::args("(#(<#>xs), γ)", "Z.of_nat i", "x")]
     #[rr::requires("i ≤ length xs")]
-    #[rr::requires("(length xs < MaxInt usize_t)%Z")]
-    #[rr::requires("(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ MaxInt isize_t)%Z")]
-    // TODO: This spec is wrong. It should move the values in xs to the right
-    #[rr::ensures("gvar_pobs γ (<[i := #x]> xs)")]
+    #[rr::requires("(length xs < max_int usize_t)%Z")]
+    #[rr::requires("(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ max_int isize_t)%Z")]
+    #[rr::observe("γ": "(<#> take i xs) ++ [ #x] ++ (<#> drop i xs)")]
     pub fn insert(&mut self, index: usize, elem: T) {
-        assert!(index <= self.len, "index out of bounds");
+        // index out of bounds?
+        assert!(index <= self.len);
         if self.cap() == self.len {
             self.buf.grow();
         }
@@ -455,12 +387,15 @@ impl<T> Vec<T> {
         }
     }
 
+    // Not currently verified
+    #[rr::trust_me]
     #[rr::params("xs", "γ", "i" : "nat")]
-    #[rr::args("(#(fmap (M:=list) PlaceIn xs), γ)", "Z.of_nat i")]
+    #[rr::args("(#(<#> xs), γ)", "Z.of_nat i")]
     #[rr::requires("i < length xs")]
-    #[rr::ensures(#iris "gvar_pobs γ (delete i (fmap (M:=list) PlaceIn xs))")]
+    #[rr::observe("γ": "delete i (<#> xs)")]
     pub fn remove(&mut self, index: usize) -> T {
-        assert!(index < self.len, "index out of bounds");
+        // index out of bounds?
+        assert!(index < self.len);
         unsafe {
             self.len -= 1;
             let result = ptr::read(RRPtr::mut_add(self.ptr(), index));
@@ -475,13 +410,12 @@ impl<T> Vec<T> {
     }
 
     #[rr::params("xs" : "list {rt_of T}", "γ", "i" : "nat")]
-    #[rr::args("(#(fmap (M:=list) PlaceIn xs), γ)", "Z.of_nat i")]
-    #[rr::requires("i < length xs")]
+    #[rr::args("(#(<#> xs), γ)", "Z.of_nat i")]
+    #[rr::requires("Hi": "i < length xs")]
     #[rr::exists("γi")]
     #[rr::returns("(#(xs !!! i), γi)")]
-    #[rr::ensures(#iris "gvar_pobs γ (<[i := PlaceGhost γi]> (fmap (M:=list) PlaceIn xs))")]
+    #[rr::observe("γ": "<[i := PlaceGhost γi]> (<#> xs)")]
     pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut T {
-        // TODO this is needed to force invariant unfolding before the shared borrow for self.ptr.
         self.len;
         unsafe {
             let p = RRPtr::mut_add(self.ptr(), index);
@@ -491,15 +425,17 @@ impl<T> Vec<T> {
     }
 
     #[rr::params("xs" : "list {rt_of T}", "γ", "i" : "nat")]
-    #[rr::args("(#(fmap (M:=list) PlaceIn xs), γ)", "Z.of_nat i")]
-    // NOTE: currently , we need a sligtly more complicated specification that explicitly closes under ghost variable equivalence
+    #[rr::args("(#(<#> xs), γ)", "Z.of_nat i")]
     #[rr::exists("γi", "γ1", "γ2")]
+    #[rr::observe("γ2": "if decide (i < length xs) then <[i := PlaceGhost γ1]> (<#> xs) else <#> xs")]
     #[rr::returns("if decide (i < length xs) then Some (#(#(xs !!! i), γi)) else None")]
+    // NOTE: currently, we need a slightly more complicated specification that explicitly closes
+    // under ghost variable equivalence: the "Inherit" part states that, after 'a has ended, the
+    // ghost variables will have identical values
     #[rr::ensures(#iris "if decide (i < length xs) then Inherit {'a} InheritGhost (Rel2 γ2 γ (eq (A:=list (place_rfn T_rt)))) else True")]
-    #[rr::ensures(#iris "gvar_pobs γ2 (if decide (i < length xs) then <[i := PlaceGhost γ1]> (fmap (M:=list) PlaceIn xs) else fmap (M:=list) PlaceIn xs)")]
     #[rr::ensures(#iris "if decide (i < length xs) then Inherit {'a} InheritGhost (Rel2 γi γ1 (eq (A:=T_rt))) else True")]
     pub fn get_mut<'a>(&'a mut self, index: usize) -> Option<&'a mut T> {
-        if (index < self.len()) {
+        if index < self.len() {
             unsafe { Some (self.get_unchecked_mut(index)) }
         }
         else {
@@ -508,11 +444,10 @@ impl<T> Vec<T> {
     }
 
     #[rr::params("xs", "i" : "nat")]
-    #[rr::args("#(fmap (M:=list) PlaceIn xs)", "Z.of_nat i")]
-    #[rr::requires("i < length xs")]
+    #[rr::args("#(<#> xs)", "Z.of_nat i")]
+    #[rr::requires("Hi": "i < length xs")]
     #[rr::returns("#(xs !!! i)")]
     pub unsafe fn get_unchecked(&self, index: usize) -> &T {
-        // TODO this is needed to force invariant unfolding before the shared borrow for self.ptr.
         self.len;
         unsafe {
             let p = RRPtr::mut_add(self.ptr(), index);
@@ -522,11 +457,10 @@ impl<T> Vec<T> {
     }
 
     #[rr::params("xs", "i" : "nat")]
-    #[rr::args("#(fmap (M:=list) PlaceIn xs)", "Z.of_nat i")]
-    #[rr::requires("i < length xs")]
+    #[rr::args("#(<#> xs)", "Z.of_nat i")]
     #[rr::returns("if decide (i < length xs) then Some (#(#(xs !!! i))) else None")]
     pub fn get(&self, index: usize) -> Option<&T> {
-        if (index < self.len()) {
+        if index < self.len() {
             unsafe { Some (self.get_unchecked(index)) }
         }
         else {

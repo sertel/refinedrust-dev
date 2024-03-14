@@ -131,7 +131,7 @@
           pname = "cargo-${name}";
           src = ./rr_frontend;
 
-          buildInputs = [rust.toolchain];
+          buildInputs = [rust.toolchain pkgs.gnupatch];
           nativeBuildInputs = with pkgs;
             [makeWrapper]
             ++ lib.optionals stdenv.isDarwin [libzip];
