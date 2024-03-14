@@ -19,7 +19,7 @@ Program Definition mbyte_to_byte (mb : mbyte) : option (byte * option alloc_id *
   | MByte b p α => Some (b, p, α)
   | MPtrFrag l n α => Some (
      {| byte_val := ((l.2 `div` 2^(8 * n)) `mod` byte_modulus) |},
-     if l.1 is ProvAlloc a then a else None, 
+     if l.1 is ProvAlloc a then a else None,
      α)
   | MPoison => None
   end.
@@ -39,7 +39,7 @@ Arguments has_layout_val : simpl never.
 Global Typeclasses Opaque has_layout_val.
 
 (** Predicate stating that a byte is at most as secure as α *)
-(* TODO: Is poison secure? Can I get information leakage by observing whether it is UB or not? 
+(* TODO: Is poison secure? Can I get information leakage by observing whether it is UB or not?
   For now, I assume that poison has any security level.
   I think this is okay because our final theorem will assume that the execution is safe. *)
 Definition has_security_mbyte (mb : mbyte) (α : slevel) :=
@@ -144,7 +144,7 @@ Arguments val_to_loc : simpl never.
 Fixpoint val_to_Z_go v : option (slevel * Z) :=
   match v with
   | []           => Some (⊥, 0)
-  | MByte b _ α :: v => 
+  | MByte b _ α :: v =>
       '(α', z) ← val_to_Z_go v;
       Some (α ⊔ α', byte_modulus * z + b.(byte_val))
   | _            => None
@@ -199,13 +199,13 @@ Lemma val_to_of_Z_go z (sz : nat) p α :
 Proof.
   rewrite /bits_per_byte.
   elim: sz z => /=. 1: rewrite /Z.of_nat; move => ???; f_equal; lia.
-  move => sz IH z Hnz [? Hlt]. 
+  move => sz IH z Hnz [? Hlt].
   destruct sz. { simpl in *. rewrite Z.mul_0_r Z.add_0_l.
     rewrite/byte_modulus /=.
-    f_equiv. f_equiv. { rewrite slevel_bot_neutral_r//. } 
+    f_equiv. f_equiv. { rewrite slevel_bot_neutral_r//. }
     lia. }
   rewrite IH /byte_modulus /= -?Z_div_mod_eq_full //.
-  { rewrite slevel_join_idemp//. } 
+  { rewrite slevel_join_idemp//. }
   split; [by apply Z_div_pos|]. apply Zdiv_lt_upper_bound => //.
   rewrite Nat2Z.inj_succ -Zmult_succ_l_reverse Z.pow_add_r // in Hlt.
 Qed.
@@ -302,7 +302,7 @@ Proof.
       rewrite int_modulus_twice_half_modulus. move: Hm HM.
       generalize (int_half_modulus it). move => n Hm HM. lia.
     + rewrite bool_decide_false //. lia.
-  - lia. 
+  - lia.
   - case_bool_decide as Hneg; case_match; split; try lia.
     + rewrite int_modulus_twice_half_modulus. lia.
     + rewrite /int_modulus /bits_per_int. lia.
@@ -346,13 +346,33 @@ Lemma val_to_Z_val_of_loc_None l it α :
   val_to_Z (val_of_loc α l) it = None.
 Proof. apply val_to_Z_val_of_loc_n_None. Qed.
 
-Lemma val_to_Z_NULL_bytes_n it n α : 
+Lemma val_to_Z_go_null_bytes α n :
+  (0 < n)%nat →
+  val_to_Z_go (NULL_bytes_n α n) = Some (α, 0).
+Proof.
+  induction n as [ | n IH]; simpl; first lia.
+  intros Hlt. destruct n; simpl.
+  { rewrite slevel_bot_neutral_r. done. }
+  simpl in IH.
+  rewrite IH; last lia.
+  simpl. rewrite slevel_join_idemp.
+  done.
+Qed.
+Lemma val_to_Z_NULL_bytes_n it n α :
   bytes_per_int it = n →
   val_to_Z (NULL_bytes_n α n) it = Some (α, 0).
 Proof.
   intros <-.
-Admitted.
-Lemma val_to_Z_NULL_bytes it α : 
+  rewrite /val_to_Z.
+  rewrite /NULL_bytes_n repeat_length bool_decide_true; last done.
+  rewrite val_to_Z_go_null_bytes; first last.
+  { specialize (bytes_per_int_gt_0 it). lia. }
+  simpl.
+  rewrite bool_decide_false; first last.
+  { specialize (int_half_modulus_ge_1 it). lia. }
+  rewrite andb_false_r//.
+Qed.
+Lemma val_to_Z_NULL_bytes it α :
   bytes_per_int it = bytes_per_addr →
   val_to_Z (NULL_bytes α) it = Some (α, 0).
 Proof. apply val_to_Z_NULL_bytes_n. Qed.
@@ -361,9 +381,9 @@ Lemma val_to_loc_to_Z_overlap v l it z α α' :
   val_to_loc v = Some (α, l) →
   val_to_Z v it = Some (α', z) →
   v = NULL_bytes α ∧ α' = α.
-Proof. 
-  move => /val_of_to_loc[->|[-> ?//]]. 
-  - by rewrite val_to_Z_val_of_loc_None. 
+Proof.
+  move => /val_of_to_loc[->|[-> ?//]].
+  - by rewrite val_to_Z_val_of_loc_None.
   - subst. intros Hz.
     efeed pose proof val_to_Z_length as Hlen; first apply Hz.
     rewrite val_to_Z_NULL_bytes in Hz; last done.
@@ -442,31 +462,34 @@ Proof.
   - by move => /val_to_Z_length ->.
 Qed.
 
-Lemma val_to_Z_ot_to_Z z it ot v:
-  val_to_Z z it = Some v →
-  match ot with | BoolOp => ∃ b, it = u8 ∧ v = bool_to_Z b | IntOp it' => it = it' | _ => False end →
-  val_to_Z_ot z ot = Some v.
+Lemma val_to_Z_ot_to_Z z it ot v α :
+  val_to_Z z it = Some (α, v) →
+  match ot with
+  | BoolOp => ∃ b, it = u8 ∧ v = bool_to_Z b
+  | IntOp it' => it = it' | _ => False
+  end →
+  val_to_Z_ot z ot = Some (α, v).
 Proof.
   move => ? Hot. destruct ot => //; simplify_eq/= => //. move: Hot => [?[??]]. simplify_eq.
-  apply fmap_Some. eexists _. split; [|done]. by apply val_to_bool_iff_val_to_Z.
+  apply fmap_Some. eexists (_, _). split; [|done]. by apply val_to_bool_iff_val_to_Z.
 Qed.
 
-Definition val_to_char (v : val) : option Z :=
-  z ← val_to_Z v char_it;
-  if decide (is_valid_char z) then Some z else None.
+Definition val_to_char (v : val) : option (slevel * Z) :=
+  '(α, z) ← val_to_Z v char_it;
+  if decide (is_valid_char z) then Some (α, z) else None.
 Definition val_of_char (z : Z) :=
   val_of_Z z char_it.
 
-Lemma val_to_char_length v z :
-  val_to_char v = Some z → length v = 4%nat.
+Lemma val_to_char_length v z α :
+  val_to_char v = Some (α, z) → length v = 4%nat.
 Proof.
   rewrite /val_to_char.
   intros (z' & Hv & Hvalid)%bind_Some.
   apply val_to_Z_length in Hv. done.
 Qed.
 
-Lemma val_to_bytes_id v it n:
-  val_to_Z v it = Some n →
+Lemma val_to_bytes_id v it n α :
+  val_to_Z v it = Some (α, n) →
   val_to_bytes v = Some v.
 Proof.
   rewrite /val_to_Z. case_bool_decide as Heq => // /bind_Some[z [Hgo _]]. clear Heq it.
@@ -482,8 +505,8 @@ Proof.
   rewrite /val_to_bool. repeat case_match => //.
 Qed.
 
-Lemma val_to_bytes_id_char v z:
-  val_to_char v = Some z →
+Lemma val_to_bytes_id_char v z α :
+  val_to_char v = Some (α, z) →
   val_to_bytes v = Some v.
 Proof.
   rewrite /val_to_char.
@@ -501,7 +524,7 @@ Proof.
   induction v as [ | b v IH] in v', Ha |-*; simpl in Ha.
   { injection Ha. intros <-. done. }
   apply bind_Some in Ha as (mb & Ha & Hb).
-  apply fmap_Some in Ha as ((bt & aid) & Ha & ->).
+  apply fmap_Some in Ha as (((bt & aid) & α) & Ha & ->).
   apply bind_Some in Hb as (v'' & Hb & [= <-]).
   apply IH in Hb. simpl. rewrite Hb. simpl. done.
 Qed.
@@ -510,7 +533,7 @@ Qed.
 Definition erase_prov (v : val) : val :=
   fmap (λ byte,
     match byte with
-    | MByte byte _ => MByte byte None
+    | MByte byte _ α => MByte byte None α
     | _ => byte
     end) v.
 Lemma val_to_byte_prov_erase_prov v :
@@ -542,6 +565,11 @@ Proof.
   erewrite val_to_Z_go_erase_prov; last done.
   done.
 Qed.
+End vals.
+
+Notation "v `has_layout_val` n" := (has_layout_val v n) (at level 50) : stdpp_scope.
+Arguments has_layout_val : simpl never.
+Global Typeclasses Opaque has_layout_val.
 
 Arguments erase_prov : simpl never.
 Arguments val_to_Z : simpl never.
