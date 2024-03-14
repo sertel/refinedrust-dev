@@ -5,6 +5,8 @@ Set Default Proof Using "Type".
 (** * Heap and allocations. *)
 
 (** ** Representation of the heap. *)
+Section heap.
+Context `{!ConfidentialInterface}.
 
 Inductive lock_state := WSt | RSt (n : nat).
 
@@ -91,7 +93,7 @@ Lemma heap_lookup_is_Some a p v Paid Plk h:
   a ≤ p < a + length v →
   is_Some (h !! p).
 Proof.
-  elim: v a => /=; first lia. move => b v IH a [[aid [lk [Ha _]]] H] Hp.
+  elim: v a => /=; first lia. move => b v IH a [[aid [lk [Ha _]]] Hlook] Hp.
   destruct (decide (p = a)) as [->|]; first naive_solver.
   apply (IH (Z.succ a)) => //. lia.
 Qed.
@@ -108,8 +110,8 @@ Lemma heap_update_lookup_not_in_range a1 a2 v faid flk h:
   a1 < a2 ∨ a2 + length v ≤ a1 →
   heap_update a2 v faid flk h !! a1 = h !! a1.
 Proof.
-  elim: v a1 a2 => // ?? IH ?? H.
-  rewrite lookup_partial_alter_ne /=; first apply IH; move: H => [] /=; lia.
+  elim: v a1 a2 => // ?? IH ?? Hlt.
+  rewrite lookup_partial_alter_ne /=; first apply IH; move: Hlt => [] /=; lia.
 Qed.
 
 Lemma heap_update_lookup_in_range a1 a2 v faid flk h:
@@ -158,10 +160,10 @@ Lemma heap_upd_heap_at_id l v flk flk' h:
   heap_upd l v flk h = h.
 Proof.
   rewrite /heap_upd.
-  elim: v l => // ?? IH ? [[?[?[H[H1 ?]]]]?] Hlookup /=.
+  elim: v l => // ?? IH ? [[?[?[Hlook[H1 ?]]]]?] Hlookup /=.
   assert (∀ l, Z.succ l.2 = (l +ₗ 1).2) as -> by done.
   rewrite IH => //. apply: partial_alter_self_alt'.
-  by rewrite H Hlookup H1 /=.
+  by rewrite Hlook Hlookup H1 /=.
 Qed.
 
 Lemma heap_free_lookup_in_range a p (n : nat) h:
@@ -178,7 +180,7 @@ Lemma heap_free_lookup_not_in_range a p (n : nat) h:
   ¬ (a ≤ p < a + n) →
   heap_free a n h !! p = h !! p.
 Proof.
-  elim: n a => //= n IH a H.
+  elim: n a => //= n IH a Hle.
   destruct (decide (a = p)) as [->|]; first lia.
   rewrite lookup_delete_ne; last done. apply IH. lia.
 Qed.
@@ -402,11 +404,11 @@ Qed.
 
 (** ** Converting a value to a boolean (for conditionals). *)
 
-Definition cast_to_bool (ot: op_type) (v: val) (st: heap_state) : option bool :=
+Definition cast_to_bool (ot: op_type) (v: val) (st: heap_state) : option (slevel * bool) :=
   match ot with
   | BoolOp   => val_to_bool v
-  | IntOp it => val_to_Z v it ≫= λ n, Some (bool_decide (n ≠ 0))
-  | PtrOp    => val_to_loc v ≫= λ l, heap_loc_eq l NULL_loc st ≫= λ b, Some (negb b)
+  | IntOp it => val_to_Z v it ≫= λ '(α, n), Some (α, bool_decide (n ≠ 0))
+  | PtrOp    => val_to_loc v ≫= λ '(α, l), heap_loc_eq l NULL_loc st ≫= λ b, Some (α, negb b)
   | _        => None
   end.
 
@@ -419,21 +421,21 @@ Fixpoint mem_cast (v : val) (ot : op_type) (st : (gset addr * heap_state)) : val
   default (replicate (length v) MPoison) (
   match ot with
   | PtrOp =>
-    if val_to_loc v is Some l then Some v else
+    if val_to_loc v is Some (α, l) then Some v else
       (* The following reimplements integer to pointer casts as described in the VIP paper. *)
       v' ← val_to_bytes v;
-      a ← val_to_Z v' usize_t;
+      '(α, a) ← val_to_Z v' usize_t;
       (* Technically, this clause is redundant since val_to_loc already converts 0 to NULL. *)
       if bool_decide (a = 0) then
-        Some (val_of_loc (ProvNull, a))
+        Some (val_of_loc α (ProvNull, a))
       else if bool_decide (a ∈ st.1) then
-        Some (val_of_loc (ProvFnPtr, a))
+        Some (val_of_loc α (ProvFnPtr, a))
       else
         let l' := (ProvAlloc (head (provs_in_bytes v)), a) in
         if bool_decide (valid_ptr l' st.2) then
-          Some (val_of_loc l')
+          Some (val_of_loc α l')
         else
-          Some (val_of_loc (ProvAlloc None, a))
+          Some (val_of_loc α (ProvAlloc None, a))
   | IntOp it => val_to_bytes v
   | CharOp => if val_to_char v is Some _ then val_to_bytes v else None
   | BoolOp => if val_to_bool v is Some _ then val_to_bytes v else None
@@ -463,7 +465,7 @@ Proof.
   - destruct (val_to_bytes v) eqn:Hv => //=.
     + move: Hv => /mapM_length. lia.
     + by rewrite replicate_length.
-  - case_match => //=.
+  - case_match => //=. { destruct p; done. }
     destruct (val_to_bytes v) as [v'|] eqn:Hv => //=. 2: by rewrite replicate_length.
     move: Hv => /mapM_length ->.
     destruct (val_to_Z v') eqn:Hv' => //=. 2: by rewrite replicate_length.
@@ -478,22 +480,22 @@ Proof.
     + by rewrite replicate_length.
 Qed.
 
-Lemma mem_cast_id_loc l :
-  mem_cast_id (val_of_loc l) PtrOp.
-Proof. move => st. rewrite /mem_cast /=. by rewrite val_to_of_loc. Qed.
+Lemma mem_cast_id_loc l α :
+  mem_cast_id (val_of_loc α l) PtrOp.
+Proof. move => st. rewrite /mem_cast /= bool_decide_true//. Qed.
 
-Lemma mem_cast_id_int it v n :
-  val_to_Z v it = Some n →
+Lemma mem_cast_id_int it v n α :
+  val_to_Z v it = Some (α, n) →
   mem_cast_id v (IntOp it).
 Proof. move => Hi st. rewrite /mem_cast /=. by erewrite val_to_bytes_id. Qed.
 
-Lemma mem_cast_id_bool v b :
-  val_to_bool v = Some b →
+Lemma mem_cast_id_bool v b α :
+  val_to_bool v = Some (α, b) →
   mem_cast_id v BoolOp.
 Proof. move => Hb st. rewrite /mem_cast /= Hb. by erewrite val_to_bytes_id_bool. Qed.
 
-Lemma mem_cast_id_char v z :
-  val_to_char v = Some z →
+Lemma mem_cast_id_char v z α :
+  val_to_char v = Some (α, z) →
   mem_cast_id v CharOp.
 Proof. move => Hb st. rewrite /mem_cast /= Hb. by erewrite val_to_bytes_id_char. Qed.
 
@@ -553,10 +555,10 @@ Proof.
     + rewrite replicate_length.
       generalize (length v). intros []; done.
   - rewrite /mem_cast.
-    destruct (val_to_loc v) as [l | ] eqn:Heq; simpl.
+    destruct (val_to_loc v) as [[α l] | ] eqn:Heq; simpl.
     { rewrite Heq. done. }
     destruct (val_to_bytes v) as [v' | ] eqn:Heq'; simpl.
-    + destruct (val_to_Z v' usize_t) as [ z | ] eqn:Heq2; simpl.
+    + destruct (val_to_Z v' usize_t) as [ [α z] | ] eqn:Heq2; simpl.
       * case_bool_decide; first by rewrite val_to_of_loc //.
         case_bool_decide; first by rewrite val_to_of_loc //.
         case_bool_decide; by rewrite val_to_of_loc //.
@@ -611,9 +613,9 @@ Proof.
       rewrite replicate_length//.
   - done.
   - rewrite /mem_cast.
-    destruct (val_to_char v) as [z | ] eqn:Heq.
-    + rewrite (val_to_bytes_id_char _ z); last done. simpl.
-      rewrite Heq. simpl. rewrite (val_to_bytes_id_char _ z); done.
+    destruct (val_to_char v) as [[ α z] | ] eqn:Heq.
+    + rewrite (val_to_bytes_id_char _ z α); last done. simpl.
+      rewrite Heq. simpl. rewrite (val_to_bytes_id_char _ z α); done.
     + rewrite replicate_length.
       generalize (length v) as n. simpl.
       clear.
@@ -753,8 +755,8 @@ Lemma alloc_new_block_invariant σ1 σ2 l v kind :
   heap_state_invariant σ2.
 Proof.
   move => []; clear.
-  move => σ1 l aid kind v alloc Haid Hfresh Halloc Hrange H.
-  destruct H as (Hi1&Hi2&Hi3&Hi4&Hi5). split_and!.
+  move => σ1 l aid kind v alloc Haid Hfresh Halloc Hrange Hinv.
+  destruct Hinv as (Hi1&Hi2&Hi3&Hi4&Hi5). split_and!.
   - move => a [id??] /= Ha. destruct (decide (aid = id)) as [->|Hne].
     + exists alloc. split => /=; first by rewrite lookup_insert.
       destruct (decide (l.2 ≤ a < l.2 + length v)) as [|Hne] => //=.
@@ -810,7 +812,7 @@ Lemma alloc_new_blocks_invariant σ1 σ2 ls vs kind :
   heap_state_invariant σ1 →
   heap_state_invariant σ2.
 Proof.
-  elim => [] // ???????? Hb Hbs IH H.
+  elim => [] // ???????? Hb Hbs IH Hinv.
   apply IH. by eapply alloc_new_block_invariant.
 Qed.
 
@@ -820,8 +822,8 @@ Lemma free_block_invariant σ1 σ2 l ly kind :
   heap_state_invariant σ2.
 Proof.
   move => []; clear.
-  move => σ l aid ly kind v al_a al_d Haid Hal_a Hlen Hlookup H.
-  destruct H as (Hi1&Hi2&Hi3&Hi4&Hi5). split_and!.
+  move => σ l aid ly kind v al_a al_d Haid Hal_a Hlen Hlookup Hinv.
+  destruct Hinv as (Hi1&Hi2&Hi3&Hi4&Hi5). split_and!.
   - move => a hc /= Hhc.
     assert (¬ (l.2 ≤ a < l.2 + length v)) as Hnot_in.
     { move => ?. rewrite heap_free_lookup_in_range // in Hhc; lia. }
@@ -857,13 +859,13 @@ Proof.
     + destruct Hal1 as [a1 [Ha1 ?]]. destruct Hal2 as [a2 [Ha2 ?]].
       rewrite !lookup_insert_ne // in Hid1, Hid2, Ha1, Ha2.
       apply (Hi4 id1 id2 al1 al2) => //; by eexists.
-  - move => id al /= Hid [?[Hal1 Hal2]] a Ha. assert (id ≠ aid) as ?.
+  - move => id al /= Hid [?[Hal1 Hal2]] a Ha. assert (id ≠ aid) as Hneq.
     { move => ?; subst id. rewrite lookup_insert in Hal1. naive_solver. }
     rewrite lookup_insert_ne // in Hid, Hal1. simplify_eq.
     rewrite heap_free_lookup_not_in_range;
     first (eapply Hi5 => //; by eexists). move => ?.
     assert (al ## al_a) as Hdisj.
-    { apply (Hi4 _ _ _ _ H Hid Hal_a); by eexists. }
+    { apply (Hi4 _ _ _ _ Hneq Hid Hal_a); by eexists. }
     erewrite elem_of_disjoint in Hdisj. by eapply Hdisj.
 Qed.
 
@@ -872,7 +874,7 @@ Lemma free_blocks_invariant σ1 σ2 ls kind :
   heap_state_invariant σ1 →
   heap_state_invariant σ2.
 Proof.
-  elim => [] // ??????? Hb Hbs IH H.
+  elim => [] // ??????? Hb Hbs IH Hinv.
   apply IH. by eapply free_block_invariant.
 Qed.
 
@@ -887,13 +889,13 @@ Lemma heap_update_heap_cell_in_range_alloc σ a v1 v2 Paid Plk faid flk:
   |}.
 Proof.
   elim: v2 v1 a => // b2 v2 IH [] // b1 v1 a1 Hσ Hcontains Hfaid [] Hlen.
-  move => a2 hc H /=. rewrite /heap_lookup -/heap_lookup in Hcontains.
+  move => a2 hc Hinv /=. rewrite /heap_lookup -/heap_lookup in Hcontains.
   move: Hcontains => [[id[?[Heq [??]]]] Hcontains].
   destruct (decide (a1 = a2)) as [->|Hne].
-  - rewrite lookup_partial_alter -/heap_update in H. simplify_eq => /=.
+  - rewrite lookup_partial_alter -/heap_update in Hinv. simplify_eq => /=.
     rewrite heap_update_lookup_not_in_range; last lia. rewrite Heq /= Hfaid.
     apply (Hσ a2 _ Heq).
-  - rewrite lookup_partial_alter_ne // -/heap_update in H.
+  - rewrite lookup_partial_alter_ne // -/heap_update in Hinv.
     by unshelve eapply (IH _ _ Hσ _ Hfaid Hlen a2 hc) => //.
 Qed.
 
@@ -908,13 +910,13 @@ Lemma heap_update_heap_cell_alloc_alive σ a v1 v2 Paid Plk faid flk:
   |}.
 Proof.
   elim: v2 v1 a => // b2 v2 IH [] // b1 v1 a1 Hσ Hcontains Hfaid [] Hlen.
-  move => a2 hc H /=. rewrite /heap_lookup -/heap_lookup in Hcontains.
+  move => a2 hc Hinv /=. rewrite /heap_lookup -/heap_lookup in Hcontains.
   move: Hcontains => [[id[?[Heq [??]]]] Hcontains].
   destruct (decide (a1 = a2)) as [->|Hne].
-  - rewrite lookup_partial_alter -/heap_update in H. simplify_eq => /=.
+  - rewrite lookup_partial_alter -/heap_update in Hinv. simplify_eq => /=.
     rewrite heap_update_lookup_not_in_range; last lia. rewrite Heq /= Hfaid.
     apply (Hσ a2 _ Heq).
-  - rewrite lookup_partial_alter_ne // -/heap_update in H.
+  - rewrite lookup_partial_alter_ne // -/heap_update in Hinv.
     by unshelve eapply (IH _ _ Hσ _ Hfaid Hlen a2 hc) => //.
 Qed.
 
@@ -928,10 +930,10 @@ Lemma heap_update_alloc_alive_in_heap σ a v1 v2 Paid Plk faid flk:
     hs_allocs := σ.(hs_allocs);
   |}.
 Proof.
-  move => H Hlookup Hfaid Hlen id al /= Hal Halive p Hp.
+  move => Hh Hlookup Hfaid Hlen id al /= Hal Halive p Hp.
   destruct (decide (a ≤ p < a + length v2)).
   - rewrite heap_update_lookup_in_range //=.
-  - rewrite heap_update_lookup_not_in_range; last lia. by eapply H.
+  - rewrite heap_update_lookup_not_in_range; last lia. by eapply Hh.
 Qed.
 
 Lemma heap_update_heap_state_invariant σ a v1 v2 Paid Plk faid flk:
@@ -951,3 +953,4 @@ Proof.
   - move => *. naive_solver.
   - by eapply heap_update_alloc_alive_in_heap.
 Qed.
+End heap.
