@@ -1,6 +1,8 @@
 From refinedrust Require Export type.
 Set Default Proof Using "Type".
 
+(** * Integer types *)
+
 Open Scope Z_scope.
 
 Section int.
@@ -34,10 +36,6 @@ Section int.
   Lemma ty_own_int_in_range l π n it : l ◁ᵥ{π} n @ int it -∗ ⌜n ∈ it⌝.
   Proof. iIntros "[%Hl _]". iPureIntro. rewrite int_elem_of_it_iff. by eapply val_to_Z_in_range. Qed.
 
-  (* We only get this under a later for sharing:
-     the refinement predicate needs to sit under a later for the whole sharing business.
-     TODO is that really the case?
-  *)
   Lemma ty_shr_int_in_range l π κ n it : l ◁ₗ{π, κ} n @ int it -∗ ▷ ⌜n ∈ it⌝.
   Proof.
     iIntros "(%v & (%ly & Hv & (Ha & _) & Halg & Hl))" => /=. iNext. iDestruct "Ha" as "%Hn".

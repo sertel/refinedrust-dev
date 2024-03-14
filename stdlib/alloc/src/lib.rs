@@ -13,6 +13,13 @@ pub struct Global {
 
 }
 
+impl Global {
+    #[rr::only_spec]
+    fn foo(&self) {
+
+    }
+}
+
 unsafe impl Allocator for Global {
     fn allocate(&self, layout: Layout) -> Result<NonNull<[u8]>, AllocError> {
         unimplemented!();

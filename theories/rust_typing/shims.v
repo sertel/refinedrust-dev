@@ -1,6 +1,6 @@
 From refinedrust Require Import typing.
 
-
+(** * Built-in shims for low-level pointer operations *)
 
 (** Tuple defs *)
 (* Since the frontend doesn't generate them for now, we just provide a few pre-defined ones for reasonable sizes. *)

@@ -6,7 +6,7 @@
 
 /// Provides the Coq AST for code and specifications as well as utilities for
 /// constructing them.
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::{Display, Formatter, Write as fWrite};
 use std::io::Write;
 use std::{fmt, io};
@@ -519,7 +519,7 @@ impl Annotation {
     }
 }
 
-type BlockLabel = String;
+type BlockLabel = usize;
 
 pub enum Stmt {
     GotoBlock(BlockLabel),
@@ -565,7 +565,7 @@ impl Stmt {
         let ind = ind.as_str();
         match self {
             Stmt::GotoBlock(block) => {
-                format!("{ind}Goto \"{}\"", block.as_str())
+                format!("{ind}Goto \"_bb{}\"", block)
             },
             Stmt::Return(e) => {
                 format!("{ind}return ({})", e)
@@ -723,7 +723,7 @@ impl Binop {
 pub struct FunctionCode {
     name: String,
     stack_layout: StackMap,
-    basic_blocks: HashMap<String, Stmt>,
+    basic_blocks: BTreeMap<usize, Stmt>,
 
     /// Coq parameters that the function is parameterized over
     required_parameters: Vec<(CoqName, CoqType)>,
@@ -751,7 +751,7 @@ fn make_lft_map_string(els: Vec<(String, String)>) -> String {
 }
 
 impl FunctionCode {
-    const INITIAL_BB: &'static str = "_bb0";
+    const INITIAL_BB: usize = 0;
 
     pub fn caesium_fmt(&self) -> String {
         // format args
@@ -798,17 +798,22 @@ impl FunctionCode {
         let formatted_bb = make_map_string(
             "\n",
             format!("\n{}", make_indent(2).as_str()).as_str(),
-            self.basic_blocks.iter().map(|(name, bb)| (name.to_string(), bb.caesium_fmt(3))).collect(),
+            self.basic_blocks
+                .iter()
+                .map(|(name, bb)| (format!("_bb{name}"), bb.caesium_fmt(3)))
+                .collect(),
         );
 
         if self.basic_blocks.len() < 1 {
             panic!("Function has no basic block");
         }
-        let formatted_init = format!("{}f_init := \"{}\"", make_indent(1).as_str(), Self::INITIAL_BB);
+        let formatted_init = format!("{}f_init := \"_bb{}\"", make_indent(1).as_str(), Self::INITIAL_BB);
 
         // format Coq parameters
         let mut formatted_params = String::with_capacity(20);
-        for (ref name, ref ty) in self.required_parameters.iter() {
+        let mut sorted_params = self.required_parameters.clone();
+        sorted_params.sort_by(|(a, _), (b, _)| a.cmp(b));
+        for (ref name, ref ty) in sorted_params.iter() {
             formatted_params.push_str(format!(" ({} : {})", name, ty).as_str());
         }
 
@@ -899,14 +904,14 @@ impl StackMap {
 /// Builder for a FunctionCode.
 pub struct FunctionCodeBuilder {
     stack_layout: StackMap,
-    basic_blocks: HashMap<String, Stmt>,
+    basic_blocks: BTreeMap<usize, Stmt>,
 }
 
 impl FunctionCodeBuilder {
     pub fn new() -> FunctionCodeBuilder {
         FunctionCodeBuilder {
             stack_layout: StackMap::new(),
-            basic_blocks: HashMap::new(),
+            basic_blocks: BTreeMap::new(),
         }
     }
 
@@ -918,24 +923,24 @@ impl FunctionCodeBuilder {
         self.stack_layout.insert_local(name.to_string(), st);
     }
 
-    pub fn add_basic_block(&mut self, name: String, bb: Stmt) {
-        self.basic_blocks.insert(name, bb);
+    pub fn add_basic_block(&mut self, index: usize, bb: Stmt) {
+        self.basic_blocks.insert(index, bb);
     }
 
     /// Initialize a local lifetime at the start of the function
     /// (i.e., prepend the initialization statementto the first block of the function)
     pub fn initialize_local_lifetime(&mut self, lft: Lft, outliving: Vec<Lft>) {
-        let bb0 = self.basic_blocks.remove(FunctionCode::INITIAL_BB).unwrap();
+        let bb0 = self.basic_blocks.remove(&FunctionCode::INITIAL_BB).unwrap();
         let cont_stmt = Stmt::Annot {
             a: Annotation::StartLft(format!("{}", lft), outliving),
             s: Box::new(bb0),
         };
-        self.basic_blocks.insert(FunctionCode::INITIAL_BB.to_string(), cont_stmt);
+        self.basic_blocks.insert(FunctionCode::INITIAL_BB, cont_stmt);
     }
 }
 
 #[derive(Debug, Clone)]
-struct InvariantMap(HashMap<String, LoopSpec>);
+struct InvariantMap(HashMap<usize, LoopSpec>);
 
 impl Display for InvariantMap {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -1041,11 +1046,14 @@ impl<'def> Function<'def> {
         write!(f, "typed_function π ({}_def ", self.name())?;
 
         // add arguments for the code definition
-        for (loc_name, _, _, _) in self.other_functions.iter() {
-            write!(f, "{}  ", loc_name)?;
-        }
+        let mut code_params: Vec<_> =
+            self.other_functions.iter().map(|(loc_name, _, _, _)| loc_name.clone()).collect();
         for names in self.generic_types.iter() {
-            write!(f, "{} ", names.syn_type)?;
+            code_params.push(names.syn_type.clone());
+        }
+        code_params.sort();
+        for x in code_params.iter() {
+            write!(f, "{}  ", x)?;
         }
 
         // write local syntypes
@@ -1348,7 +1356,7 @@ impl<'def> FunctionBuilder<'def> {
 
     /// Register a loop invariant for the basic block [bb].
     /// Should only be called once per bb.
-    pub fn register_loop_invariant(&mut self, bb: String, spec: LoopSpec) {
+    pub fn register_loop_invariant(&mut self, bb: usize, spec: LoopSpec) {
         if self.loop_invariants.0.insert(bb, spec).is_some() {
             panic!("registered loop invariant multiple times");
         }

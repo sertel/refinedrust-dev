@@ -1,6 +1,5 @@
 From caesium Require Import lang notation.
 From refinedrust Require Import typing.
-From refinedrust.examples.minivec_patched Require Import generated_code_minivec.
 
 Lemma list_lookup_insert_Some' {A} (l : list A) i x j y :
   <[i:=x]>l !! j = Some y ↔
@@ -96,4 +95,3 @@ Global Typeclasses Opaque project_vec_els.
 Global Opaque project_vec_els.
 
 Global Hint Rewrite @project_vec_els_length : lithium_rewrite.
-

@@ -827,6 +827,15 @@ Proof.
   - rewrite !left_id. iApply (fupd_mask_mono with "HP"); done.
 Qed.
 
+Lemma lc_fupd_maybe_elim_later E P wl :
+  £ (Nat.b2n wl) -∗ (▷?wl P) ={E}=∗ P.
+Proof.
+  iIntros "Hcred HP".
+  destruct wl.
+  - iApply (lc_fupd_elim_later with "Hcred HP").
+  - eauto.
+Qed.
+
 Lemma lc_split_le (m n : nat) :
   m ≤ n →
   £ n -∗ £ m ∗ £ (n - m).

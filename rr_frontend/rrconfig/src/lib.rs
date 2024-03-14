@@ -125,6 +125,11 @@ pub fn work_dir() -> String {
     read_setting("work_dir")
 }
 
+pub fn absolute_work_dir() -> PathBuf {
+    let s = work_dir();
+    make_path_absolute(&s)
+}
+
 /// Should we dump debug files?
 pub fn dump_debug_info() -> bool {
     read_setting("dump_debug_info")
@@ -178,6 +183,11 @@ pub fn output_dir() -> Option<PathBuf> {
 /// Whether to admit proofs of functions instead of running Qed.
 pub fn admit_proofs() -> bool {
     read_setting("admit_proofs")
+}
+
+/// Post-generation hook
+pub fn post_generation_hook() -> Option<String> {
+    read_optional_setting("post_generation_hook")
 }
 
 /// Which file to read shims from?

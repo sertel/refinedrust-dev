@@ -2,7 +2,10 @@ From refinedrust Require Export type.
 From iris Require Import options.
 Set Default Proof Using "Type".
 
-(** This file just contains the uninit type definition (without rules), because we need it for the struct ltype definition. *)
+(** * Uninitialized memory *)
+
+(** This file just contains the uninit type definition (without rules), because we need it for the struct ltype definition. 
+  The rules are in [uninit.v]. *)
 
 (** The [bytewise] type allows to give a predicate that needs to hold for all bytes
   owned by the type. *)

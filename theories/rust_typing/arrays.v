@@ -4,68 +4,14 @@ From refinedrust Require Import uninit_def int.
 From refinedrust Require Import uninit value alias_ptr programs.
 Set Default Proof Using "Type".
 
+(** * Array types *)
+
 (** Design decisions:
   - our array's refinements are homogeneously typed.
-    TODO: check in future if we maybe should switch to option refinements for uninit
   - we have a fixed capacity -- otherwise, we cannot define the syntype (it would be a dynamically sized type..)
   - the array does not own its deallocation permission -- because its value form is not a pointer type.
   - it is refined by a list (homogeneous), similarly for the ltype. (we could also refine the ltype by a vec - but that would make everything more complicated)
 *)
-(* How do we get the Rust type [T; n] as a derived form?
-   - want that it unfolds to the same place type at least. It's fine if the type specifies some additional invariants, as long as the place type can accomodate them.
-   - the array ltype needs to be heterogeneous in the child ltypes, so it's got a list of child ltypes -- this enables us to get folding equations with [T; n]
-
-  What does this mean for initialization?
-  - we cannot partially initialize an array, or move some components out of it, even individually.
-    + is this a problem for drop?
-      => Yes. Dropping will drop all elements in sequence, so I need a representation of the intermediate state.
-      => This is not a problem for the Vec use case, but if we want to support proper Rust arrays, we cannot get around it.
-        TODO
-    + we cannot do strong accesses below arrays.
-      We can however at least do borrows. And we should be able to show that imp_unblockable lifts to arrays.
-   This seems excessively restrictive.
-   For now (just for doing Vec) it seems fine however.
-
-  How do we deal with the restricted form of updates allowed below arrays?
-  - we cannot unfold invariants below, at least not directly. We can first borrow to enable that.
-  - how do we express that in terms of constraints? we just do not allow a strong update vs. i.e., we probably also need to make that one optional.
-    That is a rather artificial limitation and an annoying break with the rest of the typesystem.
-  - Note that it would be rather more desirable if I would not have to introduce a new place type for that, given that this is a really specialized type for the concrete vec use case.
-    Basically, I don't want to have to go through the trouble of having a new place type if I don't need very fine-grained tracking of borrows.
-    Can I phrase it like that?
-    + option 1: would need ofty-based typing rules where I do not fully evaluate the place.
-      - potentially: also hand out a remaining place context to the base judgment, in case we do not have a suitable unfolding rule.
-      - then: can add new read/write/borrow _end rules for our new type specifying suitable place context.
-        one quite big departure: we need a wp in the place_end rules.
-        maybe restrict the set of place contexts allowed here.
-      => this seems like it could work, although it too is not a very principles approach.
-    + option 2: have a custom place rule for that that goes from an ofty (array ty len) to an ofty (ty)
-      this basically shortcuts the ltype part.
-      * When we do a shared borrow: get shared borrow; BUT: the whole place context handling is not really prepared for that.
-      + same for mutable borrows, I can't really phrase it in terms of the place contexts.
-      => this does not really seem to be implementable, as it does not fit in our current framework.
-
-   In general, one could even make this case for ArrayLtype in general: rust's bororw checker does not support precise tracking of borrows below, so we could also make a case that we don't need this here.
-      Only issue: other cases where we want to be able to do funky stuff below arrays, e.g. unfolding invariants -- these we fundamentally cannot just collapse into actions on an ofty because something interesting happens on the types below the array.
-   Maybe: this kind of argument is not a good kind of argument, since we even need to handle the cases that in Rust would be unsafe, or are (in case of invariants/functional properties) not expressible in the Rust type system. For the former, this in particular applies to drop handling, and this is the reason why we should have a proper ltype.
-
-   One other point: if I want to implement iterMut properly, I will likely also need this fine-grained control, because that is what happens internally - in unsafe code.
-
-   Is this such a frequently occurring case that it warrants support for that in the judgments?
-   Are cases where this occurrs not rather cases indicating that our current type system is not complete enough?
-  *)
-
-
-  (*
-       coericing ArrayLtype to uninit?
-        if we have a fully concrete array, it's the same.
-       difficulty compared to struct: what happens for symbolic arrays (e.g. an insert with Blocked)?
-
-      Can we develop some generally useful theory for reasoning about symbolic arrays?
-      TODO
-   *)
-
-
 
 
 (* TODO: should we also have an ArrayOp that reads the array elements at an op that is valid for the element types? *)
@@ -3587,47 +3533,6 @@ Section offset_rules.
     SimplifyGoalVal v π (offset_ptr_t st) (l, off) (Some 50%N) :=
     λ T, i2p (offset_ptr_simplify_goal v π l st off T).
 
-  (*
-     prove l +ₗ ... ◁
-
-     subsume (v ◁ᵥ offset_ptr_t) (l ◁ₗ[π, ..] .. )
-
-
-   *)
-
-
-
-  (* Want:
-      - find type assingment
-      - subtype to array
-        this should potentially also be able to move it back in.
-        just subsume_full with a step is probably right.
-      - then we need that the offset is valid, prove it. okay.
-      - then we can provide the array with aliased ownership and get the ownership for that offset out.
-        for that we are going to need a step, if it is Owned true.
-
-     On the other side, when we need to move in again:
-        subtyping here should be able to put in aliases again.
-         so this needs to be owned_subltype_step/subsume_full with a step if it is Owned true, and for Owned false doesn't need a step.
-        in general, we won't have a step.
-        but how do we formulate the lemmas to enable that?
-        well, we basically need the stratification parts for that also in subtyping now...
-        why, well, because we consciously destroy it first.
-
-        but we also get that issue when we first do
-          ptr::write (moving an element out)
-        and then
-          ptr::copy (needs everything in place)
-        Maybe we should stratify place arguments in the precondition first?
-
-        i.e. prove_with_subtype (l ◁ₗ[...] ...) should find assignment for l and then stratify it, if it gets a step.
-          I'm not sure if that is a good idea in general though.
-        TODO
-
-        I guess in principle, maybe that is just something that should also be doable by subtyping, not by stratification.
-
-        Maybe all the value instances for joining values should also be put in there.
-   *)
   Lemma type_extract_value_annot_offset π E L n v l (off : Z) st (T : typed_annot_expr_cont_t) :
     (v ◁ᵥ{π} (l, off) @ offset_ptr_t st -∗ T L v _ (offset_ptr_t st) (l, off))
     ⊢ typed_annot_expr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) T.
@@ -3640,46 +3545,6 @@ Section offset_rules.
     TypedAnnotExpr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st)%I :=
     λ T, i2p (type_extract_value_annot_offset π E L n v l off st T).
 
-  (* Problem:
-        Lithium simplifies only if it cannot find it in the context.
-        Maybe we shou
-
-
-      Now, what is our invariant? Do we want to have offset ptrs in the context as values?
-
-     If so, we get into trouble in some places where we need to go from an aliasptr to an offsetptr.
-
-     If not, we will try to find an assignment and can't find it in the preconditions we have.
-      Ideally, I'd like to be able to introduce something into the context without simplification at some points.
-      Or have simplification for gaining information.
-
-
-   *)
-
-
-
-  (*
-  Lemma type_extract_value_annot_offset π E L n v l (off : nat) st (T : typed_annot_expr_cont_t) :
-    ⌜n > 0⌝ ∗ find_in_context (FindLoc l π) (λ '(existT rt (lt, r, bk)),
-    (* TODO this is a pretty big hack currently and will break once we e.g. first move out the value. The problem is that we have trouble with the dependent evars *)
-      ∃ rt', ⌜rt = list (place_rfn rt')⌝ ∗ ∃ (ty : type rt') len iml (xs : list (place_rfn rt')),
-      subsume_full E L true (l ◁ₗ[π, bk] r @ lt) (l ◁ₗ[π, Owned false] #xs @ ArrayLtype ty len iml) (λ L2 R2,
-        ⌜(off < len)%Z⌝ ∗
-        ⌜ty_syn_type ty = st⌝ ∗ (* TODO might generalize this condition *)
-        (∀ x lt,
-          ⌜xs !! off = Some x⌝ -∗
-          ⌜interpret_iml (◁ ty)%I len iml !! off = Some lt⌝ -∗
-          (l offsetst{st}ₗ off) ◁ₗ[π, Owned false] x @ lt -∗
-          l ◁ₗ[π, Owned false] #xs @ ArrayLtype ty len [(off, AliasLtype _ (ty_syn_type ty) (l offsetst{ty_syn_type ty}ₗ off))] -∗
-          T L v _ (offset_ptr_t st) (l, off)))) -∗
-    typed_annot_expr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) T.
-  Proof.
-    (* TODO *)
-  Admitted.
-  Global Instance type_extract_value_annot_offset_inst π E L n v l off st :
-    TypedAnnotExpr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st)%I :=
-    λ T, i2p (type_extract_value_annot_offset π E L n v l off st T).
-  *)
 End offset_rules.
 
 Global Hint Mode TypedArrayAccess + + + + + + + + + + + + : typeclass_instances.

@@ -15,6 +15,9 @@ impl<T> Option<T> {
         Self::None
     }
 
+    #[rr::params("x")]
+    #[rr::args("x")]
+    #[rr::returns("Some (#x)")]
     pub fn some(x : T) -> Self {
         Self::Some(x)
     }

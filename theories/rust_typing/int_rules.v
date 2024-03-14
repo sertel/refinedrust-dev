@@ -2,6 +2,8 @@ From refinedrust Require Export type int.
 From refinedrust Require Import programs.
 Set Default Proof Using "Type".
 
+(** * Rules for integer types *)
+
 Open Scope Z_scope.
 
 Section typing.

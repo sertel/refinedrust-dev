@@ -1,23 +1,28 @@
-(** * Defining pinned borrows on top of the existing lifetime logic. *)
-(** Compared to a proper deep change in the model, we get two laters for some operations. *)
 From lrust.lifetime Require Export lifetime.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic Require Import saved_prop.
 From iris Require Import options.
+
+(** * Defining pinned borrows on top of the existing lifetime logic. *)
+
+(** Normal borrows &{κ} P in the lifetime logic just carry around their current contents P.
+Pinned borrows &{κ}[Q] P additionally remember what ownership Q the lender actually expects back, and this can be used to get stronger rules when updating the contents P to P'.
+
+Pinned borrows can be obtained from regular borrows at any time, and folded back when the current contents P match the pinned ownership Q, as expressed by the rules [pinned_bor_fold] and [pinned_bor_unfold].
+
+The key new rule provided by pinned borrows is [pinned_bor_acc_strong]: it states how the contents P of a pinned borrow &{κ} [Q] P may be accessed and modified by \emph{opening} the borrow.
+Specifically, it allows to exchange a pinned borrow and a proof that κ is still alive (expressed through a lifetime token q.[κ]) for the contents P of the borrow, as well as an update stating how the borrow may be closed again.
+This update allows to put any updated proposition P' into the borrow to regain ownership of the borrow and the token, provided that it can be shown that P' can be returned to the ownership Q expected by the borrows lender again.
+Specifically, once κ is dead (expressed by †κ), P' needs to be updatable either to P, the previous contents, or just to the pinned contents Q expected by the lender.
+ *)
+
+(** Compared to a proper deep change in the model of the lifetime logic, we have to strip two later modalities for some operations, which we get around with using Iris's later credits mechanism. *)
 
 Class pinnedBorG Σ := PinnedBorG {
   pinnedBorG_saved_prop_ownG : savedPropG Σ;
 }.
 Local Existing Instance pinnedBorG_saved_prop_ownG.
 Global Hint Mode pinnedBorG - : typeclass_instances.
-
-(* what is the story here for parallel access to products? we consume credits here, so parallel composition does not work.
-  Options:
-  - use the accessor with two laters in that case.
-  - maybe switch completely to prepaid reasoning.
-    => ended up doing this!
-  - .... ?
- *)
 
 Definition pinnedBorΣ : gFunctors := #[ savedPropΣ ].
 Global Instance subG_pinnedBorΣ {Σ} : subG pinnedBorΣ Σ → pinnedBorG Σ.
@@ -26,6 +31,7 @@ Proof. solve_inG. Qed.
 Section pinned_borrows.
   Context `{!invGS Σ} `{!pinnedBorG Σ} `{!lftGS Σ userE}.
 
+  (** The model of pinned borrows *)
   Local Definition pinned_bor_def (κ : lft) (Q : iProp Σ) (P : iProp Σ) : iProp Σ :=
     ∃ γ κ' P', κ ⊑ κ' ∗ saved_prop_own γ (DfracOwn (1/2)) P' ∗
       ▷ □ (P' → P) ∗
@@ -86,12 +92,6 @@ Section pinned_borrows.
     - iDestruct "Hdead" as "(Hdead & Hcl)". iMod "Hcl" as "_".
       by iApply (pinned_bor_fake with "LFT Hdead").
   Qed.
-  (*
-      Q: can we reasonably go further and directly make it prepaid, if we anyways have credits?
-      - the accessors will need to regenerate it.
-      - so this makes this interface less flexible. We just save on one credit at allocation time.
-      => think more about the trade-off.
-   *)
 
   (** Note: we need a credit here to eliminate the later when opening a borrow.
      Just having a later in the VS does not work because we are using an atomic accessor. *)
@@ -146,6 +146,7 @@ Section pinned_borrows.
   Qed.
 
 
+  (** The key rule *)
   (* This lemma requires a credit in the closing viewshift.
      This is a choice we take in order to not get two laters over [P] when opening, but "just" one.
      For the client, this slightly restricts the interface, but the credit-based reasoning we do here

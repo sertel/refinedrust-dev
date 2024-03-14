@@ -1,0 +1,137 @@
+{
+  "items": [
+    {
+      "kind": "adt",
+      "path": [
+        "Vec"
+      ],
+      "rtype": "Vec_inv_t_rt",
+      "semtype": "Vec_inv_t",
+      "syntype": "Vec_st"
+    },
+    {
+      "kind": "adt",
+      "path": [
+        "RawVec"
+      ],
+      "rtype": "RawVec_inv_t_rt",
+      "semtype": "RawVec_inv_t",
+      "syntype": "RawVec_st"
+    },
+    {
+      "kind": "method",
+      "name": "RawVec_T_ptr",
+      "path": [
+        "ptr"
+      ],
+      "spec": "type_of_RawVec_T_ptr"
+    },
+    {
+      "kind": "method",
+      "name": "RawVec_T_cap",
+      "path": [
+        "cap"
+      ],
+      "spec": "type_of_RawVec_T_cap"
+    },
+    {
+      "kind": "method",
+      "name": "RawVec_T_new",
+      "path": [
+        "new"
+      ],
+      "spec": "type_of_RawVec_T_new"
+    },
+    {
+      "kind": "method",
+      "name": "RawVec_T_grow",
+      "path": [
+        "grow"
+      ],
+      "spec": "type_of_RawVec_T_grow"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_len",
+      "path": [
+        "len"
+      ],
+      "spec": "type_of_Vec_T_len"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_new",
+      "path": [
+        "new"
+      ],
+      "spec": "type_of_Vec_T_new"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_push",
+      "path": [
+        "push"
+      ],
+      "spec": "type_of_Vec_T_push"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_pop",
+      "path": [
+        "pop"
+      ],
+      "spec": "type_of_Vec_T_pop"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_insert",
+      "path": [
+        "insert"
+      ],
+      "spec": "type_of_Vec_T_insert"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_remove",
+      "path": [
+        "remove"
+      ],
+      "spec": "type_of_Vec_T_remove"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_get_unchecked_mut",
+      "path": [
+        "get_unchecked_mut"
+      ],
+      "spec": "type_of_Vec_T_get_unchecked_mut"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_get_mut",
+      "path": [
+        "get_mut"
+      ],
+      "spec": "type_of_Vec_T_get_mut"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_get_unchecked",
+      "path": [
+        "get_unchecked"
+      ],
+      "spec": "type_of_Vec_T_get_unchecked"
+    },
+    {
+      "kind": "method",
+      "name": "Vec_T_get",
+      "path": [
+        "get"
+      ],
+      "spec": "type_of_Vec_T_get"
+    }
+  ],
+  "refinedrust_module": "generated_specs_minivec",
+  "refinedrust_name": "minivec",
+  "refinedrust_path": "refinedrust.examples.minivec.generated"
+}

@@ -109,7 +109,7 @@ Ltac add_case_distinction_info info :=
 (** * Tactics cleaning the proof state *)
 Ltac clear_unused_vars :=
   repeat match goal with
-         | H : ?T |- _ =>
+         | H1 := FUNCTION_NAME _, H : ?T |- _ =>
            lazymatch T with
            (* Keep cache *)
            | CACHED _ => fail

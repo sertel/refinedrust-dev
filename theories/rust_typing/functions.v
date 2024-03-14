@@ -1,6 +1,8 @@
 From refinedrust Require Export type.
 From refinedrust Require Import programs uninit.
 Set Default Proof Using "Type".
+  
+(** * Function types *)
 
 (* "entry-point" statement *)
 Definition to_runtime_function (fn : function) (lsa lsv : list loc) (lya lyv : list layout) : runtime_function :=

@@ -9,17 +9,9 @@ From refinedrust.automation Require Export simpl solvers proof_state.
 Set Default Proof Using "Type".
 
 
-(** * Registering extensions *)
+(** * Registering extensions to Lithium *)
 (** More automation for modular arithmetics. *)
 Ltac Zify.zify_post_hook ::= Z.to_euclidean_division_equations.
-
-(*Ltac li_pm_reduce_tac H ::= eval cbv [t2mt mt_type mt_movable] in H.*)
-
-(*
-Ltac custom_exist_tac A protect ::=
-  idtac
-  .
- *)
 
 Global Hint Transparent ly_size : solve_protected_eq_db.
 Ltac solve_protected_eq_hook ::=

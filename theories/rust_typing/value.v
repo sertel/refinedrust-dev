@@ -2,6 +2,9 @@ From refinedrust Require Export type ltypes programs.
 From refinedrust Require Import memcasts ltype_rules.
 From iris Require Import options.
 
+(** * The value type *)
+(** The value type just says that there is a particular sequence of bytes which can be read and written from memory at a particular [op_type]. *)
+
 
 Definition is_value_ot_core (ot : op_type) (ot' : op_type) (mt : memcast_compat_type) : Prop :=
   match ot' with
@@ -44,7 +47,7 @@ Qed.
 Section value.
   Context `{!typeGS Σ}.
 
-  (* Intuitively: want to say that the value is v _up to memcasts_ at ot.  *)
+  (* Intuitively: want to say that the value is v _up to memcasts_ at st.  *)
   Program Definition value_t (st : syn_type) : type val := {|
     st_own π vs v :=
       (∃ ot,
@@ -227,16 +230,17 @@ Section ofty_lemmas.
   Qed.
 
   (* NOTE: We can make this into a typed value afterwards using [ofty_value_untyped_make_typed] *)
-  Lemma ofty_own_split_value_untyped π F l {rt} (ty : type rt) r ly :
+  Lemma ofty_own_split_value_untyped π F l wl {rt} (ty : type rt) r ly :
     lftE ⊆ F →
     syn_type_has_layout (ty_syn_type ty) ly →
-    (l ◁ₗ[π, Owned false] #r @ ◁ ty)%I ={F}=∗ ∃ v,
-    v ◁ᵥ{π} r @ ty ∗ l ◁ₗ[π, Owned false] #v @ ◁ (value_t (UntypedSynType ly)).
+    (l ◁ₗ[π, Owned wl] #r @ ◁ ty)%I -∗ ▷?wl |={F}=> ∃ v,
+    v ◁ᵥ{π} r @ ty ∗ l ◁ₗ[π, Owned wl] #v @ ◁ (value_t (UntypedSynType ly)).
   Proof.
     iIntros (? Halg) "Hty".
     rewrite (ltype_own_ofty_unfold ty) /lty_of_ty_own.
-    iDestruct "Hty" as "(%ly' & % & % & Hsc & Hlb & _ & %r' & <- & Hb)".
+    iDestruct "Hty" as "(%ly' & % & % & Hsc & Hlb & Hc & %r' & <- & Hb)".
     assert (ly' = ly) as -> by by eapply syn_type_has_layout_inj.
+    iNext.
     iMod (fupd_mask_mono with "Hb") as "(%v & Hl & Hv)"; first done.
     iPoseProof (own_val_split_value _ _ _ _ (UntypedSynType _) with "Hv") as "(Hv' & Hv)".
     { split; first done. eapply syn_type_has_layout_make_untyped; done. }
@@ -244,9 +248,20 @@ Section ofty_lemmas.
     rewrite ltype_own_ofty_unfold /lty_of_ty_own.
     iExists _. simpl.
     iSplitR. { iPureIntro. eapply syn_type_has_layout_make_untyped; done. }
-    iSplitR; first done. iFrame. iSplitR; first done.
+    iSplitR; first done. iFrame.
     iExists _. iSplitR; first done. iModIntro.
     iExists v. by iFrame.
+  Qed.
+  Lemma ofty_own_split_value_untyped_lc π F l wl {rt} (ty : type rt) r ly :
+    lftE ⊆ F →
+    syn_type_has_layout (ty_syn_type ty) ly →
+    £ (Nat.b2n wl) -∗
+    (l ◁ₗ[π, Owned wl] #r @ ◁ ty)%I ={F}=∗ ∃ v,
+    v ◁ᵥ{π} r @ ty ∗ l ◁ₗ[π, Owned wl] #v @ ◁ (value_t (UntypedSynType ly)).
+  Proof.
+    iIntros (? Halg) "Hcred Hty".
+    iPoseProof (ofty_own_split_value_untyped with "Hty") as "Hb"; [done.. |].
+    iMod (lc_fupd_maybe_elim_later with "Hcred Hb") as "Ha". done.
   Qed.
 
   (* TODO ideally, the requirement for the UntypedOp case should just generally hold for types. Untyped should always be possible. *)

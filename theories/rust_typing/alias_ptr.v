@@ -2,6 +2,7 @@ From refinedrust Require Export type ltypes programs.
 From refinedrust Require Import memcasts ltype_rules value.
 From iris Require Import options.
 
+(** * Raw pointers *)
 
 (** A specialized version of values [value_t] for pointers.
   This is mainly useful if we want to specify ownership of allocations in an ADT separately (e.g. in RawVec) from the field of the struct actually containing the pointer.
@@ -350,7 +351,6 @@ Section alias_ltype.
   Next Obligation. intros. apply ltype_uniq_openable_ofty. Qed.
   (* TODO more instances for other ltypes *)
 
-
   (** ExtractValueAnnot for splitting into a value assignment [◁ᵥ] and a [value_t] location *)
   Lemma type_extract_value_annot_alias π E L n v l (T : typed_annot_expr_cont_t) :
     find_in_context (FindLoc l π) (λ '(existT rt (lt, r, bk)),
@@ -366,22 +366,12 @@ Section alias_ltype.
     rewrite /compute_layout_goal. simpl.
     iDestruct "HT" as "(%Hle & %ly & %Hst & HT)".
     iIntros "#CTX #HE HL Halias". iApply step_fupdN_intro; first done.
-    rewrite (ltype_own_ofty_unfold ty) /lty_of_ty_own.
-    iDestruct "Hl" as "(%ly' & % & % & Hsc & Hlb & Hcreds & %r & <- & Hb)".
-    assert (ly' = ly) as -> by by eapply syn_type_has_layout_inj.
-    iPoseProof (bi.laterN_le _ n with "Hb") as "Hb"; first done.
+    iPoseProof (ofty_own_split_value_untyped with "Hl") as "Ha"; [done.. | ].
+    iPoseProof (bi.laterN_le _ n with "Ha") as "Ha"; first done.
     iNext.
-    iMod (fupd_mask_mono with "Hb") as "(%v3 & Hl & Hv)"; first done.
-    iPoseProof (own_val_split_value _ _ _ _ (UntypedSynType _) with "Hv") as "(Hv' & Hv)".
-    { split; first done. eapply syn_type_has_layout_make_untyped; done. }
-    iDestruct ("HT" with "Hv [Hl Hv' Hlb Hcreds]") as "HT".
-    { rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-      iExists _. simpl.
-      iSplitR. { iPureIntro. eapply syn_type_has_layout_make_untyped; done. }
-      iSplitR; first done. iFrame.
-      iExists _. iSplitR; first done. iModIntro.
-      iExists v3. by iFrame. }
-    iExists L, _, _, _. by iFrame.
+    iMod (fupd_mask_mono with "Ha") as "(%v3 & Hv & Hl)"; first done.
+    iPoseProof ("HT" with "Hv Hl") as "HT".
+    iModIntro. eauto with iFrame.
   Qed.
   Global Instance type_extract_value_annot_alias_inst π E L n v l :
     TypedAnnotExpr π E L n ExtractValueAnnot v (v ◁ᵥ{π} l @ alias_ptr_t)%I :=

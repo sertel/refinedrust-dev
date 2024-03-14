@@ -6,6 +6,9 @@ From refinedrust Require Export base util pinned_borrows lft_contexts gvar_refin
 From caesium Require Import loc.
 From iris Require Import options.
 
+(** * RefinedRust's notion of value types *)
+
+(** Iris resource algebras that need to be available *)
 Class typeGS Σ := TypeG {
   type_heapG :: refinedcG Σ;
   type_lftGS :: lftGS Σ lft_userE;
@@ -32,65 +35,58 @@ Proof.
   rewrite /num_cred/num_laters_per_step /=. lia.
 Qed.
 
-(**
-  Types are defined via ownership of values with a determined layout.
-  This encodes that types are always movable in Rust. *)
-
-(*
-What is the right way to handle sharing? One pain point are all the fancy updates and so on that we need to strip.
-This is particularly bad for mut refs: we have an alternation
-   &κ' (|==> ... |==> &pin κ (... |==> inner))
-and want to use unnesting + sharing of the inner one.
-Here, we use later credits at a logical step to get to
-  &(κ' ⊓ κ) inner
- *)
+(** Types are defined semantically by what it means for a value to have a particular type. 
+    Types are indexed by their refinement type [rt].
+*)
 Record type `{!typeGS Σ} (rt : Type) := {
+  (** The refinement type should be inhabited *)
   ty_rt_inhabited : Inhabited rt;
+
+  (** Ownership of values *)
   ty_own_val : thread_id → rt → val → iProp Σ;
+
+  (** This type's syntactic type *)
   ty_syn_type : syn_type;
-  (* this is formulated as a property of the semantic type, because the memcast compatibility is a semantic property *)
-  (* TODO is this the right formulation? the valid op_types should already be determined by the syn_type
-      we could require some properties that ty_has_op_type ot mt implies that ot is valid for ty_syn_type.
-      otoh, it's questionable whether we really need that.
-  *)
+
+  (** Determines how values are altered when they are read and written *)
+  (** This is formulated as a property of the semantic type, because the memcast compatibility is a semantic property *)
   _ty_has_op_type : op_type → memcast_compat_type → Prop;
 
-
+  (** The sharing predicate: what does it mean to have a shared reference to this type at a particular lifetime? *)
   ty_shr : lft → thread_id → rt → loc → iProp Σ;
-  (* We have a separate well-formedness predicate to capture persistent + timeless information about
+
+  (** We have a separate well-formedness predicate to capture persistent + timeless information about
     the type's structure. Needed to evade troubles with the ltype unfolding equations. *)
   ty_sidecond : iProp Σ;
-  (* In essence, this is a kind of "ghost-drop" that only happens at the level of the logic when a value goes out-of-scope/ is unused.)
-    Most importantly, we use it to get observations out of mutable borrows.
-    (Note that we will also need a proper "Drop" class for the drop trait, but that's different.)
-  *)
+
+  (** In essence, this is a kind of "ghost-drop" that only happens at the level of the logic when a value goes out-of-scope/ is unused.)
+    Most importantly, we use it to get observations out of mutable borrows. *)
   ty_ghost_drop : thread_id → rt → iProp Σ;
+
   (* [ty_lfts] is the set of lifetimes that needs to be active for this type to make sense.*)
   ty_lfts : list lft;
+
   (* [ty_wf_E] is a set of inclusion constraints on lifetimes that need to hold for the type to make sense. *)
   ty_wf_E : elctx;
 
-  (**
-    Note: Can we require this with a later over the ty_own_val, but no later over the layout?
-      No: we usually need timelessness to extract it, which would require an update.
-      But with this formulation, the client can still eliminate laters at updates by monotonicity of laters over wands.
-   *)
+  (** Given the concrete layout algorithm at runtime, we can get a layout *)
   ty_has_layout π r v :
     ty_own_val π r v -∗ ∃ ly : layout, ⌜syn_type_has_layout ty_syn_type ly⌝ ∗ ⌜v `has_layout_val` ly⌝;
-  (* if we specify a particular op_type, its layout needs to be compatible with the underlying syntactic type *)
+
+  (** if we specify a particular op_type, its layout needs to be compatible with the underlying syntactic type *)
   _ty_op_type_stable ot mt : _ty_has_op_type ot mt → syn_type_has_layout ty_syn_type (ot_layout ot);
+
+  (** We can get access to the sidecondition *)
   ty_own_val_sidecond π r v : ty_own_val π r v -∗ ty_sidecond;
   ty_shr_sidecond κ π r l : ty_shr κ π r l -∗ ty_sidecond;
 
+  (** The sharing predicate is persistent *)
   ty_shr_persistent κ π l r : Persistent (ty_shr κ π r l);
+  (** The address at which a shared type is stored must be correctly aligned *)
   ty_shr_aligned κ π l r :
     ty_shr κ π r l -∗ ∃ ly : layout, ⌜l `has_layout_loc` ly⌝ ∗ ⌜syn_type_has_layout ty_syn_type ly⌝;
 
-  (* TODO possibly add a sidecondition on the refinement that the type is allowed to specify for sharing.
-        In particular, PlaceGhost is interesting. *)
-  (* TODO potentially require an interpretation for ty_wf_E as part of sharing? Then we could define ty_lfts similar to lambdarust for references, instead of also including all the nested lifetimes.
-     On the other hand, that would require establishing all these inclusions when initiating sharing.
-    *)
+  (** We need to be able to initiate sharing *)
   ty_share E κ l ly π r q:
     lftE ⊆ E →
     rrust_ctx -∗
@@ -105,13 +101,15 @@ Record type `{!typeGS Σ} (rt : Type) := {
     (* after a logical step, we can initiate sharing *)
     logical_step E (ty_shr κ π r l ∗ q.[κ ⊓ κ']);
 
+  (** The sharing predicate is monotonic *)
   ty_shr_mono κ κ' tid r l :
     κ' ⊑ κ -∗ ty_shr κ tid r l -∗ ty_shr κ' tid r l;
 
+  (** We can ghost-drop *)
   ty_own_ghost_drop π r v F :
     lftE ⊆ F → ty_own_val π r v -∗ logical_step F (ty_ghost_drop π r);
 
-  (* we can transport value ownership over memcasts according to the specification by [ty_has_op_type] *)
+  (** We can transport value ownership over memcasts according to the specification by [ty_has_op_type] *)
   _ty_memcast_compat ot mt st π r v :
     _ty_has_op_type ot mt →
     ty_own_val π r v -∗
@@ -143,15 +141,12 @@ Arguments ty_rt_inhabited {_ _ _}.
 Arguments ty_own_val {_ _ _}.
 Arguments ty_sidecond {_ _ _}.
 Arguments ty_syn_type {_ _ _}.
-(*Arguments ty_layout {_ _ _}.*)
 Arguments ty_shr {_ _ _}.
 Arguments ty_ghost_drop {_ _ _}.
 Arguments ty_lfts {_ _ _} _.
 Arguments ty_wf_E {_ _ _} _.
 Arguments ty_share {_ _ _}.
 Arguments ty_own_ghost_drop {_ _ _}.
-(*Arguments ty_has_op_type_compat {_ _ _} [_ _ _].*)
-(*Existing Instance ty_ghost_drop_timeless.*)
 
 (** We seal [ty_has_op_type] in order to avoid performance issues with automation accidentally unfolding it. *)
 Definition ty_has_op_type_aux `{!typeGS Σ} : seal (@_ty_has_op_type _ _). Proof. by eexists. Qed.

@@ -54,7 +54,7 @@ default:
 nix-cache:
   stage: nix-cache
   variables:
-    NIX_DERIVATION: .#theories.inputDerivation .#frontend.inputDerivation nixpkgs#gnumake
+    NIX_DERIVATION: .#theories.inputDerivation .#frontend.inputDerivation nixpkgs#gnumake nixpkgs#gnupatch
   extends: .build_to_cache
 
 clippy:
@@ -99,8 +99,3 @@ tests:
          cd -
          nix shell -c dune build --display=short --root=.
      done
-   - |
-     cd ..
-     echo "(lang dune 3.8)" >| rr_frontend/dune-project
-     echo "(using coq 0.8)" >> rr_frontend/dune-project
-     nix shell -c dune build --display=short --root=rr_frontend

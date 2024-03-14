@@ -10,21 +10,26 @@ uninstall:
 	@dune uninstall
 .PHONY: uninstall
 
-clean:
+clean: clean_all
 	@dune clean
 .PHONY: clean
 
 frontend:
 	cd rr_frontend && ./refinedrust build && ./refinedrust install
 
-RUST_SRC = stdlib/vec case_studies/paper-examples case_studies/tests
+RUST_SRC = stdlib/alloc stdlib/option stdlib/vec case_studies/paper-examples case_studies/tests case_studies/minivec
 
 %.gen: % phony
 	cd $< && cargo refinedrust
 .PHONY: phony
 
+%.clean: % phony
+	cd $< && cargo clean
+.PHONY: phony
+
 generate_all: $(addsuffix .gen, $(RUST_SRC))
-  
+
+clean_all: $(addsuffix .clean, $(RUST_SRC))
 
 .PHONY: generate_all
 

@@ -7,6 +7,8 @@ From refinedrust Require Import programs functions products.
 From iris.program_logic Require Export language. (* must be last to get the correct nsteps *)
 Set Default Proof Using "Type".
 
+(** * RefinedRust's adequacy proof *)
+
 Class typePreG Σ := PreTypeG {
   type_invG                      :: invGpreS Σ;
   type_na_invG                   :: na_invG Σ;
@@ -126,6 +128,8 @@ Proof.
     iFrame. iR. iExists 0. iFrame.
 Qed.
 
+(*Print Assumptions refinedrust_adequacy.*)
+
 (* clients of this:
     - create a function map with monomorphized entries of all the functions they need
         -> this we need to know upfront.
@@ -135,7 +139,6 @@ Qed.
 
 
   clients of this may also instantiate it with concrete layouts, if they can provide a layout algorithm that computes them.
-  we may want to provide a verified repr(C) algorithm for completeness/increasing trust in the interface.
  *)
 
 

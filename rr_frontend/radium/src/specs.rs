@@ -439,7 +439,7 @@ impl<'def> LiteralTypeUse<'def> {
     }
 
     /// Get the syn_type term for this struct use.
-    pub fn generate_syn_type_term(&self) -> SynType {
+    pub fn generate_raw_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
         for p in self.params.iter() {
@@ -448,6 +448,17 @@ impl<'def> LiteralTypeUse<'def> {
         }
         let specialized_spec = CoqAppTerm::new(self.def.syn_type.clone(), param_sts);
         SynType::Literal(specialized_spec.to_string())
+    }
+
+    pub fn generate_syn_type_term(&self) -> SynType {
+        // first get the syntys for the type params
+        let mut param_sts = Vec::new();
+        for p in self.params.iter() {
+            let st = p.get_syn_type();
+            param_sts.push(format!("({})", st));
+        }
+        let specialized_spec = CoqAppTerm::new(self.def.syn_type.clone(), param_sts).to_string();
+        SynType::Literal(format!("({specialized_spec} : syn_type)"))
     }
 
     /// Generate a string representation of this struct use.
@@ -475,7 +486,7 @@ pub struct LiteralTyParam {
 
 impl LiteralTyParam {
     /// Make a literal type for this type parameter and a given st_name.
-    fn make_literal_type(&self) -> LiteralType {
+    pub fn make_literal_type(&self) -> LiteralType {
         LiteralType {
             rust_name: Some(self.rust_name.clone()),
             type_term: self.type_term.clone(),
@@ -741,10 +752,10 @@ pub struct TyOwnSpec {
 }
 
 impl TyOwnSpec {
-    pub fn new(loc: String, rfn: String, ty: String, annot_meta: TypeAnnotMeta) -> Self {
+    pub fn new(loc: String, rfn: String, ty: String, with_later: bool, annot_meta: TypeAnnotMeta) -> Self {
         TyOwnSpec {
             loc,
-            with_later: true,
+            with_later,
             rfn,
             ty,
             annot_meta,
@@ -1334,12 +1345,11 @@ impl<'def> AbstractVariant<'def> {
         }
 
         // intro to main def
+        write!(out, "{}Definition {} : type ({}).\n", indent, self.plain_ty_name, self.rfn_type).unwrap();
         write!(
             out,
-            "{}Definition {} : type ({}) := {}.\n",
-            indent,
-            self.plain_ty_name,
-            self.rfn_type,
+            "{indent}Proof using {}. exact ({}). Defined.\n",
+            ty_params.iter().map(|x| x.type_term.clone()).collect::<Vec<_>>().join(" "),
             self.generate_coq_type_term(sls_app)
         )
         .unwrap();
@@ -1495,6 +1505,16 @@ impl<'def> AbstractStruct<'def> {
                 &self.plain_rt_def_name(),
                 &self.ty_params,
             )),
+        }
+    }
+
+    /// Make a literal type.
+    pub fn make_literal_type(&self) -> LiteralType {
+        LiteralType {
+            rust_name: Some(self.name().to_string()),
+            type_term: self.public_type_name().to_string(),
+            refinement_type: CoqType::Literal(self.public_rt_def_name()),
+            syn_type: SynType::Literal(self.sls_def_name().to_string()),
         }
     }
 }
@@ -1780,7 +1800,7 @@ pub struct EnumSpec {
 pub struct AbstractEnum<'def> {
     /// variants of this enum: name, variant, a mask describing which of the type parameters it uses, and the
     /// discriminant
-    pub(crate) variants: Vec<(String, AbstractStructRef<'def>, Vec<bool>, i128)>,
+    pub(crate) variants: Vec<(String, AbstractStructRef<'def>, i128)>,
 
     /// specification
     spec: EnumSpec,
@@ -1835,7 +1855,7 @@ impl<'def> AbstractEnum<'def> {
         &self.st_def_name
     }
 
-    pub fn get_variant(&self, i: usize) -> Option<&(String, AbstractStructRef<'def>, Vec<bool>, i128)> {
+    pub fn get_variant(&self, i: usize) -> Option<&(String, AbstractStructRef<'def>, i128)> {
         self.variants.get(i)
     }
 
@@ -1859,24 +1879,13 @@ impl<'def> AbstractEnum<'def> {
         }
         out.push_str("\n");
 
-        let mut variant_typarams = Vec::new();
-
         // generate all the component structs
-        for (_, v, mask, _) in self.variants.iter() {
+        for (_, v, _) in self.variants.iter() {
             let vbor = v.borrow();
             let vbor = vbor.as_ref().unwrap();
 
-            let mut typarams = Vec::new();
-            let mut typarams_use = Vec::new();
-            for (name, mask) in self.ty_params.iter().zip(mask.iter()) {
-                if *mask {
-                    typarams.push(format!("({} : syn_type)", name.syn_type.to_string()));
-                    typarams_use.push(name.syn_type.to_string());
-                }
-            }
             write!(out, "{}\n", vbor.variant_def.generate_coq_sls_def_core(&typarams, &typarams_use))
                 .unwrap();
-            variant_typarams.push(typarams);
         }
 
         // intro to main def
@@ -1891,7 +1900,7 @@ impl<'def> AbstractEnum<'def> {
         .unwrap();
         let mut needs_sep = false;
 
-        for ((name, var, _, _), masked_typarams) in self.variants.iter().zip(variant_typarams.iter()) {
+        for (name, var, _) in self.variants.iter() {
             if needs_sep {
                 out.push_str(";");
             }
@@ -1907,7 +1916,7 @@ impl<'def> AbstractEnum<'def> {
                 indent,
                 name,
                 vbor.st_def_name(),
-                masked_typarams.join(" ")
+                typarams.join(" ")
             )
             .unwrap();
         }
@@ -1915,7 +1924,7 @@ impl<'def> AbstractEnum<'def> {
         write!(out, "] {} [", self.repr).unwrap();
         // now write the tag-discriminant list
         needs_sep = false;
-        for (name, _, _, discr) in self.variants.iter() {
+        for (name, _, discr) in self.variants.iter() {
             if needs_sep {
                 out.push_str("; ");
             }
@@ -1954,7 +1963,7 @@ impl<'def> AbstractEnum<'def> {
 
         let spec = &self.spec;
         write!(out, "λ rfn, match rfn with ").unwrap();
-        for ((name, _, _, _), (pat, apps, _)) in self.variants.iter().zip(spec.variant_patterns.iter()) {
+        for ((name, _, _), (pat, apps, _)) in self.variants.iter().zip(spec.variant_patterns.iter()) {
             write!(out, "| {} => \"{name}\" ", CoqAppTerm::new(pat, apps.clone())).unwrap();
         }
         write!(out, "end").unwrap();
@@ -1970,7 +1979,7 @@ impl<'def> AbstractEnum<'def> {
         let spec = &self.spec;
 
         write!(out, "λ rfn, match rfn with ").unwrap();
-        for ((_name, var, _, _), (pat, apps, rfn)) in self.variants.iter().zip(spec.variant_patterns.iter()) {
+        for ((_name, var, _), (pat, apps, rfn)) in self.variants.iter().zip(spec.variant_patterns.iter()) {
             let v = var.borrow();
             let v = v.as_ref().unwrap();
             // we can just use the plain name here, because we assume this is used in an
@@ -1991,7 +2000,7 @@ impl<'def> AbstractEnum<'def> {
         let conditions: Vec<_> = self
             .variants
             .iter()
-            .map(|(name, var, _, _)| {
+            .map(|(name, var, _)| {
                 let v = var.borrow();
                 let v = v.as_ref().unwrap();
                 let ty = v.public_type_name();
@@ -2021,9 +2030,7 @@ impl<'def> AbstractEnum<'def> {
         let mut out = String::with_capacity(200);
         let indent = "  ";
 
-        for ((tag, s, mask, _), (pat, args, res)) in
-            self.variants.iter().zip(self.spec.variant_patterns.iter())
-        {
+        for ((tag, s, _), (pat, args, res)) in self.variants.iter().zip(self.spec.variant_patterns.iter()) {
             write!(
                 out,
                 "{indent}Global Program Instance construct_enum_{}_{tag} {} ",
@@ -2034,16 +2041,10 @@ impl<'def> AbstractEnum<'def> {
 
             // add st constraints on params
             let mut sls_app = Vec::new();
-            for (ty, m) in self.ty_params.iter().zip(mask.iter()) {
-                if *m {
-                    write!(
-                        out,
-                        "{} `{{!TCDone ({} = ty_syn_type {})}} ",
-                        ty.syn_type, ty.syn_type, ty.type_term
-                    )
+            for ty in self.ty_params.iter() {
+                write!(out, "{} `{{!TCDone ({} = ty_syn_type {})}} ", ty.syn_type, ty.syn_type, ty.type_term)
                     .unwrap();
-                    sls_app.push(ty.syn_type.clone());
-                }
+                sls_app.push(ty.syn_type.clone());
             }
             let s2 = s.borrow();
             let s3 = s2.as_ref().unwrap();
@@ -2094,7 +2095,7 @@ impl<'def> AbstractEnum<'def> {
 
         // define types and type abstractions for all the component types.
         // TODO: we should actually use the abstracted types here.
-        for (_name, variant, _, _) in self.variants.iter() {
+        for (_name, variant, _) in self.variants.iter() {
             let v = variant.borrow();
             let v = v.as_ref().unwrap();
             write!(out, "{}\n", v.variant_def.generate_coq_type_def_core(&v.ty_params)).unwrap();
@@ -2195,6 +2196,16 @@ impl<'def> AbstractEnum<'def> {
 
         out
     }
+
+    /// Make a literal type.
+    pub fn make_literal_type(&self) -> LiteralType {
+        LiteralType {
+            rust_name: Some(self.name().to_string()),
+            type_term: self.public_type_name().to_string(),
+            refinement_type: CoqType::Literal(self.public_rt_def_name().to_string()),
+            syn_type: SynType::Literal(self.els_def_name().to_string()),
+        }
+    }
 }
 
 pub type AbstractEnumRef<'def> = &'def RefCell<Option<AbstractEnum<'def>>>;
@@ -2202,7 +2213,7 @@ pub type AbstractEnumRef<'def> = &'def RefCell<Option<AbstractEnum<'def>>>;
 /// A builder for plain enums without fancy invariants etc.
 pub struct EnumBuilder<'def> {
     /// the variants
-    variants: Vec<(String, AbstractStructRef<'def>, Vec<bool>, i128)>,
+    variants: Vec<(String, AbstractStructRef<'def>, i128)>,
     /// the enum's name
     name: String,
     /// names for the type parameters (for the Coq definitions)
@@ -2258,14 +2269,8 @@ impl<'def> EnumBuilder<'def> {
     /// Append a variant to the struct def.
     /// `name` is also the Coq constructor of the refinement type we use.
     /// `used_params` is a mask describing which type parameters are used by this variant.
-    pub fn add_variant(
-        &mut self,
-        name: &str,
-        variant: AbstractStructRef<'def>,
-        used_params: Vec<bool>,
-        discriminant: i128,
-    ) {
-        self.variants.push((name.to_string(), variant, used_params, discriminant));
+    pub fn add_variant(&mut self, name: &str, variant: AbstractStructRef<'def>, discriminant: i128) {
+        self.variants.push((name.to_string(), variant, discriminant));
     }
 }
 

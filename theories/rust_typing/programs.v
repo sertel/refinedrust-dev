@@ -2183,6 +2183,22 @@ Section judgments.
     ProveWithSubtype E L step pm (case_destruct b P) :=
     λ T, i2p (prove_with_subtype_case_destruct E L step pm b P T).
 
+
+  Lemma prove_with_subtype_if_decide_true E L step pm P `{!Decision P} `{!CanSolve P} P1 P2 T :
+    prove_with_subtype E L step pm P1 T ⊢
+    prove_with_subtype E L step pm (if (decide P) then P1 else P2) T.
+  Proof. rewrite decide_True; done. Qed.
+  Global Instance prove_with_subtype_decide_true_inst E L step pm P `{!Decision P} `{!CanSolve P} P1 P2 :
+    ProveWithSubtype E L step pm (if (decide P) then P1 else P2) :=
+      λ T, i2p (prove_with_subtype_if_decide_true E L step pm P P1 P2 T).
+  Lemma prove_with_subtype_if_decide_false E L step pm P `{!Decision P} `{!CanSolve (¬ P)} P1 P2 T :
+    prove_with_subtype E L step pm P2 T ⊢
+    prove_with_subtype E L step pm (if (decide P) then P1 else P2) T.
+  Proof. rewrite decide_False; done. Qed.
+  Global Instance prove_with_subtype_decide_false_inst E L step pm P `{!Decision P} `{!CanSolve (¬ P)} P1 P2 :
+    ProveWithSubtype E L step pm (if (decide P) then P1 else P2) :=
+      λ T, i2p (prove_with_subtype_if_decide_false E L step pm P P1 P2 T).
+
   Lemma prove_with_subtype_li_trace E L step pm {M} (m : M) P T :
     li_trace m (prove_with_subtype E L step pm P T)
     ⊢ prove_with_subtype E L step pm (li_trace m P) T.

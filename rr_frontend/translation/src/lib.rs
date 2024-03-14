@@ -81,7 +81,9 @@ fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
 
     let mut defn_order = Vec::new();
     while !topo.is_empty() {
-        let next = topo.pop_all();
+        let mut next = topo.pop_all();
+        // sort these by lexicographic order
+        next.sort();
         if next.is_empty() {
             // dependency cycle detected
             panic!("RefinedRust does not currently support mutually recursive types");
@@ -188,13 +190,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         None
     }
 
-    fn make_adt_shim_entry(
-        &self,
-        did: DefId,
-        syntype: &str,
-        reftype: &str,
-        semtype: &str,
-    ) -> Option<shim_registry::AdtShim> {
+    fn make_adt_shim_entry(&self, did: DefId, lit: radium::LiteralType) -> Option<shim_registry::AdtShim> {
         info!("making shim entry for {:?}", did);
         if did.is_local() {
             match self.env.tcx().visibility(did) {
@@ -207,9 +203,9 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
                     let a = shim_registry::AdtShim {
                         path: interned_path,
-                        refinement_type: reftype.to_string(),
-                        syn_type: syntype.to_string(),
-                        sem_type: semtype.to_string(),
+                        refinement_type: lit.refinement_type.to_string(),
+                        syn_type: lit.syn_type.to_string(),
+                        sem_type: lit.type_term.to_string(),
                     };
                     return Some(a);
                 },
@@ -232,12 +228,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         for (did, entry) in variant_defs.iter() {
             let entry = entry.borrow();
             if let Some(entry) = entry.as_ref() {
-                if let Some(shim) = self.make_adt_shim_entry(
-                    *did,
-                    entry.st_def_name(),
-                    &entry.public_rt_def_name(),
-                    entry.public_type_name(),
-                ) {
+                if let Some(shim) = self.make_adt_shim_entry(*did, entry.make_literal_type()) {
                     adt_shims.push(shim);
                 }
             }
@@ -245,12 +236,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         for (did, entry) in enum_defs.iter() {
             let entry = entry.borrow();
             if let Some(entry) = entry.as_ref() {
-                if let Some(shim) = self.make_adt_shim_entry(
-                    *did,
-                    entry.st_def_name(),
-                    &entry.public_rt_def_name(),
-                    entry.public_type_name(),
-                ) {
+                if let Some(shim) = self.make_adt_shim_entry(*did, entry.make_literal_type()) {
                     adt_shims.push(shim);
                 }
             }

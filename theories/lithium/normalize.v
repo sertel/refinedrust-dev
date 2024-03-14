@@ -52,6 +52,8 @@ Ltac normalize_autorewrite :=
 #[export] Hint Rewrite bool_to_Z_neq_0_bool_decide bool_to_Z_eq_0_bool_decide : lithium_rewrite.
 #[export] Hint Rewrite keep_factor2_is_power_of_two keep_factor2_min_eq using can_solve : lithium_rewrite.
 #[export] Hint Rewrite keep_factor2_min_1 keep_factor2_twice : lithium_rewrite.
+#[export] Hint Rewrite @decide_True using can_solve : lithium_rewrite.
+#[export] Hint Rewrite @decide_False using can_solve : lithium_rewrite.
 
 Local Definition lookup_insert_gmap A K `{Countable K} := lookup_insert (M := gmap K) (A := A).
 #[export] Hint Rewrite lookup_insert_gmap : lithium_rewrite.
