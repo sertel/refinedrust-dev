@@ -55,13 +55,16 @@ mod utils;
 
 use std::fs::File;
 
+use const_parser::ConstAttrParser;
 use crate_parser::CrateAttrParser;
 use environment::Environment;
-use function_body::{FunctionTranslator, ProcedureMode, ProcedureScope};
+use function_body::{ConstScope, FunctionTranslator, ProcedureMode, ProcedureScope};
 use mod_parser::ModuleAttrParser;
 use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
 use spec_parsers::verbose_function_spec_parser::{get_export_as_attr, get_shim_attrs};
-use spec_parsers::{crate_attr_parser as crate_parser, module_attr_parser as mod_parser};
+use spec_parsers::{
+    const_attr_parser as const_parser, crate_attr_parser as crate_parser, module_attr_parser as mod_parser,
+};
 use topological_sort::TopologicalSort;
 use type_translator::TypeTranslator;
 use {attribute_parse as parse, rrconfig};
@@ -98,6 +101,7 @@ fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
 pub struct VerificationCtxt<'tcx, 'rcx> {
     env: &'rcx Environment<'tcx>,
     procedure_registry: ProcedureScope<'rcx>,
+    const_registry: ConstScope<'rcx>,
     type_translator: &'rcx TypeTranslator<'rcx, 'tcx>,
     functions: &'rcx [LocalDefId],
     /// the second component determines whether to include it in the code file as well
@@ -352,7 +356,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         code_file
             .write(
                 "Section code.\n\
-            Context `{!typeGS Σ}.\n\
+            Context `{!refinedrustGS Σ}.\n\
             Open Scope printing_sugar.\n\n"
                     .as_bytes(),
             )
@@ -370,7 +374,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             .write(
                 "\
             Section specs.\n\
-            Context `{!typeGS Σ}.\n\n"
+            Context `{!refinedrustGS Σ}.\n\n"
                     .as_bytes(),
             )
             .unwrap();
@@ -456,7 +460,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     .write(
                         "\
                     Section proof.\n\
-                    Context `{!typeGS Σ}.\n"
+                    Context `{!refinedrustGS Σ}.\n"
                             .as_bytes(),
                     )
                     .unwrap();
@@ -500,7 +504,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 write!(
                     proof_file,
                     "\
-                    From caesium Require Import lang notation.\n\
+                        From caesium Require Import lang notation.\n\
                     From refinedrust Require Import typing shims.\n\
                     From {}.{stem}.generated Require Import generated_code_{stem} generated_specs_{stem}.\n\
                     From {}.{stem}.generated Require Import generated_template_{}.\n",
@@ -520,7 +524,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     .write(
                         "\
                     Section proof.\n\
-                    Context `{!typeGS Σ}.\n"
+                    Context `{!refinedrustGS Σ}.\n"
                             .as_bytes(),
                     )
                     .unwrap();
@@ -690,7 +694,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
              (name {proof_module_path})\n\
              (modules {})\n\
              (theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust {} {}.{}.generated))",
-            proof_modules.join(" "), extra_theories.join(" "), self.coq_path_prefix, stem).unwrap();
+             proof_modules.join(" "), extra_theories.join(" "), self.coq_path_prefix, stem).unwrap();
     }
 }
 
@@ -713,7 +717,7 @@ fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<
                     shim.name.to_string(),
                     function_body::ProcedureMode::Shim,
                 );
-                vcx.procedure_registry.register_function(&did, meta);
+                vcx.procedure_registry.register_function(&did, meta)?;
             },
             _ => {
                 println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
@@ -772,7 +776,7 @@ fn get_most_restrictive_function_mode<'tcx, 'rcx>(
 }
 
 /// Register functions of the crate in the procedure registry.
-fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
+fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<(), String> {
     for &f in vcx.functions {
         let mut mode = get_most_restrictive_function_mode(vcx, f.to_def_id());
 
@@ -793,7 +797,7 @@ fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                 annot.code_name,
                 function_body::ProcedureMode::Shim,
             );
-            vcx.procedure_registry.register_function(&f.to_def_id(), meta);
+            vcx.procedure_registry.register_function(&f.to_def_id(), meta)?;
 
             continue;
         }
@@ -812,8 +816,9 @@ fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
 
         let meta = function_body::ProcedureMeta::new(spec_name, fname, mode);
 
-        vcx.procedure_registry.register_function(&f.to_def_id(), meta);
+        vcx.procedure_registry.register_function(&f.to_def_id(), meta)?;
     }
+    Ok(())
 }
 
 fn propagate_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
@@ -860,6 +865,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             &filtered_attrs,
             &vcx.type_translator,
             &vcx.procedure_registry,
+            &vcx.const_registry,
         );
 
         if mode.is_only_spec() {
@@ -951,6 +957,44 @@ pub fn get_filtered_functions<'tcx>(env: &Environment<'tcx>) -> Vec<LocalDefId> 
         info!("Function {:?} has a spec and will be processed", f);
     }
     functions_with_spec
+}
+
+/// Get constants in the current scope.
+pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<(), String> {
+    let statics = vcx.env.get_statics();
+
+    for s in statics.iter() {
+        let ty: ty::EarlyBinder<ty::Ty<'tcx>> = vcx.env.tcx().type_of(s.to_def_id());
+
+        let const_attrs = utils::filter_tool_attrs(vcx.env.get_attributes(s.to_def_id()));
+        if const_attrs.is_empty() {
+            continue;
+        }
+
+        let ty = ty.skip_binder();
+        match vcx.type_translator.translate_type(&ty).map_err(|x| format!("{:?}", x)) {
+            Ok(translated_ty) => {
+                let full_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(s.to_def_id()));
+
+                let mut const_parser = const_parser::VerboseConstAttrParser::new();
+                let const_spec = const_parser.parse_const_attrs(*s, &const_attrs)?;
+
+                let name = const_spec.name;
+                let loc_name = format!("{name}_loc");
+
+                let meta = radium::StaticMeta {
+                    ident: name,
+                    loc_name,
+                    ty: translated_ty,
+                };
+                vcx.const_registry.statics.insert(s.to_def_id(), meta);
+            },
+            Err(e) => {
+                println!("Warning: static {:?} has unsupported type, skipping: {:?}", s, e);
+            },
+        }
+    }
+    Ok(())
 }
 
 /// Get and parse all module attributes.
@@ -1060,6 +1104,7 @@ where
 
     // add includes to the shim registry
     let library_load_paths = rrconfig::lib_load_paths();
+    info!("Loading libraries from {:?}", library_load_paths);
     let found_libs = scan_loadpaths(&library_load_paths).map_err(|e| e.to_string())?;
     info!("Found the following RefinedRust libraries in the loadpath: {:?}", found_libs);
     for incl in includes.iter() {
@@ -1089,11 +1134,16 @@ where
         extra_imports: imports.into_iter().map(|x| (x, false)).collect(),
         coq_path_prefix: path_prefix,
         shim_registry,
+        const_registry: ConstScope {
+            statics: HashMap::new(),
+        },
     };
 
-    register_functions(&mut vcx);
+    register_functions(&mut vcx)?;
 
     register_shims(&mut vcx)?;
+
+    register_consts(&mut vcx)?;
 
     translate_functions(&mut vcx);
 

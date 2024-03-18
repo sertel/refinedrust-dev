@@ -6,7 +6,7 @@ From refinedrust.examples.minivec.generated Require Import generated_template_Ra
 Set Default Proof Using "Type".
 
 Section proof.
-Context `{!typeGS Σ}.
+Context `{!refinedrustGS Σ}.
 Lemma RawVec_T_cap_proof (π : thread_id) :
   RawVec_T_cap_lemma π.
 Proof.

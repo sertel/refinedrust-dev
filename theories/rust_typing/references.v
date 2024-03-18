@@ -199,6 +199,23 @@ Section mut_ref.
   Qed.
 End mut_ref.
 
+Section ofty.
+  Context `{!typeGS Σ}.
+
+  (** A very fundamental equivalence that should hold. *)
+  Lemma mut_ref_ofty_uniq_equiv {rt} (ty : type rt) π κ l r γ :
+    l ◁ₗ[π, Uniq κ γ] #r @ (◁ ty) ⊣⊢ l ◁ᵥ{π} (#r, γ) @ mut_ref ty κ.
+  Proof.
+    rewrite ltype_own_ofty_unfold/lty_of_ty_own {3}/ty_own_val/=.
+    iSplit.
+    - iIntros "(%ly & %Hst & %Hly & #Hsc & #Hlb & Hc & Hobs & Hb)".
+      iExists _, _. iR. iR. iR. iFrame "# ∗".
+    -iIntros "(%l' & %ly & %Hl & % & % & #Hlb & #Hsc & Hobs & Hc & Hb)".
+      apply val_of_loc_inj in Hl. subst.
+      iExists _. iR. iR. iFrame "# ∗".
+  Qed.
+End ofty.
+
 Section subtype.
   Context `{!typeGS Σ}.
 
@@ -1767,6 +1784,23 @@ Section shr_ref.
     rewrite heap_mapsto_fractional. iFrame.
   Qed.
 End shr_ref.
+
+Section ofty.
+  Context `{!typeGS Σ}.
+
+  (** A very fundamental equivalence that should hold *)
+  Lemma shr_ref_ofty_shared_equiv {rt} (ty : type rt) π κ l r :
+    l ◁ₗ[π, Shared κ] #r @ (◁ ty) ⊣⊢ l ◁ᵥ{π} #r @ shr_ref ty κ.
+  Proof.
+    rewrite ltype_own_ofty_unfold/lty_of_ty_own /ty_own_val/=.
+    iSplit.
+    - iIntros "(%ly & %Hst & %Hly & #Hsc & #Hlb & %r' & <- & #Ha)".
+      iExists _, _, _. iR. iR. iR. iFrame "#". done.
+    -iIntros "(%l' & %ly & %r' & %Hl & % & % & #Hsc & #Hlb & <- & #Ha)".
+      apply val_of_loc_inj in Hl. subst.
+      iExists _. iR. iR. iFrame "#". iExists _. iR. done.
+  Qed.
+End ofty.
 
 Section subtype.
   Context `{typeGS Σ}.

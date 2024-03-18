@@ -6,7 +6,7 @@ From refinedrust.examples.minivec.generated Require Import generated_template_cl
 Set Default Proof Using "Type".
 
 Section proof.
-Context `{!typeGS Σ}.
+Context `{!refinedrustGS Σ}.
 Lemma client_get_mut_client_proof (π : thread_id) :
   client_get_mut_client_lemma π.
 Proof.

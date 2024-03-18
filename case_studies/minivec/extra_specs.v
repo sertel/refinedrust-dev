@@ -1,5 +1,4 @@
 Section resolve_ghost.
-  Context `{!typeGS Σ}.
   Context {T_rt : Type}.
   Context (T_ty : type (T_rt)).
 
