@@ -117,7 +117,8 @@ Section na_ex.
     iMod (bor_persistent with "LFT HP Htok") as "(>HP & Htok)"; first solve_ndisj.
 
     iMod (bor_get_persistent _ (ty_sidecond ty) with "LFT [] Hb Htok") as "(Hty & Hb & Htok)"; first solve_ndisj.
-    { iIntros "Hv".
+    { iIntros "$ !> !>".
+      iApply ty_own_val_sidecond.
       (* NOTE: Use ty_own_val_sidecond *)
       admit. }
 
@@ -430,6 +431,70 @@ Section generated_code.
       simp_ltypes. done.
     Qed.
 
+    Lemma na_ex_plain_t_open_shared F π (ty : type rt) q κ l (x : X) :
+      lftE ⊆ F →
+      ↑shrN.@l ⊆ F →
+
+      na_own π ⊤ -∗
+      q.[κ] -∗
+      l ◁ₗ[π, Shared κ] (#x) @ (◁ (∃na; P, ty)) ={F}=∗
+
+      ∃ r : rt, P.(na_inv_P) π r x ∗
+      ▷ (l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
+
+      (* (∀ (r' : place_rfn rt), *)
+      ( l ◁ₗ[π, Owned false] (#r) @ (◁ ty) ={F}=∗
+            q.[κ] ∗ na_own π ⊤ ).
+    (* TODO: Closing view-shift here. *)
+    Proof.
+      iIntros (??) "Hna Hq #Hb".
+
+      iEval (rewrite ltype_own_ofty_unfold) in "Hb".
+      iDestruct "Hb" as "(%ly & %Halg & %Hly & Hsc & Hlb & %v & -> & #Hb)".
+
+      (* iMod (maybe_use_credit with "Hcred Hb") as "(Hcred & Hat & Hb)"; first done. *)
+
+      iMod (fupd_mask_mono with "Hb") as "#Hb'"; first done. iClear "Hb".
+
+      iEval (unfold ty_shr, na_ex_plain_t) in "Hb'".
+      iDestruct "Hb'" as "(%r & HP & Hscr & Hr & % & ? & %Halg')".
+
+      iMod (na_bor_acc with "[] [$] [$] [$]") as "(Hl & Hna & Hcont)".
+      1-3: solve_ndisj.
+      { admit. }
+
+      iModIntro.
+      iExists r.
+      iSplitR; first done.
+
+      iSplitL "Hl".
+      { rewrite !ltype_own_ofty_unfold /lty_of_ty_own.
+        iExists ly. iFrame (Halg Hly) "Hlb Hscr".
+        iSplitR.
+        { admit. }
+        iExists r. iR.
+        iModIntro.
+        done. }
+
+      iIntros "Hb".
+      iEval (rewrite ltype_own_ofty_unfold) in "Hb".
+      iDestruct "Hb" as "(% & %Halg'' & ? & _ & ? & _ & (% & -> & Hb)) /=".
+
+      (* iAssert (⌜ly0 = ly1⌝)%I as "<-". *)
+      (* { iPureIntro; by eapply syn_type_has_layout_inj. } *)
+
+      iMod (fupd_mask_mono with "Hb") as "Hb"; first done.
+      iApply ("Hcont" with "[$] [$]").
+    Admitted.
+
+    Lemma na_typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
+      (∀ r, introduce_with_hooks E L (P.(na_inv_P) π r x)
+        (λ L2, typed_place π E L2 l
+                 (ShadowedLtype (◁ ty) #r (◁ (∃na; P, ty)))
+                 (#x) bmin (Shared κ) K T))
+      ⊢ typed_place π E L l (◁ (∃na; P, ty))%I (#x) bmin (Shared κ) K T.
+    Proof.
+    Admitted.
   End na_subtype.
 
   Section proof.
@@ -471,23 +536,23 @@ Section generated_code.
       Unshelve. all: print_remaining_sidecond.
     Qed.
 
-    (* Lemma Cell_get_proof (π : thread_id) : *)
-    (*   Cell_get_lemma π. *)
-    (* Proof. *)
-    (*   Cell_get_prelude. *)
+    Lemma Cell_get_proof (π : thread_id) :
+      Cell_get_lemma π.
+    Proof.
+      Cell_get_prelude.
 
-    (*   repeat liRStep; liShow. *)
+      repeat liRStep; liShow.
 
-    (*   iApply na_typed_place_ex_plain_t_shared. *)
-    (*   liSimpl; liShow. *)
+      iApply na_typed_place_ex_plain_t_shared.
+      liSimpl; liShow.
 
-    (*   repeat liRStep; liShow. *)
+      repeat liRStep; liShow.
 
-    (*   all: print_remaining_goal. *)
-    (*   Unshelve. all: sidecond_solver. *)
-    (*   Unshelve. all: sidecond_hammer. *)
-    (*   Unshelve. all: print_remaining_sidecond. *)
-    (* Qed. *)
+      all: print_remaining_goal.
+      Unshelve. all: sidecond_solver.
+      Unshelve. all: sidecond_hammer.
+      Unshelve. all: print_remaining_sidecond.
+    Qed.
   End proof.
 
 
