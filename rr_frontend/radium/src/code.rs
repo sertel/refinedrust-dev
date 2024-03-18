@@ -193,6 +193,8 @@ pub enum Literal {
     LitU64(u64),
     LitU128(u128),
     LitBool(bool),
+    // name of the loc
+    LitLoc(String),
     // dummy literal for ZST values (e.g. ())
     LitZST,
     //TODO: add chars
@@ -214,6 +216,7 @@ impl Display for Literal {
             Self::LitU128(i) => format_int(i.to_string(), IntType::U128),
             Self::LitBool(b) => write!(f, "val_of_bool {}", b.to_string()),
             Self::LitZST => write!(f, "zst_val"),
+            Self::LitLoc(name) => write!(f, "{name}"),
         }
     }
 }
@@ -811,9 +814,7 @@ impl FunctionCode {
 
         // format Coq parameters
         let mut formatted_params = String::with_capacity(20);
-        let mut sorted_params = self.required_parameters.clone();
-        sorted_params.sort_by(|(a, _), (b, _)| a.cmp(b));
-        for (ref name, ref ty) in sorted_params.iter() {
+        for (ref name, ref ty) in self.required_parameters.iter() {
             formatted_params.push_str(format!(" ({} : {})", name, ty).as_str());
         }
 
@@ -967,6 +968,8 @@ pub struct Function<'def> {
     layoutable_syntys: Vec<SynType>,
     /// Custom tactics for the generated proof
     manual_tactics: Vec<String>,
+    /// used statics
+    used_statics: Vec<StaticMeta<'def>>,
 
     /// invariants for loop head bbs
     loop_invariants: InvariantMap,
@@ -989,7 +992,10 @@ impl<'def> Function<'def> {
         writeln!(f, "Definition {}_lemma (π : thread_id) : Prop :=", self.name())?;
 
         // write coq parameters
-        if !self.spec.coq_params.is_empty() || !self.other_functions.is_empty() {
+        let has_params = !self.spec.coq_params.is_empty()
+            || !self.other_functions.is_empty()
+            || !self.used_statics.is_empty();
+        if has_params {
             write!(f, "∀ ")?;
             for param in self.spec.coq_params.iter() {
                 // TODO use CoqParam::format instead
@@ -1005,12 +1011,22 @@ impl<'def> Function<'def> {
             for (loc_name, _, _, _) in self.other_functions.iter() {
                 write!(f, "({} : loc) ", loc_name)?;
             }
+
+            // assume locations for statics
+            for s in self.used_statics.iter() {
+                write!(f, "({} : loc) ", s.loc_name)?;
+            }
             writeln!(f, ", ")?;
         }
 
         // assume Coq assumptions
+        // layoutable
         for st in self.layoutable_syntys.iter() {
             write!(f, "syn_type_is_layoutable ({}) →\n", st)?;
+        }
+        // statics are registered
+        for s in self.used_statics.iter() {
+            write!(f, "static_is_registered \"{}\" {} (existT _ {}) →\n", s.ident, s.loc_name, s.ty)?;
         }
 
         // write iris assums
@@ -1051,7 +1067,9 @@ impl<'def> Function<'def> {
         for names in self.generic_types.iter() {
             code_params.push(names.syn_type.clone());
         }
-        code_params.sort();
+        for s in self.used_statics.iter() {
+            code_params.push(s.loc_name.clone());
+        }
         for x in code_params.iter() {
             write!(f, "{}  ", x)?;
         }
@@ -1245,6 +1263,14 @@ impl<'def> Function<'def> {
     }
 }
 
+/// Information on a used static variable
+#[derive(Debug, Clone)]
+pub struct StaticMeta<'def> {
+    pub ident: String,
+    pub loc_name: String,
+    pub ty: Type<'def>,
+}
+
 /// A CaesiumFunctionBuilder allows to incrementally construct the functions's code and the spec
 /// at the same time. It ensures that both definitions line up in the right way (for instance, by
 /// ensuring that other functions are linked up in a consistent way).
@@ -1269,6 +1295,8 @@ pub struct FunctionBuilder<'def> {
     generic_lifetimes: Vec<(Option<String>, Lft)>,
     /// Syntypes we assume to be layoutable in the typing proof
     layoutable_syntys: Vec<SynType>,
+    /// used statics
+    used_statics: Vec<StaticMeta<'def>>,
 
     /// manually specified tactics that will be emitted in the typing proof
     tactics: Vec<String>,
@@ -1293,6 +1321,7 @@ impl<'def> FunctionBuilder<'def> {
             layoutable_syntys: Vec::new(),
             loop_invariants: InvariantMap(HashMap::new()),
             tactics: Vec::new(),
+            used_statics: Vec::new(),
         }
     }
 
@@ -1311,6 +1340,12 @@ impl<'def> FunctionBuilder<'def> {
     /// It does not matter when a type is registered via this function.
     fn require_rfn_type(&mut self, t: CoqType) {
         self.rfn_types.push(t);
+    }
+
+    /// Require a static variable to be in scope.
+    pub fn require_static(&mut self, s: StaticMeta<'def>) {
+        info!("Requiring static {:?}", s);
+        self.used_statics.push(s);
     }
 
     /// Adds a lifetime parameter to the function.
@@ -1407,12 +1442,25 @@ impl<'def> FunctionBuilder<'def> {
 
 impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
     fn into(mut self) -> Function<'def> {
+        // sort parameters for code
+        self.other_functions.sort_by(|a, b| a.0.cmp(&b.0));
+        //self.generic_types.sort_by(|a, b| a.rust_name.cmp(&b.rust_name));
+        self.used_statics.sort_by(|a, b| a.ident.cmp(&b.ident));
+
         // generate location parameters for other functions used by this one.
         let mut parameters: Vec<(CoqName, CoqType)> = self
             .other_functions
             .iter()
             .map(|f_inst| (CoqName::Named(f_inst.0.to_string()), CoqType::Loc))
             .collect();
+
+        // generate location parameters for statics used by this function
+        let mut statics_parameters = self
+            .used_statics
+            .iter()
+            .map(|s| (CoqName::Named(s.loc_name.to_string()), CoqType::Loc))
+            .collect();
+        parameters.append(&mut statics_parameters);
 
         // add generic syntype parameters for generics that this function uses.
         let mut gen_st_parameters = self
@@ -1440,6 +1488,7 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
             layoutable_syntys: self.layoutable_syntys,
             loop_invariants: self.loop_invariants,
             manual_tactics: self.tactics,
+            used_statics: self.used_statics,
         }
     }
 }

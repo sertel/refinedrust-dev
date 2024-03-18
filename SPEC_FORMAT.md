@@ -98,6 +98,15 @@ enum option<T> {
 
 In addition, enums also support the `export_as` attribute (same as structs).
 
+## Static attributes
+RefinedRust supports `static` (but currently not `static mut`) variables.
+They can be used as if they were behind a shared reference with `static` lifetime.
+
+For a static variable to be used by the RefinedRust type checker, the respective function needs to require it to be initialized,
+using the `initialized π "name" r` predicate, where `r` is the assumed refinement of the static variable.
+To specify the name that is used to refer to the variable here, `static` variables can be annotated with a `rr::name` attribute:
+- `#[rr::name("my_static_int")]` indicates that the name `my_static_int` should be used to refer to the static in specifications.
+
 ## Module attributes
 Inside a module, the following mod-level attributes can be specified:
 - `#![rr::import("A.B.C", "D")]`: imports the file `D` from logical Coq path `A.B.C` in all spec and proof files

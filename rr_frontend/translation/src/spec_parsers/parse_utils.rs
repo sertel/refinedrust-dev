@@ -233,6 +233,14 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RRCoqContextItem {
 
 pub type ParseMeta<'a> = (&'a [specs::LiteralTyParam], &'a [(Option<String>, specs::Lft)]);
 
+/// Handle escape sequences in the given string.
+pub(crate) fn handle_escapes(s: &str) -> String {
+    let s = String::from(s);
+    let s = s.replace("\\\"", "\"");
+
+    s
+}
+
 /// Processes a literal Coq term annotated via an attribute.
 /// In particular, processes escapes `{...}` and replaces them via their interpretation, see
 /// below for supported escape sequences.
@@ -250,6 +258,8 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
 
     let mut literal_lfts: HashSet<String> = HashSet::new();
     let mut literal_tyvars: HashSet<specs::LiteralTyParam> = HashSet::new();
+
+    let s = handle_escapes(s);
 
     /* regexes:
      * - '{\s*rt_of\s+([[:alpha:]])\s*}' replace by lookup of the refinement type name
@@ -280,7 +290,7 @@ pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, spec
         return None;
     };
 
-    let cs = s;
+    let cs = &s;
     let cs = RE_RT_OF.replace_all(cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);

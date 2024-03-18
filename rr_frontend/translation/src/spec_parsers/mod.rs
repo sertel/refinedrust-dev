@@ -1,3 +1,4 @@
+pub mod const_attr_parser;
 pub mod crate_attr_parser;
 pub mod enum_spec_parser;
 pub mod module_attr_parser;

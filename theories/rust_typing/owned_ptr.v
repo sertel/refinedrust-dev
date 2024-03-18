@@ -154,6 +154,24 @@ Section owned_ptr.
 
 End owned_ptr.
 
+Section ofty.
+  Context `{!typeGS Σ}.
+
+  (** A very fundamental equivalence that should hold. *)
+  Lemma owned_ptr_ofty_owned_equiv {rt} (ty : type rt) π l r :
+    l ◁ₗ[π, Owned true] #r @ (◁ ty) ⊣⊢ l ◁ᵥ{π} (#r, l) @ owned_ptr ty.
+  Proof.
+    rewrite ltype_own_ofty_unfold/lty_of_ty_own {2}/ty_own_val/=.
+    iSplit.
+    - iIntros "(%ly & %Hst & %Hly & #Hsc & #Hlb & (? & ?) & %r' & <- & Hb)".
+      iExists _. iR. iR. iR. iFrame "# ∗". iExists _. iR. iFrame.
+    - iIntros "(%ly & %Hl & % & % & #Hlb & #Hsc & ? & ? & %r' & -> & Hb)".
+      apply val_of_loc_inj in Hl. subst.
+      iExists _. iR. iR. iFrame "# ∗".
+      iExists _. iR. done.
+  Qed.
+End ofty.
+
 Section subltype.
   Context `{!typeGS Σ}.
 

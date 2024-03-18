@@ -8,13 +8,13 @@
 use std::fmt;
 
 #[rr::export_as(core::result::Result)]
-#[rr::refined_by("result {rt_of T} {rt_of E}")]
+#[rr::refined_by("result (place_rfn {rt_of T}) (place_rfn {rt_of E})")]
 pub enum Result<T, E> {
     #[rr::pattern("Ok" $ "x")]
-    #[rr::refinement("-[#x]")]
+    #[rr::refinement("-[x]")]
     Ok(T),
     #[rr::pattern("Err" $ "x")]
-    #[rr::refinement("-[#x]")]
+    #[rr::refinement("-[x]")]
     Err(E),
 }
 
@@ -37,7 +37,7 @@ impl<T, E> Result<T, E> {
     }
 
     #[rr::params("x")]
-    #[rr::args("Ok x")]
+    #[rr::args("Ok (#x)")]
     #[rr::returns("x")]
     pub fn unwrap(self) -> T where E: fmt::Debug {
         unimplemented!();

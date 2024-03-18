@@ -27,3 +27,30 @@ Proof.
   - left. eexists _. done.
 Defined.
 
+
+Definition if_Ok {A B} (x : result A B) (ϕ : A → Prop) : Prop :=
+  match x with
+  | Ok x => ϕ x
+  | _ => True
+  end.
+Definition if_Err {A B} (x : result A B) (ϕ : B → Prop) : Prop :=
+  match x with
+  | Err x => ϕ x
+  | _ => True
+  end.
+
+(** The same for Iris *)
+Section iris.
+Context `{!typeGS Σ}.
+
+Definition if_iOk {A B} (x : result A B) (ϕ : A → iProp Σ) : iProp Σ :=
+  match x with
+  | Ok x => ϕ x
+  | _ => True
+  end.
+Definition if_iErr {A B} (x : result A B) (ϕ : B → iProp Σ) : iProp Σ :=
+  match x with
+  | Err x => ϕ x
+  | _ => True
+  end.
+End iris.

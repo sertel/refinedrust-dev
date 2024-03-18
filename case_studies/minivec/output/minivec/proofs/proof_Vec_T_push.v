@@ -6,7 +6,7 @@ From refinedrust.examples.minivec.generated Require Import generated_template_Ve
 Set Default Proof Using "Type".
 
 Section proof.
-Context `{!typeGS Σ}.
+Context `{!refinedrustGS Σ}.
 Lemma Vec_T_push_proof (π : thread_id) :
   Vec_T_push_lemma π.
 Proof.

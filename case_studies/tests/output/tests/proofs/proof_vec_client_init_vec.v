@@ -6,7 +6,7 @@ From refinedrust.examples.tests.generated Require Import generated_template_vec_
 Set Default Proof Using "Type".
 
 Section proof.
-Context `{!typeGS Σ}.
+Context `{!refinedrustGS Σ}.
 Lemma vec_client_init_vec_proof (π : thread_id) :
   vec_client_init_vec_lemma π.
 Proof.
@@ -15,7 +15,7 @@ Proof.
   repeat liRStep; liShow.
   liInst Hevar (int i32).
   repeat liRStep; liShow.
-
+  
   all: print_remaining_goal.
   Unshelve. all: sidecond_solver.
   Unshelve. all: sidecond_hammer.

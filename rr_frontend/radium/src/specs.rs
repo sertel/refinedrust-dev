@@ -1093,7 +1093,7 @@ impl InvariantSpec {
         let indent = "  ";
         // the write_str impl will always return Ok.
         write!(out, "Section {}.\n", self.type_name).unwrap();
-        write!(out, "{}Context `{{!typeGS Σ}}.\n", indent).unwrap();
+        write!(out, "{}Context `{{!refinedrustGS Σ}}.\n", indent).unwrap();
 
         // add type parameters
         if generic_params.len() > 0 {
@@ -1294,7 +1294,7 @@ impl<'def> AbstractVariant<'def> {
 
         let indent = "  ";
         write!(out, "Section {}.\n", self.sls_def_name).unwrap();
-        write!(out, "{}Context `{{!typeGS Σ}}.\n", indent).unwrap();
+        write!(out, "{}Context `{{!refinedrustGS Σ}}.\n", indent).unwrap();
 
         // add syntype parameters
         let mut typarams = Vec::new();
@@ -1380,7 +1380,7 @@ impl<'def> AbstractVariant<'def> {
         let indent = "  ";
         // the write_str impl will always return Ok.
         write!(out, "Section {}.\n", self.plain_ty_name).unwrap();
-        write!(out, "{}Context `{{!typeGS Σ}}.\n", indent).unwrap();
+        write!(out, "{}Context `{{!refinedrustGS Σ}}.\n", indent).unwrap();
 
         // add type parameters, and build a list of terms to apply the sls def to
         if ty_params.len() > 0 {
@@ -1866,7 +1866,7 @@ impl<'def> AbstractEnum<'def> {
 
         let indent = "  ";
         write!(out, "Section {}.\n", self.els_def_name).unwrap();
-        write!(out, "{}Context `{{!typeGS Σ}}.\n", indent).unwrap();
+        write!(out, "{}Context `{{!refinedrustGS Σ}}.\n", indent).unwrap();
 
         // add syntype parameters
         let mut typarams = Vec::new();
@@ -2072,7 +2072,7 @@ impl<'def> AbstractEnum<'def> {
         let indent = "  ";
         // the write_str impl will always return Ok.
         write!(out, "Section {}.\n", self.plain_ty_name).unwrap();
-        write!(out, "{}Context `{{!typeGS Σ}}.\n", indent).unwrap();
+        write!(out, "{}Context `{{!refinedrustGS Σ}}.\n", indent).unwrap();
 
         // add type parameters, and build a list of terms to apply the els def to
         if self.ty_params.len() > 0 {

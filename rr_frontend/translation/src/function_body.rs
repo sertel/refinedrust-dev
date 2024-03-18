@@ -144,8 +144,12 @@ impl<'def> ProcedureScope<'def> {
     }
 
     /// Register a function.
-    pub fn register_function(&mut self, did: &DefId, meta: ProcedureMeta) {
-        assert!(self.name_map.insert(*did, meta).is_none());
+    pub fn register_function(&mut self, did: &DefId, meta: ProcedureMeta) -> Result<(), String> {
+        if let Some(_) = self.name_map.insert(*did, meta) {
+            Err(format!("function for defid {:?} has already been registered", did))
+        } else {
+            Ok(())
+        }
     }
 
     /// Provide the code for a translated function.
@@ -173,6 +177,11 @@ impl<'def> ProcedureScope<'def> {
     }
 }
 
+/// Scope of consts that are available
+pub struct ConstScope<'def> {
+    pub statics: HashMap<DefId, radium::StaticMeta<'def>>,
+}
+
 pub struct FunctionTranslator<'a, 'def, 'tcx> {
     env: &'def Environment<'tcx>,
     /// this needs to be annotated with the right borrowck things
@@ -184,6 +193,8 @@ pub struct FunctionTranslator<'a, 'def, 'tcx> {
 
     /// registry of other procedures
     procedure_registry: &'a ProcedureScope<'def>,
+    /// registry of consts
+    const_registry: &'a ConstScope<'def>,
     /// attributes on this function
     attrs: &'a [&'a rustc_ast::ast::AttrItem],
     /// polonius info for this function
@@ -207,6 +218,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         attrs: &'a [&'a rustc_ast::ast::AttrItem],
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
         proc_registry: &'a ProcedureScope<'def>,
+        const_registry: &'a ConstScope<'def>,
     ) -> Result<Self, TranslationError> {
         let mut translated_fn = radium::FunctionBuilder::new(&meta.name, &meta.spec_name);
 
@@ -366,6 +378,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     ty_translator,
                     inputs,
                     output,
+                    const_registry,
                 };
                 Ok(t)
             },
@@ -613,6 +626,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             inputs: self.inputs,
             output: self.output,
             checked_op_temporaries: checked_op_locals,
+            const_registry: self.const_registry,
+            collected_statics: HashSet::new(),
         };
         translator.translate()
     }
@@ -640,12 +655,16 @@ struct BodyTranslator<'a, 'def, 'tcx> {
     /// (code_loc_parameter_name, spec_name, type_inst, syntype_of_all_args)
     collected_procedures:
         HashMap<(DefId, FnGenericKey<'tcx>), (String, String, Vec<radium::Type<'def>>, Vec<radium::SynType>)>,
+    /// used statics
+    collected_statics: HashSet<DefId>,
 
     /// tracking lifetime inclusions for the generation of lifetime inclusions
     inclusion_tracker: InclusionTracker<'a, 'tcx>,
 
     /// registry of other procedures
     procedure_registry: &'a ProcedureScope<'def>,
+    /// scope of used consts
+    const_registry: &'a ConstScope<'def>,
     /// attributes on this function
     attrs: &'a [&'a rustc_ast::ast::AttrItem],
     /// polonius info for this function
@@ -764,6 +783,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 params.clone(),
                 sts.clone(),
             );
+        }
+
+        // generate dependencies on statics
+        for did in self.collected_statics.iter() {
+            let s = self.const_registry.statics.get(did).unwrap();
+            self.translated_fn.require_static(s.clone());
         }
 
         self.ty_translator.leave_procedure();
@@ -2964,6 +2989,38 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         ),
                     })
                 }
+            },
+            TyKind::Ref(_, _, _) => match sc {
+                Scalar::Int(_) => {
+                    unreachable!();
+                },
+                Scalar::Ptr(pointer, _) => {
+                    let glob_alloc = self.env.tcx().global_alloc(pointer.provenance);
+                    match glob_alloc {
+                        rustc_middle::mir::interpret::GlobalAlloc::Static(did) => {
+                            info!(
+                                "Found static GlobalAlloc {:?} for Ref scalar {:?} at type {:?}",
+                                did, sc, ty
+                            );
+                            match self.const_registry.statics.get(&did) {
+                                None => Err(TranslationError::UnknownError(format!(
+                                    "Did not find a registered static for GlobalAlloc {:?} for scalar {:?} at type {:?}; registered: {:?}",
+                                    glob_alloc, sc, ty, self.const_registry.statics
+                                ))),
+                                Some(s) => {
+                                    self.collected_statics.insert(did);
+                                    Ok(radium::Expr::Literal(radium::Literal::LitLoc(s.loc_name.clone())))
+                                },
+                            }
+                        },
+                        _ => Err(TranslationError::UnsupportedFeature {
+                            description: format!(
+                                "Unsupported GlobalAlloc {:?} for scalar {:?} at type {:?}",
+                                glob_alloc, sc, ty
+                            ),
+                        }),
+                    }
+                },
             },
             _ => Err(TranslationError::UnsupportedFeature {
                 description: format!("Unsupported layout for const value: {:?}", ty),
