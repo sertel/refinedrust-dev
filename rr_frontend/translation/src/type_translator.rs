@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::ops::DerefMut;
 
-use log::{info, trace};
+use log::{info, trace, warn};
 use radium;
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty;
@@ -62,7 +62,7 @@ pub struct TypeTranslator<'def, 'tcx> {
     env: &'def Environment<'tcx>,
 
     /// maps universal lifetime indices (Polonius) to their names. offset by 1 because 0 = static.
-    universal_lifetimes: RefCell<Vec<String>>,
+    universal_lifetimes: RefCell<HashMap<ty::RegionVid, String>>,
 
     /// arena for keeping ownership of structs
     /// during building, it will be None, afterwards it will always be Some
@@ -134,7 +134,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         TypeTranslator {
             env,
             generic_scope: RefCell::new(Vec::new()),
-            universal_lifetimes: RefCell::new(Vec::new()),
+            universal_lifetimes: RefCell::new(HashMap::new()),
             adt_deps: RefCell::new(HashMap::new()),
             adt_shims: RefCell::new(HashMap::new()),
             struct_arena,
@@ -210,12 +210,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// lifetimes with given names.
     pub fn enter_procedure(
         &self,
-        ty_params: &ty::GenericArgsRef<'tcx>,
-        univ_lfts: Vec<String>,
+        ty_params: ty::GenericArgsRef<'tcx>,
+        univ_lfts: HashMap<ty::RegionVid, String>,
     ) -> Result<(), TranslationError> {
         info!("Entering procedure with ty_params {:?} and univ_lfts {:?}", ty_params, univ_lfts);
 
-        let mut v = Vec::new();
+        let mut v: Vec<Option<radium::LiteralTyParam>> = Vec::new();
+        let mut num_lifetimes = 0;
         for gen_arg in ty_params.iter() {
             match gen_arg.unpack() {
                 ty::GenericArgKind::Type(ty) => match ty.kind() {
@@ -242,6 +243,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     },
                 },
                 ty::GenericArgKind::Lifetime(r) => {
+                    num_lifetimes += 1;
                     match *r {
                         ty::RegionKind::ReLateBound(..) | ty::RegionKind::ReEarlyBound(..) => {
                             // ignore
@@ -262,6 +264,12 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             }
         }
 
+        // for closures, not all lifetime parameters materialize in `ty_params`, so we fill them up
+        // afterwards
+        for _ in 0..(univ_lfts.len() - num_lifetimes) {
+            v.push(None);
+        }
+
         self.universal_lifetimes.replace(univ_lfts);
         self.generic_scope.replace(v);
         Ok(())
@@ -270,15 +278,15 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Leave a procedure and remove the corresponding type parameters from the scope.
     pub fn leave_procedure(&self) {
         self.generic_scope.replace(Vec::new());
-        self.universal_lifetimes.replace(Vec::new());
+        self.universal_lifetimes.replace(HashMap::new());
         self.tuple_uses.replace(Vec::new());
         self.shim_uses.replace(HashMap::new());
     }
 
-    /// Lookup a universal lifetime.
-    pub fn lookup_universal_lifetime(&self, lft: ty::RegionVid) -> Option<radium::Lft> {
-        // offset by 1 due to static which is at zero
-        self.universal_lifetimes.borrow().get(lft.as_usize() - 1).map(|s| s.to_string())
+    /// Lookup a universal region.
+    pub fn lookup_universal_region(&self, lft: ty::RegionVid) -> Option<radium::Lft> {
+        info!("Looking up universal lifetime {:?}", lft);
+        self.universal_lifetimes.borrow().get(&lft).map(|s| s.to_string())
     }
 
     /// Try to translate a region to a Caesium lifetime.
@@ -289,8 +297,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         match **region {
             ty::RegionKind::ReEarlyBound(early) => {
                 info!("Translating region: EarlyBound {:?}", early);
-                // TODO is the index here really the right one?
-                //self.lookup_universal_lifetime(early.index)
+                None
+            },
+            ty::RegionKind::ReLateBound(idx, r) => {
+                info!("Translating region: LateBound {:?} {:?}", idx, r);
                 None
             },
             ty::RegionKind::RePlaceholder(placeholder) => {
@@ -300,7 +310,12 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             },
             ty::RegionKind::ReStatic => Some("static".to_string()),
             ty::RegionKind::ReErased => Some("erased".to_string()),
-            ty::RegionKind::ReVar(v) => self.lookup_universal_lifetime(v),
+            ty::RegionKind::ReVar(v) => {
+                //self.env.info.mk
+                let r = self.lookup_universal_region(v);
+                info!("Translating region: ReVar {:?} as {:?}", v, r);
+                r
+            },
             _ => {
                 info!("Translating region: {:?}", region);
                 None
@@ -438,6 +453,12 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             },
             TyKind::Tuple(args) => {
                 self.generate_tuple_use(args.into_iter(), TranslationState::InFunction).map(|x| Some(x))
+            },
+            TyKind::Closure(_, args) => {
+                // use the upvar tuple
+                let closure_args = args.as_closure();
+                let upvars = closure_args.upvar_tys();
+                self.generate_tuple_use(upvars.into_iter(), TranslationState::InFunction).map(|x| Some(x))
             },
             _ => Err(TranslationError::UnknownError("not a structlike".to_string())),
         }
@@ -707,6 +728,22 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         }
 
         Ok(struct_use)
+    }
+
+    pub fn make_tuple_use(&self, translated_tys: Vec<radium::Type<'def>>) -> radium::Type<'def> {
+        let num_components = translated_tys.len();
+        if num_components == 0 {
+            return radium::Type::Unit;
+        }
+
+        let (_, lit) = self.get_tuple_struct_ref(num_components);
+        // TODO: don't generate duplicates
+        //let struct_use = radium::AbstractStructUse::new(struct_ref, translated_tys,
+        // radium::TypeIsRaw::Yes);
+        let struct_use = radium::LiteralTypeUse::new(lit, translated_tys);
+        self.tuple_uses.borrow_mut().push(struct_use.clone());
+
+        radium::Type::Literal(struct_use)
     }
 
     /// Get the struct ref for a tuple with [num_components] components.
@@ -1389,7 +1426,12 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             TyKind::Ref(region, ty, mutability) => {
                 let translated_ty = self.translate_type_with_deps(ty, adt_deps)?;
                 // in case this isn't a universal region, we usually won't care about it.
-                let lft = self.translate_region(region).unwrap_or("placeholder_lft".to_string());
+                let lft = if let Some(lft) = self.translate_region(region) {
+                    lft
+                } else {
+                    warn!("Failed to translate region {:?}", region);
+                    format!("placeholder_lft")
+                };
 
                 match mutability {
                     rustc_ast::ast::Mutability::Mut => Ok(radium::Type::MutRef(Box::new(translated_ty), lft)),
@@ -1448,17 +1490,21 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 description: "RefinedRust does currently not support str".to_string(),
             }),
             TyKind::FnDef(_, _) => Err(TranslationError::Unimplemented {
-                description: "translate_type_to_layout: implement FnDef".to_string(),
+                description: "translate_type_with_deps: implement FnDef".to_string(),
             }),
             TyKind::FnPtr(_) => Err(TranslationError::Unimplemented {
-                description: "translate_type_to_layout: implement FnPtr".to_string(),
+                description: format!("translate_type_with_deps: implement FnPtr ({:?})", ty),
             }),
             TyKind::Dynamic(..) => Err(TranslationError::UnsupportedType {
                 description: "RefinedRust does currently not trait objects".to_string(),
             }),
-            TyKind::Closure(..) => Err(TranslationError::UnsupportedType {
-                description: "RefinedRust does currently not support closures".to_string(),
-            }),
+            TyKind::Closure(_def, closure_args) => {
+                // We replace this with the tuple of the closure's state
+                let clos = closure_args.as_closure();
+
+                let upvar_tys = clos.tupled_upvars_ty();
+                self.translate_type_with_deps(&upvar_tys, adt_deps)
+            },
             TyKind::Generator(..) => Err(TranslationError::UnsupportedType {
                 description: "RefinedRust does currently not support generators".to_string(),
             }),
@@ -1582,6 +1628,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 }
             },
             TyKind::Tuple(_) => Ok(f.index().to_string()),
+            TyKind::Closure(_, _) => {
+                // treat as tuple of upvars
+                Ok(f.index().to_string())
+            },
             _ => Err(TranslationError::InvalidLayout),
         }
     }

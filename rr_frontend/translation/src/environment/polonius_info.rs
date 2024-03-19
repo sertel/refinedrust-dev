@@ -597,6 +597,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
                 // TODO check if this does the right thing
                 return RegionKind::Universal(UniversalRegionKind::Function);
             } else {
+                // TODO: this ignores external regions
                 return RegionKind::Universal(UniversalRegionKind::Local);
             }
         }

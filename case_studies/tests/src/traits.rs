@@ -1,3 +1,4 @@
+
 trait MyAdd {
     fn my_add(x: Self, y: Self) -> Self;
 }
@@ -15,4 +16,9 @@ impl MyAdd for usize {
 #[rr::returns("()")]
 fn test_add() {
     MyAdd::my_add(5usize, 5usize);
+}
+
+#[rr::returns("()")]
+fn test_add_2<T>(x: T, y: T) where T: MyAdd {
+    MyAdd::my_add(x, y);
 }

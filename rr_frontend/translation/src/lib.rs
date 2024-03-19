@@ -18,6 +18,7 @@ extern crate rustc_driver;
 extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_index;
+extern crate rustc_infer;
 extern crate rustc_interface;
 extern crate rustc_middle;
 extern crate rustc_session;
@@ -49,6 +50,7 @@ mod function_body;
 mod inclusion_tracker;
 mod shim_registry;
 mod spec_parsers;
+mod traits;
 mod type_translator;
 mod tyvars;
 mod utils;
@@ -60,14 +62,13 @@ use crate_parser::CrateAttrParser;
 use environment::Environment;
 use function_body::{ConstScope, FunctionTranslator, ProcedureMode, ProcedureScope};
 use mod_parser::ModuleAttrParser;
-use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
+use rrconfig;
 use spec_parsers::verbose_function_spec_parser::{get_export_as_attr, get_shim_attrs};
 use spec_parsers::{
     const_attr_parser as const_parser, crate_attr_parser as crate_parser, module_attr_parser as mod_parser,
 };
 use topological_sort::TopologicalSort;
 use type_translator::TypeTranslator;
-use {attribute_parse as parse, rrconfig};
 
 /// Order ADT definitions topologically.
 fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
@@ -856,17 +857,40 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             continue;
         }
 
-        info!("Translating function {}", fname);
+        info!("\nTranslating function {}", fname);
 
-        let translator = FunctionTranslator::new(
-            &vcx.env,
-            meta,
-            proc,
-            &filtered_attrs,
-            &vcx.type_translator,
-            &vcx.procedure_registry,
-            &vcx.const_registry,
-        );
+        let translator;
+
+        let ty: ty::EarlyBinder<ty::Ty<'tcx>> = vcx.env.tcx().type_of(proc.get_id());
+        let ty = ty.instantiate_identity();
+        match ty.kind() {
+            ty::TyKind::FnDef(_def, _args) => {
+                translator = FunctionTranslator::new(
+                    &vcx.env,
+                    meta,
+                    proc,
+                    &filtered_attrs,
+                    &vcx.type_translator,
+                    &vcx.procedure_registry,
+                    &vcx.const_registry,
+                )
+            },
+            ty::TyKind::Closure(_, _) => {
+                translator = FunctionTranslator::new_closure(
+                    &vcx.env,
+                    meta,
+                    proc,
+                    &filtered_attrs,
+                    &vcx.type_translator,
+                    &vcx.procedure_registry,
+                    &vcx.const_registry,
+                )
+            },
+            _ => {
+                translator =
+                    Err(function_body::TranslationError::UnknownError("unknown function kind".to_string()));
+            },
+        };
 
         if mode.is_only_spec() {
             // Only generate a spec
