@@ -437,57 +437,108 @@ Section generated_code.
 
       lft_ctx -∗
       na_own π ⊤ -∗
+      maybe_creds true -∗
       q.[κ] -∗
       l ◁ₗ[π, Shared κ] (#x) @ (◁ (∃na; P, ty)) ={F}=∗
 
       ∃ r : rt, P.(na_inv_P) π r x ∗
-      ▷ (l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
+      l ◁ₗ[π, Owned true] PlaceIn r @ (◁ ty) ∗
 
       (* (∀ (r' : place_rfn rt), *)
       ( l ◁ₗ[π, Owned false] (#r) @ (◁ ty) ={F}=∗
             q.[κ] ∗ na_own π ⊤ ).
     (* TODO: Closing view-shift here. *)
     Proof.
-      iIntros (??) "#LFT Hna Hq #Hb".
+      iIntros (??) "#LFT Hna Hcred Hq #Hb".
 
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hb".
-      iDestruct "Hb" as "(%ly & %Halg & %Hly & Hsc & Hlb & %v & -> & #Hb)".
+      iDestruct "Hb" as (ly Halg Hly) "(Hsc & Hlb & %v & -> & #Hb)".
 
       iMod (fupd_mask_mono with "Hb") as "#Hb'"; first done. iClear "Hb".
 
       iEval (unfold ty_shr, na_ex_plain_t) in "Hb'".
-      iDestruct "Hb'" as "(%r & ? & Hscr & ? & % & ? & %Halg')".
+      iDestruct "Hb'" as (r) "(HP & Hscr & Hbor & %ly' & %Hly' & %Halg')".
 
-      iMod (na_bor_acc with "[$] [$] [$] [$]") as "(Hl & Hna & Hvs)"; [ solve_ndisj.. |].
+      iMod (na_bor_acc with "LFT Hbor Hq Hna") as "(Hl & Hna & Hvs)"; [ solve_ndisj.. |].
 
       iModIntro; iExists r.
       iSplitR; first done.
 
-      iSplitL "Hl".
+      iSplitL "Hl Hcred".
       { rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-        iExists ly. iFrame (Halg Hly) "Hlb Hscr".
-        iSplitR; first done.
-        iExists r. iR.
+        iExists ly. iFrame (Halg Hly) "Hlb Hcred Hscr".
+        iExists r; iR.
         by iModIntro. }
 
       iIntros "Hb".
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hb".
-      iDestruct "Hb" as "(% & %Halg'' & ? & _ & ? & _ & (% & -> & Hb)) /=".
+      iDestruct "Hb" as (???) "(_ & #Hloc'' & _ & (% & -> & Hb)) /=".
 
       (* iAssert (⌜ly0 = ly1⌝)%I as "<-". *)
       (* { iPureIntro; by eapply syn_type_has_layout_inj. } *)
 
       iMod (fupd_mask_mono with "Hb") as "Hb"; first done.
-      iApply ("Hvs" with "[$] [$]").
+      iApply ("Hvs" with "Hb Hna").
     Qed.
 
     Lemma na_typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
-      (∀ r, introduce_with_hooks E L (P.(na_inv_P) π r x)
-        (λ L2, typed_place π E L2 l
-                 (ShadowedLtype (◁ ty) #r (◁ (∃na; P, ty)))
-                 (#x) bmin (Shared κ) K T))
+      li_tactic (lctx_lft_alive_count_goal E L κ)  (λ '(_, L2),
+        ∀ r, introduce_with_hooks E L2 (P.(na_inv_P) π r x)
+          (λ L3, typed_place π E L3 l
+                  (ShadowedLtype (◁ ty) #r (◁ (∃na; P, ty)))
+                  (#x) bmin (Owned true) K T))
       ⊢ typed_place π E L l (◁ (∃na; P, ty))%I (#x) bmin (Shared κ) K T.
     Proof.
+      rewrite /lctx_lft_alive_count_goal.
+      iIntros "(%κs & %L' & %Hal & HT)".
+
+      rewrite /typed_place /introduce_with_hooks.
+      iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL Hincl Hb Hcont".
+
+      iApply fupd_place_to_wp.
+      iMod (lctx_lft_alive_count_tok with "HE HL") as (q) "(Htok & Htokcl & HL)"; [ done.. |].
+      iMod (na_ex_plain_t_open_shared with "LFT [] [] Htok Hb") as (r) "(HP & Hb & Hvs)"; [ done.. | admit | admit |].
+
+      iMod ("HT" with "[] HE HL HP") as "(%L2 & HL & HT)"; first done.
+      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [Hincl] [Hb]").
+      { by iApply (bor_kind_incl_trans with "Hincl"). }
+      { rewrite ltype_own_shadowed_unfold /shadowed_ltype_own; iR.
+        iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hb".
+
+        iDestruct "Hb" as (ly) "(#Hsyn & #Hly & #Hsc & #Hlb & _ & Hb)".
+        iDestruct "Hb" as (r') "(#Hrfn & Hb)" => /=.
+
+        iSplitL; rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+        - iExists ly; iFrame "#".
+          iSplitR; first admit.
+          iExists r'; iFrame "# ∗".
+
+        - iExists ly; iFrame "#".
+          iSplitR; first admit.
+          iExists x; iR.
+          simpl. admit. }
+
+      iModIntro.
+      iIntros (L'' κs' l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl Hc".
+      iApply ("Hcont" with "Hincl Hl").
+
+      iSplit.
+      - iDestruct "Hc" as "[Hc _]".
+        simp_ltypes; destruct strong; last done.
+
+        iIntros (r' r'' κs'') "Hl %".
+        iSpecialize ("Hc" $! r' r'' κs'').
+
+        admit.
+
+      - iDestruct "Hc" as "[_ Hc]".
+        destruct weak; last done.
+        iIntros (???) "Hincl Hl Hcond".
+        iMod ("Hc" with "Hincl Hl Hcond") as "(Ha & Hb & Htoks & Hc)".
+        iFrame.
+        iDestruct "Hb" as "(Hcond_ty & _)".
+
+        admit.
     Admitted.
   End na_subtype.
 
