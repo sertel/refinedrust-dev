@@ -435,6 +435,7 @@ Section generated_code.
       lftE ⊆ F →
       ↑shrN.@l ⊆ F →
 
+      lft_ctx -∗
       na_own π ⊤ -∗
       q.[κ] -∗
       l ◁ₗ[π, Shared κ] (#x) @ (◁ (∃na; P, ty)) ={F}=∗
@@ -447,45 +448,38 @@ Section generated_code.
             q.[κ] ∗ na_own π ⊤ ).
     (* TODO: Closing view-shift here. *)
     Proof.
-      iIntros (??) "Hna Hq #Hb".
+      iIntros (??) "#LFT Hna Hq #Hb".
 
-      iEval (rewrite ltype_own_ofty_unfold) in "Hb".
+      iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hb".
       iDestruct "Hb" as "(%ly & %Halg & %Hly & Hsc & Hlb & %v & -> & #Hb)".
-
-      (* iMod (maybe_use_credit with "Hcred Hb") as "(Hcred & Hat & Hb)"; first done. *)
 
       iMod (fupd_mask_mono with "Hb") as "#Hb'"; first done. iClear "Hb".
 
       iEval (unfold ty_shr, na_ex_plain_t) in "Hb'".
-      iDestruct "Hb'" as "(%r & HP & Hscr & Hr & % & ? & %Halg')".
+      iDestruct "Hb'" as "(%r & ? & Hscr & ? & % & ? & %Halg')".
 
-      iMod (na_bor_acc with "[] [$] [$] [$]") as "(Hl & Hna & Hcont)".
-      1-3: solve_ndisj.
-      { admit. }
+      iMod (na_bor_acc with "[$] [$] [$] [$]") as "(Hl & Hna & Hvs)"; [ solve_ndisj.. |].
 
-      iModIntro.
-      iExists r.
+      iModIntro; iExists r.
       iSplitR; first done.
 
       iSplitL "Hl".
-      { rewrite !ltype_own_ofty_unfold /lty_of_ty_own.
+      { rewrite ltype_own_ofty_unfold /lty_of_ty_own.
         iExists ly. iFrame (Halg Hly) "Hlb Hscr".
-        iSplitR.
-        { admit. }
+        iSplitR; first done.
         iExists r. iR.
-        iModIntro.
-        done. }
+        by iModIntro. }
 
       iIntros "Hb".
-      iEval (rewrite ltype_own_ofty_unfold) in "Hb".
+      iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hb".
       iDestruct "Hb" as "(% & %Halg'' & ? & _ & ? & _ & (% & -> & Hb)) /=".
 
       (* iAssert (⌜ly0 = ly1⌝)%I as "<-". *)
       (* { iPureIntro; by eapply syn_type_has_layout_inj. } *)
 
       iMod (fupd_mask_mono with "Hb") as "Hb"; first done.
-      iApply ("Hcont" with "[$] [$]").
-    Admitted.
+      iApply ("Hvs" with "[$] [$]").
+    Qed.
 
     Lemma na_typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
       (∀ r, introduce_with_hooks E L (P.(na_inv_P) π r x)
