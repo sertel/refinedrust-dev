@@ -1,0 +1,21 @@
+opam-version: "2.0"
+name: "refinedrust"
+synopsis: "RefinedRust verification framework"
+homepage: "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev"
+bug-reports: "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev"
+maintainer: "Lennard Gäher"
+authors: "Lennard Gäher"
+description: """
+RefinedRust is a prototype framework for verifying safe and unsafe Rust code.
+"""
+license: "BSD-3-Clause"
+
+depends: [
+  "refinedrust" {= version | = "~dev"}
+]
+
+build: [
+  [make "generate_stdlib"]
+  ["dune" "subst"] {pinned}
+  ["dune" "build" "-p" name "-j" jobs]
+]

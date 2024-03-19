@@ -113,11 +113,7 @@
             pname = name;
             opam-name = name;
 
-            src = with nix-filter.lib;
-              nix-filter {
-                root = ./.;
-                include = ["dune-project" (inDirectory "theories")];
-              };
+            src = ./theories;
 
             propagatedBuildInputs = with coq.pkgs; [coq-record-update equations lambda-rust];
 
@@ -138,11 +134,30 @@
 
           postInstall = with pkgs.lib.strings; ''
             wrapProgram $out/bin/refinedrust-rustc \
-              --set LD_LIBRARY_PATH "${rust.lib}"
+              --set LD_LIBRARY_PATH "${rust.lib}" \
+              --set DYLD_FALLBACK_LIBRARY_PATH "${rust.lib}"
 
             wrapProgram $out/bin/${pname} \
               --set PATH "${makeSearchPath "bin" buildInputs}"
           '';
+        };
+
+
+        stdlib = coq.pkgs.mkCoqDerivation {
+          inherit meta version;
+
+          pname = "refinedrust-stdlib";
+          opam-name = "refinedrust-stdlib";
+          src = ./stdlib;
+
+          buildInputs = [packages.frontend rust.toolchain];
+          propagatedBuildInputs = [packages.theories];
+
+          preBuild = ''
+            dune() { command dune $@ --display=short; }
+            make generate_stdlib 
+          '';
+          useDune = true;
         };
 
         default = pkgs.buildEnv {
@@ -155,7 +170,7 @@
           nativeBuildInputs = [pkgs.makeWrapper];
           postBuild = with pkgs.lib.strings; ''
             wrapProgram $out/bin/dune \
-              --set COQPATH "${makeSearchPath "lib/coq/${coq.version}/user-contrib" (fetchCoqDeps packages.theories)}"
+              --set COQPATH "${makeSearchPath "lib/coq/${coq.version}/user-contrib" (fetchCoqDeps packages.stdlib)}"
           '';
         };
       };
@@ -165,6 +180,7 @@
 
         shellHook = ''
           export LD_LIBRARY_PATH=''${LD_LIBRARY_PATH}:${rust.lib}
+          export DYLD_FALLBACK_LIBRARY_PATH=''${DYLD_FALLBACK_LIBRARY_PATH}:${rust.lib}
           export RUST_SRC_PATH=${rust.src}/rustc_driver/Cargo.toml
         '';
       };

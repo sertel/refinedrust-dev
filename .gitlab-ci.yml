@@ -85,17 +85,8 @@ frontend:
 tests:
   stage: tests
   script:
-   - export DIR=$(nix run nixpkgs#gnumake -- -np | grep -oPh "(?<=RUST_SRC = ).*")
-   - mkdir .ci_tmp
-   - echo ${DIR} | xargs -r -n 1 | cut -d'/' -f1 | uniq | xargs -r mv -v -t .ci_tmp
-   - cd .ci_tmp
-   - echo "(lang dune 3.8)" >| dune-project
-   - echo "(using coq 0.8)" >> dune-project
-   - |
-     for folder in ${DIR}
-     do
-         cd $folder
-         nix shell -c cargo refinedrust
-         cd -
-         nix shell -c dune build --display=short --root=.
-     done
+   - nix shell -c nix run nixpkgs#gnumake -- setup-nix
+   - nix shell -c nix run nixpkgs#gnumake -- generate_stdlib
+   - nix shell -c nix run nixpkgs#gnumake -- generate_case_studies
+   - cd case_studies
+   - nix shell -c dune build --display=short
