@@ -47,6 +47,14 @@ impl<'tcx> Procedure<'tcx> {
         let ty = tcx.type_of(proc_def_id).instantiate_identity();
         let ty_params = match ty.kind() {
             ty::TyKind::FnDef(_, params) => params,
+            ty::TyKind::Closure(_, closure_args) => {
+                assert!(ty.is_closure());
+                let clos = closure_args.as_closure();
+                let parent_args = clos.parent_args();
+
+                // TODO: this doesn't include lifetime parameters specific to this closure...
+                tcx.mk_args(parent_args)
+            },
             _ => panic!("Procedure::new called on a procedure whose type is not TyKind::FnDef!"),
         };
 

@@ -47,6 +47,43 @@ There are further attributes that influence the proof-checking behaviour:
 | `skip`  | ignore annotations on this function completely | none   | `#[rr::skip]` |
 | `export_as` | influence the exported path in the generated RefinedRust library interface for import in other proofs | a Rust path | `#[rr::export_as(std::vec::Vec::push)]` |
 
+## Closure attributes
+RefinedRust has experimental support for closures.
+The same attributs as for functions apply, but in addition, you can specify assumptions and modifications on the captures of the closure using the `rr::capture` attribute.
+
+It semantics are best understood using some examples:
+```
+let x = 5;
+
+let clos =
+    #[rr::params("i")]
+    #[rr::capture("x": "i")]
+    #[rr::requires("(2 * i)%Z ∈ i32")]
+    #[rr::returns("(2 * i)%Z")]
+    || {
+        x * 2
+    };
+```
+In this example, the variable `x` is captured as a shared reference.
+Hence, the `rr::capture` attribute specifies that we assume the captured value of `x` to have refinement `i`.
+
+The same applies for move-captured variables.
+
+For mutably captured variables, we can also specify the new value after the closure returns (separated by `->`), as in the following example:
+```
+let mut y = 2;
+
+let mut clos =
+    #[rr::params("i")]
+    #[rr::capture("y": "i" -> "(2*i)%Z")]
+    #[rr::requires("(2 * i)%Z ∈ i32")]
+    || { y *= 2; };
+```
+Currently, RefinedRust does not support the case that only a subplace of a variable is captured very well.
+For references of which a subplace is captured, the capture specification implicitly applies to the actually captured subplace, while other cases are not supported.
+In the future, the specification language will be extended to handle these cases better.
+
+
 ## Impl attributes
 The following attributes are also available on impls and then influence all functions contained in them:
 | Keyword   | Purpose                      | Properties | Example                          |

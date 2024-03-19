@@ -29,4 +29,5 @@ pub enum TranslationError {
     AttributeError(String),
     UnknownAttributeParser(String),
     UnknownProcedure(String),
+    TraitResolution(String),
 }

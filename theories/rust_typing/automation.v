@@ -975,10 +975,24 @@ Ltac solve_goal_normalized_prepare_hook ::=
 
 
 (** User facing tactic calls *)
-Ltac sidecond_hammer_it := 
+Ltac sidecond_hammer_it :=
   prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook.
 Ltac sidecond_hammer :=
-  unshelve sidecond_hammer_it; sidecond_hammer_it
+  (* the first run may spawn further sideconditions *)
+  unshelve sidecond_hammer_it;
+  (* hence run another iteration *)
+  sidecond_hammer_it
+  (* finally, if we still can't solve it, unfold sealed Caesium definitions (like MaxInt).
+     Since this is very expensive, only do this if these definitions are actually involved in the current goal. *)
+  (*first [*)
+    (*match goal with*)
+    (*| |- (MinInt _ ≤ _)%Z => idtac*)
+    (*| |- (_ ≤ MaxInt _)%Z => idtac*)
+    (*| |- (MinInt _ < _)%Z => idtac*)
+    (*| |- (_ < MaxInt _)%Z => idtac*)
+    (*end; *)
+    (*unsafe_unfold_common_caesium_defs; sidecond_hammer_it*)
+  (*| idtac ]*)
 .
 Ltac sidecond_solver :=
   unshelve_sidecond; sidecond_hook.

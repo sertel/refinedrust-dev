@@ -332,7 +332,8 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                     if let Some(local) = place.as_local() {
                         var_names.insert(local, info.name);
                     } else {
-                        unimplemented!();
+                        var_names.insert(place.local, info.name);
+                        //unimplemented!();
                     }
                 } else {
                     unimplemented!();

@@ -16,7 +16,7 @@ pub use crate::coq::*;
 
 #[derive(Clone, Debug, PartialEq)]
 /// Encodes a RR type with an accompanying refinement.
-pub struct TypeWithRef<'def>(Type<'def>, String);
+pub struct TypeWithRef<'def>(pub Type<'def>, pub String);
 
 impl<'def> Display for TypeWithRef<'def> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {

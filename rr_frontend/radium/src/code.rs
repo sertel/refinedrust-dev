@@ -502,7 +502,7 @@ impl fmt::Display for Annotation {
                 write!(f, "CopyLftNameAnnot \"{}\" \"{}\"", lft2, lft1)
             },
             Self::AliasLftIntersection(lft, lfts) => {
-                write!(f, "AliasLftAnnot {} [", lft)?;
+                write!(f, "AliasLftAnnot \"{}\" [", lft)?;
                 fmt_list(f, lfts, "; ", "\"")?;
                 write!(f, "]")
             },

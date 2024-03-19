@@ -4,13 +4,29 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use log::{debug, info};
+use std::collections::HashMap;
+use std::fmt::Write;
+
+use log::{debug, info, warn};
 use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
 use radium::specs;
 use rustc_ast::ast::AttrItem;
+use rustc_middle::ty;
 use {attribute_parse as parse, radium};
 
 use crate::spec_parsers::parse_utils::{ParseMeta, *};
+
+pub struct ClosureMetaInfo<'a, 'tcx, 'def> {
+    /// the closure kind
+    pub kind: ty::ClosureKind,
+    /// capture information
+    pub captures: &'tcx [&'tcx ty::CapturedPlace<'tcx>],
+    /// the translated types of the captures, including the surrounding reference if captured by-ref.
+    /// Needs to be in same order as `captures`
+    pub capture_tys: &'a [specs::Type<'def>],
+    /// the lifetime of the closure, if kind is `Fn` or `FnMut`
+    pub closure_lifetime: Option<specs::Lft>,
+}
 
 pub trait FunctionSpecParser<'def> {
     /// Parse a set of attributes into a function spec.
@@ -21,6 +37,19 @@ pub trait FunctionSpecParser<'def> {
         attrs: &'a [&'a AttrItem],
         spec: &'a mut radium::FunctionBuilder<'def>,
     ) -> Result<(), String>;
+
+    /// Parse a set of attributes into a closure spec.
+    /// The implementation can assume the `attrs` to be prefixed by the tool prefix (e.g. `rr`) and
+    /// that it does not need to deal with any other attributes.
+    fn parse_closure_spec<'tcx, 'a, 'c, F>(
+        &'a mut self,
+        attrs: &'a [&'a AttrItem],
+        spec: &'a mut radium::FunctionBuilder<'def>,
+        meta: ClosureMetaInfo<'c, 'tcx, 'def>,
+        make_tuple: F,
+    ) -> Result<(), String>
+    where
+        F: Fn(Vec<specs::Type<'def>>) -> specs::Type<'def>;
 }
 
 /// A sequence of refinements with optional types, e.g.
@@ -36,6 +65,50 @@ impl<'a> Parse<ParseMeta<'a>> for RRArgs {
         Ok(RRArgs {
             args: args.into_iter().collect(),
         })
+    }
+}
+
+/// Representation of the spec for a single closure capture.
+/// e.g. `"x" : "#42"` (for by shr-ref capture)
+/// or `"y" : "(#42, γ)" -> "(#43, γ)"` (for by mut-ref capture)
+struct ClosureCaptureSpec {
+    variable: String,
+    pre: LiteralTypeWithRef,
+    post: Option<LiteralTypeWithRef>,
+}
+
+impl<'a> parse::Parse<ParseMeta<'a>> for ClosureCaptureSpec {
+    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+        let name_str: parse::LitStr = input.parse(meta)?;
+        let name = name_str.value();
+        input.parse::<_, parse::MToken![:]>(meta)?;
+
+        let pre_spec: LiteralTypeWithRef = input.parse(meta)?;
+
+        if parse::RArrow::peek(input) {
+            input.parse::<_, parse::MToken![->]>(meta)?;
+            let current_pos = input.pos().unwrap();
+
+            let post_spec: LiteralTypeWithRef = input.parse(meta)?;
+            if post_spec.ty.is_some() {
+                Err(parse::ParseError::OtherErr(
+                    current_pos,
+                    format!("Did not expect type specification for capture postcondition"),
+                ))
+            } else {
+                Ok(ClosureCaptureSpec {
+                    variable: name,
+                    pre: pre_spec,
+                    post: Some(post_spec),
+                })
+            }
+        } else {
+            Ok(ClosureCaptureSpec {
+                variable: name,
+                pre: pre_spec,
+                post: None,
+            })
+        }
     }
 }
 
@@ -201,10 +274,390 @@ fn str_err(e: parse::ParseError) -> String {
     format!("{:?}", e)
 }
 
+impl<'a, 'def, F> VerboseFunctionSpecParser<'a, 'def, F>
+where
+    F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
+{
+    /// Handles attributes common among functions/methods and closures.
+    fn handle_common_attributes(
+        &mut self,
+        name: &str,
+        buffer: &parse::ParseBuffer,
+        builder: &mut radium::FunctionBuilder<'def>,
+        lfts: &[(Option<String>, String)],
+    ) -> Result<bool, String> {
+        let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
+        let meta: ParseMeta = (&meta, lfts);
+
+        match name {
+            "params" => {
+                let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+                for p in params.params {
+                    builder.spec.add_param(p.name, p.ty)?;
+                }
+            },
+            "param" => {
+                let param = RRParam::parse(&buffer, &meta).map_err(str_err)?;
+                builder.spec.add_param(param.name, param.ty)?;
+            },
+            "args" => {
+                let args = RRArgs::parse(&buffer, &meta).map_err(str_err)?;
+                if self.arg_types.len() != args.args.len() {
+                    return Err(format!(
+                        "wrong number of function arguments given: expected {} args",
+                        self.arg_types.len()
+                    ));
+                }
+                for (arg, ty) in args.args.into_iter().zip(self.arg_types) {
+                    let (ty, hint) = self.make_type_with_ref(&arg, ty);
+                    builder.spec.add_arg(ty)?;
+                    if let Some(cty) = hint {
+                        // potentially add a typing hint to the refinement
+                        if let IdentOrTerm::Ident(ref i) = arg.rfn {
+                            info!("Trying to add a typing hint for {}", i);
+                            builder.spec.add_param_type_annot(&specs::CoqName::Named(i.clone()), cty)?;
+                        }
+                    }
+                }
+            },
+            "requires" => {
+                let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+                builder.spec.add_precondition(iprop.into())?;
+            },
+            "ensures" => {
+                let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+                builder.spec.add_postcondition(iprop.into())?;
+            },
+            "observe" => {
+                let m = || {
+                    let gname: parse::LitStr = buffer.parse(&meta)?;
+                    buffer.parse::<_, parse::MToken![:]>(&meta)?;
+
+                    let term: parse::LitStr = buffer.parse(&meta)?;
+                    let (term, _) = process_coq_literal(&term.value(), meta);
+                    Ok(MetaIProp::Observe(gname.value().to_string(), term))
+                };
+                let m = m().map_err(str_err)?;
+                builder.spec.add_postcondition(m.into())?;
+            },
+            "returns" => {
+                let tr = LiteralTypeWithRef::parse(&buffer, &meta).map_err(str_err)?;
+                // convert to type
+                let (ty, _) = self.make_type_with_ref(&tr, self.ret_type);
+                builder.spec.set_ret_type(ty)?;
+            },
+            "exists" => {
+                let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+                for param in params.params.into_iter() {
+                    builder.spec.add_existential(param.name, param.ty)?;
+                }
+            },
+            "tactics" => {
+                let tacs = parse::LitStr::parse(&buffer, &meta).map_err(str_err)?;
+                let tacs = tacs.value();
+                builder.add_manual_tactic(&tacs);
+            },
+            "context" => {
+                let context_item = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
+                if context_item.at_end {
+                    builder.spec.add_late_coq_param(
+                        specs::CoqName::Unnamed,
+                        specs::CoqType::Literal(context_item.item),
+                        true,
+                    )?;
+                } else {
+                    builder.spec.add_coq_param(
+                        specs::CoqName::Unnamed,
+                        specs::CoqType::Literal(context_item.item),
+                        true,
+                    )?;
+                }
+            },
+            _ => {
+                return Ok(false);
+            },
+        }
+        Ok(true)
+    }
+
+    /// Merges information on captured variables with specifications on captures.
+    /// `capture_specs`: the parsed capture specification
+
+    /// `make_tuple`: closure to make a new Radium tuple type
+    /// `builder`: the function builder to push new specification components to
+    fn merge_capture_information<'b, 'c, 'tcx, H>(
+        &mut self,
+        capture_specs: Vec<ClosureCaptureSpec>,
+        meta: ClosureMetaInfo<'c, 'tcx, 'def>,
+        make_tuple: H,
+        builder: &mut radium::FunctionBuilder<'def>,
+    ) -> Result<(), String>
+    where
+        H: Fn(Vec<specs::Type<'def>>) -> specs::Type<'def>,
+    {
+        enum CapturePostRfn {
+            // mutable capture: (pattern, ghost_var)
+            Mut(String, String),
+            // immutable or once capture: pattern
+            ImmutOrConsume(String),
+        }
+
+        // new ghost vars created for mut-captures
+        let mut new_ghost_vars: Vec<String> = Vec::new();
+        let mut pre_types: Vec<specs::TypeWithRef> = Vec::new();
+        // post patterns and optional ghost variable, if this is a by-mut-ref capture
+        let mut post_patterns: Vec<CapturePostRfn> = Vec::new();
+
+        let mut capture_spec_map = HashMap::new();
+        for x in capture_specs.into_iter() {
+            capture_spec_map.insert(x.variable, (x.pre, x.post));
+        }
+
+        // assemble the pre types
+        for (capture, ty) in meta.captures.iter().zip(meta.capture_tys.iter()) {
+            if !capture.place.projections.is_empty() {
+                info!("processing capture {:?}", capture);
+                warn!("ignoring place projection in translation of capture: {:?}", capture);
+                // TODO: could handle this by parsing capture strings in specs
+                //unimplemented!("only support specifying closure captures without projections");
+            }
+            let base = capture.var_ident.name.as_str();
+            if let Some((_, (pre, post))) = capture_spec_map.remove_entry(base) {
+                // we kinda want to specify the thing independently of how it is captured
+                match capture.info.capture_kind {
+                    ty::UpvarCapture::ByValue => {
+                        // full ownership
+                        let (processed_ty, _) = self.make_type_with_ref(&pre, ty);
+                        pre_types.push(processed_ty);
+
+                        if let Some(post) = post {
+                            // this should not contain any post
+                            return Err(format!(
+                                "Did not expect postcondition {:?} for by-value capture",
+                                post
+                            ));
+                            //let (processed_post, _) = self.make_type_with_ref(&post, ty);
+                            //post_patterns.push(processed_post.1);
+                        }
+                    },
+                    ty::UpvarCapture::ByRef(ty::BorrowKind::ImmBorrow) => {
+                        // shared borrow
+                        // if there's a manually specified type, we need to wrap it in the reference
+                        if let specs::Type::ShrRef(box auto_type, lft) = ty {
+                            let (processed_ty, _) = self.make_type_with_ref(&pre, auto_type);
+                            // now wrap it in a shared reference again
+                            let altered_ty = specs::Type::ShrRef(Box::new(processed_ty.0), lft.clone());
+                            let altered_rfn = format!("#({})", processed_ty.1);
+                            pre_types.push(specs::TypeWithRef::new(altered_ty, altered_rfn.clone()));
+
+                            // push the same pattern for the post, no ghost variable
+                            post_patterns.push(CapturePostRfn::ImmutOrConsume(altered_rfn));
+                        }
+                    },
+                    ty::UpvarCapture::ByRef(_) => {
+                        // mutable borrow
+                        // we handle ty::BorrowKind::MutBorrow and ty::BorrowKind::UniqImmBorrow
+                        // the same way, as they are not really different for RefinedRust's type
+                        // system
+                        if let specs::Type::MutRef(box auto_type, lft) = ty {
+                            let (processed_ty, _) = self.make_type_with_ref(&pre, auto_type);
+                            // now wrap it in a mutable reference again
+                            // we create a ghost variable
+                            let ghost_var = format!("_γ{base}");
+                            new_ghost_vars.push(ghost_var.clone());
+                            let altered_ty = specs::Type::MutRef(Box::new(processed_ty.0), lft.clone());
+                            let altered_rfn = format!("(#({}), {ghost_var})", processed_ty.1);
+                            pre_types.push(specs::TypeWithRef::new(altered_ty, altered_rfn));
+
+                            if let Some(post) = post {
+                                post_patterns.push(CapturePostRfn::Mut(post.rfn.to_string(), ghost_var));
+                            } else {
+                                // push the same pattern for the post
+                                post_patterns.push(CapturePostRfn::Mut(processed_ty.1, ghost_var));
+                            }
+                        }
+                    },
+                }
+            } else {
+                return Err(format!("ambiguous specification of capture {:?}", capture));
+            }
+        }
+
+        // push everything to the builder
+        for x in new_ghost_vars.into_iter() {
+            builder.spec.add_param(radium::CoqName::Named(x), radium::CoqType::Gname).unwrap();
+        }
+
+        // assemble a string for the closure arg
+        let mut pre_rfn = String::new();
+        let mut pre_tys = Vec::new();
+
+        if pre_types.is_empty() {
+            write!(pre_rfn, "()").unwrap();
+        } else {
+            write!(pre_rfn, "-[").unwrap();
+            let mut needs_sep = false;
+            for x in pre_types.into_iter() {
+                if needs_sep {
+                    write!(pre_rfn, "; ").unwrap();
+                }
+                needs_sep = true;
+                write!(pre_rfn, "#({})", x.1).unwrap();
+                pre_tys.push(x.0);
+            }
+            write!(pre_rfn, "]").unwrap();
+        }
+        let tuple = make_tuple(pre_tys);
+
+        match meta.kind {
+            ty::ClosureKind::FnOnce => {
+                builder.spec.add_arg(specs::TypeWithRef::new(tuple, pre_rfn))?;
+
+                // generate observations on all the mut-ref captures
+                for p in post_patterns.into_iter() {
+                    match p {
+                        CapturePostRfn::ImmutOrConsume(_) => {
+                            // nothing mutated
+                        },
+                        CapturePostRfn::Mut(pat, gvar) => {
+                            // add an observation on `gvar`
+                            builder.spec.add_postcondition(MetaIProp::Observe(gvar, pat).into())?;
+                        },
+                    }
+                }
+            },
+            ty::ClosureKind::Fn => {
+                // wrap the argument in a shared reference
+                // all the captures are by shared ref
+
+                let lft = meta.closure_lifetime.unwrap();
+                let ref_ty = specs::Type::ShrRef(Box::new(tuple), lft);
+                let ref_rfn = format!("#{}", pre_rfn);
+
+                builder.spec.add_arg(specs::TypeWithRef::new(ref_ty, ref_rfn))?;
+            },
+            ty::ClosureKind::FnMut => {
+                // wrap the argument in a mutable reference
+                let post_name = "__γclos";
+                builder
+                    .spec
+                    .add_param(radium::CoqName::Named(post_name.to_string()), radium::CoqType::Gname)
+                    .unwrap();
+
+                let lft = meta.closure_lifetime.unwrap();
+                let ref_ty = specs::Type::MutRef(Box::new(tuple), lft);
+                let ref_rfn = format!("(#({}), {})", pre_rfn, post_name);
+
+                builder.spec.add_arg(specs::TypeWithRef::new(ref_ty, ref_rfn))?;
+
+                // assemble a postcondition on the closure
+                // we observe on the outer mutable reference for the capture, not on the individual
+                // references
+                let mut post_term = String::new();
+
+                write!(post_term, "-[").unwrap();
+                let mut needs_sep = false;
+                for p in post_patterns.into_iter() {
+                    if needs_sep {
+                        write!(post_term, "; ").unwrap();
+                    }
+                    needs_sep = true;
+                    match p {
+                        CapturePostRfn::ImmutOrConsume(pat) => write!(post_term, "#({pat})").unwrap(),
+                        CapturePostRfn::Mut(pat, gvar) => {
+                            write!(post_term, "#(#({pat}), {gvar})").unwrap();
+                        },
+                    }
+                }
+                write!(post_term, "]").unwrap();
+
+                builder
+                    .spec
+                    .add_postcondition(MetaIProp::Observe(post_name.to_string(), post_term).into())?;
+            },
+        }
+        Ok(())
+    }
+}
+
 impl<'a, 'def, F> FunctionSpecParser<'def> for VerboseFunctionSpecParser<'a, 'def, F>
 where
     F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
+    fn parse_closure_spec<'tcx, 'b, 'c, H>(
+        &'b mut self,
+        attrs: &'b [&'b AttrItem],
+        spec: &'b mut radium::FunctionBuilder<'def>,
+        closure_meta: ClosureMetaInfo<'c, 'tcx, 'def>,
+        make_tuple: H,
+    ) -> Result<(), String>
+    where
+        H: Fn(Vec<specs::Type<'def>>) -> specs::Type<'def>,
+    {
+        if attrs.len() > 0 {
+            spec.spec.have_spec();
+        }
+
+        // clone to be able to mutably borrow later
+        let builder = spec;
+        let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
+        let lfts: Vec<(Option<String>, specs::Lft)> = builder.get_lfts();
+        let meta: ParseMeta = (&meta, &lfts);
+        info!("ty params: {:?}", meta);
+
+        // TODO: handle args in the common function differently
+        let mut capture_specs = Vec::new();
+
+        // parse captures -- we need to handle it before the other annotations because we will have
+        // to add the first arg for the capture
+        for &it in attrs.iter() {
+            let ref path_segs = it.path.segments;
+            let ref args = it.args;
+
+            let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
+            let meta: ParseMeta = (&meta, &lfts);
+
+            if let Some(seg) = path_segs.get(1) {
+                let buffer = parse::ParseBuffer::new(&args.inner_tokens());
+                let name = &*seg.ident.name.as_str();
+                match name {
+                    "capture" => {
+                        let spec: ClosureCaptureSpec = buffer.parse(&meta).map_err(str_err)?;
+                        capture_specs.push(spec);
+                    },
+                    _ => {},
+                }
+            }
+        }
+
+        self.merge_capture_information(capture_specs, closure_meta, make_tuple, &mut *builder)?;
+
+        for &it in attrs.iter() {
+            let ref path_segs = it.path.segments;
+            let ref args = it.args;
+
+            if let Some(seg) = path_segs.get(1) {
+                let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
+                let name = &*seg.ident.name.as_str();
+
+                match self.handle_common_attributes(name, &buffer, builder, &lfts) {
+                    Ok(b) => {
+                        if !b {
+                            if name != "capture" {
+                                info!("ignoring function attribute: {:?}", args);
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        return Err(e);
+                    },
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     fn parse_function_spec(
         &mut self,
         attrs: &[&AttrItem],
@@ -226,96 +679,24 @@ where
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 
-            let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
-            let meta: ParseMeta = (&meta, &lfts);
-
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-                match &*seg.ident.name.as_str() {
-                    "params" => {
-                        let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
-                        for p in params.params {
-                            builder.spec.add_param(p.name, p.ty)?;
-                        }
-                    },
-                    "param" => {
-                        let param = RRParam::parse(&buffer, &meta).map_err(str_err)?;
-                        builder.spec.add_param(param.name, param.ty)?;
-                    },
-                    "args" => {
-                        let args = RRArgs::parse(&buffer, &meta).map_err(str_err)?;
-                        if self.arg_types.len() != args.args.len() {
-                            return Err("wrong number of function arguments given".to_string());
-                        }
-                        for (arg, ty) in args.args.into_iter().zip(self.arg_types) {
-                            let (ty, hint) = self.make_type_with_ref(&arg, ty);
-                            builder.spec.add_arg(ty)?;
-                            if let Some(cty) = hint {
-                                // potentially add a typing hint to the refinement
-                                if let IdentOrTerm::Ident(ref i) = arg.rfn {
-                                    info!("Trying to add a typing hint for {}", i);
-                                    builder
-                                        .spec
-                                        .add_param_type_annot(&specs::CoqName::Named(i.clone()), cty)?;
-                                }
+
+                match self.handle_common_attributes(&*seg.ident.name.as_str(), &buffer, builder, &lfts) {
+                    Ok(b) => {
+                        if !b {
+                            let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
+                            let meta: ParseMeta = (&meta, &lfts);
+
+                            match &*seg.ident.name.as_str() {
+                                _ => {
+                                    info!("ignoring function attribute: {:?}", args);
+                                },
                             }
                         }
                     },
-                    "requires" => {
-                        let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
-                        builder.spec.add_precondition(iprop.into())?;
-                    },
-                    "ensures" => {
-                        let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
-                        builder.spec.add_postcondition(iprop.into())?;
-                    },
-                    "observe" => {
-                        let m = || {
-                            let gname: parse::LitStr = buffer.parse(&meta)?;
-                            buffer.parse::<_, parse::MToken![:]>(&meta)?;
-
-                            let term: parse::LitStr = buffer.parse(&meta)?;
-                            let (term, _) = process_coq_literal(&term.value(), meta);
-                            Ok(MetaIProp::Observe(gname.value().to_string(), term))
-                        };
-                        let m = m().map_err(str_err)?;
-                        builder.spec.add_postcondition(m.into())?;
-                    },
-                    "returns" => {
-                        let tr = LiteralTypeWithRef::parse(&buffer, &meta).map_err(str_err)?;
-                        // convert to type
-                        let (ty, _) = self.make_type_with_ref(&tr, self.ret_type);
-                        builder.spec.set_ret_type(ty)?;
-                    },
-                    "exists" => {
-                        let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
-                        for param in params.params.into_iter() {
-                            builder.spec.add_existential(param.name, param.ty)?;
-                        }
-                    },
-                    "tactics" => {
-                        let tacs = parse::LitStr::parse(&buffer, &meta).map_err(str_err)?;
-                        let tacs = tacs.value();
-                        builder.add_manual_tactic(&tacs);
-                    },
-                    "context" => {
-                        let context_item = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
-                        if context_item.at_end {
-                            builder.spec.add_late_coq_param(
-                                specs::CoqName::Unnamed,
-                                specs::CoqType::Literal(context_item.item),
-                                true,
-                            )?;
-                        } else {
-                            builder.spec.add_coq_param(
-                                specs::CoqName::Unnamed,
-                                specs::CoqType::Literal(context_item.item),
-                                true,
-                            )?;
-                        }
-                    },
-                    _ => {
-                        info!("ignoring function attribute: {:?}", args);
+                    Err(e) => {
+                        return Err(e);
                     },
                 }
             }

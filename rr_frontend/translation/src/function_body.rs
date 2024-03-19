@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use log::{info, warn};
+use log::{info, trace, warn};
 use radium;
 use rustc_ast::ast::Attribute;
 use rustc_hir::def_id::DefId;
@@ -29,7 +29,9 @@ use crate::environment::procedure::Procedure;
 use crate::environment::{polonius_info as info, Environment};
 use crate::inclusion_tracker::*;
 use crate::rustc_middle::ty::TypeFoldable;
-use crate::spec_parsers::verbose_function_spec_parser::{FunctionSpecParser, VerboseFunctionSpecParser};
+use crate::spec_parsers::verbose_function_spec_parser::{
+    ClosureMetaInfo, FunctionSpecParser, VerboseFunctionSpecParser,
+};
 use crate::type_translator::*;
 use crate::tyvars::*;
 
@@ -201,15 +203,365 @@ pub struct FunctionTranslator<'a, 'def, 'tcx> {
     info: &'a PoloniusInfo<'a, 'tcx>,
     /// translator for types
     ty_translator: &'a TypeTranslator<'def, 'tcx>,
-
-    /// inputs of the function, with both early and late bound regions substituted with their
-    /// Polonius ReVar
-    inputs: Vec<Ty<'tcx>>,
-    /// output of the function, similarly with substituted regions
-    output: Ty<'tcx>,
 }
 
 impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
+    pub fn process_lifetimes_of_args(
+        env: &Environment<'tcx>,
+        params: &[ty::GenericArg<'tcx>],
+        sig: ty::Binder<'tcx, ty::FnSig<'tcx>>,
+        _body: &mir::Body<'tcx>,
+    ) -> (Vec<ty::Ty<'tcx>>, ty::Ty<'tcx>, HashMap<ty::RegionVid, (String, Option<String>)>) {
+        let mut universal_lifetimes = HashMap::new();
+
+        // we create a substitution that replaces early bound regions with their Polonius
+        // region variables
+        let mut subst_early_bounds: Vec<ty::GenericArg<'tcx>> = Vec::new();
+        let mut num_early_bounds = 0;
+        for a in params.iter() {
+            match a.unpack() {
+                ty::GenericArgKind::Lifetime(r) => {
+                    // skip over 0 = static
+                    let next_id = ty::RegionVid::from_u32(num_early_bounds + 1);
+                    let revar = ty::Region::new_var(env.tcx(), next_id);
+                    num_early_bounds += 1;
+                    subst_early_bounds.push(ty::GenericArg::from(revar));
+
+                    match *r {
+                        ty::RegionKind::ReEarlyBound(r) => {
+                            let name = strip_coq_ident(r.name.as_str());
+                            universal_lifetimes.insert(next_id, (format!("ulft_{}", name), Some(name)));
+                        },
+                        _ => {
+                            universal_lifetimes.insert(next_id, (format!("ulft_{}", num_early_bounds), None));
+                        },
+                    }
+                    //println!("early region {}", r);
+                },
+                _ => {
+                    subst_early_bounds.push(*a);
+                },
+            }
+        }
+        let subst_early_bounds = env.tcx().mk_args(&subst_early_bounds);
+
+        // add names for late bound region variables
+        let mut num_late_bounds = 0;
+        for b in sig.bound_vars().iter() {
+            let next_id = ty::RegionVid::from_u32(num_early_bounds + num_late_bounds + 1);
+            match b {
+                ty::BoundVariableKind::Region(r) => {
+                    match r {
+                        ty::BoundRegionKind::BrNamed(_, sym) => {
+                            let mut region_name = strip_coq_ident(sym.as_str());
+                            if region_name == "_" {
+                                region_name = format!("{}", next_id.as_usize());
+                                universal_lifetimes.insert(next_id, (format!("ulft_{}", region_name), None));
+                            } else {
+                                universal_lifetimes
+                                    .insert(next_id, (format!("ulft_{}", region_name), Some(region_name)));
+                            }
+                        },
+                        ty::BoundRegionKind::BrAnon(_) => {
+                            universal_lifetimes
+                                .insert(next_id, (format!("ulft_{}", next_id.as_usize()), None));
+                        },
+                        _ => (),
+                    }
+                    num_late_bounds += 1;
+                },
+                _ => (),
+            }
+        }
+
+        // replace late-bound region variables by re-enumerating them in the same way as the MIR
+        // type checker does (that this happens in the same way is important to make the names
+        // line up!)
+        let mut next_index = num_early_bounds + 1; // skip over one additional due to static
+        let mut folder = |_| {
+            let cur_index = next_index;
+            next_index += 1;
+            ty::Region::new_var(env.tcx(), ty::RegionVid::from_u32(cur_index))
+        };
+        let (late_sig, _late_region_map) = env.tcx().replace_late_bound_regions(sig, &mut folder);
+
+        // replace early bound variables
+        let inputs: Vec<_> = late_sig
+            .inputs()
+            .iter()
+            .map(|ty| ty_instantiate(*ty, env.tcx(), subst_early_bounds))
+            .collect();
+
+        let output = ty_instantiate(late_sig.output(), env.tcx(), subst_early_bounds);
+
+        (inputs, output, universal_lifetimes)
+    }
+
+    /// At the start of the function, there's a universal (placeholder) region for reference argument.
+    /// These get subsequently relabeled.
+    /// Given the relabeled region, find the original placeholder region.
+    fn find_placeholder_region_for(r: ty::RegionVid, info: &PoloniusInfo) -> Option<ty::RegionVid> {
+        let root_location = Location {
+            block: BasicBlock::from_u32(0),
+            statement_index: 0,
+        };
+        let root_point = info.interner.get_point_index(&facts::Point {
+            location: root_location,
+            typ: facts::PointType::Start,
+        });
+
+        for (ref r1, ref r2, ref p) in info.borrowck_in_facts.subset_base.iter() {
+            if *p == root_point && *r2 == r {
+                info!("find placeholder region for: {:?} ⊑ {:?} = r = {:?}", r1, r2, r);
+                return Some(*r1);
+            }
+        }
+        None
+    }
+
+    /// Create a translation instance for a closure.
+    pub fn new_closure(
+        env: &'def Environment<'tcx>,
+        meta: ProcedureMeta,
+        proc: Procedure<'tcx>,
+        attrs: &'a [&'a rustc_ast::ast::AttrItem],
+        ty_translator: &'def TypeTranslator<'def, 'tcx>,
+        proc_registry: &'a ProcedureScope<'def>,
+        const_registry: &'a ConstScope<'def>,
+    ) -> Result<Self, TranslationError> {
+        let mut translated_fn = radium::FunctionBuilder::new(&meta.name, &meta.spec_name);
+
+        // TODO can we avoid the leak
+        let proc: &'def Procedure = &*Box::leak(Box::new(proc));
+        let body = proc.get_mir();
+        Self::dump_body(&body);
+
+        let closure_kind;
+
+        let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
+        let ty = ty.instantiate_identity();
+        match ty.kind() {
+            TyKind::Closure(_def, closure_args) => {
+                assert!(ty.is_closure());
+                let clos = closure_args.as_closure();
+
+                closure_kind = clos.kind();
+            },
+            _ => panic!("can not handle non-closures"),
+        };
+
+        let local_decls = &body.local_decls;
+        let closure_arg = local_decls.get(Local::from_usize(1)).unwrap();
+        let closure_ty;
+
+        match closure_kind {
+            ty::ClosureKind::Fn => {
+                if let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() {
+                    closure_ty = ty;
+                } else {
+                    unreachable!();
+                }
+            },
+            ty::ClosureKind::FnMut => {
+                if let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() {
+                    closure_ty = ty;
+                } else {
+                    unreachable!("unexpected type {:?}", closure_arg.ty);
+                }
+            },
+            ty::ClosureKind::FnOnce => {
+                closure_ty = &closure_arg.ty;
+            },
+        }
+
+        let parent_args;
+        let mut capture_regions = Vec::new();
+        let sig;
+        let captures;
+        let upvars_tys;
+        if let ty::TyKind::Closure(did, closure_args) = closure_ty.kind() {
+            let clos = closure_args.as_closure();
+
+            let tupled_upvars_tys = clos.tupled_upvars_ty();
+            upvars_tys = clos.upvar_tys();
+            parent_args = clos.parent_args();
+            sig = clos.sig();
+            info!("closure sig: {:?}", sig);
+
+            captures = env.tcx().closure_captures(did.as_local().unwrap());
+            info!("Closure has captures: {:?}", captures);
+
+            // find additional lifetime parameters
+            for (place, ty) in captures.iter().zip(clos.upvar_tys().iter()) {
+                if let Some(_) = place.region {
+                    // find region from ty
+                    if let ty::TyKind::Ref(region, _, _) = ty.kind() {
+                        capture_regions.push(*region);
+                    }
+                }
+            }
+            info!("Closure capture regions: {:?}", capture_regions);
+
+            info!("Closure arg upvar_tys: {:?}", tupled_upvars_tys);
+            info!("Function signature: {:?}", sig);
+            info!("Closure generic args: {:?}", parent_args);
+        } else {
+            unreachable!();
+        }
+
+        match PoloniusInfo::new(env, proc) {
+            Ok(info) => {
+                // TODO: avoid leak
+                let info: &'def PoloniusInfo = &*Box::leak(Box::new(info));
+
+                // For closures, we only handle the parent's args here!
+                // TODO: do we need to do something special for the parent's late-bound region
+                // parameters?
+                let params = parent_args;
+                //proc.get_type_params();
+                info!("Function generic args: {:?}", params);
+
+                // dump graphviz files
+                // color code: red: dying loan, pink: becoming a zombie; green: is zombie
+                if rrconfig::dump_borrowck_info() {
+                    crate::environment::dump_borrowck_info(&*env, &proc.get_id(), &info);
+                }
+
+                let (tupled_inputs, output, mut universal_lifetimes) =
+                    Self::process_lifetimes_of_args(&env, params, sig, body);
+
+                // Process the lifetime parameters that come from the captures
+                for r in capture_regions {
+                    if let ty::RegionKind::ReVar(r) = r.kind() {
+                        let name = format!("ulft_{}", r.as_usize());
+                        universal_lifetimes.insert(r, (name, None));
+                    } else {
+                        unreachable!();
+                    }
+                }
+                // also add the lifetime for the outer reference
+                let mut maybe_outer_lifetime = None;
+                if let ty::TyKind::Ref(r, _, _) = closure_arg.ty.kind() {
+                    if let ty::RegionKind::ReVar(r) = r.kind() {
+                        // We need to do some hacks here to find the right Polonius region:
+                        // `r` is the non-placeholder region that the variable gets, but we are
+                        // looking for the corresponding placeholder region
+                        let r2 = Self::find_placeholder_region_for(r, info).unwrap();
+
+                        info!("using lifetime {:?} for closure universal", r2);
+                        let name = format!("ulft_{}", r2.as_usize());
+                        universal_lifetimes.insert(r2, (name, None));
+
+                        maybe_outer_lifetime = Some(r2);
+                    } else {
+                        unreachable!();
+                    }
+                }
+
+                // detuple the inputs
+                assert!(tupled_inputs.len() == 1);
+                let input_tuple_ty = tupled_inputs[0];
+                let mut inputs = Vec::new();
+
+                // push the closure as the first argument
+                /*
+                if let Some(r2) = maybe_outer_lifetime {
+                    // in this case, we need to patch the region first
+                    if let ty::TyKind::Ref(_, ty, m) = closure_arg.ty.kind() {
+                        let new_region = ty::Region::new_var(env.tcx(), r2);
+                        inputs.push(env.tcx().mk_ty_from_kind(ty::TyKind::Ref(new_region, *ty, *m)));
+                    }
+                }
+                else {
+                    inputs.push(closure_arg.ty);
+                }
+                */
+
+                if let ty::TyKind::Tuple(args) = input_tuple_ty.kind() {
+                    inputs.extend(args.iter());
+                }
+
+                info!("inputs({}): {:?}, output: {:?}", inputs.len(), inputs, output);
+                info!("Have lifetime parameters: {:?}", universal_lifetimes);
+
+                // add universal lifetimes to the spec
+                for (_, (lft, name)) in universal_lifetimes.iter() {
+                    //let lft = info::AtomicRegion::Universal(info::UniversalRegionKind::Local,
+                    // ty::RegionVid::from_u32(1+r));
+                    translated_fn
+                        .add_universal_lifetime(name.clone(), lft.to_string())
+                        .map_err(|e| TranslationError::UnknownError(e))?;
+                }
+
+                let mut inclusion_tracker = InclusionTracker::new(info);
+                // add placeholder subsets
+                let initial_point: facts::Point = facts::Point {
+                    location: BasicBlock::from_u32(0).start_location(),
+                    typ: facts::PointType::Start,
+                };
+                for (r1, r2) in info.borrowck_in_facts.known_placeholder_subset.iter() {
+                    inclusion_tracker.add_static_inclusion(
+                        *r1,
+                        *r2,
+                        info.interner.get_point_index(&initial_point),
+                    );
+                }
+
+                // enter the procedure
+                let universal_lifetime_map: HashMap<_, _> =
+                    universal_lifetimes.into_iter().map(|(x, y)| (x, y.0)).collect();
+                ty_translator.enter_procedure(env.tcx().mk_args(params), universal_lifetime_map)?;
+                // add generic args to the fn
+                let generics = ty_translator.generic_scope.borrow();
+                for t in generics.iter() {
+                    if let Some(ref t) = t {
+                        translated_fn.add_generic_type(t.clone());
+                    }
+                }
+
+                let mut t = Self {
+                    env,
+                    proc,
+                    info,
+                    translated_fn,
+                    inclusion_tracker,
+                    procedure_registry: proc_registry,
+                    attrs,
+                    ty_translator,
+                    const_registry,
+                };
+
+                // add universal constraints
+                let universal_constraints = t.get_relevant_universal_constraints();
+                info!("univeral constraints: {:?}", universal_constraints);
+                for (lft1, lft2) in universal_constraints.into_iter() {
+                    t.translated_fn
+                        .add_universal_lifetime_constraint(lft1, lft2)
+                        .map_err(|e| TranslationError::UnknownError(e))?;
+                }
+
+                // compute meta information needed to generate the spec
+                let mut translated_upvars_types = Vec::new();
+                for ty in upvars_tys {
+                    let translated_ty = t.ty_translator.translate_type(&ty)?;
+                    translated_upvars_types.push(translated_ty);
+                }
+                let meta = ClosureMetaInfo {
+                    kind: closure_kind,
+                    captures,
+                    capture_tys: &translated_upvars_types,
+                    closure_lifetime: maybe_outer_lifetime
+                        .map(|x| t.ty_translator.lookup_universal_region(x).unwrap()),
+                };
+
+                // process attributes
+                t.process_closure_attrs(&inputs, &output, meta)?;
+                Ok(t)
+            },
+            Err(err) => Err(TranslationError::UnknownError(format!("{:?}", err))),
+        }
+    }
+
     /// Translate the body of a function.
     pub fn new(
         env: &'def Environment<'tcx>,
@@ -225,16 +577,23 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         // TODO can we avoid the leak
         let proc: &'def Procedure = &*Box::leak(Box::new(proc));
 
+        let body = proc.get_mir();
+        Self::dump_body(&body);
+
         let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
         let ty = ty.instantiate_identity();
-        let (sig, substs) = match ty.kind() {
-            TyKind::FnDef(_def, args) => {
+        // substs are the generic args of this function (including lifetimes)
+        // sig is the function signature
+        let sig = match ty.kind() {
+            TyKind::FnDef(_def, _args) => {
                 assert!(ty.is_fn());
                 let sig = ty.fn_sig(env.tcx());
-                (sig, args)
+                sig
             },
             _ => panic!("can not handle non-fns"),
         };
+
+        info!("Function signature: {:?}", sig);
 
         match PoloniusInfo::new(env, proc) {
             Ok(info) => {
@@ -242,97 +601,16 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 let info: &'def PoloniusInfo = &*Box::leak(Box::new(info));
 
                 let params = proc.get_type_params();
+                info!("Function generic args: {:?}", params);
 
                 // dump graphviz files
                 // color code: red: dying loan, pink: becoming a zombie; green: is zombie
-                crate::environment::dump_borrowck_info(&*env, &proc.get_id(), &info);
-
-                let mut universal_lifetimes = HashMap::new();
-
-                // we create a substitution that replaces early bound regions with their Polonius
-                // region variables
-                let mut subst_early_bounds: Vec<ty::GenericArg<'tcx>> = Vec::new();
-                let mut num_early_bounds = 0;
-                for a in params.iter() {
-                    match a.unpack() {
-                        ty::GenericArgKind::Lifetime(r) => {
-                            // skip over 0 = static
-                            let next_id = ty::RegionVid::from_u32(num_early_bounds + 1);
-                            let revar = ty::Region::new_var(env.tcx(), next_id);
-                            num_early_bounds += 1;
-                            subst_early_bounds.push(ty::GenericArg::from(revar));
-
-                            match *r {
-                                ty::RegionKind::ReEarlyBound(r) => {
-                                    let name = strip_coq_ident(r.name.as_str());
-                                    universal_lifetimes
-                                        .insert(next_id, (format!("ulft_{}", name), Some(name)));
-                                },
-                                _ => {
-                                    universal_lifetimes
-                                        .insert(next_id, (format!("ulft_{}", num_early_bounds), None));
-                                },
-                            }
-                            //println!("early region {}", r);
-                        },
-                        _ => {
-                            subst_early_bounds.push(a);
-                        },
-                    }
-                }
-                let subst_early_bounds = env.tcx().mk_args(&subst_early_bounds);
-
-                // add names for late bound region variables
-                let mut num_late_bounds = 0;
-                for b in sig.bound_vars().iter() {
-                    let next_id = ty::RegionVid::from_u32(num_early_bounds + num_late_bounds + 1);
-                    match b {
-                        ty::BoundVariableKind::Region(r) => {
-                            match r {
-                                ty::BoundRegionKind::BrNamed(_, sym) => {
-                                    let mut region_name = strip_coq_ident(sym.as_str());
-                                    if region_name == "_" {
-                                        region_name = format!("{}", next_id.as_usize());
-                                        universal_lifetimes
-                                            .insert(next_id, (format!("ulft_{}", region_name), None));
-                                    } else {
-                                        universal_lifetimes.insert(
-                                            next_id,
-                                            (format!("ulft_{}", region_name), Some(region_name)),
-                                        );
-                                    }
-                                },
-                                ty::BoundRegionKind::BrAnon(_) => {
-                                    universal_lifetimes
-                                        .insert(next_id, (format!("ulft_{}", next_id.as_usize()), None));
-                                },
-                                _ => (),
-                            }
-                            num_late_bounds += 1;
-                        },
-                        _ => (),
-                    }
+                if rrconfig::dump_borrowck_info() {
+                    crate::environment::dump_borrowck_info(&*env, &proc.get_id(), &info);
                 }
 
-                // replace late-bound region variables by re-enumerating them in the same way as the MIR
-                // type checker does (that this happens in the same way is important to make the names
-                // line up!)
-                let mut next_index = num_early_bounds + 1; // skip over one additional due to static
-                let mut folder = |_| {
-                    let cur_index = next_index;
-                    next_index += 1;
-                    ty::Region::new_var(env.tcx(), ty::RegionVid::from_u32(cur_index))
-                };
-                let (late_sig, _late_region_map) = env.tcx().replace_late_bound_regions(sig, &mut folder);
-
-                // replace early bound variables
-                let inputs: Vec<_> = late_sig
-                    .inputs()
-                    .iter()
-                    .map(|ty| ty_instantiate(*ty, env.tcx(), subst_early_bounds))
-                    .collect();
-                let output = ty_instantiate(late_sig.output(), env.tcx(), subst_early_bounds);
-
+                let (inputs, output, universal_lifetimes) =
+                    Self::process_lifetimes_of_args(&env, params, sig, &body);
                 info!("Have lifetime parameters: {:?}", universal_lifetimes);
 
                 // add universal lifetimes to the spec
@@ -357,17 +635,18 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 }
 
                 // enter the procedure
-                let universal_lifetimes: Vec<_> = universal_lifetimes.into_iter().map(|(x, y)| y.0).collect();
-                ty_translator.enter_procedure(&params, universal_lifetimes)?;
+                let universal_lifetime_map: HashMap<_, _> =
+                    universal_lifetimes.into_iter().map(|(x, y)| (x, y.0)).collect();
+                ty_translator.enter_procedure(&params, universal_lifetime_map)?;
                 // add generic args to the fn
                 let generics = ty_translator.generic_scope.borrow();
                 for t in generics.iter() {
-                    if let Some(ref t) = t {
+                    if let Some(t) = t {
                         translated_fn.add_generic_type(t.clone());
                     }
                 }
 
-                let t = Self {
+                let mut t = Self {
                     env,
                     proc,
                     info,
@@ -376,10 +655,20 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     procedure_registry: proc_registry,
                     attrs,
                     ty_translator,
-                    inputs,
-                    output,
                     const_registry,
                 };
+                // add universal constraints
+                let universal_constraints = t.get_relevant_universal_constraints();
+                info!("univeral constraints: {:?}", universal_constraints);
+                for (lft1, lft2) in universal_constraints.into_iter() {
+                    t.translated_fn
+                        .add_universal_lifetime_constraint(lft1, lft2)
+                        .map_err(|e| TranslationError::UnknownError(e))?;
+                }
+
+                // process attributes
+                t.process_attrs(inputs.as_slice(), &output)?;
+
                 Ok(t)
             },
             Err(err) => Err(TranslationError::UnknownError(format!("{:?}", err))),
@@ -416,22 +705,70 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     if uk2 == info::UniversalRegionKind::Function {
                         continue;
                     }
+
+                    let to_universal = || {
+                        let x = self.to_universal_lft(uk1, *r2)?;
+                        let y = self.to_universal_lft(uk2, *r1)?;
+                        Some((x, y))
+                    };
                     // else, add this constraint
                     // for the purpose of this analysis, it is fine to treat it as a dynamic inclusion
-                    self.inclusion_tracker.add_dynamic_inclusion(*r1, *r2, root_point);
-                    universal_constraints
-                        .push((self.to_universal_lft(uk1, *r2), self.to_universal_lft(uk2, *r1)));
+                    if let Some((x, y)) = to_universal() {
+                        self.inclusion_tracker.add_dynamic_inclusion(*r1, *r2, root_point);
+                        universal_constraints.push((x, y));
+                    };
                 }
             }
         }
         universal_constraints
     }
 
-    /// Parse and process attributes of this function.
-    fn process_attrs(&mut self) -> Result<(), TranslationError> {
+    /// Parse and process attributes of this closure.
+    fn process_closure_attrs<'b>(
+        &mut self,
+        inputs: &[Ty<'tcx>],
+        output: &Ty<'tcx>,
+        meta: ClosureMetaInfo<'b, 'tcx, 'def>,
+    ) -> Result<(), TranslationError> {
+        trace!("entering process_closure_attrs");
         let v = self.attrs;
-        let inputs = &self.inputs;
-        let output = &self.output;
+
+        info!("inputs: {:?}, output: {:?}", inputs, output);
+        let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
+        let generic_env = &*self.ty_translator.generic_scope.borrow();
+        for arg in inputs.iter() {
+            let mut translated: radium::Type<'def> = self.ty_translator.translate_type(arg)?;
+            translated.subst_params(generic_env.as_slice());
+            translated_arg_types.push(translated);
+        }
+        let mut translated_ret_type: radium::Type<'def> = self.ty_translator.translate_type(output)?;
+        translated_ret_type.subst_params(generic_env.as_slice());
+        info!("translated function type: {:?} → {}", translated_arg_types, translated_ret_type);
+
+        let parser = rrconfig::attribute_parser();
+        match parser.as_str() {
+            "verbose" => {
+                let ty_translator = &self.ty_translator;
+                let mut parser: VerboseFunctionSpecParser<'_, 'def, _> =
+                    VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, |lit| {
+                        ty_translator.intern_literal(lit)
+                    });
+                parser
+                    .parse_closure_spec(v, &mut self.translated_fn, meta, |x| ty_translator.make_tuple_use(x))
+                    .map_err(|e| TranslationError::AttributeError(e))?;
+                trace!("leaving process_closure_attrs");
+                Ok(())
+            },
+            _ => {
+                trace!("leaving process_closure_attrs");
+                Err(TranslationError::UnknownAttributeParser(parser))
+            },
+        }
+    }
+
+    /// Parse and process attributes of this function.
+    fn process_attrs(&mut self, inputs: &[Ty<'tcx>], output: &Ty<'tcx>) -> Result<(), TranslationError> {
+        let v = self.attrs;
 
         info!("inputs: {:?}, output: {:?}", inputs, output);
         let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
@@ -463,45 +800,33 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     }
 
     // TODO refactor/ move
-    fn to_universal_lft(&self, k: info::UniversalRegionKind, r: Region) -> radium::UniversalLft {
+    fn to_universal_lft(&self, k: info::UniversalRegionKind, r: Region) -> Option<radium::UniversalLft> {
         match k {
-            info::UniversalRegionKind::Function => radium::UniversalLft::Function,
-            info::UniversalRegionKind::Static => radium::UniversalLft::Static,
+            info::UniversalRegionKind::Function => Some(radium::UniversalLft::Function),
+            info::UniversalRegionKind::Static => Some(radium::UniversalLft::Static),
             info::UniversalRegionKind::Local => {
-                radium::UniversalLft::Local(self.ty_translator.lookup_universal_lifetime(r).unwrap())
+                self.ty_translator.lookup_universal_region(r).map(|x| radium::UniversalLft::Local(x))
             },
             info::UniversalRegionKind::External => {
-                radium::UniversalLft::External(self.ty_translator.lookup_universal_lifetime(r).unwrap())
+                self.ty_translator.lookup_universal_region(r).map(|x| radium::UniversalLft::External(x))
             },
         }
     }
 
     /// Translation that only generates a specification.
     pub fn generate_spec(mut self) -> Result<radium::FunctionSpec<'def>, TranslationError> {
-        // add universal constraints
-        let universal_constraints = self.get_relevant_universal_constraints();
-        info!("univeral constraints: {:?}", universal_constraints);
-        for (lft1, lft2) in universal_constraints.into_iter() {
-            self.translated_fn
-                .add_universal_lifetime_constraint(lft1, lft2)
-                .map_err(|e| TranslationError::UnknownError(e))?;
-        }
-
-        // process attributes
-        self.process_attrs()?;
-
         self.ty_translator.leave_procedure();
         Ok(self.translated_fn.into())
     }
 
     /// Generate a string identifier for a Local.
-    /// Tries to find the Rust source code name of the local,
-    /// otherwise simply enumerates.
-    /// This function is deterministic, so subsequent calls with the same `Local` will always
-    /// generate the same name.
-    fn make_local_name(mir_body: &Body<'tcx>, local: &Local) -> String {
-        if let Some(mir_name) = Self::find_name_for_local(mir_body, local) {
-            strip_coq_ident(&mir_name)
+    /// Tries to find the Rust source code name of the local, otherwise simply enumerates.
+    /// `used_names` keeps track of the Rust source code names that have already been used.
+    fn make_local_name(mir_body: &Body<'tcx>, local: &Local, used_names: &mut HashSet<String>) -> String {
+        if let Some(mir_name) = Self::find_name_for_local(mir_body, local, &used_names) {
+            let name = strip_coq_ident(&mir_name);
+            used_names.insert(mir_name);
+            name
         } else {
             let mut name = "__".to_string();
             name.push_str(&local.index().to_string());
@@ -510,16 +835,29 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     }
 
     /// Find a source name for a local of a MIR body, if possible.
-    fn find_name_for_local(body: &mir::Body<'tcx>, local: &mir::Local) -> Option<String> {
+    fn find_name_for_local(
+        body: &mir::Body<'tcx>,
+        local: &mir::Local,
+        used_names: &HashSet<String>,
+    ) -> Option<String> {
         let debug_info = &body.var_debug_info;
         for dbg in debug_info {
             let name = &dbg.name;
             let val = &dbg.value;
             match *val {
                 VarDebugInfoContents::Place(l) => {
-                    // TODO: make sure that l.projection is empty?
-                    if l.local == *local {
-                        return Some(name.as_str().to_string());
+                    // make sure that the place projection is empty -- otherwise this might just
+                    // refer to the capture of a closure
+                    if let Some(this_local) = l.as_local() {
+                        if this_local == *local {
+                            // around closures, multiple symbols may be mapped to the same name.
+                            // To prevent this from happening, we check that the name hasn't been
+                            // used already
+                            // TODO: find better solution
+                            if !used_names.contains(name.as_str()) {
+                                return Some(name.as_str().to_string());
+                            }
+                        }
                     }
                 },
                 VarDebugInfoContents::Const(_) => {
@@ -531,19 +869,26 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         return None;
     }
 
-    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
-        // add universal constraints
-        let universal_constraints = self.get_relevant_universal_constraints();
-        info!("univeral constraints: {:?}", universal_constraints);
-        for (lft1, lft2) in universal_constraints.into_iter() {
-            self.translated_fn
-                .add_universal_lifetime_constraint(lft1, lft2)
-                .map_err(|e| TranslationError::UnknownError(e))?;
+    fn dump_body(body: &Body) {
+        // TODO: print to file
+        let basic_blocks = &body.basic_blocks;
+        for (bb_idx, bb) in basic_blocks.iter_enumerated() {
+            Self::dump_basic_block(&bb_idx, bb);
         }
+    }
 
-        // process attributes
-        self.process_attrs()?;
+    /// Dump a basic block as info debug output.
+    fn dump_basic_block(bb_idx: &BasicBlock, bb: &BasicBlockData) {
+        info!("Basic block {:?}:", bb_idx);
+        let mut i = 0;
+        for s in &bb.statements {
+            info!("{}\t{:?}", i, s);
+            i += 1;
+        }
+        info!("{}\t{:?}", i, bb.terminator());
+    }
 
+    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
         let body = self.proc.get_mir();
 
         // analyze which locals are used for the result of checked-ops, because we will
@@ -558,10 +903,14 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let local_decls = &body.local_decls;
         info!("Have {} local decls\n", local_decls.len());
 
+        let debug_info = &body.var_debug_info;
+        info!("using debug info: {:?}", debug_info);
+
         let mut return_synty = radium::SynType::Unit; // default
         let mut fn_locals = Vec::new();
         let mut opt_return_name =
             Err(TranslationError::UnknownError("could not find local for return value".to_string()));
+        let mut used_names = HashSet::new();
         // go over local_decls and create the right radium:: stack layout
         for (local, local_decl) in local_decls.iter_enumerated() {
             let kind = body.local_kind(local);
@@ -586,7 +935,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             tr_ty.subst_params(&self.ty_translator.generic_scope.borrow());
             let st = tr_ty.get_syn_type();
 
-            let name = Self::make_local_name(body, &local);
+            let name = Self::make_local_name(body, &local, &mut used_names);
             radium_name_map.insert(local, name.to_string());
 
             fn_locals.push((local, name.clone(), tr_ty));
@@ -602,6 +951,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 },
             }
         }
+        info!("radium name map: {:?}", radium_name_map);
         // create the function
         let return_name = opt_return_name?;
 
@@ -623,8 +973,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             ty_translator: self.ty_translator,
             loop_specs: HashMap::new(),
             fn_locals,
-            inputs: self.inputs,
-            output: self.output,
             checked_op_temporaries: checked_op_locals,
             const_registry: self.const_registry,
             collected_statics: HashSet::new(),
@@ -686,12 +1034,6 @@ struct BodyTranslator<'a, 'def, 'tcx> {
     /// relevant locals: (local, name, type)
     fn_locals: Vec<(Local, String, radium::Type<'def>)>,
 
-    /// inputs of the function, with both early and late bound regions substituted with their
-    /// Polonius ReVar
-    inputs: Vec<Ty<'tcx>>,
-    /// output of the function, similarly with substituted regions
-    output: Ty<'tcx>,
-
     /// result temporaries of checked ops that we rewrite
     /// we assume that this place is typed at (result_type, bool)
     /// and rewrite accesses to the first component to directly use the place,
@@ -706,8 +1048,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// if successful.
     pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
         let body = self.proc.get_mir();
-        // dump debug info
-        Self::dump_body(body);
 
         // add lifetime parameters to the map
         let initial_constraints = self.get_initial_universal_arg_constraints();
@@ -867,11 +1207,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         did: &DefId,
         ty_params: ty::GenericArgsRef<'tcx>,
     ) -> Result<String, TranslationError> {
+        trace!("enter register_use_procedure did={:?} ty_params={:?}", did, ty_params);
         let key = self.generate_procedure_inst_key(ty_params)?;
 
         let tup = (*did, key);
+        let res;
         if let Some((n, ..)) = self.collected_procedures.get(&tup) {
-            Ok(format!("{}", n))
+            res = format!("{}", n);
         } else {
             // lookup the name in the procedure registry
 
@@ -889,6 +1231,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             let generic_env = &*self.ty_translator.generic_scope.borrow();
 
             // TODO: maybe come up with some better way to generate names
+            info!("register_use_procedure: translating args {:?}", tup.1);
             for p in tup.1.iter() {
                 mangled_name.push_str(format!("_{}", p).as_str());
 
@@ -903,10 +1246,41 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             // also gather all the layouts of the arguments.
             let full_ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(*did);
             let full_ty: Ty<'tcx> = full_ty.instantiate_identity();
-            let sig = full_ty.fn_sig(self.env.tcx());
 
-            let inputs = sig.inputs().skip_binder();
+            let mut inputs = Vec::new();
             let mut syntypes = Vec::new();
+            match full_ty.kind() {
+                ty::TyKind::FnDef(_, _) => {
+                    let sig = full_ty.fn_sig(self.env.tcx());
+                    for ty in sig.inputs().skip_binder().iter() {
+                        inputs.push(*ty);
+                    }
+                },
+                ty::TyKind::Closure(_, args) => {
+                    let clos_args = args.as_closure();
+                    let pre_sig = clos_args.sig().skip_binder();
+                    // we also need to add the closure argument here
+                    // in this case, we need to patch the region first
+
+                    let tuple_ty = clos_args.tupled_upvars_ty();
+                    match clos_args.kind() {
+                        ty::ClosureKind::Fn => {
+                            syntypes.push(radium::SynType::Ptr);
+                        },
+                        ty::ClosureKind::FnMut => {
+                            syntypes.push(radium::SynType::Ptr);
+                        },
+                        ty::ClosureKind::FnOnce => {
+                            inputs.push(tuple_ty);
+                        },
+                    }
+                    for ty in pre_sig.inputs().iter() {
+                        inputs.push(*ty);
+                    }
+                },
+                _ => unimplemented!(),
+            }
+
             //info!("substs: {:?}, inputs {:?} ", ty_params, inputs);
             for i in inputs.iter() {
                 // need to wrap it, because there's no Subst instance for Ty
@@ -923,16 +1297,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             );
             self.collected_procedures
                 .insert(tup, (loc_name.clone(), spec_name.to_string(), translated_params, syntypes));
-            Ok(loc_name)
+            res = loc_name;
         }
-    }
-
-    fn dump_body(body: &Body) {
-        // TODO: print to file
-        let basic_blocks = &body.basic_blocks;
-        for (bb_idx, bb) in basic_blocks.iter_enumerated() {
-            Self::dump_basic_block(&bb_idx, bb);
-        }
+        trace!("leave register_use_procedure");
+        Ok(res)
     }
 
     fn compute_regions_of_function(tcx: ty::TyCtxt<'tcx>, did: DefId) {
@@ -1024,17 +1392,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // Then try to fix issue with stuff
     }
 
-    /// Dump a basic block as info debug output.
-    fn dump_basic_block(bb_idx: &BasicBlock, bb: &BasicBlockData) {
-        info!("Basic block {:?}:", bb_idx);
-        let mut i = 0;
-        for s in &bb.statements {
-            info!("{}\t{:?}", i, s);
-            i += 1;
-        }
-        info!("{}\t{:?}", i, bb.terminator());
-    }
-
     /// Enqueues a basic block for processing, if it has not already been processed,
     /// and marks it as having been processed.
     fn enqueue_basic_block(&mut self, bb: BasicBlock) {
@@ -1051,7 +1408,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             info::AtomicRegion::Loan(_, r) => {
                 format!("llft{}", r.index())
             },
-            info::AtomicRegion::Universal(_, r) => match self.ty_translator.lookup_universal_lifetime(*r) {
+            info::AtomicRegion::Universal(_, r) => match self.ty_translator.lookup_universal_region(*r) {
                 Some(s) => s,
                 None => format!("ulft{}", r.index()),
             },
@@ -1179,12 +1536,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         _rhs_ty: Ty<'tcx>,
         strong_update: bool,
         loc: Location,
-    ) -> Vec<(Region, Region, PointIndex)> {
+    ) -> HashSet<(Region, Region, PointIndex)> {
         let info = &self.info;
         let input_facts = &info.borrowck_in_facts;
         let subset_base = &input_facts.subset_base;
 
-        let mut constraints = Vec::new();
+        let mut constraints = HashSet::new();
         // Polonius subset constraint are spawned for the midpoint
         let midpoint = self.info.interner.get_point_index(&facts::Point {
             location: loc,
@@ -1197,8 +1554,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             for (s1, s2, point) in subset_base.iter() {
                 if *point == midpoint {
                     // take this constraint and the reverse constraint
-                    constraints.push((*s1, *s2, *point));
-                    constraints.push((*s2, *s1, *point));
+                    constraints.insert((*s1, *s2, *point));
+                    constraints.insert((*s2, *s1, *point));
                 }
             }
         } else {
@@ -1211,59 +1568,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     if !self.inclusion_tracker.check_inclusion(*s1, *s2, *point) {
                         // only add it if it does not hold already, since we will enforce this
                         // constraint dynamically.
-                        constraints.push((*s1, *s2, *point));
+                        constraints.insert((*s1, *s2, *point));
                     }
                 }
             }
         }
 
         constraints
-    }
-
-    /// Generate a dynamic inclusion of r1 in r2 at point p. Prepends annotations for doing so to `cont`.
-    fn generate_dyn_inclusion(
-        &mut self,
-        r1: Region,
-        r2: Region,
-        p: PointIndex,
-        cont: radium::Stmt,
-    ) -> radium::Stmt {
-        // check if inclusion already holds
-        if self.inclusion_tracker.check_inclusion(r1, r2, p) {
-            // inclusion already holds, done
-            cont
-        } else {
-            // check if the reverse inclusion already holds
-            if self.inclusion_tracker.check_inclusion(r2, r1, p) {
-                // our invariant is that this must be a static inclusion
-                assert!(self.inclusion_tracker.check_static_inclusion(r2, r1, p));
-
-                self.inclusion_tracker.add_dynamic_inclusion(r1, r2, p);
-
-                // we generate an extendlft instruction
-                // for this, we need to figure out a path to make this inclusion true, i.e. we need
-                // an explanation of why it is syntactically included.
-                // TODO: for now, we just assume that r1 ⊑ₗ [r2] (in terms of Coq lifetime inclusion)
-                radium::Stmt::Annot {
-                    a: radium::Annotation::ExtendLft(
-                        self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1)),
-                    ),
-                    s: Box::new(cont),
-                }
-            } else {
-                self.inclusion_tracker.add_dynamic_inclusion(r1, r2, p);
-                // we generate a dynamic inclusion instruction
-                // we flip this around because the annotations are talking about lifetimes, which are oriented
-                // the other way around.
-                radium::Stmt::Annot {
-                    a: radium::Annotation::DynIncludeLft(
-                        self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r2)),
-                        self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1)),
-                    ),
-                    s: Box::new(cont),
-                }
-            }
-        }
     }
 
     /// Split the type of a function operand of a call expression to a base type and an instantiation for
@@ -1459,6 +1770,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 ref target,
                 ..
             } => {
+                trace!("translating Call {:?}", term);
                 let is_panic = self.is_call_destination_panic(func)?;
                 if is_panic {
                     info!("Replacing call to std::panicking::begin_panic with Stuck");
@@ -2026,6 +2338,71 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
+    /// Generate a dynamic inclusion of r1 in r2 at point p. Prepends annotations for doing so to `cont`.
+    fn generate_dyn_inclusion(
+        &mut self,
+        r1: Region,
+        r2: Region,
+        p: PointIndex,
+        cont: radium::Stmt,
+    ) -> radium::Stmt {
+        // check if inclusion already holds
+        if self.inclusion_tracker.check_inclusion(r1, r2, p) {
+            // inclusion already holds, done
+            cont
+        } else {
+            // check if the reverse inclusion already holds
+            if self.inclusion_tracker.check_inclusion(r2, r1, p) {
+                // our invariant is that this must be a static inclusion
+                assert!(self.inclusion_tracker.check_static_inclusion(r2, r1, p));
+                self.inclusion_tracker.add_dynamic_inclusion(r1, r2, p);
+
+                // we generate an extendlft instruction
+                // for this, we need to figure out a path to make this inclusion true, i.e. we need
+                // an explanation of why it is syntactically included.
+                // TODO: for now, we just assume that r1 ⊑ₗ [r2] (in terms of Coq lifetime inclusion)
+                radium::Stmt::Annot {
+                    a: radium::Annotation::ExtendLft(
+                        self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1)),
+                    ),
+                    s: Box::new(cont),
+                }
+            } else {
+                self.inclusion_tracker.add_dynamic_inclusion(r1, r2, p);
+                // we generate a dynamic inclusion instruction
+                // we flip this around because the annotations are talking about lifetimes, which are oriented
+                // the other way around.
+                radium::Stmt::Annot {
+                    a: radium::Annotation::DynIncludeLft(
+                        self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r2)),
+                        self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1)),
+                    ),
+                    s: Box::new(cont),
+                }
+            }
+        }
+    }
+
+    /// Generates dynamic inclusions for the set of inclusions in `incls`.
+    /// These inclusions should not hold yet.
+    /// Skips mutual inclusions -- we cannot interpret these.
+    fn generate_dyn_inclusions(
+        &mut self,
+        incls: HashSet<(Region, Region, PointIndex)>,
+        mut cont_stmt: radium::Stmt,
+    ) -> radium::Stmt {
+        // before executing the assignment, first enforce dynamic inclusions
+        info!("Generating dynamic inclusions {:?}", incls);
+        for (r1, r2, p) in incls.iter() {
+            if !incls.contains(&(*r2, *r1, *p)) {
+                cont_stmt = self.generate_dyn_inclusion(*r1, *r2, *p, cont_stmt);
+            } else {
+                warn!("Skipping impossible dynamic inclusion {:?} ⊑ {:?} at {:?}", r1, r2, p);
+            }
+        }
+        cont_stmt
+    }
+
     /**
      * Translate a single basic block.
      */
@@ -2078,11 +2455,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     dying_loans.insert(*l);
                 }
             }
-            cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.into_iter());
-
-            //let dying = self.info.get_dying_loans(loc);
-            //let dying_zombie = self.info.get_dying_zombie_loans(loc);
-            //cont_stmt = self.prepend_endlfts(cont_stmt, dying_zombie);
+            // we prepend them before the current statement
 
             // check for attributes on this statement
             let scopes = &self.proc.get_mir().source_scopes;
@@ -2107,6 +2480,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                         // if this is a checked op, be sure to remember it
                         if let Some(rewritten_ty) = self.checked_op_temporaries.get(&plc.local) {
+                            info!("rewriting assignment to checked op: {:?}", plc);
                             // this should be a temporary
                             assert!(plc.projection.is_empty());
 
@@ -2156,7 +2530,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 // similarly generate an annotation that encodes these constraints in the RR
                                 // type system
                                 translated_val = self.generate_strong_update_annot(plc_ty, translated_val);
-                                new_dyn_inclusions = Vec::new();
+                                new_dyn_inclusions = HashSet::new();
                             } else {
                                 // need to filter out the constraints that are relevant here.
                                 // incrementally go through them.
@@ -2261,10 +2635,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 }
                             }
 
-                            // before executing the assignment, first enforce dynamic inclusions
-                            for (r1, r2, p) in new_dyn_inclusions.iter() {
-                                cont_stmt = self.generate_dyn_inclusion(*r1, *r2, *p, cont_stmt);
-                            }
+                            cont_stmt = self.generate_dyn_inclusions(new_dyn_inclusions, cont_stmt);
                         }
                     }
                 },
@@ -2336,6 +2707,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     ()
                 },
             }
+            cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.into_iter());
         }
 
         Ok(cont_stmt)
@@ -2721,6 +3093,29 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             });
                         }
                     },
+                    box mir::AggregateKind::Closure(def, args) => {
+                        trace!("Translating Closure aggregate value for {:?}", def);
+                        // We basically translate this to a tuple
+                        if operand_types.len() == 0 {
+                            // translate to unit literal
+                            Ok(radium::Expr::Literal(radium::Literal::LitZST))
+                        } else {
+                            let struct_use = self.ty_translator.generate_tuple_use(
+                                operand_types.iter().map(|r| *r),
+                                TranslationState::InFunction,
+                            )?;
+                            let sl = struct_use.generate_raw_syn_type_term();
+                            let initializers: Vec<_> = translated_ops
+                                .into_iter()
+                                .enumerate()
+                                .map(|(i, o)| (i.to_string(), o))
+                                .collect();
+                            Ok(radium::Expr::StructInitE {
+                                sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
+                                components: initializers,
+                            })
+                        }
+                    },
                     _ => {
                         // TODO
                         Err(TranslationError::UnsupportedFeature {
@@ -2904,9 +3299,47 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     fn translate_fn_def_use(&mut self, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
         match ty.kind() {
             TyKind::FnDef(defid, params) => {
-                // track that we are using this function and generate the Coq location name
-                let param_name = self.register_use_procedure(defid, params)?;
-                Ok(radium::Expr::MetaParam(param_name))
+                let key: ty::ParamEnv<'tcx> = self.env.tcx().param_env(self.proc.get_id());
+                if self.env.tcx().trait_of_item(*defid).is_some() {
+                    if let Some((resolved_did, resolved_params, kind)) =
+                        crate::traits::resolve_assoc_item(self.env.tcx(), key, *defid, params)
+                    {
+                        info!(
+                            "Resolved trait method {:?} as {:?} with substs {:?} and kind {:?}",
+                            defid, resolved_did, resolved_params, kind
+                        );
+                        match kind {
+                            crate::traits::TraitResolutionKind::UserDefined => {
+                                let param_name =
+                                    self.register_use_procedure(&resolved_did, resolved_params)?;
+                                Ok(radium::Expr::MetaParam(param_name))
+                            },
+                            crate::traits::TraitResolutionKind::Param => {
+                                Err(TranslationError::Unimplemented {
+                                    description: format!("Implement trait invocation for Param"),
+                                })
+                            },
+                            crate::traits::TraitResolutionKind::Closure => {
+                                // TODO: here, we should first generate an instance of the trait
+                                //self.env.tcx().
+                                // mir_shims(rustc_middle::ty::InstanceDef::Item(resolved_did));
+                                // the args are just the closure args. We can ignore them.
+                                let _clos_args = resolved_params.as_closure();
+                                let param_name =
+                                    self.register_use_procedure(&resolved_did, ty::List::empty())?;
+                                Ok(radium::Expr::MetaParam(param_name))
+                                //Err(TranslationError::Unimplemented { description: format!("Implement trait
+                                // invocation for Closure") })
+                            },
+                        }
+                    } else {
+                        Err(TranslationError::TraitResolution(format!("Could not resolve trait {:?}", defid)))
+                    }
+                } else {
+                    // track that we are using this function and generate the Coq location name
+                    let param_name = self.register_use_procedure(defid, params)?;
+                    Ok(radium::Expr::MetaParam(param_name))
+                }
             },
             _ => Err(TranslationError::UnknownError("not a FnDef type".to_string())),
         }
@@ -3171,6 +3604,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             // update cur_ty
             cur_ty = cur_ty.projection_ty(self.env.tcx(), *it);
         }
+        info!("translating place {:?} to {:?}", pl, acc_expr);
         Ok(acc_expr)
     }
 
