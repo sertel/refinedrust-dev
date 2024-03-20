@@ -2523,7 +2523,8 @@ Section judgments.
           + [ty' : type rt] : the type of the read value
           + [r' : rt] : the refinement of the read value
   *)
-  Definition typed_read (π : thread_id) (E : elctx) (L : llctx) (e : expr) (ot : op_type) (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) : iProp Σ :=
+  Definition typed_read_cont_t : Type := llctx → val → ∀ rt : Type, type rt → rt → iProp Σ.
+  Definition typed_read (π : thread_id) (E : elctx) (L : llctx) (e : expr) (ot : op_type) (T : typed_read_cont_t) : iProp Σ :=
     (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
       (∀ (l : loc),
@@ -2597,7 +2598,8 @@ Section judgments.
      - first, the place that is read is checked with [typed_place].
      - then, the actual type-checking of the read is performed with [typed_read_end]
    *)
-  Definition typed_write (π : thread_id) (E : elctx) (L : llctx) (e : expr) (ot : op_type) (v : val) {rt} (ty : type rt) (r : rt) (T : llctx → iProp Σ) : iProp Σ :=
+  Definition typed_write_cont_t : Type := llctx → iProp Σ.
+  Definition typed_write (π : thread_id) (E : elctx) (L : llctx) (e : expr) (ot : op_type) (v : val) {rt} (ty : type rt) (r : rt) (T : typed_write_cont_t) : iProp Σ :=
     (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
     rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
       (* provided by the client: for any location l... *)

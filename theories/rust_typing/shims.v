@@ -294,8 +294,8 @@ Proof.
   iApply typed_stmt_annot_skip.
   repeat liRStep; liShow.
 
-  Unshelve. all: unshelve_sidecond; sidecond_hook.
-  Unshelve. all: prepare_sideconditions; try (normalize_and_simpl_goal; solve_goal).
+  Unshelve. all: sidecond_solver.
+  Unshelve. all: sidecond_hammer.
 
   Unshelve.
   + cbn. rewrite -list_fmap_insert.
@@ -304,7 +304,7 @@ Proof.
     rewrite take_length reshape_length.
     rewrite Nat.min_l; first last. { rewrite replicate_length. lia. }
     rewrite Nat.sub_diag.
-    f_equiv. f_equiv.
+    f_equiv.
     rename select (reshape _ v_s !! i = Some _) into Hlook.
     rename select (i < len)%nat into Hi.
     clear -Hlook Hi.
@@ -1048,7 +1048,8 @@ Proof.
     { simplify_layout_goal. rewrite /i2v Halign /=. by eapply val_to_of_Z. }
     { case_bool_decide; [done | lia]. }
     iIntros "!> %l Hl Hfree %Hly [Hcred1 Hcred] Hat".
-    rewrite (additive_time_receipt_succ 1). iDestruct "Hat" as "[Hat1 Hat]".
+    iEval (rewrite (additive_time_receipt_succ 1)) in "Hat".
+    iDestruct "Hat" as "[Hat1 Hat]".
     iPoseProof ("Hstore" with "Hat1") as "Hstore".
     iApply ("Hcont" $! _ _ _ (box (uninit (ty_syn_type T))) (PlaceIn ()) with "HL Hna [Hfree Hl Hcred Hat]").
     { iExists _, _. iSplitR; first done. iSplitR; first done.
@@ -1063,8 +1064,8 @@ Proof.
     iSplitR; first done.
     repeat liRStep; liShow.
 
-  Unshelve. all: unshelve_sidecond; sidecond_hook.
-  Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; try (unfold_common_defs; solve_goal); unsolved_sidecond_hook.
+  Unshelve. all: sidecond_solver.
+  Unshelve. all: sidecond_hammer.
 Qed.
 
 (* Drop functions receive a pointer to the thing to drop, just like drop_in_place *)
@@ -1203,8 +1204,8 @@ Proof.
   init_tyvars ∅.
   init_lfts ∅.
   repeat liRStep; liShow.
-  Unshelve. all: unshelve_sidecond; sidecond_hook.
-  Unshelve. all: prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; unsolved_sidecond_hook.
+  Unshelve. all: sidecond_solver.
+  Unshelve. all: sidecond_hammer.
   Unshelve. all: by apply alloc_array_layout_wf.
 Qed.
 

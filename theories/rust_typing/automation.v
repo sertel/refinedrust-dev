@@ -507,7 +507,7 @@ Ltac liRExpr :=
     lazymatch e' with
     | W.Val _ => notypeclasses refine (tac_fast_apply (type_val E L _ π T) _)
     | W.Loc _ => notypeclasses refine (tac_fast_apply (type_val E L _ π T) _)
-    | W.Use _ _ true _ => notypeclasses refine (tac_fast_apply (type_use E L _ T _ _ π) _)
+    | W.Use _ _ true _ => notypeclasses refine (tac_fast_apply (type_use E L _ _ _ π T) _)
     | W.Borrow Mut _ _ _ => notypeclasses refine (tac_fast_apply (type_mut_bor E L T _ π _ _) _)
     | W.Borrow Shr _ _ _ => notypeclasses refine (tac_fast_apply (type_shr_bor E L T _ π _ _) _)
     | W.AddrOf _ _ => notypeclasses refine (tac_fast_apply (type_mut_addr_of π E L _ T) _)
