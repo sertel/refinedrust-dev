@@ -79,7 +79,7 @@ Section once.
     iPureIntro. by apply to_agree_op_inv_L in Hv.
   Qed.
 
-  Global Instance once_init_tok_timeless γ a : Timeless (once_status_tok γ a).
+  Global Instance once_status_tok_timeless γ a : Timeless (once_status_tok γ a).
   Proof. rewrite once_status_tok_eq; destruct a; apply _. Qed.
 End once.
 
@@ -102,16 +102,51 @@ Section typing.
   Definition FindOnceStatusTok γ : find_in_context_info :=
     {| fic_A := option A; fic_Prop a := once_status_tok γ a |}.
   Global Instance once_status_tok_related γ a : RelatedTo (once_status_tok γ a) := {| rt_fic := FindOnceStatusTok γ |}.
+
+  Lemma find_in_context_once_status_tok  γ T :
+    (∃ r : option A, once_status_tok γ r ∗ T r)
+    ⊢ find_in_context (FindOnceStatusTok γ) T.
+  Proof. iDestruct 1 as (r) "[Hs HT]". iExists _ => /=. iFrame. Qed.
+  Global Instance find_in_context_once_status_tok_inst γ :
+    FindInContext (FindOnceStatusTok γ) FICSyntactic | 1 :=
+    λ T, i2p (find_in_context_once_status_tok γ T).
 End typing.
 
 (** Since a frequent use case of once is in conjunction with static variables, we provide some extra support for that *)
 Section statics.
   Context {A} `{!typeGS Σ} `{!staticGS Σ} `{!onceG Σ A}.
 
-  Definition once_status π (s : string) (a : option A) : iProp Σ :=
-    ∃ γ, once_status_tok γ a ∗ initialized π s γ.
-  Global Typeclasses Opaque once_status.
+  (* Important for evar proofs: first determine the ghost name. *)
+  Definition once_status (s : string) (a : option A) : iProp Σ :=
+    ∃ γ, ⌜static_has_refinement s γ⌝ ∗ once_status_tok γ a.
 
+  Definition once_initialized π (s : string) (a : option A) : iProp Σ :=
+    ∃ γ, initialized π s γ ∗ once_status_tok γ a.
+
+
+  (* I guess in the beginning I allocate this for every global.
+
+     What agreements do I need?
+     - two instances of static_rfn agree
+     - initialized and static_rfn, they also agree by definition of initialized
+
+     Point: I created an indirection to get timeless knowledge of the refinement.
+     Only when I access it do I need the initialized.
+     I could also keep the initialized in there, I guess.
+     Question is where it comes from...
+        We could dispatch it at link time when doing adequacy for the main function.
+        But it's unclear how that would work for getting something for the other entry points.
+        For now, go with this. We can get something fancier later.
+     Only the ghost knowledge needs to stay around.
+
+     Use cases:
+     - I have static_rfn in my invariant
+     - then I actually go into a method where I get the layout
+     - and check that it's in range.
+     - here I need to have agreement.
+   *)
+
+  (*
   Definition FindOnceStatus π s : find_in_context_info :=
     {| fic_A := option A; fic_Prop a := once_status π s a |}.
   Global Instance once_status_related π s a : RelatedTo (once_status π s a) := {| rt_fic := FindOnceStatus π s |}.
@@ -122,4 +157,5 @@ Section statics.
     iIntros "(-> & HT)".
     iIntros "$"; done.
   Qed.
+  *)
 End statics.
