@@ -704,7 +704,7 @@ impl Binop {
             Self::ModOp => format_prim("%{"),
             Self::AndOp => format_bool("&&{"),
             Self::OrOp => format_bool("||{"),
-            Self::BitAndOp => format_prim("&{"),
+            Self::BitAndOp => format_prim("&b{"),
             Self::BitOrOp => format_prim("|{"),
             Self::BitXorOp => format_prim("^{"),
             Self::ShlOp => format_prim("<<{"),

@@ -377,6 +377,40 @@ Section typing.
   Global Instance type_notop_bool_inst π E L v b :
     TypedUnOpVal π E L v bool_t b NotBoolOp BoolOp := λ T, i2p (type_notop_bool π E L v b T).
 
+  (** Bitwise operators *)
+  Definition bool_arith_op_result b1 b2 op : option bool :=
+    match op with
+    | AndOp => Some (andb b1 b2)
+    | OrOp  => Some (orb b1 b2)
+    | XorOp => Some (xorb b1 b2)
+    | _     => None (* Other operators are not supported. *)
+    end.
+
+  Lemma type_arithop_bool_bool E L π v1 b1 v2 b2 (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) b op:
+    bool_arith_op_result b1 b2 op = Some b →
+    T L (val_of_bool b) bool (bool_t) b ⊢
+    typed_bin_op π E L v1 (v1 ◁ᵥ{π} b1 @ bool_t) v2 (v2 ◁ᵥ{π} b2 @ bool_t) op (BoolOp) (BoolOp) T.
+  Proof.
+    rewrite /ty_own_val/=.
+    iIntros "%Hop HT %Hv1 %Hv2 %Φ #CTX #HE HL Hna HΦ".
+    iApply (wp_binop_det_pure (val_of_bool b)).
+    { destruct op, b1, b2; simplify_eq.
+      all: split; [ inversion 1; simplify_eq/= | move => -> ]; simplify_eq/=; try done.
+      all: eapply ArithOpBB; done. }
+    iIntros "!> Hcred". iApply ("HΦ" with "HL Hna [] HT").
+    rewrite /ty_own_val/=. destruct b; done.
+  Qed.
+
+  Global Program Instance type_and_bool_bool_inst E L π v1 b1 v2 b2:
+    TypedBinOpVal π E L v1 (bool_t) b1 v2 (bool_t) b2 AndOp (BoolOp) (BoolOp) := λ T, i2p (type_arithop_bool_bool E L π v1 b1 v2 b2 T (andb b1 b2) _ _).
+  Next Obligation. done. Qed.
+  Global Program Instance type_or_bool_bool_inst E L π v1 b1 v2 b2:
+    TypedBinOpVal π E L v1 (bool_t) b1 v2 (bool_t) b2 OrOp (BoolOp) (BoolOp) := λ T, i2p (type_arithop_bool_bool E L π v1 b1 v2 b2 T (orb b1 b2) _ _).
+  Next Obligation. done. Qed.
+  Global Program Instance type_xor_bool_bool_inst E L π v1 b1 v2 b2:
+    TypedBinOpVal π E L v1 (bool_t) b1 v2 (bool_t) b2 XorOp (BoolOp) (BoolOp) := λ T, i2p (type_arithop_bool_bool E L π v1 b1 v2 b2 T (xorb b1 b2) _ _).
+  Next Obligation. done. Qed.
+
   Inductive trace_if_bool :=
   | TraceIfBool (b : bool).
 
