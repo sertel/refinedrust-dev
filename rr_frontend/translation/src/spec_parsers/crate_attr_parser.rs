@@ -23,6 +23,7 @@ pub struct CrateAttrs {
     pub prefix: Option<String>,
     pub includes: Vec<String>,
     pub package: Option<String>,
+    pub context_params: Vec<specs::CoqParam>,
 }
 
 pub struct VerboseCrateAttrParser {}
@@ -44,6 +45,7 @@ impl CrateAttrParser for VerboseCrateAttrParser {
         let mut includes: Vec<String> = Vec::new();
         let mut prefix: Option<String> = None;
         let mut package: Option<String> = None;
+        let mut context_params = Vec::new();
 
         for &it in attrs.iter() {
             let ref path_segs = it.path.segments;
@@ -74,6 +76,15 @@ impl CrateAttrParser for VerboseCrateAttrParser {
                         }
                         package = Some(path.value().to_string());
                     },
+                    "context" => {
+                        let param: parse_utils::RRGlobalCoqContextItem =
+                            buffer.parse(&meta).map_err(str_err)?;
+                        context_params.push(specs::CoqParam::new(
+                            specs::CoqName::Unnamed,
+                            specs::CoqType::Literal(param.item),
+                            true,
+                        ));
+                    },
                     _ => {
                         return Err(format!("unknown attribute for crate specification: {:?}", args));
                     },
@@ -85,6 +96,7 @@ impl CrateAttrParser for VerboseCrateAttrParser {
             prefix,
             includes,
             package,
+            context_params,
         })
     }
 }

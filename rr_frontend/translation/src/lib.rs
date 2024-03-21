@@ -107,6 +107,8 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
     functions: &'rcx [LocalDefId],
     /// the second component determines whether to include it in the code file as well
     extra_imports: HashSet<(radium::CoqPath, bool)>,
+    /// extra Coq module dependencies
+    extra_dependencies: HashSet<String>,
     coq_path_prefix: String,
     dune_package: Option<String>,
     shim_registry: shim_registry::ShimRegistry<'rcx>,
@@ -260,11 +262,23 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
+        let mut module_dependencies: Vec<_> =
+            self.extra_imports.iter().filter_map(|(x, _)| x.path.clone()).collect();
+        module_dependencies.extend(self.extra_dependencies.iter().cloned());
+
         info!("Generated module summary ADTs: {:?}", adt_shims);
         info!("Generated module summary functions: {:?}", function_shims);
 
         let interface_file = File::create(path).unwrap();
-        shim_registry::write_shims(interface_file, module_path, module, name, adt_shims, function_shims);
+        shim_registry::write_shims(
+            interface_file,
+            module_path,
+            module,
+            name,
+            &module_dependencies,
+            adt_shims,
+            function_shims,
+        );
     }
 
     /// Write specifications of a verification unit.
@@ -561,7 +575,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             fs::create_dir_all(base_dir_path.as_path()).unwrap();
         }
 
-        let coq_module_path = format!("{}.{}", self.coq_path_prefix, stem);
+        let toplevel_module_path = self.coq_path_prefix.to_string();
+        let coq_module_path = format!("{}.{}", toplevel_module_path, stem);
         let generated_module_path = format!("{}.generated", coq_module_path);
         let proof_module_path = format!("{}.proofs", coq_module_path);
 
@@ -623,8 +638,11 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write dune meta file
         let mut dune_file = io::BufWriter::new(fs::File::create(generated_dune_path.as_path()).unwrap());
-        let extra_theories: Vec<_> =
+        let mut extra_theories: HashSet<_> =
             self.extra_imports.iter().filter_map(|(path, _)| path.path.clone()).collect();
+        extra_theories.extend(self.extra_dependencies.iter().cloned());
+        let extra_theories: Vec<_> = extra_theories.into_iter().collect();
+
         let dune_package = if let Some(ref dune_package) = self.dune_package {
             format!("(package {dune_package})\n")
         } else {
@@ -752,6 +770,8 @@ fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<
     // add the extra imports
     vcx.extra_imports
         .extend(vcx.shim_registry.get_extra_imports().iter().map(|x| (x.clone(), true)));
+    // add the extra dependencies
+    vcx.extra_dependencies.extend(vcx.shim_registry.get_extra_dependencies().iter().cloned());
 
     Ok(())
 }
@@ -762,19 +782,18 @@ fn get_most_restrictive_function_mode<'tcx, 'rcx>(
 ) -> function_body::ProcedureMode {
     let mut mode = function_body::ProcedureMode::Prove;
 
-    let attrs = vcx.env.get_attributes(did);
-    let v = crate::utils::filter_tool_attrs(attrs);
+    let attrs = get_attributes_of_function(&vcx.env, did);
 
     // check if this is a purely spec function; if so, skip.
-    if crate::utils::has_tool_attr(attrs, "shim") {
+    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
         mode = function_body::ProcedureMode::Shim;
     }
 
-    if crate::utils::has_tool_attr(attrs, "trust_me") {
+    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "trust_me") {
         mode = function_body::ProcedureMode::TrustMe;
-    } else if crate::utils::has_tool_attr(attrs, "only_spec") {
+    } else if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "only_spec") {
         mode = function_body::ProcedureMode::OnlySpec;
-    } else if crate::utils::has_tool_attr(attrs, "ignore") {
+    } else if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "ignore") {
         info!("Function {:?} will be ignored", did);
         mode = function_body::ProcedureMode::Ignore;
     }
@@ -839,6 +858,18 @@ fn propagate_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
     }
 }
 
+fn get_attributes_of_function<'a>(env: &'a Environment, did: DefId) -> Vec<&'a rustc_ast::ast::AttrItem> {
+    let attrs = env.get_attributes(did);
+    let mut filtered_attrs = crate::utils::filter_tool_attrs(attrs);
+    // also add selected attributes from the surrounding impl
+    if let Some(impl_did) = env.tcx().impl_of_method(did) {
+        let impl_attrs = env.get_attributes(impl_did);
+        let filtered_impl_attrs = crate::utils::filter_tool_attrs(impl_attrs);
+        filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
+    }
+    filtered_attrs
+}
+
 /// Translate functions of the crate, assuming they were previously registered.
 fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     for &f in vcx.functions {
@@ -846,14 +877,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         let fname = vcx.env.get_item_name(f.to_def_id());
         let meta = vcx.procedure_registry.lookup_function(&f.to_def_id()).unwrap();
 
-        let attrs = vcx.env.get_attributes(f.to_def_id());
-        let mut filtered_attrs = crate::utils::filter_tool_attrs(attrs);
-        // also add selected attributes from the surrounding impl
-        if let Some(impl_did) = vcx.env.tcx().impl_of_method(f.to_def_id()) {
-            let impl_attrs = vcx.env.get_attributes(impl_did);
-            let filtered_impl_attrs = crate::utils::filter_tool_attrs(impl_attrs);
-            filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
-        }
+        let filtered_attrs = get_attributes_of_function(&vcx.env, f.to_def_id());
 
         let mode = meta.get_mode();
         if mode.is_shim() {
@@ -1165,6 +1189,7 @@ where
         type_translator: &type_translator,
         procedure_registry,
         extra_imports: imports.into_iter().map(|x| (x, false)).collect(),
+        extra_dependencies: HashSet::new(),
         coq_path_prefix: path_prefix,
         shim_registry,
         dune_package: package,

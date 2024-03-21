@@ -231,6 +231,19 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RRCoqContextItem {
     }
 }
 
+/// a variant of `RRCoqContextItem` for module/crate scope
+#[derive(Debug)]
+pub struct RRGlobalCoqContextItem {
+    pub item: String,
+}
+impl<U> parse::Parse<U> for RRGlobalCoqContextItem {
+    fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
+        let item: parse::LitStr = input.parse(meta)?;
+
+        Ok(RRGlobalCoqContextItem { item: item.value() })
+    }
+}
+
 pub type ParseMeta<'a> = (&'a [specs::LiteralTyParam], &'a [(Option<String>, specs::Lft)]);
 
 /// Handle escape sequences in the given string.

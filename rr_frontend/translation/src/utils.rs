@@ -345,6 +345,16 @@ pub fn has_tool_attr(attrs: &[ast::Attribute], name: &str) -> bool {
     })
 }
 
+/// Check if `<tool>::name` is among the filtered attributes.
+pub fn has_tool_attr_filtered(attrs: &[&ast::AttrItem], name: &str) -> bool {
+    attrs.iter().any(|item| {
+        let segments = &item.path.segments;
+        segments.len() == 2
+            && segments[0].ident.as_str() == config::spec_hotword().as_str()
+            && segments[1].ident.as_str() == name
+    })
+}
+
 /// Check if any attribute starting with `<tool>` is among the attributes.
 pub fn has_any_tool_attr(attrs: &[ast::Attribute]) -> bool {
     attrs.iter().any(|attr| match &attr.kind {

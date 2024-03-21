@@ -1,9 +1,12 @@
+#![rr::include("option")]
 
 pub trait Bla {
     fn bla(&self);
 }
 
 impl<T> Bla for Option<T> {
+    #[rr::params("x")]
+    #[rr::args("#x")]
     #[rr::returns("()")]
     fn bla(&self) {
 
