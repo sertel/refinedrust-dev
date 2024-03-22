@@ -15,9 +15,15 @@ clean: clean_all
 .PHONY: clean
 
 frontend:
-	cd rr_frontend && ./refinedrust build && ./refinedrust install
+	@cd rr_frontend && ./refinedrust build && ./refinedrust install
 
-RUST_SRC = stdlib/alloc stdlib/option stdlib/result stdlib/spin stdlib/vec case_studies/paper-examples case_studies/tests case_studies/minivec
+setup-nix:
+	rm -f dune-project
+
+setup-dune:
+	echo "(lang dune 3.8)" > dune-project
+
+CASE_STUDIES = case_studies/paper-examples case_studies/tests case_studies/minivec
 
 %.gen: % phony
 	cd $< && cargo refinedrust
@@ -27,9 +33,15 @@ RUST_SRC = stdlib/alloc stdlib/option stdlib/result stdlib/spin stdlib/vec case_
 	cd $< && cargo clean
 .PHONY: phony
 
-generate_all: $(addsuffix .gen, $(RUST_SRC))
+generate_stdlib:
+	$(MAKE) -C stdlib generate_stdlib
+generate_case_studies: $(addsuffix .gen, $(CASE_STUDIES))
+generate_all: generate_stdlib generate_case_studies
 
-clean_all: $(addsuffix .clean, $(RUST_SRC))
+clean_stdlib:
+	$(MAKE) -C stdlib clean_stdlib
+clean_case_studies: $(addsuffix .clean, $(CASE_STUDIES))
+clean_all: clean_case_studies clean_stdlib
 
 .PHONY: generate_all
 
@@ -63,11 +75,11 @@ export BUILDDEP_OPAM_BODY
 
 # Create a virtual Opam package with the same deps as RefinedC, but no
 # build.
-builddep/refinedrust-builddep.opam: refinedrust.opam Makefile
+builddep/refinedrust-builddep.opam: theories/refinedrust.opam Makefile
 	@echo "# Creating builddep package."
 	@mkdir -p builddep
 	@echo "$$BUILDDEP_OPAM_BODY" > $@
-	@opam show -f depends: ./refinedrust.opam >> $@
+	@opam show -f depends: ./theories/refinedrust.opam >> $@
 	@echo "]" >> $@
 
 # Install the virtual Opam package to ensure that:

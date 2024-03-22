@@ -155,10 +155,19 @@ Section typing.
     λ T, i2p (find_in_context_named_lfts T).
 
   (** CreditStore *)
-  Lemma subsume_credit_store n m n' m' T :
+  Lemma subsume_credit_store_evar n m n' m' T `{!ContainsProtected (credit_store n' m')}:
     ⌜n = n'⌝ ∗ ⌜m = m'⌝ ∗ T ⊢ subsume (Σ := Σ) (credit_store n m) (credit_store n' m') T.
   Proof.
     iIntros "(<- & <- & HT) $ //".
+  Qed.
+  Global Instance subsume_credit_store_evar_inst n m n' m' `{!ContainsProtected (credit_store n' m')} : Subsume (credit_store n m) (credit_store n' m') | 10 :=
+    λ T, i2p (subsume_credit_store_evar n m n' m' T).
+
+  Lemma subsume_credit_store n m n' m' T :
+    ⌜n' ≤ n⌝ ∗ ⌜m' ≤ m⌝ ∗ T ⊢ subsume (Σ := Σ) (credit_store n m) (credit_store n' m') T.
+  Proof.
+    iIntros "(% & % & HT) Hc".
+    iFrame. iApply (credit_store_mono with "Hc"); done.
   Qed.
   Global Instance subsume_credit_store_inst n m n' m' : Subsume (credit_store n m) (credit_store n' m') :=
     λ T, i2p (subsume_credit_store n m n' m' T).
@@ -2000,8 +2009,11 @@ Section typing.
   (** Similar to type_assign, use is formulated with a skip over the expression, in order to allow
     on-demand unblocking. We can't just use any of the potential place access steps, because there might not be any (if it's just a location). So we can't easily use any of the other steps around.
    *)
-  Lemma type_use E L ot T e o π :
-    ⌜if o is Na2Ord then False else True⌝ ∗ typed_read π E L e ot T
+  Lemma type_use E L ot e o π (T : typed_read_cont_t) :
+    ⌜if o is Na2Ord then False else True⌝ ∗
+      typed_read π E L e ot (λ L2 v rt ty r,
+        introduce_with_hooks E L2 (atime 2 ∗ £ num_cred) (λ L3,
+          T L3 v rt ty r))
     ⊢ typed_val_expr π E L (use{ot, o} e)%E T.
   Proof.
     iIntros "[% Hread]" (Φ) "#(LFT & TIME & LLCTX) #HE HL Hna HΦ".
@@ -2011,14 +2023,25 @@ Section typing.
     iApply ewp_fupd.
     rewrite /Use. wp_bind.
     iApply (wp_logical_step with "TIME Hl"); [solve_ndisj.. | ].
-    iApply wp_skip. iNext. iIntros "_".
+    iMod (persistent_time_receipt_0) as "#Hp".
+    iMod (additive_time_receipt_0) as "Ha".
+    iApply (wp_skip_credits with "TIME Ha Hp"); first done.
+    iNext. iIntros "Hcred Hat".
     iIntros "(%v & %q & %rt & %ty & %r & %Hlyv & %Hv & Hl & Hv & Hcl)".
     iModIntro. iApply (wp_logical_step with "TIME Hcl"); [solve_ndisj.. | ].
-    iApply (wp_deref with "Hl") => //; try by eauto using val_to_of_loc.
+    iApply (wp_deref_credits with "TIME Hat Hp Hl") => //; try by eauto using val_to_of_loc.
     { destruct o; naive_solver. }
-    iIntros "!> %st Hl Hcred Hcl".
+    iIntros "!> %st Hl Hcred2 Hat Hcl".
     iMod ("Hcl" with "Hl Hv") as "(%L' & %rt' & %ty' & %r' & HL & Hna & Hv & HT)"; iModIntro.
+    iDestruct "Hcred2" as "(Hcred1' & Hcred2)".
+    iMod ("HT" with "[] HE HL [$Hat $Hcred2]") as "(%L3 & HL & HT)"; first done.
     by iApply ("HΦ" with "HL Hna Hv HT").
+  Qed.
+
+  Lemma num_laters_per_step_linear n m :
+    num_laters_per_step (n + m) = num_laters_per_step n + num_laters_per_step m.
+  Proof.
+    rewrite /num_laters_per_step/=. lia.
   Qed.
 
   (* This lemma is about AssignSE, which adds a skip around the LHS expression.
@@ -2028,7 +2051,9 @@ Section typing.
      *)
   Lemma type_assign E L π ot e1 e2 s fn R o ϝ :
     typed_val_expr π E L e2 (λ L' v rt ty r, ⌜if o is Na2Ord then False else True⌝ ∗
-      typed_write π E L' e1 ot v ty r (λ L'', typed_stmt π E L'' s fn R ϝ))
+      typed_write π E L' e1 ot v ty r (λ L2,
+        introduce_with_hooks E L2 (atime 2 ∗ £ num_cred) (λ L3,
+        typed_stmt π E L3 s fn R ϝ)))
     ⊢ typed_stmt π E L (e1 <-{ot, o} e2; s) fn R ϝ.
   Proof.
     iIntros "He". iIntros (?) "#(LFT & TIME & LLCTX) #HE HL Hna Hcont".
@@ -2037,22 +2062,30 @@ Section typing.
     unfold AssignSE. wps_bind.
     iSpecialize ("HT" with "Hv").
     iApply (wp_logical_step with "TIME HT"); [solve_ndisj.. | ].
-    iApply (wp_skip).
-    iNext. iIntros "Hcred (Hly & Hl & Hcl)".
+    iMod (persistent_time_receipt_0) as "#Hp".
+    iMod (additive_time_receipt_0) as "Ha".
+    iApply (wp_skip_credits with "TIME Ha Hp"); first done.
+    iNext. iIntros "Hcred Ha (Hly & Hl & Hcl)".
     iModIntro.
     (* TODO find a way to do this without destructing the logstep *)
     rewrite /logical_step.
     iMod "Hcl" as "(%n & Hat & Hcl)".
-    iMod (persistent_time_receipt_0) as "Hp".
+    iCombine "Ha Hat" as "Hat".
     iApply (wps_assign_credits with "TIME Hp Hat"); rewrite ?val_to_of_loc //. { destruct o; naive_solver. }
     iMod (fupd_mask_subseteq) as "Hcl_m"; last iApply fupd_intro.
     { destruct o; solve_ndisj. }
     iFrame. iNext. iIntros "Hl Hat Hcred'". iMod "Hcl_m" as "_".
     rewrite Nat.add_0_r. iDestruct "Hcred'" as "(Hcred1 & Hcred')".
-    rewrite (additive_time_receipt_sep 1). iDestruct "Hat" as "(Hat1 & Hat)".
+    iEval (rewrite (additive_time_receipt_sep 1)) in "Hat".
+    iEval (rewrite (additive_time_receipt_sep 1)) in "Hat".
+    iDestruct "Hat" as "(Hat1 & Hat1' & Hat)".
+    rewrite Nat.add_0_r.
+    rewrite num_laters_per_step_linear.
+    iDestruct "Hcred'" as "(Hcred2 & Hcred')".
     iMod ("Hcl" with "Hcred' Hat Hl") as ">(%L'' & HL & Hna & Hs)".
-    (* TODO maybe provide excess credits + receipt *)
-    by iApply ("Hs" with "[$TIME $LFT $LLCTX] HE HL Hna").
+    iCombine "Hat1 Hat1'" as "Hat".
+    iMod ("Hs" with "[] HE HL [$Hat $Hcred2]") as "(%L3 & HL & HT)"; first done.
+    by iApply ("HT" with "[$TIME $LFT $LLCTX] HE HL Hna").
   Qed.
 
   Lemma type_mut_addr_of π E L e T :

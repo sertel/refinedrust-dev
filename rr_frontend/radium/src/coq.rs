@@ -399,9 +399,55 @@ impl Display for CoqDefBody {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum CoqAttribute {
+    Global,
+    Local,
+}
+impl Display for CoqAttribute {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Global => write!(f, "global"),
+            Self::Local => write!(f, "local"),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CoqAttributes {
+    attrs: Vec<CoqAttribute>,
+}
+impl CoqAttributes {
+    pub fn empty() -> Self {
+        Self { attrs: vec![] }
+    }
+
+    pub fn new(attrs: Vec<CoqAttribute>) -> Self {
+        Self { attrs }
+    }
+}
+impl Display for CoqAttributes {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if !self.attrs.is_empty() {
+            write!(f, "#[ ")?;
+            let mut needs_sep = false;
+            for attr in self.attrs.iter() {
+                if needs_sep {
+                    write!(f, ", ")?;
+                }
+                needs_sep = true;
+                write!(f, "{}", attr)?;
+            }
+            write!(f, "]")?;
+        }
+        Ok(())
+    }
+}
+
 /// A Coq typeclass instance declaration
 #[derive(Debug, Clone)]
 pub struct CoqInstanceDecl {
+    pub attrs: CoqAttributes,
     pub name: Option<String>,
     pub params: CoqParamList,
     pub ty: CoqType,
@@ -411,8 +457,10 @@ pub struct CoqInstanceDecl {
 impl Display for CoqInstanceDecl {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self.name {
-            Some(ref name) => write!(f, "Instance {} {} : {}{}", name, self.params, self.ty, self.body),
-            None => write!(f, "Instance {} : {}{}", self.params, self.ty, self.body),
+            Some(ref name) => {
+                write!(f, "{} Instance {} {} : {}{}", self.attrs, name, self.params, self.ty, self.body)
+            },
+            None => write!(f, "{} Instance {} : {}{}", self.attrs, self.params, self.ty, self.body),
         }
     }
 }

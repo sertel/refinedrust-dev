@@ -41,8 +41,8 @@ Notation "e1 <<{ ot1 , ot2 } e2" := (BinOp ShlOp ot1 ot2 e1%E e2%E)
   (at level 70, format "e1  <<{ ot1 ,  ot2 }  e2") : expr_scope.
 Notation "e1 >>{ ot1 , ot2 } e2" := (BinOp ShrOp ot1 ot2 e1%E e2%E)
   (at level 70, format "e1  >>{ ot1 ,  ot2 }  e2") : expr_scope.
-Notation "e1 &{ ot1 , ot2 } e2" := (BinOp AndOp ot1 ot2 e1%E e2%E)
-  (at level 70, format "e1  &{ ot1 ,  ot2 }  e2") : expr_scope.
+Notation "e1 &b{ ot1 , ot2 } e2" := (BinOp AndOp ot1 ot2 e1%E e2%E)
+  (at level 70, format "e1  &b{ ot1 ,  ot2 }  e2") : expr_scope.
 Notation "e1 |{ ot1 , ot2 } e2" := (BinOp OrOp ot1 ot2 e1%E e2%E)
   (at level 70, format "e1  |{ ot1 ,  ot2 }  e2") : expr_scope.
 Notation "e1 ^{ ot1 , ot2 } e2" := (BinOp XorOp ot1 ot2 e1%E e2%E)

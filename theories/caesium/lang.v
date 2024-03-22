@@ -393,6 +393,17 @@ Inductive eval_bin_op : bin_op → op_type → op_type → state → val → val
     (* do not wrap, but get stuck on overflow *)
     val_of_Z n it None = Some v →
     eval_bin_op op (IntOp it) (IntOp it) σ v1 v2 v
+| ArithOpBB op v1 v2 σ b1 b2 b v :
+    match op with
+    | AndOp => Some (andb b1 b2)
+    | OrOp => Some (orb b1 b2)
+    | XorOp => Some (xorb b1 b2)
+    | _ => None
+    end = Some b →
+    val_to_bool v1 = Some b1 →
+    val_to_bool v2 = Some b2 →
+    val_of_bool b = v →
+    eval_bin_op op BoolOp BoolOp σ v1 v2 v
 | CommaOp ot1 ot2 σ v1 v2:
     eval_bin_op Comma ot1 ot2 σ v1 v2 v2
 .

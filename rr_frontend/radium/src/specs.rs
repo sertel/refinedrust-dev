@@ -1348,7 +1348,7 @@ impl<'def> AbstractVariant<'def> {
         write!(out, "{}Definition {} : type ({}).\n", indent, self.plain_ty_name, self.rfn_type).unwrap();
         write!(
             out,
-            "{indent}Proof using {}. exact ({}). Defined.\n",
+            "{indent}Proof using {} Type*. exact ({}). Defined.\n",
             ty_params.iter().map(|x| x.type_term.clone()).collect::<Vec<_>>().join(" "),
             self.generate_coq_type_term(sls_app)
         )
@@ -1375,7 +1375,7 @@ impl<'def> AbstractVariant<'def> {
     /// Generate a Coq definition for the struct type alias.
     /// TODO: maybe we should also generate a separate alias def for the refinement type to make
     /// things more readable?
-    pub fn generate_coq_type_def(&self, ty_params: &[LiteralTyParam]) -> String {
+    pub fn generate_coq_type_def(&self, ty_params: &[LiteralTyParam], extra_context: &[CoqParam]) -> String {
         let mut out = String::with_capacity(200);
         let indent = "  ";
         // the write_str impl will always return Ok.
@@ -1398,6 +1398,17 @@ impl<'def> AbstractVariant<'def> {
             out.push_str(".\n");
         }
         out.push_str("\n");
+
+        // write coq parameters
+        write!(out, "{} (* Additional parameters *)\n", indent).unwrap();
+        if !extra_context.is_empty() {
+            write!(out, "{}Context", indent).unwrap();
+            for param in extra_context.iter() {
+                write!(out, " {}", param).unwrap();
+            }
+            write!(out, ".\n").unwrap();
+        }
+        write!(out, "\n").unwrap();
 
         write!(out, "{}", self.generate_coq_type_def_core(ty_params)).unwrap();
 
@@ -1490,10 +1501,10 @@ impl<'def> AbstractStruct<'def> {
     }
 
     /// Generate a Coq definition for the struct type alias.
-    /// TODO: maybe we should also generate a separate alias def for the refinement type to make
-    /// things more readable?
     pub fn generate_coq_type_def(&self) -> String {
-        self.variant_def.generate_coq_type_def(&self.ty_params)
+        let extra_context = if let Some(ref inv) = self.invariant { inv.coq_params.as_slice() } else { &[] };
+
+        self.variant_def.generate_coq_type_def(&self.ty_params, extra_context)
     }
 
     /// Generate an optional definition for the invariant of this type, if one has been specified.
@@ -2122,6 +2133,7 @@ impl<'def> AbstractEnum<'def> {
             assertions.push(CoqTopLevelAssertion::InductiveDecl(ind.clone()));
             // prove that it is inhabited
             let instance_decl = CoqInstanceDecl {
+                attrs: CoqAttributes::new(vec![CoqAttribute::Global]),
                 name: None,
                 params: CoqParamList::empty(),
                 ty: CoqType::Literal(format!("Inhabited {}", ind.name)),

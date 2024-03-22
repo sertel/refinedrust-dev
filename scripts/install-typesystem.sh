@@ -6,4 +6,4 @@
 
 opam pin remove refinedrust -y
 opam remove refinedrust -y
-opam pin add refinedrust.dev $REFINEDRUST_ROOT -y
+opam pin add refinedrust.dev $REFINEDRUST_ROOT/theories -y

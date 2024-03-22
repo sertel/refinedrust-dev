@@ -3,6 +3,7 @@
 #![feature(custom_inner_attributes)]
 
 #![feature(allocator_api)]
+#![rr::package("refinedrust-stdlib")]
 #![rr::coq_prefix("stdlib.alloc")]
 
 use std::ptr::NonNull;

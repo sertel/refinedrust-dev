@@ -12,6 +12,7 @@
 -Q _build/default/case_studies/tests/output/tests refinedrust.examples.tests
 -Q _build/default/case_studies/paper-examples/output/paper_examples refinedrust.examples.paper_examples
 -Q _build/default/case_studies/minivec/output/minivec refinedrust.examples.minivec
+-Q _build/default/case_studies/evenint/output/evenint refinedrust.examples.evenint
 
 
 

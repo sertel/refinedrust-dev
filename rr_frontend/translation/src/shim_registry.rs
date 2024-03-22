@@ -109,6 +109,8 @@ pub struct ShimRegistry<'a> {
     adt_shims: Vec<AdtShim<'a>>,
     /// extra imports
     imports: Vec<radium::specs::CoqPath>,
+    /// extra module dependencies
+    depends: Vec<String>,
 }
 
 impl<'a> ShimRegistry<'a> {
@@ -139,6 +141,7 @@ impl<'a> ShimRegistry<'a> {
             function_shims: Vec::new(),
             adt_shims: Vec::new(),
             imports: Vec::new(),
+            depends: Vec::new(),
         }
     }
 
@@ -185,6 +188,19 @@ impl<'a> ShimRegistry<'a> {
                     module: module.to_string(),
                 };
                 self.imports.push(coq_path);
+
+                let depends = obj
+                    .get("module_dependencies")
+                    .ok_or(format!("Missing attribute \"module_dependencies\""))?;
+                let depends = depends
+                    .as_array()
+                    .ok_or(format!("Expected array for \"module_dependencies\" attribute"))?;
+                for el in depends.iter() {
+                    let module = el
+                        .as_str()
+                        .ok_or(format!("Expected string for element of \"module_dependencies\" array"))?;
+                    self.depends.push(module.to_string());
+                }
 
                 let arr = obj.get("items").ok_or(format!("Missing attribute \"items\""))?;
                 let arr = arr.as_array().ok_or(format!("Expected array for \"items\" attribute"))?;
@@ -237,6 +253,10 @@ impl<'a> ShimRegistry<'a> {
     pub fn get_extra_imports(&self) -> &[radium::specs::CoqPath] {
         &self.imports
     }
+
+    pub fn get_extra_dependencies(&self) -> &[String] {
+        &self.depends
+    }
 }
 
 /// Write serialized representation of shims to a file.
@@ -245,6 +265,7 @@ pub fn write_shims<'a>(
     load_path: &str,
     load_module: &str,
     name: &str,
+    module_dependencies: &[String],
     adt_shims: Vec<AdtShim<'a>>,
     function_shims: Vec<FunctionShim<'a>>,
 ) {
@@ -268,6 +289,7 @@ pub fn write_shims<'a>(
         "refinedrust_path": load_path,
         "refinedrust_module": load_module,
         "refinedrust_name": name,
+        "module_dependencies": module_dependencies,
         "items": array_val
     });
 
