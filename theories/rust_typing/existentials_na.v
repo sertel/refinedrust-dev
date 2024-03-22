@@ -100,27 +100,24 @@ Section na_ex.
     iDestruct "Htok" as "(Htok & ? & ?)".
 
     iApply fupd_logical_step; iApply logical_step_intro.
-    iMod (bor_exists_tok with "LFT Hbor Htok") as "(%x & Hbor & Htok)"; first solve_ndisj.
 
     (* NOTE: Is there a simplier setoid_rewrite to do here ? *)
-    iPoseProof (bor_iff _ _ (P.(na_inv_P) π x r ∗ l ↦: ty_own_val ty π x) with "[] Hbor") as "Hbor".
-    { iNext. iModIntro. iSplit; [iIntros "(% & ? & ? & ?)" | iIntros "(? & (% & ? & ?))"]; eauto with iFrame. }
+    iPoseProof (bor_iff _ _ (∃ x: X, l ↦: ty_own_val ty π x ∗ P.(na_inv_P) π x r) with "[] Hbor") as "Hbor".
+    { iNext. iModIntro. iSplit; [iIntros "(% & % & ? & ? & ?)" | iIntros "(% & (% & ? & ?) & ?)"]; eauto with iFrame. }
 
-    iMod (bor_sep with "LFT Hbor") as "(Hinv & Hbor)"; first solve_ndisj.
     iMod (bor_get_persistent _ (ty_sidecond ty) with "LFT [] Hbor Htok") as "(Hty & Hbor & Htok)"; first solve_ndisj.
-    { iIntros "Hl".
-      iDestruct "Hl" as (v) "(Hl & Hv)".
+    { iIntros "Hinv".
+      iDestruct "Hinv" as (v) "((% & Hl & HP) & Hv)".
+      iPoseProof (ty_own_val_sidecond with "HP") as "#>Hsc".
+      iModIntro; iSplit; [iNext | done].
+      iExists v; iFrame.
+      iExists v0; iFrame. }
 
-      (* NOTE: ty_own_val_sidecond *)
-      admit. }
-
-    iMod (bor_combine with "LFT Hbor Hinv") as "Hbor"; first solve_ndisj.
     iMod (bor_na with "Hbor") as "Hbor"; first solve_ndisj.
 
     iModIntro; iFrame.
-    iSplitL "Hbor". { admit. }
     iExists ly; eauto with iFrame.
-  Admitted.
+  Qed.
 
   (* ty_shr_mono *)
   Next Obligation.
