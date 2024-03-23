@@ -58,8 +58,6 @@ where
         .arg(&command)
         //.args(features)
         .args(args)
-        .env("RUST_TOOLCHAIN", launch::get_rust_toolchain_channel())
-        .env("RUSTUP_TOOLCHAIN", launch::get_rust_toolchain_channel())
         .env("RUSTC", rr_rustc_path)
         .env("RR_CARGO", "")
         .env("CARGO_TARGET_DIR", &cargo_target)

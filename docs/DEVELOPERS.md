@@ -13,6 +13,7 @@ We assume that you have `nix` installed on your system. Setup instructions can b
 To setup the project for development purposes, you can use `nix develop` to enter an interactive subshell containing the tools you will need:
 ```bash
 cd <refinedrust-root-project>
+make setup-nix
 nix develop
 ```
 
@@ -24,6 +25,8 @@ error: experimental Nix feature 'nix-command' is disabled; use ''–extra-experi
 ```
 
 All you have to do is enable flakes, see this [NixOS wiki page](https://nixos.wiki/wiki/Flakes) for more details on how to enable flakes permanently.
+
+Note: Make sure that you are not currently in an opam switch with a Coq installation -- this may confuse our build setup.
 
 ### Setup using `opam` and `rustup`
 By following the procedure in the `README.md`, you should have the required setup for development.
@@ -60,16 +63,17 @@ Please remember to update this value each time the rust toolchain is updated.
 For Vim, [`YouCompleteMe`](https://github.com/ycm-core/YouCompleteMe) has good support for Rust using `rust-analyzer`.
 Look at its README for instructions on configuring keybinds.
 
-However, by default, it ships its own `rustc` toolchain and sources which are used for completion and which are not updated frequently
-(this is apparently due to `rust-analyzer` having a very unstable API; see https://github.com/ycm-core/YouCompleteMe/issues/4012).
+However, by default, it ships its own `rustc` toolchain and sources which are used for completion and which are not updated frequently.
 This creates problems, because YCM will constantly rebuild the project with its own toolchain (and the build cache will conflict with `cargo build` in the toolchain RefinedRust uses, so it needs to do full rebuilds),
 and you won't get proper autocompletion of `rustc` internals.
 
-To work around this, the `_vimrc_local.vim` file shipped in this project sets the right toolchain (if you have installed `https://github.com/LucHermitte/local_vimrc`), by setting:
+You can fix this by setting by giving the path to the current toolchain explicitly.
+First, get the output of `rustc --print sysroot` and copy it.
+Then, put the following into your vim configuration (if you have a plugin for local configuration like `https://github.com/LucHermitte/local_vimrc`, we recommend putting this into the configuration for this project):
 ```
-let g:ycm_rust_toolchain_root = '/home/[user]/.rustup/toolchains/[current-toolchain]'
+let g:ycm_rust_toolchain_root = '[SYSROOT]'
 ```
-You just have to change the `[user]` to match your setup (sadly, references to `home` by `~/` or `$HOME/` do not seem to be supported), and `[current-toolchain]` to the current version of the RefinedRust toolchain declared in `rust-toolchain.toml`.
+where `SYSROOT` is the output of `rustc --print sysroot`.
 
 To set the `rustc` sources, setup a `.ycm_extra_conf.py` file (for setting it globally, add e.g.
 ```
@@ -104,7 +108,7 @@ Please remember to update this value each time the rust toolchain is updated, by
 ## Updating dependencies
 
 ### Updating the frontend's rustc version
-1. Update the file `rust-toolchain.toml` in `rr_frontend` to the new desired nightly version.
+1. Update the file `rust-toolchain.toml` to the new desired nightly version.
 2. Make the required changes for `nix` (see below).
 3. Try to get the frontend building again.
 
@@ -130,4 +134,4 @@ To update a dependency:
 1. Replace the `sha256` string with the empty string `""`.
 2. For a `coq` dependency, replace the `version` string with the desired `git` commit hash.
 3. Run `nix build` and wait for the error that throws the hash mismatch.
-4. Replace the `sha256` empty string with the hash from the received error. 
+4. Replace the `sha256` empty string with the hash from the received error.

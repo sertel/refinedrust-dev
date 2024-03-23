@@ -1,67 +1,87 @@
-all:
-	@dune build _build/default/refinedrust.install --display short
-.PHONY: all
-
-install:
-	@dune install
-.PHONY: install
-
-uninstall:
-	@dune uninstall
-.PHONY: uninstall
-
-clean: clean_all
-	@dune clean
-.PHONY: clean
-
-frontend:
-	@cd rr_frontend && ./refinedrust build && ./refinedrust install
-
-setup-nix:
-	rm -f dune-project
-
-setup-dune:
-	echo "(lang dune 3.8)" > dune-project
+COQ_PATH =	_build/lib/coq/user-contrib
+RUST_TARGET = $(shell rustc -vV | sed -n 's|host: ||p')
+RUST_PATH =	target/$(RUST_TARGET)/release
 
 CASE_STUDIES = case_studies/paper-examples case_studies/tests case_studies/minivec
 
-%.gen: % phony
-	cd $< && cargo refinedrust
-.PHONY: phony
+### Project setup
+setup-nix:
+	rm -f dune-project
+.PHONY: setup-nix
 
-%.clean: % phony
-	cd $< && cargo clean
-.PHONY: phony
+setup-dune:
+	echo "(lang dune 3.8)" > dune-project
+.PHONY: setup-dune
 
-generate_stdlib:
-	$(MAKE) -C stdlib generate_stdlib
-generate_case_studies: $(addsuffix .gen, $(CASE_STUDIES))
+### generic build targets
 generate_all: generate_stdlib generate_case_studies
-
-clean_stdlib:
-	$(MAKE) -C stdlib clean_stdlib
-clean_case_studies: $(addsuffix .clean, $(CASE_STUDIES))
-clean_all: clean_case_studies clean_stdlib
-
 .PHONY: generate_all
 
-check_generate_all: generate_all
-	git diff --exit-code
-.PHONY: check_generate_all
+clean: clean_case_studies clean_stdlib
+	@dune clean
+.PHONY: clean
 
-all_with_examples: frontend generate_all
+all_with_examples: all case_studies.proof
 	dune build --display short
+.PHONY: all_with_examples
 
-builddep-opamfiles: builddep/refinedrust-builddep.opam
-	@true
-.PHONY: builddep-opamfiles
+### core components
+typesystem:
+	cd theories && dune build --display short
+.PHONY: typesystem
 
+frontend:
+	cd rr_frontend && ./refinedrust build
+.PHONY: frontend
+
+all: frontend typesystem stdlib.proof
+.PHONY: all
+
+### case studies
+case_studies.proof: typesystem
+case_studies.proof:	$(CASE_STUDIES:=.proof)
+.PHONY: case_studies.proof
+
+clean_case_studies: $(CASE_STUDIES:=.clean)
+.PHONY: clean_case_studies
+
+generate_case_studies:
+generate_case_studies: $(CASE_STUDIES:=.crate)
+.PHONY: generate_case_studies
+
+case_studies/%.proof:	stdlib.proof case_studies/%.crate
+	cd case_studies/$* && dune build --display short
+
+### stdlib
+stdlib.proof: typesystem generate_stdlib
+	RUST_PATH=$(RUST_PATH) $(MAKE) -C stdlib stdlib.proof
+.PHONY: stdlib.proof
+
+clean_stdlib:
+	RUST_PATH=$(RUST_PATH) $(MAKE) -C stdlib clean_stdlib
+.PHONY: clean_stdlib
+
+generate_stdlib:
+	RUST_PATH=$(RUST_PATH) $(MAKE) -C stdlib generate_stdlib
+.PHONY: generate_stdlib
+
+### Calling the frontend
+# this adds the path to the built frontend so cargo can find it
+%.crate:	export PATH := $(CURDIR)/rr_frontend/$(RUST_PATH):$(PATH)
+%.crate: %
+	cd $* && cargo refinedrust
+
+%.clean: phony
+	cd $* && cargo clean
+.PHONY: phony
+
+### Builddep handling
 # see https://stackoverflow.com/a/649462 for defining multiline strings in Makefiles
 define BUILDDEP_OPAM_BODY
 opam-version: "2.0"
 name: "refinedrust-builddep"
-maintainer: "Lennard Gäher"
-author: "Lennard Gäher"
+maintainer: "RefinedRust contributors"
+author: "RefinedRust contributors"
 homepage: "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev"
 bug-reports: "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev"
 synopsis: "---"
@@ -90,20 +110,3 @@ builddep: builddep/refinedrust-builddep.opam
 	@echo "# Installing package $^."
 	@opam install $(OPAMFLAGS) $^
 .PHONY: builddep
-
-DUNE_FILES = $(shell find theories/ -type f -name 'dune')
-
-config:
-	@echo "# Setting default configuration"
-	@cp theories/caesium/config/default_config.v theories/caesium/config/selected_config.v
-.PHONY: config
-
-config-no-align:
-	@echo "# Setting no-align configuration"
-	@cp theories/caesium/config/no_align_config.v theories/caesium/config/selected_config.v
-.PHONY: config-no-align
-
-# Currently, we don't need to do anything special before building RefinedC in opam.
-prepare-install-refinedrust:
-	@true
-.PHONY: prepare-install-refinedrust

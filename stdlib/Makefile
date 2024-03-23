@@ -1,16 +1,25 @@
-STDLIB = alloc option result spin vec 
+STDLIB = alloc option result spin vec
 
-%.gen: % phony
-	cd $< && cargo refinedrust
-.PHONY: phony
+RUST_TARGET ?= $(shell rustc -vV | sed -n 's|host: ||p')
+RUST_PATH ?=	target/$(RUST_TARGET)/release
 
-%.clean: % phony
-	cd $< && cargo clean
-.PHONY: phony
 
-generate_stdlib: $(addsuffix .gen, $(STDLIB))
 
-clean_stdlib: $(addsuffix .clean, $(STDLIB))
 
-stdlib: generate_stdlib
+generate_stdlib: $(STDLIB:=.crate)
+
+clean_stdlib: $(STDLIB:=.clean)
+
+stdlib.proof:	$(STDLIB:=.proof)
 	dune build --display short
+
+%.proof:	%.crate
+	cd $* && dune build --display short
+
+%.crate:	export PATH := $(CURDIR)/../rr_frontend/$(RUST_PATH):$(PATH)
+%.crate: %
+	cd $* && cargo refinedrust
+
+%.clean: phony
+	cd $* && cargo clean
+.PHONY: phony
