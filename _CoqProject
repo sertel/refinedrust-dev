@@ -1,25 +1,21 @@
 -Q _build/default/theories/lithium lithium
 -Q _build/default/theories/caesium caesium
 -Q _build/default/theories/rust_typing refinedrust
+-Q _build/default/case_studies/extra_proofs refinedrust.extra_proofs
+
 # We sometimes want to locally override notation, and there is no good way to do that with scopes.
 -arg -w -arg -notation-overridden
 # Cannot use non-canonical projections as it causes massive unification failures
 # (https://github.com/coq/coq/issues/6294).
 -arg -w -arg -redundant-canonical-projection
 
--Q _build/default/rr_frontend/output/minivec_patched refinedrust.examples.minivec_patched
-
+# case studies
 -Q _build/default/case_studies/tests/output/tests refinedrust.examples.tests
 -Q _build/default/case_studies/paper-examples/output/paper_examples refinedrust.examples.paper_examples
 -Q _build/default/case_studies/minivec/output/minivec refinedrust.examples.minivec
 -Q _build/default/case_studies/evenint/output/evenint refinedrust.examples.evenint
 
-
-
-
--Q _build/default/case_studies/extra_proofs/tests/enums refinedrust.extra_proofs.tests.enums
--Q _build/default/case_studies/extra_proofs/minivec refinedrust.extra_proofs.minivec
-
+# stdlib
 -Q _build/default/stdlib/vec/target/verify/vec stdlib.alloc.vec
 -Q _build/default/stdlib/option/target/verify/option stdlib.option.option
 -Q _build/default/stdlib/alloc/target/verify/alloc stdlib.alloc.alloc

@@ -58,7 +58,7 @@
 
       rust = {
         toolchain = pkgs.fenix.fromToolchainFile {
-          dir = ./rr_frontend;
+          file = ./rust-toolchain.toml;
           sha256 = "sha256-0NR5RJ4nNCMl9ZQDA6eGAyrDWS8fB28xIIS1QGLlOxw=";
         };
 
@@ -155,7 +155,7 @@
 
           preBuild = ''
             dune() { command dune $@ --display=short; }
-            make generate_stdlib 
+            make generate_stdlib
           '';
           useDune = true;
         };

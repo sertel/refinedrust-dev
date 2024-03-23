@@ -7,8 +7,9 @@ The Coq implementation of RefinedRust can be found in the `theories` subfolder.
 The frontend implementation can be found in the `rr_frontend` subfolder.
 Case studies and tests can be found in the `case_studies` subfolder.
 Stdlib interfaces (without proofs) can be found in the `stdlib` subfolder.
+Documentation can be found in the `docs` subfolder.
 
-The file `paper_mapping.md` in this repository contains more details on how to map the contents of the RefinedRust paper to this repository.
+The file `docs/paper_mapping.md` contains more details on how to map the contents of the RefinedRust paper to this repository.
 
 ### For the `theories` subfolder:
 * the `caesium` subfolder contains the Radium operational semantics, an adaptation of RefinedC's Caesium semantics.
@@ -62,17 +63,17 @@ opam pin add coq 8.17.1
 opam pin add coq-lambda-rust.dev https://gitlab.mpi-sws.org/lgaeher/lambda-rust.git#rr
 make builddep
 ```
-3. Build the project
+3. Build the Coq implementation of the type system
 ```
-dune build theories
+make setup-dune
+make typesystem
 ```
 
 #### Setup instructions for the frontend:
 1. Make sure that you have a working `rustup`/Rust install. Instructions for setting up Rust can be found on https://rustup.rs/.
 2. Run `./refinedrust build` in `rr_frontend` to build the frontend.
-3. Run `./refinedrust install` in `rr_frontend` to install the frontend.
 
-The last command will install RefinedRust's frontend into Rustup's install directory.
+Optionally, you can install the frontend into your Rust path by also running `./refinedrust install` in `rr_frontend`.
 
 ## Frontend usage
 After installing RefinedRust, it can be invoked through `cargo`, Rust's build system and package manager, by running `cargo refinedrust`.

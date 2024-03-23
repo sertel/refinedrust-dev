@@ -82,6 +82,13 @@ frontend:
     NIX_DERIVATION: .#frontend
   extends: .build_to_artifacts
 
+stdlib:
+  stage: build
+  needs: [ "theories", "frontend" ]
+  variables:
+    NIX_DERIVATION: .#stdlib
+  extends: .build_to_artifacts
+
 tests:
   stage: tests
   script:
