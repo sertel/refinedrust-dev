@@ -211,10 +211,10 @@ Section alias_ltype.
     ⊢ typed_place π E L l (AliasLtype rt st l2) r bmin0 (Owned wl) P T.
   Proof.
     iDestruct 1 as ((rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
-    iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
+    iIntros (????) "#CTX #HE HL Hna #Hincl Hl Hcont".
     rewrite ltype_own_alias_unfold /alias_lty_own.
     iDestruct "Hl" as "(%ly & % & -> & #? & #? & Hcred)".
-    iApply ("HP" with "[//] [//] CTX HE HL [] Hl2").
+    iApply ("HP" with "[//] [//] CTX HE HL Hna [] Hl2").
     { iApply bor_kind_incl_refl. }
     iIntros (L' κs l2 b0 bmin rti ltyi ri strong weak) "#Hincl1 Hl2 Hcl HT HL".
     iApply ("Hcont" with "[//] Hl2 [Hcl Hcred] HT HL").

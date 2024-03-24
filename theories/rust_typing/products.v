@@ -2919,7 +2919,7 @@ Section rules.
     ⊢ typed_place π E L l (StructLtype lts sls) (#r) bmin0 (Owned wl) (GetMemberPCtx sls f :: P) T.
   Proof.
     iIntros "(%Houtl & %i & %Hfield & %lto & %ro & %Hlto & %Hro & Hp)".
-    iIntros (Φ F ??) "#(LFT & TIME & LLCTX) #HE HL #Hincl0 Hl HΦ/=".
+    iIntros (Φ F ??) "#(LFT & TIME & LLCTX) #HE HL Hna #Hincl0 Hl HΦ/=".
     iPoseProof (struct_ltype_acc_owned F with "Hl") as "(%sl & %Halg & %Hly & %Hmem & #Hlb & Hb)"; first done.
     iApply fupd_wp.
     iMod (fupd_mask_mono with "Hb") as "(Hb & Hcl)"; first done.
@@ -2945,7 +2945,7 @@ Section rules.
     assert (l at{sl}ₗ f = l atst{sls}ₗ f) as Hleq.
     { rewrite /GetMemberLocSt /use_struct_layout_alg' Halg //. }
     rewrite Hleq.
-    iApply ("Hp" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hincl0 [Hb]").
+    iApply ("Hp" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna Hincl0 [Hb]").
     { rewrite -Hlto -Hro. done. }
     iModIntro. iIntros (L' κs l2 b2 bmin rti ltyi ri strong weak) "#Hincl1 Hli Hcont".
     iApply ("HΦ" $! _ _ _ _ _ _ _ _ _ _ with "Hincl1 Hli").
@@ -3016,7 +3016,7 @@ Section rules.
   Proof.
     rewrite /lctx_lft_alive_count_goal.
     iIntros "(%Houtl & %κs & %L' &  %Hal & %i & %Hfield & %lto & %ro & %Hlto & %Hro & Hp)".
-    iIntros (Φ F ??) "#(LFT & TIME & LLCTX) #HE HL #Hincl0 Hl HΦ/=".
+    iIntros (Φ F ??) "#(LFT & TIME & LLCTX) #HE HL Hna #Hincl0 Hl HΦ/=".
 
     iPoseProof (lctx_bor_kind_outlives_all_use with "[//] HE HL") as "#Houtl".
     iApply fupd_wp.
@@ -3048,7 +3048,7 @@ Section rules.
     assert (l at{sl}ₗ f = l atst{sls}ₗ f) as Hleq.
     { rewrite /GetMemberLocSt /use_struct_layout_alg' Halg //. }
     rewrite Hleq.
-    iApply ("Hp" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [Hincl0] [Hb]").
+    iApply ("Hp" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna [Hincl0] [Hb]").
     { destruct bmin0; done. }
     { rewrite -Hlto -Hro. done. }
     iModIntro. iIntros (L2 κs' l2 b2 bmin rti ltyi ri strong weak) "#Hincl1 Hli Hcont".
@@ -3106,7 +3106,7 @@ Section rules.
     ⊢ typed_place π E L l (StructLtype lts sls) (#r) bmin0 (Shared κ) (GetMemberPCtx sls f :: P) T.
   Proof.
     iIntros "(% & %i & %Hfield & %lto & %ro & %Hlto & %Hro & Hp)".
-    iIntros (Φ F ??) "#(LFT & TIME & LLCTX) #HE HL #Hincl0 Hl HΦ/=".
+    iIntros (Φ F ??) "#(LFT & TIME & LLCTX) #HE HL Hna #Hincl0 Hl HΦ/=".
     iPoseProof (struct_ltype_acc_shared F with "Hl") as "(%sl & %Halg & %Hly & %Hmem & #Hlb & Hb)"; first done.
     iApply fupd_wp.
     iMod (fupd_mask_mono with "Hb") as "(Hb & Hcl)"; first done.
@@ -3132,7 +3132,7 @@ Section rules.
     assert (l at{sl}ₗ f = l atst{sls}ₗ f) as Hleq.
     { rewrite /GetMemberLocSt /use_struct_layout_alg' Halg //. }
     rewrite Hleq.
-    iApply ("Hp" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hincl0 [Hb]").
+    iApply ("Hp" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna Hincl0 [Hb]").
     { rewrite -Hlto -Hro. done. }
     iIntros (L' κs l2 b2 bmin rti ltyi ri strong weak) "#Hincl1 Hli Hcont".
     iApply ("HΦ" $! _ _ _ _ _ _ _ _ _ _ with "Hincl1 Hli").

@@ -406,12 +406,12 @@ Section generated_code.
       unfold introduce_with_hooks, typed_place.
 
       (* Nothing has changed *)
-      iIntros "HT". iIntros (F ???) "#CTX #HE HL Hincl Hb Hcont".
+      iIntros "HT". iIntros (F ???) "#CTX #HE HL Hna Hincl Hb Hcont".
       iApply fupd_place_to_wp.
       iMod (na_ex_plain_t_open_owned with "Hb") as "(%r & HP & Hb & Hcl)"; first done.
       iPoseProof ("Hcl" with "Hb []") as "Hb"; first done.
       iMod ("HT" with "[] HE HL HP") as "(%L2 & HL & HT)"; first done.
-      iApply ("HT" with "[//] [//] CTX HE HL Hincl Hb").
+      iApply ("HT" with "[//] [//] CTX HE HL Hna Hincl Hb").
       iModIntro. iIntros (L' κs l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl Hc".
       iApply ("Hcont" with "Hincl Hl").
       iSplit; last done.
@@ -483,7 +483,7 @@ Section generated_code.
       iIntros "HT".
 
       rewrite /typed_place /introduce_with_hooks.
-      iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL Hincl Hl Hcont".
+      iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL Hna Hincl Hl Hcont".
       iApply fupd_place_to_wp.
 
       iMod ("HT" with "[] [] [$LFT $TIME $LLCTX] HE HL")
@@ -498,7 +498,7 @@ Section generated_code.
       { (* TODO: Correctly pass na_own π ⊤ *) admit. }
 
       iMod ("HT" with "[] HE HL HP") as "(% & HL & HT)"; first done.
-      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [Hincl] [Hl]").
+      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna [Hincl] [Hl]").
       { by iApply (bor_kind_incl_trans with "Hincl"). }
       { admit. }
 

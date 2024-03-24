@@ -309,7 +309,8 @@ Proof.
     iIntros "(%Hst & Ha & Hb)". iSplitR; first done.
     iSplitL "Ha". { iPoseProof (IH1 with "Hincl") as "(Ha1 & _)". by iApply "Ha1". }
     iPoseProof (IH2 with "Hincl") as "(Ha1 & _)". by iApply "Ha1".
-Qed.
+  - admit. (* TODO: MagicType *)
+Admitted.
 Lemma ltype_bor_kind_direct_incl `{!typeGS Σ} {rt} (lt : ltype rt) b1 b2 π r l :
   bor_kind_direct_incl b2 b1 -∗
   (l ◁ₗ[π, b1] r @ lt -∗ l ◁ₗ[π, b2] r @ lt).
