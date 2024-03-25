@@ -9,6 +9,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use log::{info, trace, warn};
 use radium;
 use rustc_ast::ast::Attribute;
+use rustc_middle::ty::fold::TypeFolder;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::tcx::PlaceTy;
@@ -182,6 +183,21 @@ impl<'def> ProcedureScope<'def> {
 /// Scope of consts that are available
 pub struct ConstScope<'def> {
     pub statics: HashMap<DefId, radium::StaticMeta<'def>>,
+}
+
+// solve the constraints for the new_regions
+// we first identify what kinds of constraints these new regions are subject to
+#[derive(Debug)]
+enum CallRegionKind {
+    // this is just an intersection of local regions.
+    Intersection(HashSet<Region>),
+    // this is equal to a specific region
+    EqR(Region),
+}
+struct CallRegions {
+    pub early_regions: Vec<Region>,
+    pub late_regions: Vec<Region>,
+    pub classification: HashMap<Region, CallRegionKind>,
 }
 
 pub struct FunctionTranslator<'a, 'def, 'tcx> {
@@ -1582,21 +1598,25 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     fn call_expr_op_split_inst(
         &self,
         op: &Operand<'tcx>,
-    ) -> Result<(DefId, ty::PolyFnSig<'tcx>, ty::GenericArgsRef<'tcx>), TranslationError> {
+    ) -> Result<(DefId, ty::PolyFnSig<'tcx>, ty::GenericArgsRef<'tcx>, ty::PolyFnSig<'tcx>), TranslationError> {
         match op {
             Operand::Constant(box Constant { literal, .. }) => {
                 match literal {
                     ConstantKind::Ty(c) => {
                         match c.ty().kind() {
                             TyKind::FnDef(def, args) => {
-                                let ty: Ty<'tcx> = self.env.tcx().type_of(def).instantiate_identity();
-                                assert!(ty.is_fn());
-                                let sig = ty.fn_sig(self.env.tcx());
-                                //let inputs = sig.inputs().skip_binder();
-                                //let output = sig.output().skip_binder();
-                                Ok((*def, sig, args))
+                                let ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(def);
+
+                                let ty_ident = ty.instantiate_identity();
+                                assert!(ty_ident.is_fn());
+                                let ident_sig = ty_ident.fn_sig(self.env.tcx());
+
+                                let ty_instantiated = ty.instantiate(self.env.tcx(), args.as_slice());
+                                let instantiated_sig = ty_instantiated.fn_sig(self.env.tcx());
+
+                                Ok((*def, ident_sig, args, instantiated_sig))
                             },
-                            // TODO handle FnPtr
+                            // TODO handle FnPtr, closure
                             _ => Err(TranslationError::Unimplemented {
                                 description: "implement function pointers".to_string(),
                             }),
@@ -1605,14 +1625,18 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     ConstantKind::Val(_, ty) => {
                         match ty.kind() {
                             TyKind::FnDef(def, args) => {
-                                let ty: Ty<'tcx> = self.env.tcx().type_of(def).instantiate_identity();
-                                assert!(ty.is_fn());
-                                let sig = ty.fn_sig(self.env.tcx());
-                                //let inputs = sig.inputs().skip_binder();
-                                //let output = sig.output().skip_binder();
-                                Ok((*def, sig, args))
+                                let ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(def);
+
+                                let ty_ident = ty.instantiate_identity();
+                                assert!(ty_ident.is_fn());
+                                let ident_sig = ty_ident.fn_sig(self.env.tcx());
+
+                                let ty_instantiated = ty.instantiate(self.env.tcx(), args.as_slice());
+                                let instantiated_sig = ty_instantiated.fn_sig(self.env.tcx());
+
+                                Ok((*def, ident_sig, args, instantiated_sig))
                             },
-                            // TODO handle FnPtr
+                            // TODO handle FnPtr, closure
                             _ => Err(TranslationError::Unimplemented {
                                 description: "implement function pointers".to_string(),
                             }),
@@ -1722,6 +1746,316 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         //Self::dump_body(body);
     }
 
+    fn compute_call_regions(&self, func: &Operand<'tcx>, loc: Location) -> Result<CallRegions, TranslationError> {
+        let midpoint = self.info.interner.get_point_index(&facts::Point {
+            location: loc,
+            typ: facts::PointType::Mid,
+        });
+
+        // first identify substitutions for the early-bound regions
+        let (target_did, sig, substs, _) = self.call_expr_op_split_inst(func)?;
+        info!("calling function {:?}", target_did);
+        let mut early_regions = Vec::new();
+        info!("call substs: {:?} = {:?}, {:?}", func, sig, substs);
+        for a in substs.iter() {
+            match a.unpack() {
+                ty::GenericArgKind::Lifetime(r) => match r.kind() {
+                    ty::RegionKind::ReVar(r) => early_regions.push(r),
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
+        info!("call region instantiations (early): {:?}", early_regions);
+
+        // this is a hack to identify the inference variables introduced for the
+        // call's late-bound universals.
+        // TODO: Can we get this information in a less hacky way?
+
+        // Point:  I'd like to precisely identify which regions were introduced for generic
+        // instantiation and which are actual lifetime parameters.
+        // I might be able to say which regions are appearing in generic instantiations, and filter
+        // these out.
+
+
+        // now find all the regions that appear in type parameters we instantiate.
+        // These are regions that the callee doesn't know about.
+
+        let mut generic_regions = HashSet::new();
+        let mut clos = |r: ty::Region<'tcx>, _| match r.kind() {
+            ty::RegionKind::ReVar(rv) => {
+                generic_regions.insert(rv);
+                r
+            },
+            _ => r,
+        };
+
+        for a in substs.iter() {
+            match a.unpack() {
+                ty::GenericArgKind::Type(c) => {
+                    let mut folder = ty::fold::RegionFolder::new(self.env.tcx(), &mut clos);
+                    folder.fold_ty(c);
+                },
+                _ => (),
+            }
+        }
+        info!("Regions of generic args: {:?}", generic_regions);
+
+        // go over all region constraints initiated at this location
+        let new_constraints = self.info.get_new_subset_constraints_at_point(midpoint);
+        let mut new_regions = HashSet::new();
+        let mut relevant_constraints = Vec::new();
+        for (r1, r2) in new_constraints.iter() {
+            if let info::RegionKind::Unknown = self.info.get_region_kind(*r1) {
+                // this is probably a inference variable for the call
+                new_regions.insert(*r1);
+                relevant_constraints.push((*r1, *r2));
+            }
+            if let info::RegionKind::Unknown = self.info.get_region_kind(*r2) {
+                new_regions.insert(*r2);
+                relevant_constraints.push((*r1, *r2));
+            }
+        }
+        // first sort this to enable cycle resolution
+        let mut new_regions_sorted: Vec<Region> = new_regions.iter().cloned().collect();
+        new_regions_sorted.sort();
+
+        // identify the late-bound regions
+        let mut late_regions = Vec::new();
+        for r in new_regions_sorted.iter() {
+            // only take the ones which are not early bound and
+            // which are not due to a generic (the callee doesn't care about generic regions)
+            if !early_regions.contains(r) && !generic_regions.contains(r) {
+                late_regions.push(*r);
+            }
+        }
+        info!("call region instantiations (late): {:?}", late_regions);
+
+        // Notes:
+        // - if two of the call regions need to be equal due to constraints on the function, we define the one
+        //   with the larger id in terms of the other one
+        // - we ignore unidirectional subset constraints between call regions (these do not help in finding a
+        //   solution if we take the transitive closure beforehand)
+        // - if a call region needs to be equal to a local region, we directly define it in terms of the local
+        //   region
+        // - otherwise, it will be an intersection of local regions
+        let mut new_regions_classification = HashMap::new();
+        // compute transitive closure of constraints
+        let relevant_constraints = info::compute_transitive_closure(relevant_constraints);
+        for r in new_regions_sorted.iter() {
+            for (r1, r2) in relevant_constraints.iter() {
+                if *r2 == *r {
+                    // i.e. (flipping it around when we are talking about lifetimes),
+                    // r needs to be a sublft of r1
+                    if relevant_constraints.contains(&(*r2, *r1)) {
+                        // if r1 is also a new region and r2 is ordered before it, we will
+                        // just define r1 in terms of r2
+                        if new_regions.contains(r1) && r2.as_u32() < r1.as_u32() {
+                            continue;
+                        }
+                        // need an equality constraint
+                        new_regions_classification.insert(*r, CallRegionKind::EqR(*r1));
+                        // do not consider the rest of the constraints as r is already
+                        // fully specified
+                        break;
+                    } else {
+                        // the intersection also needs to contain r1
+                        if new_regions.contains(r1) {
+                            // we do not need this constraint, since we already computed the
+                            // transitive closure.
+                            continue;
+                        }
+                        let kind = new_regions_classification
+                            .entry(*r)
+                            .or_insert(CallRegionKind::Intersection(HashSet::new()));
+                        match kind {
+                            CallRegionKind::Intersection(s) => {
+                                s.insert(*r1);
+                            },
+                            _ => panic!("unreachable"),
+                        }
+                    }
+                }
+            }
+        }
+        info!("call arg classification: {:?}", new_regions_classification);
+
+        Ok(CallRegions {
+            early_regions,
+            late_regions,
+            classification: new_regions_classification,
+        })
+    }
+
+    fn translate_function_call(
+        &mut self,
+        func: &Operand<'tcx>,
+        args: &[Operand<'tcx>],
+        destination: &Place<'tcx>,
+        target: Option<rustc_middle::mir::BasicBlock>,
+        loc: Location,
+        dying_loans: &[facts::Loan],
+    ) -> Result<radium::Stmt, TranslationError> {
+        let startpoint = self.info.interner.get_point_index(&facts::Point {
+            location: loc,
+            typ: facts::PointType::Start,
+        });
+
+        // for lifetime annotations:
+        // 1. get the regions involved here. for that, get the instantiation of the function.
+        //    + if it's a FnDef type, that should be easy.
+        //    + for a function pointer: ?
+        //    + for a closure: ?
+        //   (Polonius does not seem to distinguish early/late bound in any way, except
+        //   that they are numbered in different passes)
+        // 2. find the constraints here involving the regions.
+        // 3. solve for the regions.
+        //    + transitively propagate the constraints
+        //    + check for equalities
+        //    + otherwise compute intersection. singleton intersection just becomes an equality def.
+        // 4. add annotations accordingly
+        //    + either a startlft
+        //    + or a copy name
+        // 5. add shortenlft annotations to line up arguments.
+        //    + for that, we need the type of the LHS, and what the argument types (with
+        //    substituted regions) should be.
+        // 6. annotate the return value on assignment and establish constraints.
+
+        let classification = self.compute_call_regions(func, loc)?;
+
+        // update the inclusion tracker with the new regions we have introduced
+        // We just add the inclusions and ignore that we resolve it in a "tight" way.
+        // the cases where we need the reverse inclusion should be really rare.
+        for (r, c) in classification.classification.iter() {
+            match c {
+                CallRegionKind::EqR(r2) => {
+                    // put it at the start point, because the inclusions come into effect
+                    // at the point right before.
+                    self.inclusion_tracker.add_static_inclusion(*r, *r2, startpoint);
+                    self.inclusion_tracker.add_static_inclusion(*r2, *r, startpoint);
+                },
+                CallRegionKind::Intersection(lfts) => {
+                    // all the regions represented by lfts need to be included in r
+                    for r2 in lfts {
+                        self.inclusion_tracker.add_static_inclusion(*r2, *r, startpoint);
+                    }
+                },
+            }
+        }
+
+        let func_expr = self.translate_operand(func, false)?;
+        // translate the arguments
+        let mut translated_args = Vec::new();
+        for arg in args.iter() {
+            // to_ty is the type the function expects
+
+            //let ty = arg.ty(&self.proc.get_mir().local_decls, self.env.tcx());
+            let translated_arg = self.translate_operand(arg, true)?;
+            translated_args.push(translated_arg);
+        }
+
+        // make the call lifetime instantiation list
+        let mut lifetime_insts = Vec::new();
+        for early in classification.early_regions.iter() {
+            let lft = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(*early));
+            lifetime_insts.push(lft);
+        }
+        for late in classification.late_regions.iter() {
+            let lft = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(*late));
+            lifetime_insts.push(lft);
+        }
+        info!("Call lifetime instantiation: {:?}", lifetime_insts);
+
+        // TODO: add annotations for the assignment
+        // for that:
+        // - get the type of the place
+        // - enforce constraints as necessary. this might spawn dyninclusions with some of the new regions =>
+        //   In Coq, also the aliases should get proper endlft events to resolve the dyninclusions.
+        // - update the name map
+        let call_expr = radium::Expr::Call {
+            f: Box::new(func_expr),
+            lfts: lifetime_insts,
+            args: translated_args,
+        };
+        let stmt = match target {
+            Some(ref target) => {
+
+                let mut cont_stmt = self.translate_goto_like(&loc, target)?;
+                // end loans before the goto, but after the call.
+                // TODO: may cause duplications?
+                cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.into_iter().cloned());
+
+                // Get the type of the return value from the function
+                let (_, _, _, inst_sig) = self.call_expr_op_split_inst(func)?;
+                // TODO: do we need to do something with late bounds?
+                let output_ty = inst_sig.output().skip_binder();
+                info!("call has instantiated type {:?}", inst_sig);
+
+                // compute the resulting annotations
+                let (rhs_annots, stmt_annots) = self.get_assignment_annots(loc, &destination, output_ty)?;
+                info!("assignment annots after call: expr: {:?}, stmt: {:?}", rhs_annots, stmt_annots);
+
+
+                // assign stmt with call; then jump to bb
+                let place_ty = self.get_type_of_place(destination)?;
+                let place_st = self.ty_translator.translate_type_to_syn_type(&place_ty.ty)?;
+                let place_expr = self.translate_place(destination)?;
+
+                let ot = self.ty_translator.translate_syn_type_to_op_type(&place_st);
+
+                let annotated_rhs = radium::Expr::with_optional_annotation(call_expr, rhs_annots);
+                let assign_stmt = radium::Stmt::Assign {
+                    ot,
+                    e1: place_expr,
+                    e2: annotated_rhs,
+                    s: Box::new(cont_stmt),
+                };
+                radium::Stmt::with_annotations(assign_stmt, stmt_annots)
+            },
+            None => {
+                // expr stmt with call; then stuck (we have not provided a continuation, after all)
+                radium::Stmt::ExprS {
+                    e: call_expr,
+                    s: Box::new(radium::Stmt::Stuck),
+                }
+            },
+        };
+
+        let mut stmt_annots = Vec::new();
+
+        // add annotations to initialize the regions for the call (before the call)
+        for (r, class) in classification.classification.iter() {
+            let lft = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(*r));
+            match class {
+                CallRegionKind::EqR(r2) => {
+                    let lft2 = self.format_atomic_region(&self.info.mk_atomic_region(*r2));
+                    stmt_annots.push(radium::Annotation::CopyLftName(lft2, lft));
+                },
+                CallRegionKind::Intersection(rs) => {
+                    if rs.len() == 0 {
+                        panic!("unconstrained lifetime");
+                    } else if rs.len() == 1 {
+                        // this is really just an equality constraint
+                        for r2 in rs.iter() {
+                            let lft2 = self.format_atomic_region(&self.info.mk_atomic_region(*r2));
+                            stmt_annots.push(radium::Annotation::CopyLftName(lft2, lft));
+                            break;
+                        }
+                    } else {
+                        // a proper intersection
+                        let lfts: Vec<_> = rs
+                            .iter()
+                            .map(|r| self.format_atomic_region(&self.info.mk_atomic_region(*r)))
+                            .collect();
+                        stmt_annots.push(radium::Annotation::AliasLftIntersection(lft, lfts));
+                    }
+                },
+            }
+        }
+        let stmt = radium::Stmt::with_annotations(stmt, stmt_annots);
+        Ok(stmt)
+    }
+
     /// Translate a terminator.
     /// We pass the dying loans during this terminator. They need to be added at the right
     /// intermediate point.
@@ -1731,23 +2065,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         loc: Location,
         dying_loans: Vec<facts::Loan>,
     ) -> Result<radium::Stmt, TranslationError> {
-        // get optional hir-id
-        //println!("Terminator info: {:?} for {:?}", term.source_info, term.kind);
-        //let maybe_hir_id = term.source_info.scope.lint_root(&self.proc.get_mir().source_scopes);
-        //println!("Terminator has hir-id: {:?}", maybe_hir_id);
-        //let attrs = maybe_hir_id.map(|hid| self.env.tcx().hir().attrs(hid));
-        //println!("Terminator has attributers: {:?}", attrs);
-        //self.env.tcx().hir().krate_attrs();
-
-        let startpoint = self.info.interner.get_point_index(&facts::Point {
-            location: loc,
-            typ: facts::PointType::Start,
-        });
-        let midpoint = self.info.interner.get_point_index(&facts::Point {
-            location: loc,
-            typ: facts::PointType::Mid,
-        });
-
         let mut res_stmt;
         match term.kind {
             TerminatorKind::UnwindResume => {
@@ -1776,264 +2093,14 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     info!("Replacing call to std::panicking::begin_panic with Stuck");
                     return Ok(radium::Stmt::Stuck);
                 }
-
-                // for lifetime annotations:
-                // 1. get the regions involved here. for that, get the instantiation of the function.
-                //    + if it's a FnDef type, that should be easy.
-                //    + for a function pointer: ?
-                //    + for a closure: ?
-                //   (Polonius does not seem to distinguish early/late bound in any way, except
-                //   that they are numbered in different passes)
-                // 2. find the constraints here involving the regions.
-                // 3. solve for the regions.
-                //    + transitively propagate the constraints
-                //    + check for equalities
-                //    + otherwise compute intersection. singleton intersection just becomes an equality def.
-                // 4. add annotations accordingly
-                //    + either a startlft
-                //    + or a copy name
-                // 5. add shortenlft annotations to line up arguments.
-                //    + for that, we need the type of the LHS, and what the argument types (with
-                //    substituted regions) should be.
-                // 6. annotate the return value on assignment and establish constraints.
-
-                // first identify substitutions for the early-bound regions
-                let (target_did, sig, substs) = self.call_expr_op_split_inst(func)?;
-                info!("calling function {:?}", target_did);
-                let mut early_regions = Vec::new();
-                info!("call substs: {:?} = {:?}, {:?}", func, sig, substs);
-                for a in substs.iter() {
-                    match a.unpack() {
-                        ty::GenericArgKind::Lifetime(r) => match r.kind() {
-                            ty::RegionKind::ReVar(r) => early_regions.push(r),
-                            _ => (),
-                        },
-                        _ => (),
-                    }
-                }
-                info!("call region instantiations (early): {:?}", early_regions);
-
-                // this is a hack to identify the inference variables introduced for the
-                // call's late-bound universals.
-                // TODO: Can we get this information in a less hacky way?
-
-                // go over all region constraints initiated at this location
-                let new_constraints = self.info.get_new_subset_constraints_at_point(midpoint);
-                let mut new_regions = HashSet::new();
-                let mut relevant_constraints = Vec::new();
-                for (r1, r2) in new_constraints.iter() {
-                    if let info::RegionKind::Unknown = self.info.get_region_kind(*r1) {
-                        // this is probably a inference variable for the call
-                        new_regions.insert(*r1);
-                        relevant_constraints.push((*r1, *r2));
-                    }
-                    if let info::RegionKind::Unknown = self.info.get_region_kind(*r2) {
-                        new_regions.insert(*r2);
-                        relevant_constraints.push((*r1, *r2));
-                    }
-                }
-                // first sort this to enable cycle resolution
-                let mut new_regions_sorted: Vec<Region> = new_regions.iter().cloned().collect();
-                new_regions_sorted.sort();
-
-                // identify the late-bound regions
-                let mut late_regions = Vec::new();
-                for r in new_regions_sorted.iter() {
-                    if !early_regions.contains(r) {
-                        late_regions.push(*r);
-                    }
-                }
-                info!("call region instantiations (late): {:?}", late_regions);
-
-                // solve the constraints for the new_regions
-                // we first identify what kinds of constraints these new regions are subject to
-                #[derive(Debug)]
-                enum CallRegionKind {
-                    // this is just an intersection of local regions.
-                    Intersection(HashSet<Region>),
-                    // this is equal to a specific region
-                    EqR(Region),
-                }
-                // Notes:
-                // - if two of the call regions need to be equal due to constraints on the function, we define
-                //   the one with the larger id in terms of the other one
-                // - we ignore unidirectional subset constraints between call regions (these do not help in
-                //   finding a solution if we take the transitive closure beforehand)
-                // - if a call region needs to be equal to a local region, we directly define it in terms of
-                //   the local region
-                // - otherwise, it will be an intersection of local regions
-                let mut new_regions_classification = HashMap::new();
-                // compute transitive closure of constraints
-                let relevant_constraints = info::compute_transitive_closure(relevant_constraints);
-                for r in new_regions_sorted.iter() {
-                    for (r1, r2) in relevant_constraints.iter() {
-                        if *r2 == *r {
-                            // i.e. (flipping it around when we are talking about lifetimes),
-                            // r needs to be a sublft of r1
-                            if relevant_constraints.contains(&(*r2, *r1)) {
-                                // if r1 is also a new region and r2 is ordered before it, we will
-                                // just define r1 in terms of r2
-                                if new_regions.contains(r1) && r2.as_u32() < r1.as_u32() {
-                                    continue;
-                                }
-                                // need an equality constraint
-                                new_regions_classification.insert(*r, CallRegionKind::EqR(*r1));
-                                // do not consider the rest of the constraints as r is already
-                                // fully specified
-                                break;
-                            } else {
-                                // the intersection also needs to contain r1
-                                if new_regions.contains(r1) {
-                                    // we do not need this constraint, since we already computed the
-                                    // transitive closure.
-                                    continue;
-                                }
-                                let kind = new_regions_classification
-                                    .entry(*r)
-                                    .or_insert(CallRegionKind::Intersection(HashSet::new()));
-                                match kind {
-                                    CallRegionKind::Intersection(s) => {
-                                        s.insert(*r1);
-                                    },
-                                    _ => panic!("unreachable"),
-                                }
-                            }
-                        }
-                    }
-                }
-                info!("call arg classification: {:?}", new_regions_classification);
-
-                // update the inclusion tracker with the new regions we have introduced
-                // We just add the inclusions and ignore that we resolve it in a "tight" way.
-                // the cases where we need the reverse inclusion should be really rare.
-                for (r, c) in new_regions_classification.iter() {
-                    match c {
-                        CallRegionKind::EqR(r2) => {
-                            // put it at the start point, because the inclusions come into effect
-                            // at the point right before.
-                            self.inclusion_tracker.add_static_inclusion(*r, *r2, startpoint);
-                            self.inclusion_tracker.add_static_inclusion(*r2, *r, startpoint);
-                        },
-                        CallRegionKind::Intersection(lfts) => {
-                            // all the regions represented by lfts need to be included in r
-                            for r2 in lfts {
-                                self.inclusion_tracker.add_static_inclusion(*r2, *r, startpoint);
-                            }
-                        },
-                    }
-                }
-
-                let func_expr = self.translate_operand(func, false)?;
-                // translate the arguments
-                let mut translated_args = Vec::new();
-                for arg in args.iter() {
-                    // to_ty is the type the function expects
-
-                    //let ty = arg.ty(&self.proc.get_mir().local_decls, self.env.tcx());
-                    let translated_arg = self.translate_operand(arg, true)?;
-                    translated_args.push(translated_arg);
-                }
-
-                // make the call lifetime instantiation list
-                let mut lifetime_insts = Vec::new();
-                for early in early_regions.iter() {
-                    let lft = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(*early));
-                    lifetime_insts.push(lft);
-                }
-                for late in late_regions.iter() {
-                    let lft = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(*late));
-                    lifetime_insts.push(lft);
-                }
-                info!("Call lifetime instantiation: {:?}", lifetime_insts);
-                // TODO: maybe should prune to length of actual lifetime args expected
-
-                //let name = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r));
-
-                // TODO: add annotations for the assignment
-                // for that:
-                // - get the type of the place
-                // - enforce constraints as necessary. this might spawn dyninclusions with some of the new
-                //   regions => In Coq, also the aliases should get proper endlft events to resolve the
-                //   dyninclusions.
-                // - update the name map
-                let mut stmt = match target {
-                    Some(ref target) => {
-                        // assign stmt with call; then jump to bb
-                        let place_ty = self.get_type_of_place(destination)?;
-                        let place_st = self.ty_translator.translate_type_to_syn_type(&place_ty.ty)?;
-                        let place_expr = self.translate_place(destination)?;
-
-                        let mut cont_stmt = self.translate_goto_like(&loc, target)?;
-
-                        // end loans before the goto.
-                        // TODO: may cause duplications?
-                        cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.into_iter());
-                        let ot = self.ty_translator.translate_syn_type_to_op_type(&place_st);
-
-                        radium::Stmt::Assign {
-                            ot,
-                            e1: place_expr,
-                            e2: radium::Expr::Call {
-                                f: Box::new(func_expr),
-                                lfts: lifetime_insts,
-                                args: translated_args,
-                            },
-                            s: Box::new(cont_stmt),
-                        }
-                    },
-                    None => {
-                        // expr stmt with call; then stuck (we have not provided a continuation, after all)
-                        radium::Stmt::ExprS {
-                            e: radium::Expr::Call {
-                                f: Box::new(func_expr),
-                                lfts: lifetime_insts,
-                                args: translated_args,
-                            },
-                            s: Box::new(radium::Stmt::Stuck),
-                        }
-                    },
-                };
-
-                // add annotations to initialize the regions for the call.
-                for (r, class) in new_regions_classification.iter() {
-                    let lft = self.format_atomic_region(&info::AtomicRegion::PlaceRegion(*r));
-                    match class {
-                        CallRegionKind::EqR(r2) => {
-                            let lft2 = self.format_atomic_region(&self.info.mk_atomic_region(*r2));
-                            stmt = radium::Stmt::Annot {
-                                a: radium::Annotation::CopyLftName(lft2, lft),
-                                s: Box::new(stmt),
-                            };
-                        },
-                        CallRegionKind::Intersection(rs) => {
-                            if rs.len() == 0 {
-                                panic!("unconstrained lifetime");
-                            } else if rs.len() == 1 {
-                                // this is really just an equality constraint
-                                for r2 in rs.iter() {
-                                    let lft2 = self.format_atomic_region(&self.info.mk_atomic_region(*r2));
-                                    stmt = radium::Stmt::Annot {
-                                        a: radium::Annotation::CopyLftName(lft2, lft),
-                                        s: Box::new(stmt),
-                                    };
-                                    break;
-                                }
-                            } else {
-                                // a proper intersection
-                                let lfts: Vec<_> = rs
-                                    .iter()
-                                    .map(|r| self.format_atomic_region(&self.info.mk_atomic_region(*r)))
-                                    .collect();
-                                stmt = radium::Stmt::Annot {
-                                    a: radium::Annotation::AliasLftIntersection(lft, lfts),
-                                    s: Box::new(stmt),
-                                };
-                            }
-                        },
-                    }
-                }
-
-                res_stmt = stmt;
+                res_stmt = self.translate_function_call(
+                    func,
+                    args,
+                    destination,
+                    *target,
+                    loc,
+                    dying_loans.as_slice(),
+                )?;
             },
             TerminatorKind::Return => {
                 // TODO: this requires additional handling for reborrows
@@ -2246,16 +2313,14 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Generate an annotation on an expression needed to update the region name map.
-    fn generate_strong_update_annot(&self, ty: PlaceTy<'tcx>, mut expr: radium::Expr) -> radium::Expr {
+    fn generate_strong_update_annot(&self, ty: PlaceTy<'tcx>) -> Option<radium::Annotation> {
         let (interesting, tree) = self.generate_strong_update_annot_rec(ty.ty);
         if interesting {
-            expr = radium::Expr::Annot {
-                a: radium::Annotation::GetLftNames(tree),
-                e: Box::new(expr),
-            };
+            Some(radium::Annotation::GetLftNames(tree))
         }
-
-        expr
+        else {
+            None
+        }
     }
 
     /// Returns a tree for giving names to Coq lifetimes based on RR types.
@@ -2341,16 +2406,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Generate a dynamic inclusion of r1 in r2 at point p. Prepends annotations for doing so to `cont`.
     fn generate_dyn_inclusion(
         &mut self,
+        stmt_annots: &mut Vec<radium::Annotation>,
         r1: Region,
         r2: Region,
         p: PointIndex,
-        cont: radium::Stmt,
-    ) -> radium::Stmt {
+    ) {
         // check if inclusion already holds
-        if self.inclusion_tracker.check_inclusion(r1, r2, p) {
-            // inclusion already holds, done
-            cont
-        } else {
+        if !self.inclusion_tracker.check_inclusion(r1, r2, p) {
             // check if the reverse inclusion already holds
             if self.inclusion_tracker.check_inclusion(r2, r1, p) {
                 // our invariant is that this must be a static inclusion
@@ -2361,24 +2423,19 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // for this, we need to figure out a path to make this inclusion true, i.e. we need
                 // an explanation of why it is syntactically included.
                 // TODO: for now, we just assume that r1 ⊑ₗ [r2] (in terms of Coq lifetime inclusion)
-                radium::Stmt::Annot {
-                    a: radium::Annotation::ExtendLft(
+                stmt_annots.push(radium::Annotation::ExtendLft(
                         self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1)),
-                    ),
-                    s: Box::new(cont),
-                }
+                    ));
             } else {
                 self.inclusion_tracker.add_dynamic_inclusion(r1, r2, p);
                 // we generate a dynamic inclusion instruction
                 // we flip this around because the annotations are talking about lifetimes, which are oriented
                 // the other way around.
-                radium::Stmt::Annot {
-                    a: radium::Annotation::DynIncludeLft(
+                stmt_annots.push(
+                    radium::Annotation::DynIncludeLft(
                         self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r2)),
                         self.format_atomic_region(&info::AtomicRegion::PlaceRegion(r1)),
-                    ),
-                    s: Box::new(cont),
-                }
+                    ));
             }
         }
     }
@@ -2389,18 +2446,155 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     fn generate_dyn_inclusions(
         &mut self,
         incls: HashSet<(Region, Region, PointIndex)>,
-        mut cont_stmt: radium::Stmt,
-    ) -> radium::Stmt {
+    ) -> Vec<radium::Annotation> {
         // before executing the assignment, first enforce dynamic inclusions
         info!("Generating dynamic inclusions {:?}", incls);
+        let mut stmt_annots = Vec::new();
         for (r1, r2, p) in incls.iter() {
             if !incls.contains(&(*r2, *r1, *p)) {
-                cont_stmt = self.generate_dyn_inclusion(*r1, *r2, *p, cont_stmt);
+                self.generate_dyn_inclusion(&mut stmt_annots, *r1, *r2, *p);
             } else {
                 warn!("Skipping impossible dynamic inclusion {:?} ⊑ {:?} at {:?}", r1, r2, p);
             }
         }
-        cont_stmt
+        stmt_annots
+    }
+
+    /// Get the annotations due to borrows appearing on the RHS of an assignment.
+    fn get_assignment_loan_annots(
+        &mut self,
+        loc: Location,
+        rhs: &Rvalue<'tcx>,
+    ) -> Result<Vec<radium::Annotation>, TranslationError> {
+        // TODO: probably this is something specific to actual assignments.
+        // It pertains to us having borrows on the rhs.
+        // So maybe we can decompose that further?
+
+        let mut stmt_annots = Vec::new();
+
+        // if we create a new loan here, start a new lifetime for it
+        let loan_point = self.info.get_point(loc, facts::PointType::Mid);
+        if let Some(loan) = self.info.get_optional_loan_at_location(loc) {
+            // TODO: is this fine for aggregates? I suppose, if I create a loan for an
+            // aggregate, I want to use the same atomic region for all of its components
+            // anyways.
+
+            let lft = self.info.atomic_region_of_loan(loan);
+            let r = lft.get_region();
+            let a = self.info.get_region_kind(r);
+
+            // get the static inclusions we need to generate here and add them to the
+            // inclusion tracker
+            let outliving = self.get_outliving_regions_on_loan(r, loan_point);
+
+            // add statement for issuing the loan
+            stmt_annots.insert(0, radium::Annotation::StartLft(
+                self.format_atomic_region(&lft),
+                outliving
+                    .iter()
+                    .map(|r| self.format_atomic_region(&info::AtomicRegion::PlaceRegion(*r)))
+                    .collect(),
+            ));
+
+            info!("Issuing loan at {:?} with kind {:?}: {:?}; outliving: {:?}", loc, a, loan, outliving);
+        } else if let Rvalue::Ref(region, BorrowKind::Shared, _) = rhs {
+            // for shared reborrows, Polonius does not create a new loan, and so the
+            // previous case did not match.
+            // However, we still need to track the region created for the reborrow in an
+            // annotation.
+
+            let region = self.region_to_region_vid(*region);
+            let lft: info::AtomicRegion = info::AtomicRegion::PlaceRegion(region);
+
+            // find inclusion ?r1 ⊑ region -- we will actually enforce region = r1
+            let new_constrs: Vec<(facts::Region, facts::Region)> =
+                self.info.get_new_subset_constraints_at_point(loan_point);
+            info!("Shared reborrow at {:?} with new constrs: {:?}", region, new_constrs);
+            let mut included_region = None;
+            for (r1, r2) in new_constrs.iter() {
+                if *r2 == region {
+                    included_region = Some(r1);
+                    break;
+                }
+            }
+            if let Some(r) = included_region {
+                //info!("Found inclusion {:?}⊑  {:?}", r, region);
+                let lft1 = self.info.mk_atomic_region(*r);
+                stmt_annots.push(
+                    radium::Annotation::CopyLftName(
+                        self.format_atomic_region(&lft1),
+                        self.format_atomic_region(&lft),
+                    ));
+
+                // also add this to the inclusion checker
+                self.inclusion_tracker.add_static_inclusion(*r, region, loan_point);
+            } else {
+                // This happens e.g. when borrowing from a raw pointer etc.
+                info!("Found unconstrained shared borrow for {:?}", region);
+                let inferred_constrained = vec![];
+
+                // add statement for issuing the loan
+                stmt_annots.push(
+                    radium::Annotation::StartLft(self.format_atomic_region(&lft), inferred_constrained),
+                    );
+            }
+        }
+        Ok(stmt_annots)
+    }
+
+    /// Compute the annotations for an assignment: an annotation for the rhs value, and a list of
+    /// annotations to prepend to the statement.
+    fn get_assignment_annots(
+        &mut self,
+        loc: Location,
+        lhs: &Place<'tcx>,
+        rhs_ty: Ty<'tcx>,
+    ) -> Result<(Option<radium::Annotation>, Vec<radium::Annotation>), TranslationError> {
+        // check if the place is strongly writeable
+        let strongly_writeable = !self.check_place_below_reference(lhs)?;
+        let plc_ty = self.get_type_of_place(lhs)?;
+
+        let new_dyn_inclusions;
+        let expr_annot;
+        if strongly_writeable {
+            // we are going to update the region mapping through annotations,
+            // and hence put up a barrier for propagation of region constraints
+
+            // structurally go over the type and find region variables.
+            // for each of the variables, issue a barrier.
+            // also track them together with the PlaceItems needed to reach them.
+            // from the latter, we can generate the necessary annotations
+            let regions = self.find_region_variables_of_place_type(plc_ty);
+
+            // put up a barrier at the Mid point
+            let barrier_point_index = self.info.interner.get_point_index(&facts::Point {
+                location: loc,
+                typ: facts::PointType::Mid,
+            });
+            for r in regions.iter() {
+                self.inclusion_tracker.add_barrier(*r, barrier_point_index);
+            }
+            // get new constraints that should be enforced
+            let new_constraints = self.get_relevant_assignment_subset_constraints(&plc_ty, rhs_ty, true, loc);
+            for (r1, r2, p) in new_constraints.iter() {
+                self.inclusion_tracker.add_static_inclusion(*r1, *r2, *p);
+            }
+
+            // similarly generate an annotation that encodes these constraints in the RR
+            // type system
+            expr_annot = self.generate_strong_update_annot(plc_ty);
+            
+            new_dyn_inclusions = HashSet::new();
+        } else {
+            // need to filter out the constraints that are relevant here.
+            // incrementally go through them.
+            new_dyn_inclusions = self.get_relevant_assignment_subset_constraints(&plc_ty, rhs_ty, false, loc);
+            expr_annot = None;
+        }
+
+        // First enforce the new inclusions, then do the other annotations
+        let new_dyn_inclusions = self.generate_dyn_inclusions(new_dyn_inclusions);
+        Ok((expr_annot, new_dyn_inclusions))
     }
 
     /**
@@ -2428,10 +2622,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         //cont_stmt = self.prepend_endlfts(cont_stmt, loc, dying);
         //cont_stmt = self.prepend_endlfts(cont_stmt, loc, dying_zombie);
 
-        // HashSet to keep track which HirIds we already encountered, since multiple Mir statements
-        // may originate from the same Hir statement
-        let mut processed_hirids = HashSet::new();
-
         for stmt in bb.statements.iter().rev() {
             idx -= 1;
             let loc = Location {
@@ -2457,186 +2647,51 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             }
             // we prepend them before the current statement
 
-            // check for attributes on this statement
-            let scopes = &self.proc.get_mir().source_scopes;
-            let maybe_hir = stmt.source_info.scope.lint_root(scopes);
-            if let Some(hirid) = maybe_hir {
-                if processed_hirids.insert(hirid) {
-                    // get attributes
-                    let attrs = self.env.tcx().hir().attrs(hirid);
-                    info!("Found HIR-Id for stmt {:?}: {:?} with attrs {:?}", stmt, maybe_hir, attrs);
-                }
-            }
-
             match &stmt.kind {
                 StatementKind::Assign(b) => {
                     let (plc, val) = b.as_ref();
 
                     if let Some(_) = self.is_spec_closure_local(plc.local)? {
                         info!("skipping assignment to spec closure local: {:?}", plc);
-                    } else {
-                        let mut translated_val = self.translate_rvalue(loc, val)?;
+                    }
+                    else if let Some(rewritten_ty) = self.checked_op_temporaries.get(&plc.local) {
+                        // if this is a checked op, be sure to remember it
+                        info!("rewriting assignment to checked op: {:?}", plc);
+
+                        let synty = self.ty_translator.translate_type_to_syn_type(&rewritten_ty)?;
+
+                        let translated_val = self.translate_rvalue(loc, val)?;
                         let translated_place = self.translate_place(plc)?;
 
-                        // if this is a checked op, be sure to remember it
-                        if let Some(rewritten_ty) = self.checked_op_temporaries.get(&plc.local) {
-                            info!("rewriting assignment to checked op: {:?}", plc);
-                            // this should be a temporary
-                            assert!(plc.projection.is_empty());
+                        // this should be a temporary
+                        assert!(plc.projection.is_empty());
 
-                            let ty = rewritten_ty;
+                        let ot = self.ty_translator.translate_syn_type_to_op_type(&synty);
+                        cont_stmt = radium::Stmt::Assign {
+                            ot,
+                            e1: translated_place,
+                            e2: translated_val,
+                            s: Box::new(cont_stmt),
+                        };
+                    }
+                    else {
+                        let plc_ty = self.get_type_of_place(plc)?;
+                        let rhs_ty = val.ty(&self.proc.get_mir().local_decls, self.env.tcx());
 
-                            let synty = self.ty_translator.translate_type_to_syn_type(&ty)?;
-                            let ot = self.ty_translator.translate_syn_type_to_op_type(&synty);
-                            cont_stmt = radium::Stmt::Assign {
-                                ot,
-                                e1: translated_place,
-                                e2: translated_val,
-                                s: Box::new(cont_stmt),
-                            };
-                        } else {
-                            let rhs_ty = val.ty(&self.proc.get_mir().local_decls, self.env.tcx());
+                        let mut stmt_annots = self.get_assignment_loan_annots(loc, val)?;
+                        let (expr_annot, stmt_annots2) = self.get_assignment_annots(loc, plc, rhs_ty)?;
+                        stmt_annots.extend(stmt_annots2);
 
-                            // check if the place is strongly writeable
-                            let strongly_writeable = !self.check_place_below_reference(plc)?;
-                            let plc_ty = self.get_type_of_place(plc)?;
-
-                            let new_dyn_inclusions;
-                            if strongly_writeable {
-                                // we are going to update the region mapping through annotations,
-                                // and hence put up a barrier for propagation of region constraints
-
-                                // structurally go over the type and find region variables.
-                                // for each of the variables, issue a barrier.
-                                // also track them together with the PlaceItems needed to reach them.
-                                // from the latter, we can generate the necessary annotations
-                                let regions = self.find_region_variables_of_place_type(plc_ty);
-
-                                // put up a barrier at the Mid point
-                                let barrier_point_index = self.info.interner.get_point_index(&facts::Point {
-                                    location: loc,
-                                    typ: facts::PointType::Mid,
-                                });
-                                for r in regions.iter() {
-                                    self.inclusion_tracker.add_barrier(*r, barrier_point_index);
-                                }
-                                // get new constraints that should be enforced
-                                let new_constraints = self
-                                    .get_relevant_assignment_subset_constraints(&plc_ty, rhs_ty, true, loc);
-                                for (r1, r2, p) in new_constraints.iter() {
-                                    self.inclusion_tracker.add_static_inclusion(*r1, *r2, *p);
-                                }
-
-                                // similarly generate an annotation that encodes these constraints in the RR
-                                // type system
-                                translated_val = self.generate_strong_update_annot(plc_ty, translated_val);
-                                new_dyn_inclusions = HashSet::new();
-                            } else {
-                                // need to filter out the constraints that are relevant here.
-                                // incrementally go through them.
-                                new_dyn_inclusions = self
-                                    .get_relevant_assignment_subset_constraints(&plc_ty, rhs_ty, false, loc);
-                            }
-
-                            let synty = self.ty_translator.translate_type_to_syn_type(&plc_ty.ty)?;
-                            let ot = self.ty_translator.translate_syn_type_to_op_type(&synty);
-                            cont_stmt = radium::Stmt::Assign {
-                                ot,
-                                e1: translated_place,
-                                e2: translated_val,
-                                s: Box::new(cont_stmt),
-                            };
-
-                            let loan_point = self.info.get_point(loc, facts::PointType::Mid);
-
-                            // if we create a new loan here, start a new lifetime for it
-                            if let Some(loan) = self.info.get_optional_loan_at_location(loc) {
-                                // TODO: is this fine for aggregates? I suppose, if I create a loan for an
-                                // aggregate, I want to use the same atomic region for all of its components
-                                // anyways.
-
-                                let lft = self.info.atomic_region_of_loan(loan);
-                                let r = lft.get_region();
-                                let a = self.info.get_region_kind(r);
-
-                                // get the static inclusions we need to generate here and add them to the
-                                // inclusion tracker
-                                let outliving = self.get_outliving_regions_on_loan(r, loan_point);
-
-                                // add statement for issuing the loan
-                                cont_stmt = radium::Stmt::Annot {
-                                    a: radium::Annotation::StartLft(
-                                        self.format_atomic_region(&lft),
-                                        outliving
-                                            .iter()
-                                            .map(|r| {
-                                                self.format_atomic_region(&info::AtomicRegion::PlaceRegion(
-                                                    *r,
-                                                ))
-                                            })
-                                            .collect(),
-                                    ),
-                                    s: Box::new(cont_stmt),
-                                };
-
-                                info!(
-                                    "Issuing loan at {:?} with kind {:?}: {:?}; outliving: {:?}",
-                                    loc, a, loan, outliving
-                                );
-                            } else if let Rvalue::Ref(region, BorrowKind::Shared, _) = val {
-                                // for shared reborrows, Polonius does not create a new loan, and so the
-                                // previous case did not match.
-                                // However, we still need to track the region created for the reborrow in an
-                                // annotation.
-
-                                let region = self.region_to_region_vid(*region);
-                                let lft: info::AtomicRegion = info::AtomicRegion::PlaceRegion(region);
-
-                                // find inclusion ?r1 ⊑ region -- we will actually enforce region = r1
-                                let new_constrs: Vec<(facts::Region, facts::Region)> =
-                                    self.info.get_new_subset_constraints_at_point(loan_point);
-                                info!("Shared reborrow at {:?} with new constrs: {:?}", region, new_constrs);
-                                let mut included_region = None;
-                                for (r1, r2) in new_constrs.iter() {
-                                    if *r2 == region {
-                                        included_region = Some(r1);
-                                        break;
-                                    }
-                                }
-                                if let Some(r) = included_region {
-                                    //info!("Found inclusion {:?}⊑  {:?}", r, region);
-                                    let lft1 = self.info.mk_atomic_region(*r);
-                                    cont_stmt = radium::Stmt::Annot {
-                                        a: radium::Annotation::CopyLftName(
-                                            self.format_atomic_region(&lft1),
-                                            self.format_atomic_region(&lft),
-                                        ),
-                                        s: Box::new(cont_stmt),
-                                    };
-
-                                    // also add this to the inclusion checker
-                                    self.inclusion_tracker.add_static_inclusion(*r, region, loan_point);
-                                } else {
-                                    // This happens e.g. when borrowing from a raw pointer etc.
-                                    info!("Found unconstrained shared borrow for {:?}", region);
-                                    let inferred_constrained = vec![];
-
-                                    // add statement for issuing the loan
-                                    cont_stmt = radium::Stmt::Annot {
-                                        a: radium::Annotation::StartLft(
-                                            self.format_atomic_region(&lft),
-                                            inferred_constrained,
-                                        ),
-                                        s: Box::new(cont_stmt),
-                                    };
-
-                                    //panic!("Invariant violation: didn't find place region for shared
-                                    // reborrow");
-                                }
-                            }
-
-                            cont_stmt = self.generate_dyn_inclusions(new_dyn_inclusions, cont_stmt);
-                        }
+                        let translated_val = radium::Expr::with_optional_annotation(self.translate_rvalue(loc, val)?, expr_annot);
+                        let translated_place = self.translate_place(plc)?;
+                        let synty = self.ty_translator.translate_type_to_syn_type(&plc_ty.ty)?;
+                        let ot = self.ty_translator.translate_syn_type_to_op_type(&synty);
+                        cont_stmt = radium::Stmt::with_annotations(radium::Stmt::Assign {
+                            ot,
+                            e1: translated_place,
+                            e2: translated_val,
+                            s: Box::new(cont_stmt),
+                        }, stmt_annots);
                     }
                 },
                 StatementKind::FakeRead(b) => {
@@ -3073,6 +3128,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             let els = enum_use.generate_raw_syn_type_term();
 
                             let scope = self.ty_translator.generic_scope.borrow();
+                            info!("generating enum annotation for type {:?}", enum_use);
                             let ty =
                                 radium::RustType::of_type(&radium::Type::Literal(enum_use), scope.as_ref());
                             let variant_name = variant_def.name.to_string();

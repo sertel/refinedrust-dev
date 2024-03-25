@@ -311,6 +311,20 @@ pub enum Expr {
     },
 }
 
+impl Expr {
+    pub fn with_optional_annotation(e: Expr, a: Option<Annotation>) -> Expr {
+        match a {
+            Some(a) => {
+                Expr::Annot {
+                    a,
+                    e: Box::new(e),
+                }
+            },
+            None => e,
+        }
+    }
+}
+
 impl Display for Expr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
@@ -636,6 +650,17 @@ impl Stmt {
                 )
             },
         }
+    }
+
+    /// Annotate a statement with a list of annotations
+    pub fn with_annotations(mut s: Stmt, a: Vec<Annotation>) -> Stmt {
+        for annot in a.into_iter() {
+            s = Stmt::Annot {
+                a: annot,
+                s: Box::new(s),
+            };
+        }
+        s
     }
 }
 
