@@ -474,7 +474,7 @@ Section generated_code.
         li_tactic (lctx_lft_alive_count_goal E L1 κ)  (λ '(_, L2),
           ∀ r, introduce_with_hooks E L2 (P.(na_inv_P) π r x)
             (λ L3, typed_place π E L3 l
-                    (@MagicLtype Σ typeGS0 rt X (◁ ty) (◁ (∃na; P, ty)) (λ mask rfn, P.(na_inv_P) π rfn x ∗ na_own π mask) (λ mask rfn, na_own π mask))
+                    (MagicLtype (◁ ty) (◁ (∃na; P, ty)) (λ rfn, P.(na_inv_P) π rfn x) (λ rfn, na_own π (↑shrN.@l)))
                     (#x) bmin (Owned true) K
             (λ L2 κs li b2 bmin' rti ltyi ri strong weak,
               T L2 κs li b2 bmin' rti ltyi ri strong None)
@@ -519,8 +519,8 @@ Section generated_code.
           T L' κs l2 b2 bmin rti ltyi ri
             (option_map (λ strong, mk_strong strong.(strong_rt)
               (λ rti2 ltyi2 ri2,
-                MagicLtype (strong.(strong_lt) _ ltyi2 ri2) (strong.(strong_lt) _ ltyi2 ri2)
-                            (λ _ _, ⌜1234 = 5678⌝) (λ _ _, ⌜12345 = 67890⌝))
+                MagicLtype ltyi2 (strong.(strong_lt) _ ltyi2 ri2)
+                            (λ _, ⌜1234 = 5678⌝) (λ _, ⌜12345 = 67890⌝))
                                       (* Cpre Cpost) *)
               (λ rti2 ri2, strong.(strong_rfn) _ ri2)
               strong.(strong_R)) strong)
