@@ -780,10 +780,10 @@ Section ltype_def.
         (lt_full : lty)
     | ShadowedLty {rt : Type} (lt_cur : lty) (r_cur : place_rfn rt) (lt_full : lty)
     | MagicLty
-        {rt_full : Type}
+        {rt_cur : Type}
         (lt_cur : lty) (lt_full : lty)
-        (Cpre : coPset → rt_full → iProp Σ)
-        (Cpost : coPset → rt_full → iProp Σ)
+        (Cpre : coPset → rt_cur → iProp Σ)
+        (Cpost : coPset → rt_cur → iProp Σ)
   .
 
   (*
@@ -866,8 +866,8 @@ Section ltype_def.
         lty_wf lt
     | @ShadowedLty rt_cur lt_cur r_cur lt_full =>
         lty_wf lt_cur ∧ lty_wf lt_full ∧ lty_rt lt_cur = rt_cur
-    | @MagicLty rt_full lt_cur lt_full _ _ =>
-        rt_full = lty_rt lt_full ∧ lty_wf lt_cur ∧ lty_wf lt_full
+    | @MagicLty rt_cur lt_cur lt_full _ _ =>
+        rt_cur = lty_rt lt_cur ∧ lty_wf lt_cur ∧ lty_wf lt_full
     end.
 
 
@@ -892,8 +892,8 @@ Section ltype_def.
           P lt_cur → P lt_inner → P lt_full → P (OpenedLty lt_cur lt_inner lt_full Cpre Cpost)) →
       (∀ κs (lt_full : lty), P lt_full → P (CoreableLty κs lt_full)) →
       (∀ (rt_cur : Type) (lt_cur : lty) (r_cur : place_rfn rt_cur) (lt_full : lty), P lt_cur → P lt_full → P (ShadowedLty lt_cur r_cur lt_full)) →
-      (∀ (rt_full : Type) (lt_cur lt_full : lty)
-        (Cpre : coPset → rt_full → iProp Σ) (Cpost : coPset → rt_full → iProp Σ),
+      (∀ (rt_cur : Type) (lt_cur lt_full : lty)
+        (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ),
           P lt_cur → P lt_full → P (MagicLty lt_cur lt_full Cpre Cpost)) →
       ∀ lt : lty, P lt.
   Proof.
@@ -953,8 +953,8 @@ Section ltype_def.
           P lt_cur → P lt_inner → P lt_full → P (OpenedLty lt_cur lt_inner lt_full Cpre Cpost)) →
       (∀ κs (lt_full : lty), P lt_full → P (CoreableLty κs lt_full)) →
       (∀ (rt_cur : Type) (lt_cur : lty) (r_cur : place_rfn rt_cur) (lt_full : lty), P lt_cur → P lt_full → P (ShadowedLty lt_cur r_cur lt_full)) →
-      (∀ (rt_full : Type) (lt_cur lt_full : lty)
-        (Cpre : coPset → rt_full → iProp Σ) (Cpost : coPset → rt_full → iProp Σ),
+      (∀ (rt_cur : Type) (lt_cur lt_full : lty)
+        (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ),
           P lt_cur → P lt_full → P (MagicLty lt_cur lt_full Cpre Cpost)) →
       ∀ lt : lty, P lt.
   Proof.
@@ -999,7 +999,7 @@ Section ltype_def.
       (∀ (lt_cur : lty) (r_cur : place_rfn (lty_rt lt_cur)) (lt_full : lty),
         P lt_cur → P lt_full → P (ShadowedLty lt_cur r_cur lt_full)) →
       (∀ (lt_cur lt_full : lty)
-        (Cpre : coPset → lty_rt lt_full → iProp Σ) (Cpost : coPset → lty_rt lt_full → iProp Σ),
+        (Cpre : coPset → lty_rt lt_cur → iProp Σ) (Cpost : coPset → lty_rt lt_cur → iProp Σ),
           P lt_cur → P lt_full → P (MagicLty lt_cur lt_full Cpre Cpost)) →
       ∀ lt : lty, lty_wf lt → P lt.
   Proof.
@@ -1693,7 +1693,7 @@ Section ltype_def.
         ⌜lty_st lt_cur = lty_st lt_full⌝ ∗
         lty_own_pre core lt_cur k π ((rew Heq_cur in r_cur)) l ∗
         lty_own_pre core lt_full k π r l)%I;
-    lty_own_pre core (@MagicLty rt_full lt_cur lt_full Cpre Cpost) k π r l :=
+    lty_own_pre core (@MagicLty rt_cur lt_cur lt_full Cpre Cpost) k π r l :=
       (** MagicLty *)
       match k with (* TODO: MagicType *)
       | Owned wl => False
@@ -2672,11 +2672,11 @@ Section ltype_def.
   Global Typeclasses Opaque ShadowedLtype.
 
   Program Definition MagicLtype {rt_cur rt_full} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full)
-      (Cpre : coPset → rt_full → iProp Σ) (Cpost : coPset → rt_full → iProp Σ) : ltype rt_cur := {|
+      (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ) : ltype rt_cur := {|
     ltype_lty := MagicLty (ltype_lty lt_cur) (ltype_lty lt_full) Cpre Cpost;
   |}.
   Next Obligation.
-    intros rt_full lt_cur lt_full Cpre Cpost. simpl.
+    intros rt_cur rt_full lt_cur lt_full Cpre Cpost. simpl.
     rewrite ltype_rt_agree; done.
   Qed.
   Next Obligation.
@@ -2801,7 +2801,7 @@ Section ltype_def.
       (∀ (rt_cur rt_full : Type) (lt_cur : ltype rt_cur) (r_cur : place_rfn rt_cur) (lt_full : ltype rt_full),
         P _ lt_cur → P _ lt_full → P _ (ShadowedLtype lt_cur r_cur lt_full)) →
       (∀ (rt_cur rt_full : Type) (lt_cur : ltype rt_cur) (lt_full : ltype rt_full)
-        (Cpre : coPset → rt_full → iProp Σ) (Cpost : coPset → rt_full → iProp Σ),
+        (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ),
         P _ lt_cur → P _ lt_full →
         P _ (MagicLtype lt_cur lt_full Cpre Cpost)) →
       ∀ (rt : Type) (lt : ltype rt), P _ lt.
@@ -3228,7 +3228,7 @@ Section ltype_def.
       (rec : ltype_own_type) (rec_core : ltype_own_type)
       {rt_cur rt_full : Type}
       (lt_cur : ltype rt_cur) (lt_full : ltype rt_full)
-      (Cpre : coPset → rt_full → iProp Σ) (Cpost : coPset → rt_full → iProp Σ)
+      (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ)
       (k : bor_kind) (π : thread_id) (r : place_rfn rt_cur) (l : loc) : iProp Σ :=
     match k with (* TODO: MagicType *)
     | Owned wl => False
@@ -3765,7 +3765,7 @@ Section ltype_def.
   Qed.
 
   Lemma ltype_own_magic_unfold {rt_cur rt_full : Type} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full)
-      (Cpre : coPset → rt_full → iProp Σ) (Cpost : coPset → rt_full → iProp Σ) k π r l :
+      (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ) k π r l :
     ltype_own (MagicLtype lt_cur lt_full Cpre Cpost) k π r l ≡ magic_ltype_own (@ltype_own) (@ltype_own_core) lt_cur lt_full Cpre Cpost k π r l.
   Proof.
     rewrite /magic_ltype_own ?ltype_own_core_unseal /ltype_own_core_def ?ltype_own_unseal /ltype_own_def /ltype_own_pre.
@@ -3773,7 +3773,7 @@ Section ltype_def.
     done.
   Qed.
   Lemma ltype_own_core_magic_unfold {rt_cur rt_full : Type} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full)
-      (Cpre : coPset → rt_full → iProp Σ) (Cpost : coPset → rt_full → iProp Σ) k π r l :
+      (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ) k π r l :
     ltype_own_core (MagicLtype lt_cur lt_full Cpre Cpost) k π r l ≡ magic_ltype_own (@ltype_own) (@ltype_own_core) lt_cur lt_full Cpre Cpost k π r l.
   Proof.
     rewrite -ltype_own_magic_unfold.

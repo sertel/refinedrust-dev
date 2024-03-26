@@ -474,9 +474,11 @@ Section generated_code.
         li_tactic (lctx_lft_alive_count_goal E L1 κ)  (λ '(_, L2),
           ∀ r, introduce_with_hooks E L2 (P.(na_inv_P) π r x)
             (λ L3, typed_place π E L3 l
-                    (* TODO: (MagicLtype (◁ ty) (◁ (∃na; P, ty)) INV_MASK (λ mask rfn, P.(na_inv_P) π rfn x ∗ na_own π (⊤ minus ...)) (λ rfn, na_own π ⊤) (* TODO: Looks more OpenLTyped *) *)
-                    (ShadowedLtype (◁ ty) #r (◁ (∃na; P, ty)))
-                    (#x) bmin (Owned true) K T)))
+                    (@MagicLtype Σ typeGS0 rt X (◁ ty) (◁ (∃na; P, ty)) (λ mask rfn, P.(na_inv_P) π rfn x ∗ na_own π mask) (λ mask rfn, na_own π mask))
+                    (#r) bmin (Owned true) K
+            (λ L2 κs li b2 bmin' rti ltyi ri strong weak,
+              T L2 κs li b2 bmin' rti ltyi ri strong None)
+        )))
       ⊢ typed_place π E L l (◁ (∃na; P, ty))%I (#x) bmin (Shared κ) K T.
     Proof.
       rewrite /prove_with_subtype.
