@@ -817,8 +817,8 @@ Section ltype_def.
         lty_rt lt_full
     | ShadowedLty lt_cur r_cur lt_full =>
         lty_rt lt_full
-    | MagicLty lt_cur _ _ _ =>
-        lty_rt lt_cur
+    | MagicLty _ lt_full _ _ =>
+        lty_rt lt_full
     end.
 
   Fixpoint lty_st (lt : lty) : syn_type :=
@@ -839,8 +839,8 @@ Section ltype_def.
         lty_st lt_full
     | ShadowedLty lt_cur r_cur lt_full =>
         lty_st lt_full
-    | MagicLty lt_cur _ _ _ =>
-        lty_st lt_cur
+    | MagicLty _ lt_full _ _ =>
+        lty_st lt_full
     end.
 
   Fixpoint lty_wf (lt : lty) : Prop :=
@@ -1094,7 +1094,7 @@ Section ltype_def.
     | ShadowedLty lt_cur r_cur lt_full =>
         lty_core lt_full
     | MagicLty lt_cur lt_full Cpre Cpost =>
-        MagicLty lt_cur lt_full Cpre Cpost
+        lty_core lt_full
     end.
 
   Lemma lty_core_syn_type_eq (lt : lty) :
@@ -1137,8 +1137,8 @@ Section ltype_def.
       rewrite lty_core_rt_eq. done.
     - done.
     - intros (? & ? & <-). eauto.
-    - intros (? & ?).
-      split; done.
+    - intros (? & []).
+      by apply IHlt2.
   Qed.
 
   Lemma lty_size_core (lt : lty) :
@@ -1311,7 +1311,6 @@ Section ltype_def.
   Qed.
 
   Import EqNotations.
-  (*Set Printing All.*)
   Equations lty_own_pre (core : bool) (ltp : lty) (k : bor_kind) (π : thread_id) (r : place_rfn (lty_rt ltp)) (l : loc) : iProp Σ by wf ltp lty_size_rel :=
     lty_own_pre core (OfTyLty ty) k π r l :=
       (* OfTy *)
@@ -1991,7 +1990,7 @@ Section ltype_def.
   Lemma lty_own_core_core (lt : lty) k π r r' Heq l :
     r' = (transport_rfn Heq r) →
     lty_own_pre true (lty_core lt) k π r l ≡ lty_own_pre true lt k π r' l.
-  Proof.
+  Proof. (* TODO: MagicType *)
     intros ->. rewrite /lty_own_core.
     induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH | rt en variant lt IH | | | | ] using lty_induction in k, π, r, l, Heq |-*; simpl in *.
     - simp lty_own_pre. rewrite (UIP_refl _ _ Heq). done.
@@ -2125,8 +2124,8 @@ Section ltype_def.
     - simp lty_own_pre. rewrite (UIP_refl _ _ Heq). done.
     - simp lty_own_pre.
     - simp lty_own_pre.
-    - simp lty_own_pre. done.
-  Qed.
+    - admit.
+  Admitted.
   Lemma lty_own_core_core' (lt : lty) k π r Heq l :
     lty_own_pre true (lty_core lt) k π r l ≡ lty_own_pre true lt k π (transport_rfn Heq r) l.
   Proof.
@@ -2178,7 +2177,7 @@ Section ltype_def.
     (∀ lt : lty, lt ∈ lts → ∀ k π r (Heq : lty_rt lt = lty_rt (lty_core lt)) l, lty_own_pre true lt k π (r) l ≡ lty_own_pre core (lty_core lt) k π (transport_rfn Heq r) l) →
     ([∗ list] i ↦ ty ∈ zip (fmap lty_core lts) r', ∃ Heq : lty_rt ty.1 = rt, ⌜lty_st ty.1 = st⌝ ∗ lty_own_pre core ty.1 k π (rew <- [place_rfn] Heq in ty.2) (l offset{ly}ₗ i)) ⊣⊢
     ([∗ list] i ↦ ty ∈ zip lts r', ∃ Heq : lty_rt ty.1 = rt, ⌜lty_st ty.1 = st⌝ ∗ lty_own_pre true ty.1 k π (rew <- [place_rfn] Heq in ty.2) (l offset{ly}ₗ i)).
-  Proof.
+  Proof. 
     intros IH.
     rewrite zip_fmap_l big_sepL_fmap.
     apply big_sepL_proper.
@@ -2202,7 +2201,7 @@ Section ltype_def.
 
  Lemma lty_own_core_equiv (lt : lty) core k π r l Heq :
     lty_own_pre true lt k π r l ≡ lty_own_pre core (lty_core lt) k π (transport_rfn Heq r) l.
-  Proof.
+  Proof. (* TODO: MagicType *)
     rewrite /lty_own_core /lty_own.
     induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | def len lts IH IH' | rt en variant lt  IH | | | | ] using lty_induction in k, π, r, l, Heq, core |-*; simpl in *.
     - simp lty_own_pre. rewrite (UIP_refl _ _ Heq). done.
@@ -2334,8 +2333,8 @@ Section ltype_def.
     - rewrite (UIP_refl _ _ Heq). simp lty_own_pre. done.
     - simp lty_own_pre.
     - simp lty_own_pre.
-    - simp lty_own_pre. done.
-  Qed.
+    - admit.
+  Admitted.
 
   Local Lemma place_rfn_interp_shared_transport_eq {rt rt'} (r : place_rfn rt) (r' : rt) (Heq : rt = rt') :
     place_rfn_interp_shared r r' -∗
@@ -2356,7 +2355,7 @@ Section ltype_def.
 
   Lemma lty_own_shared_to_core lt κ0 π r l Heq :
     lty_own lt (Shared κ0) π r l -∗ lty_own (lty_core lt) (Shared κ0) π (transport_rfn Heq r) l.
-  Proof.
+  Proof. (* TODO: MagicType *)
     rewrite /lty_own_core /lty_own.
     induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH  | rt en variant lt IH | | | ???? IH1 IH2 | ] using lty_induction in κ0, π, r, l, Heq |-*; simpl in *.
     - simp lty_own_pre. iIntros "(% & _ & _ & _ & _ & [])".
@@ -2482,8 +2481,8 @@ Section ltype_def.
     - simp lty_own_pre.
       iIntros "(%Heq_cur & %Hst & Ha & Hb)".
       iApply (IH2 with "Hb").
-    - simp lty_own_pre. iIntros "$".
-  Qed.
+    - admit.
+  Admitted.
   (* NOTE: The reverse does not hold because the core of [BlockedLty] is [OfTy], which has a sharing predicate, but [BlockedLty] doesn't *)
 
   (** ** We define derived versions on top that expose the refinement type as an index.
@@ -2672,12 +2671,12 @@ Section ltype_def.
   Global Typeclasses Opaque ShadowedLtype.
 
   Program Definition MagicLtype {rt_cur rt_full} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full)
-      (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ) : ltype rt_cur := {|
+      (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ) : ltype rt_full := {|
     ltype_lty := MagicLty (ltype_lty lt_cur) (ltype_lty lt_full) Cpre Cpost;
   |}.
   Next Obligation.
     intros rt_cur rt_full lt_cur lt_full Cpre Cpost. simpl.
-    rewrite ltype_rt_agree; done.
+    rewrite ltype_rt_agree. done.
   Qed.
   Next Obligation.
     intros rt_cur rt_full [lt_cur <- Hcur] [lt_full <- Hfull] Cpre Cpost; simpl.
@@ -3229,7 +3228,7 @@ Section ltype_def.
       {rt_cur rt_full : Type}
       (lt_cur : ltype rt_cur) (lt_full : ltype rt_full)
       (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ)
-      (k : bor_kind) (π : thread_id) (r : place_rfn rt_cur) (l : loc) : iProp Σ :=
+      (k : bor_kind) (π : thread_id) (r : place_rfn rt_full) (l : loc) : iProp Σ :=
     match k with (* TODO: MagicType *)
     | Owned wl => False
     | Uniq κ γ => False
@@ -3775,7 +3774,7 @@ Section ltype_def.
   Lemma ltype_own_core_magic_unfold {rt_cur rt_full : Type} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full)
       (Cpre : coPset → rt_cur → iProp Σ) (Cpost : coPset → rt_cur → iProp Σ) k π r l :
     ltype_own_core (MagicLtype lt_cur lt_full Cpre Cpost) k π r l ≡ magic_ltype_own (@ltype_own) (@ltype_own_core) lt_cur lt_full Cpre Cpost k π r l.
-  Proof.
+  Proof. (* TODO? MagicType *)
     rewrite -ltype_own_magic_unfold.
     rewrite ltype_own_core_unseal ltype_own_unseal /ltype_own_core_def /ltype_own_def /ltype_own_pre.
     simp lty_own_pre. done.
@@ -4045,7 +4044,7 @@ Section ltype_def.
     - apply proof_irrelevance.
   Qed.
   Lemma ltype_core_magic {rt_cur rt_full} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full) Cpre Cpost :
-    ltype_core (MagicLtype lt_cur lt_full Cpre Cpost) = MagicLtype lt_cur lt_full Cpre Cpost.
+    ltype_core (MagicLtype lt_cur lt_full Cpre Cpost) = ltype_core lt_full.
   Proof.
     rewrite /ltype_core /MagicLtype /=.
     f_equiv; simpl.
@@ -4102,7 +4101,7 @@ Section ltype_def.
     ltype_st (ShadowedLtype lt_cur r_cur lt_full) = ltype_st lt_full.
   Proof. done. Qed.
   Lemma ltype_st_magic {rt_cur rt_full} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full) Cpre Cpost :
-    ltype_st (MagicLtype lt_cur lt_full Cpre Cpost) = ltype_st lt_cur.
+    ltype_st (MagicLtype lt_cur lt_full Cpre Cpost) = ltype_st lt_full.
   Proof. done. Qed.
 
   (** Lifting the core equations to ltypes *)
@@ -4358,7 +4357,7 @@ Ltac simp_ltype_core Heq :=
       rewrite (ltype_core_coreable) in Heq
   | _ = ltype_core (ShadowedLtype _ _ _) =>
       rewrite (ltype_core_shadowed _ _ _) in Heq
-  | _ = ltype_core (MagicLtype _ _ _ _ _) =>
+  | _ = ltype_core (MagicLtype _ _ _ _) =>
       rewrite (ltype_core_magic) in Heq
   end.
 Ltac simp_ltype_st Heq :=
@@ -4392,7 +4391,7 @@ Ltac simp_ltype_st Heq :=
       rewrite (ltype_st_coreable) in Heq
   | _ = ltype_st (ShadowedLtype _ _ _) =>
       rewrite (ltype_st_shadowed _ _ _) in Heq
-  | _ = ltype_st (MagicLtype _ _ _ _ _) =>
+  | _ = ltype_st (MagicLtype _ _ _ _) =>
       rewrite (ltype_st_magic) in Heq
   end.
 
@@ -5518,10 +5517,14 @@ Section blocked.
 
   Lemma magic_ltype_imp_unblockable {rt_cur rt_full} (lt_cur : ltype rt_cur) (lt_full : ltype rt_full) Cpre Cpost κs :
     ⊢ imp_unblockable κs (MagicLtype lt_cur lt_full Cpre Cpost).
-  Proof.
+  Proof. (* TODO: MagicType *)
     iModIntro. iSplitL.
-    - iIntros (κ' ????). rewrite ltype_own_core_equiv ltype_core_magic. eauto.
-    - iIntros (????). rewrite ltype_own_core_equiv ltype_core_magic. eauto.
+    - iIntros (κ' ????) "#Hdead Hb".
+      rewrite ltype_own_core_magic_unfold ltype_own_magic_unfold /magic_ltype_own.
+      done.
+    - iIntros (????) "#Hdead Ha".
+      rewrite ltype_own_core_magic_unfold ltype_own_magic_unfold /magic_ltype_own.
+      done.
   Qed.
 
   (** Once all the blocked lifetimes are dead, every ltype is unblockable to its core. *)

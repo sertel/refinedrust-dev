@@ -475,7 +475,7 @@ Section generated_code.
           ∀ r, introduce_with_hooks E L2 (P.(na_inv_P) π r x)
             (λ L3, typed_place π E L3 l
                     (@MagicLtype Σ typeGS0 rt X (◁ ty) (◁ (∃na; P, ty)) (λ mask rfn, P.(na_inv_P) π rfn x ∗ na_own π mask) (λ mask rfn, na_own π mask))
-                    (#r) bmin (Owned true) K
+                    (#x) bmin (Owned true) K
             (λ L2 κs li b2 bmin' rti ltyi ri strong weak,
               T L2 κs li b2 bmin' rti ltyi ri strong None)
         )))
@@ -509,46 +509,65 @@ Section generated_code.
       iApply ("Hcont" with "Hincl Hl").
       admit.
     Admitted.
+
+    (* Instances for Magic *)
+    Lemma typed_place_magic_owned π E L {rt_cur rt_full}
+        (lt_cur : ltype rt_cur) (lt_full : ltype rt_full) Cpre Cpost
+        (r: place_rfn rt_full) bmin0 l wl P'' (T : place_cont_t rt_full) :
+      typed_place π E L l lt_full r bmin0 (Owned false) P''
+        (λ L' κs l2 b2 bmin rti ltyi ri strong weak,
+          T L' κs l2 b2 bmin rti ltyi ri
+            (option_map (λ strong, mk_strong strong.(strong_rt)
+              (λ rti2 ltyi2 ri2,
+                MagicLtype (strong.(strong_lt) _ ltyi2 ri2) (strong.(strong_lt) _ ltyi2 ri2)
+                            (λ _ _, ⌜1234 = 5678⌝) (λ _ _, ⌜12345 = 67890⌝))
+                                      (* Cpre Cpost) *)
+              (λ rti2 ri2, strong.(strong_rfn) _ ri2)
+              strong.(strong_R)) strong)
+            None)
+      ⊢ typed_place π E L l (MagicLtype lt_cur lt_full Cpre Cpost) r bmin0 (Owned wl) P'' T.
+    Proof.
+    Admitted.
   End na_subtype.
 
   Section proof.
     Context `{!typeGS Σ}.
 
-    Lemma Cell_T_new_proof (π : thread_id) :
-      Cell_new_lemma π.
-    Proof.
-      Cell_new_prelude.
+    (* Lemma Cell_T_new_proof (π : thread_id) : *)
+    (*   Cell_new_lemma π. *)
+    (* Proof. *)
+    (*   Cell_new_prelude. *)
 
-      rep <- 1 liRStep; liShow.
+    (*   rep <- 1 liRStep; liShow. *)
 
-      iApply na_owned_subtype_ex_plain_t.
-      liSimpl; liShow.
+    (*   iApply na_owned_subtype_ex_plain_t. *)
+    (*   liSimpl; liShow. *)
 
-      repeat liRStep; liShow.
+    (*   repeat liRStep; liShow. *)
 
-      all: print_remaining_goal.
-      Unshelve. all: sidecond_solver.
-      Unshelve. all: sidecond_hammer.
-      Unshelve. all: print_remaining_sidecond.
-    Qed.
+    (*   all: print_remaining_goal. *)
+    (*   Unshelve. all: sidecond_solver. *)
+    (*   Unshelve. all: sidecond_hammer. *)
+    (*   Unshelve. all: print_remaining_sidecond. *)
+    (* Qed. *)
 
-    Lemma Cell_into_inner_proof (π : thread_id) :
-      Cell_into_inner_lemma π.
-    Proof.
-      Cell_into_inner_prelude.
+    (* Lemma Cell_into_inner_proof (π : thread_id) : *)
+    (*   Cell_into_inner_lemma π. *)
+    (* Proof. *)
+    (*   Cell_into_inner_prelude. *)
 
-      repeat liRStep; liShow.
+    (*   repeat liRStep; liShow. *)
 
-      iApply na_typed_place_ex_plain_t_owned.
-      liSimpl; liShow.
+    (*   iApply na_typed_place_ex_plain_t_owned. *)
+    (*   liSimpl; liShow. *)
 
-      repeat liRStep; liShow.
+    (*   repeat liRStep; liShow. *)
 
-      all: print_remaining_goal.
-      Unshelve. all: sidecond_solver.
-      Unshelve. all: sidecond_hammer.
-      Unshelve. all: print_remaining_sidecond.
-    Qed.
+    (*   all: print_remaining_goal. *)
+    (*   Unshelve. all: sidecond_solver. *)
+    (*   Unshelve. all: sidecond_hammer. *)
+    (*   Unshelve. all: print_remaining_sidecond. *)
+    (* Qed. *)
 
     Lemma Cell_get_proof (π : thread_id) :
       Cell_get_lemma π.
@@ -561,6 +580,117 @@ Section generated_code.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
+
+      iApply typed_place_magic_owned.
+      liSimpl; liShow.
+
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+
+      rewrite ltype_core_magic.
+
+      liRStep; liShow.
+      repeat liRStep; liShow.
+
+
+      simpl.
+
+      Unset Printing Notations.
 
       all: print_remaining_goal.
       Unshelve. all: sidecond_solver.
