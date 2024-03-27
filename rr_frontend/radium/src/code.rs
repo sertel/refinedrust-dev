@@ -283,6 +283,7 @@ pub enum Expr {
     /// an annotated expression
     Annot {
         a: Annotation,
+        why: Option<String>,
         e: Box<Expr>,
     },
     StructInitE {
@@ -312,13 +313,12 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn with_optional_annotation(e: Expr, a: Option<Annotation>) -> Expr {
+    pub fn with_optional_annotation(e: Expr, a: Option<Annotation>, why: Option<String>) -> Expr {
         match a {
-            Some(a) => {
-                Expr::Annot {
-                    a,
-                    e: Box::new(e),
-                }
+            Some(a) => Expr::Annot {
+                a,
+                e: Box::new(e),
+                why,
             },
             None => e,
         }
@@ -371,8 +371,9 @@ impl Display for Expr {
                 //let formatted_ly = ly.caesium_fmt();
                 write!(f, "({}) at{{ {} }} \"{}\"", e, sls, name)
             },
-            Self::Annot { a, e } => {
-                write!(f, "AnnotExpr {} ({}) ({})", a.needs_laters(), a, e)
+            Self::Annot { a, e, why } => {
+                let why_fmt = if let Some(why) = why { format!(" (* {why} *) ") } else { format!(" ") };
+                write!(f, "AnnotExpr{}{} ({}) ({})", why_fmt, a.needs_laters(), a, e)
             },
             Self::BoxE(ly) => {
                 write!(f, "box{{{}}}", ly)
@@ -572,6 +573,7 @@ pub enum Stmt {
     Annot {
         a: Annotation,
         s: Box<Stmt>,
+        why: Option<String>,
     },
     Stuck,
 }
@@ -596,9 +598,10 @@ impl Stmt {
                 let formatted_s = s.caesium_fmt(indent);
                 format!("{ind}expr: {};\n{}", e, formatted_s.as_str())
             },
-            Stmt::Annot { a, s } => {
+            Stmt::Annot { a, s, why } => {
                 let formatted_s = s.caesium_fmt(indent);
-                format!("{ind}annot: {};\n{}", a, formatted_s.as_str())
+                let why_fmt = if let Some(why) = why { format!(" (* {why} *)") } else { format!("") };
+                format!("{ind}annot: {};{why_fmt}\n{}", a, formatted_s.as_str())
             },
             Stmt::If { ot, e, s1, s2 } => {
                 let formatted_s1 = s1.caesium_fmt(indent + 1);
@@ -653,11 +656,12 @@ impl Stmt {
     }
 
     /// Annotate a statement with a list of annotations
-    pub fn with_annotations(mut s: Stmt, a: Vec<Annotation>) -> Stmt {
+    pub fn with_annotations(mut s: Stmt, a: Vec<Annotation>, why: Option<String>) -> Stmt {
         for annot in a.into_iter() {
             s = Stmt::Annot {
                 a: annot,
                 s: Box::new(s),
+                why: why.clone(),
             };
         }
         s
@@ -951,17 +955,6 @@ impl FunctionCodeBuilder {
 
     pub fn add_basic_block(&mut self, index: usize, bb: Stmt) {
         self.basic_blocks.insert(index, bb);
-    }
-
-    /// Initialize a local lifetime at the start of the function
-    /// (i.e., prepend the initialization statementto the first block of the function)
-    pub fn initialize_local_lifetime(&mut self, lft: Lft, outliving: Vec<Lft>) {
-        let bb0 = self.basic_blocks.remove(&FunctionCode::INITIAL_BB).unwrap();
-        let cont_stmt = Stmt::Annot {
-            a: Annotation::StartLft(format!("{}", lft), outliving),
-            s: Box::new(bb0),
-        };
-        self.basic_blocks.insert(FunctionCode::INITIAL_BB, cont_stmt);
     }
 }
 

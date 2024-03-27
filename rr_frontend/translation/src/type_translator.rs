@@ -17,7 +17,7 @@ use rustc_middle::ty::{IntTy, Ty, TyKind, UintTy};
 use typed_arena::Arena;
 
 pub use crate::base::*;
-use crate::environment::Environment;
+use crate::environment::{polonius_info as info, Environment};
 //use rustc_middle::mir::Field;
 use crate::rustc_middle::ty::TypeFoldable;
 use crate::spec_parsers::enum_spec_parser::{EnumSpecParser, VerboseEnumSpecParser};
@@ -287,6 +287,25 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     pub fn lookup_universal_region(&self, lft: ty::RegionVid) -> Option<radium::Lft> {
         info!("Looking up universal lifetime {:?}", lft);
         self.universal_lifetimes.borrow().get(&lft).map(|s| s.to_string())
+    }
+
+    /// Format the Coq representation of an atomic region.
+    pub fn format_atomic_region(&self, r: &info::AtomicRegion) -> String {
+        match r {
+            info::AtomicRegion::Loan(_, r) => {
+                format!("llft{}", r.index())
+            },
+            info::AtomicRegion::Universal(_, r) => match self.lookup_universal_region(*r) {
+                Some(s) => s,
+                None => format!("ulft{}", r.index()),
+            },
+            info::AtomicRegion::PlaceRegion(r) => {
+                format!("plft{}", r.index())
+            },
+            info::AtomicRegion::Unknown(r) => {
+                format!("vlft{}", r.index())
+            },
+        }
     }
 
     /// Try to translate a region to a Caesium lifetime.
@@ -969,7 +988,14 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             builder.add_field(&f_name, field_spec.ty);
 
             if expect_refinement {
-                field_refinements.push(field_spec.rfn.unwrap());
+                if let Some(rfn) = field_spec.rfn {
+                    field_refinements.push(rfn);
+                } else {
+                    return Err(TranslationError::UnknownError(format!(
+                        "No refinement annotated for field {:?}",
+                        f_name
+                    )));
+                }
             }
         }
 
@@ -1515,8 +1541,23 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             //"RefinedRust does currently not support associated types".to_string()}),
             //TyKind::Opaque(..) => Err(TranslationError::UnsupportedType {description:
             //"RefinedRust does currently not support returning impls".to_string()}),
-            _ => Err(TranslationError::UnsupportedType {
-                description: format!("Unknown unsupported type {}", ty),
+            TyKind::GeneratorWitnessMIR(_, _) => Err(TranslationError::UnsupportedType {
+                description: "RefinedRust does currently not support generators".to_string(),
+            }),
+            TyKind::Alias(kind, ty) => Err(TranslationError::UnsupportedType {
+                description: "RefinedRust does not support Alias types".to_string(),
+            }),
+            TyKind::Bound(_, _) => Err(TranslationError::UnsupportedType {
+                description: "RefinedRust does not support higher-ranked types".to_string(),
+            }),
+            TyKind::Placeholder(_) => Err(TranslationError::UnsupportedType {
+                description: "RefinedRust does not support higher-ranked types".to_string(),
+            }),
+            TyKind::Infer(_) => Err(TranslationError::UnsupportedType {
+                description: "RefinedRust does not support infer types".to_string(),
+            }),
+            TyKind::Error(_) => Err(TranslationError::UnsupportedType {
+                description: "RefinedRust does not support higher-ranked types".to_string(),
             }),
         }
     }

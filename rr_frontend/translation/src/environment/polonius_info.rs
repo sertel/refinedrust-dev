@@ -54,6 +54,34 @@ pub enum AtomicRegion {
 }
 
 impl AtomicRegion {
+    pub fn is_loan(&self) -> bool {
+        match *self {
+            Self::Loan(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_universal(&self) -> bool {
+        match *self {
+            Self::Universal(_, _) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_place(&self) -> bool {
+        match *self {
+            Self::PlaceRegion(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_value(&self) -> bool {
+        match *self {
+            Self::Unknown(_) => true,
+            _ => false,
+        }
+    }
+
     pub fn get_region(&self) -> facts::Region {
         match self {
             Self::Loan(_, r) => *r,
