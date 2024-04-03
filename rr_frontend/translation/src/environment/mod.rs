@@ -13,12 +13,10 @@ use std::rc::Rc;
 
 use rustc_ast::ast::Attribute;
 use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_hir::hir_id::HirId;
 use rustc_middle::mir;
-use rustc_middle::ty::{self, ParamEnv, TyCtxt};
+use rustc_middle::ty::{self, TyCtxt};
 use rustc_span::symbol::Symbol;
 use rustc_span::Span;
-use rustc_trait_selection::infer::{InferCtxtExt, TyCtxtInferExt};
 
 pub mod borrowck;
 mod collect_closure_defs_visitor;

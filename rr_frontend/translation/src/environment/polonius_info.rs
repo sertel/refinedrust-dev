@@ -152,9 +152,9 @@ pub enum PoloniusInfoError {
 }
 
 pub fn graphviz<'tcx>(
-    env: &Environment<'tcx>,
+    _env: &Environment<'tcx>,
     def_path: &rustc_hir::definitions::DefPath,
-    def_id: DefId,
+    _def_id: DefId,
     info: &PoloniusInfo<'_, 'tcx>,
 ) -> std::io::Result<()> {
     macro_rules! to_html {

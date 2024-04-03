@@ -1,5 +1,5 @@
 use rustc_middle::ty::visit::*;
-use rustc_middle::ty::{self, Binder, GenericArg, GenericArgKind, ParamConst, Ty, TyCtxt, TypeFolder};
+use rustc_middle::ty::{self, GenericArg, GenericArgKind, ParamConst, Ty, TyCtxt, TypeFolder};
 pub use rustc_type_ir::fold::{TypeFoldable, TypeSuperFoldable};
 pub use rustc_type_ir::visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor};
 

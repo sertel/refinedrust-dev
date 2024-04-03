@@ -131,7 +131,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 input.parse::<_, parse::MToken![:]>(meta)?;
 
                 let pure_prop: parse::LitStr = input.parse(meta)?;
-                let (pure_str, annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
+                let (pure_str, _annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
                 // TODO: should we use annot_meta?
 
                 Ok(MetaIProp::Pure(pure_str, Some(name_str)))

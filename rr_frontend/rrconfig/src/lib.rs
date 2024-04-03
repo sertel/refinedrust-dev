@@ -10,7 +10,6 @@ use std::sync::RwLock;
 
 use config::{Config, Environment, File, FileFormat};
 use lazy_static::lazy_static;
-use log::info;
 use path_clean::PathClean;
 use serde::Deserialize;
 

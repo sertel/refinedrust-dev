@@ -177,7 +177,7 @@ impl<'a> ShimRegistry<'a> {
 
                 let name =
                     obj.get("refinedrust_name").ok_or(format!("Missing attribute \"refinedrust_name\""))?;
-                let name =
+                let _name =
                     name.as_str().ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
 
                 let coq_path = radium::specs::CoqPath {
@@ -280,14 +280,14 @@ pub fn is_valid_refinedrust_module(f: File) -> Option<String> {
     let deser: serde_json::Value = serde_json::from_reader(reader).unwrap();
 
     // We support both directly giving the items array, or also specifying a path to import
-    let v: Vec<serde_json::Value>;
+    let _v: Vec<serde_json::Value>;
     match deser {
         serde_json::Value::Object(obj) => {
             let path = obj.get("refinedrust_path")?;
-            let path = path.as_str()?;
+            let _path = path.as_str()?;
 
             let module = obj.get("refinedrust_module")?;
-            let module = module.as_str()?;
+            let _module = module.as_str()?;
 
             let name = obj.get("refinedrust_name")?;
             let name = name.as_str()?;

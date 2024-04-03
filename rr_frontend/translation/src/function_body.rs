@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use log::{info, warn};
 use radium;
-use rustc_ast::ast::Attribute;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::tcx::PlaceTy;
@@ -215,7 +214,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
         let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
         let ty = ty.instantiate_identity();
-        let (sig, substs) = match ty.kind() {
+        let (sig, _substs) = match ty.kind() {
             TyKind::FnDef(_def, args) => {
                 assert!(ty.is_fn());
                 let sig = ty.fn_sig(env.tcx());
@@ -345,7 +344,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 }
 
                 // enter the procedure
-                let universal_lifetimes: Vec<_> = universal_lifetimes.into_iter().map(|(x, y)| y.0).collect();
+                let universal_lifetimes: Vec<_> = universal_lifetimes.into_iter().map(|(_x, y)| y.0).collect();
                 ty_translator.enter_procedure(&params, universal_lifetimes)?;
                 // add generic args to the fn
                 let generics = ty_translator.generic_scope.borrow();
@@ -999,9 +998,9 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         };
         let (late_sig, _late_region_map) = tcx.replace_late_bound_regions(sig, &mut folder);
 
-        let inputs: Vec<_> =
+        let _inputs: Vec<_> =
             late_sig.inputs().iter().map(|ty| ty_instantiate(*ty, tcx, subst_early_bounds)).collect();
-        let output = ty_instantiate(late_sig.output(), tcx, subst_early_bounds);
+        let _output = ty_instantiate(late_sig.output(), tcx, subst_early_bounds);
 
         // TODO continue the refactor for pulling this out.
         // Then try to fix issue with stuff

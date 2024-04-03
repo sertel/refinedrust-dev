@@ -793,7 +793,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                 write_edge!(self, bb, str terminate);
             },
             TerminatorKind::Drop {
-                ref target, unwind, ..
+                ref target, ..
             } => {
                 write_edge!(self, bb, target);
                 //if let Some(target) = unwind {
@@ -801,7 +801,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                 //}
             },
             TerminatorKind::Call {
-                ref target, unwind, ..
+                ref target, ..
             } => {
                 if let Some(target) = *target {
                     write_edge!(self, bb, target);
@@ -810,7 +810,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                 //write_edge!(self, bb, unwind target);
                 //}
             },
-            TerminatorKind::Assert { target, unwind, .. } => {
+            TerminatorKind::Assert { target, .. } => {
                 write_edge!(self, bb, target);
                 //if let Some(target) = unwind {
                 //write_edge!(self, bb, unwind target);
@@ -827,7 +827,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             },
             TerminatorKind::FalseUnwind {
                 real_target,
-                unwind,
+                .. 
             } => {
                 write_edge!(self, bb, real_target);
                 //if let Some(target) = unwind {
@@ -885,7 +885,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
     fn print_subset_at_start(&self, location: mir::Location) -> Result<(), io::Error> {
         let point = self.get_point(location, facts::PointType::Start);
         let subset_map = &self.polonius_info.borrowck_out_facts.subset;
-        if let Some(subset) = subset_map.get(&point).as_ref() {
+        if let Some(_subset) = subset_map.get(&point).as_ref() {
             return Ok(());
             /*
                 write_graph!(self, "subgraph cluster_{:?} {{", point);

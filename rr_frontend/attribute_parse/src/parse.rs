@@ -22,7 +22,7 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR
 // IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 // DEALINGS IN THE SOFTWARE.
-
+#![allow(dead_code)]
 /// This provides parsing facilities for rustc attribute token streams.
 // TODO: refactor/ make into own crate?
 use std::cell::Cell;
@@ -440,8 +440,6 @@ macro_rules! MToken {
     [~]           => { $crate::parse::Tilde };
     [_]           => { $crate::parse::Underscore };
 }
-
-pub(crate) use MToken;
 
 pub struct LitStr {
     span: Span,

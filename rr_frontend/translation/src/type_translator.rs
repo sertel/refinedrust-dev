@@ -7,7 +7,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::ops::DerefMut;
 
 use log::{info, trace};
 use radium;
@@ -324,7 +323,6 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         variant: Option<rustc_target::abi::VariantIdx>,
         adt_deps: TranslationState,
     ) -> Result<radium::Type<'def>, TranslationError> {
-        let in_function = adt_deps == TranslationState::InFunction;
         match ty.kind() {
             TyKind::Adt(adt, args) => {
                 // Check if we have a shim
@@ -368,7 +366,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         adt_def: ty::AdtDef<'tcx>,
         args: F,
-        mut adt_deps: TranslationState,
+        adt_deps: TranslationState,
     ) -> Result<radium::AbstractEnumUse<'def>, TranslationError>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
@@ -447,7 +445,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         variant_id: DefId,
         args: F,
-        mut adt_deps: TranslationState,
+        adt_deps: TranslationState,
     ) -> Result<radium::AbstractStructUse<'def>, TranslationError>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
@@ -482,7 +480,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         adt_id: DefId,
         variant_idx: rustc_target::abi::VariantIdx,
         args: F,
-        mut adt_deps: TranslationState,
+        adt_deps: TranslationState,
     ) -> Result<radium::AbstractStructUse<'def>, TranslationError>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
@@ -520,7 +518,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     pub fn generate_tuple_use<F>(
         &self,
         tys: F,
-        mut adt_deps: TranslationState,
+        adt_deps: TranslationState,
     ) -> Result<radium::AbstractStructUse<'def>, TranslationError>
     where
         F: IntoIterator<Item = Ty<'tcx>>,
@@ -671,7 +669,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         ty: &'tcx ty::VariantDef,
         adt: ty::AdtDef,
         ty_param_defs: &[radium::LiteralTyParam],
-        mut adt_deps: &mut HashSet<DefId>,
+        adt_deps: &mut HashSet<DefId>,
     ) -> Result<(radium::AbstractVariant<'def>, Option<radium::InvariantSpec>), TranslationError> {
         info!("adt variant: {:?}", ty);
 

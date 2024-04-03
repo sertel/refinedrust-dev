@@ -473,18 +473,6 @@ pub struct LiteralTyParam {
     pub syn_type: String,
 }
 
-impl LiteralTyParam {
-    /// Make a literal type for this type parameter and a given st_name.
-    fn make_literal_type(&self) -> LiteralType {
-        LiteralType {
-            rust_name: Some(self.rust_name.clone()),
-            type_term: self.type_term.clone(),
-            refinement_type: CoqType::Literal(self.refinement_type.clone()),
-            syn_type: SynType::Literal(self.syn_type.clone()),
-        }
-    }
-}
-
 /// Representation of (semantic) RefinedRust types.
 /// 'def is the lifetime of the frontend for referencing struct definitions.
 #[derive(Clone, Debug, PartialEq)]
@@ -645,7 +633,7 @@ impl<'def> Type<'def> {
             Self::Enum(su) => su.get_ty_lfts(s),
             Self::Unit => (),
             Self::Never => (),
-            Self::Var(i) => {
+            Self::Var(_i) => {
                 s.insert("RAW".to_string());
             },
             Self::RawPtr => (),
@@ -657,8 +645,8 @@ impl<'def> Type<'def> {
             Self::Int(_) => (),
             Self::Bool => (),
             Self::Char => (),
-            Self::MutRef(box ty, lft) => ty.get_ty_wf_elctx(s),
-            Self::ShrRef(box ty, lft) => ty.get_ty_wf_elctx(s),
+            Self::MutRef(box ty, _lft) => ty.get_ty_wf_elctx(s),
+            Self::ShrRef(box ty, _lft) => ty.get_ty_wf_elctx(s),
             Self::BoxType(box ty) => ty.get_ty_wf_elctx(s),
             Self::LiteralParam(lit) => {
                 s.insert(format!("ty_wf_elctx {}", lit.type_term));
@@ -669,7 +657,7 @@ impl<'def> Type<'def> {
             Self::Enum(su) => su.get_ty_wf_elctx(s),
             Self::Unit => (),
             Self::Never => (),
-            Self::Var(i) => {
+            Self::Var(_i) => {
                 s.insert("RAW".to_string());
             },
             Self::RawPtr => (),
@@ -1646,12 +1634,12 @@ impl<'def> AbstractStructUse<'def> {
     }
 
     /// Add the lifetimes appearing in this type to `s`.
-    pub fn get_ty_lfts(&self, s: &mut HashSet<Lft>) {
+    pub fn get_ty_lfts(&self, _s: &mut HashSet<Lft>) {
         // TODO
     }
 
     /// Add the lifetime constraints in this type to `s`.
-    pub fn get_ty_wf_elctx(&self, s: &mut HashSet<String>) {
+    pub fn get_ty_wf_elctx(&self, _s: &mut HashSet<String>) {
         // TODO
     }
 
@@ -1986,7 +1974,7 @@ impl<'def> AbstractEnum<'def> {
 
     /// Generate a function that maps (valid) tags to the corresponding Coq type for the variant.
     fn generate_enum_match(&self) -> String {
-        let spec = &self.spec;
+        let _spec = &self.spec;
 
         let conditions: Vec<_> = self
             .variants
@@ -2288,12 +2276,12 @@ impl<'def> AbstractEnumUse<'def> {
     }
 
     /// Add the lifetimes appearing in this type to `s`.
-    pub fn get_ty_lfts(&self, s: &mut HashSet<Lft>) {
+    pub fn get_ty_lfts(&self, _s: &mut HashSet<Lft>) {
         // TODO
     }
 
     /// Add the lifetime constraints in this type to `s`.
-    pub fn get_ty_wf_elctx(&self, s: &mut HashSet<String>) {
+    pub fn get_ty_wf_elctx(&self, _s: &mut HashSet<String>) {
         // TODO
     }
 

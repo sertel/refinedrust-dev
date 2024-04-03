@@ -33,7 +33,7 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-use log::{error, info, warn};
+use log::{info, warn};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
@@ -59,12 +59,11 @@ use crate_parser::CrateAttrParser;
 use environment::Environment;
 use function_body::{FunctionTranslator, ProcedureMode, ProcedureScope};
 use mod_parser::ModuleAttrParser;
-use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
 use spec_parsers::verbose_function_spec_parser::{get_export_as_attr, get_shim_attrs};
 use spec_parsers::{crate_attr_parser as crate_parser, module_attr_parser as mod_parser};
 use topological_sort::TopologicalSort;
 use type_translator::TypeTranslator;
-use {attribute_parse as parse, rrconfig};
+use rrconfig;
 
 /// Order ADT definitions topologically.
 fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
@@ -768,7 +767,6 @@ fn get_most_restrictive_function_mode<'tcx, 'rcx>(
     let mut mode = function_body::ProcedureMode::Prove;
 
     let attrs = vcx.env.get_attributes(did);
-    let v = crate::utils::filter_tool_attrs(attrs);
 
     // check if this is a purely spec function; if so, skip.
     if crate::utils::has_tool_attr(attrs, "shim") {
