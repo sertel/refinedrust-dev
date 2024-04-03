@@ -45,6 +45,11 @@ if readlink -e . &>/dev/null; then
     # This platform supports `readlink -e`.
     RRDIR=$(readlink -e "$RRDIR")
 fi
+# Check that rustup is available
+if ! rustup show >/dev/null; then
+  echo "It looks like you installed Rust without installing rustup. This is not supported by RefinedRust."
+  exit 1
+fi
 if ! test -d "$LIBDIR"; then
     echo "Something went wrong determining the library dir."
     echo "I got $LIBDIR but that does not exist."

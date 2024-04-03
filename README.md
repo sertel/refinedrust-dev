@@ -69,6 +69,9 @@ dune build theories
 
 #### Setup instructions for the frontend:
 1. Make sure that you have a working `rustup`/Rust install. Instructions for setting up Rust can be found on https://rustup.rs/.
+   Note that Rust packages shipped via many package managers are not compatible, as RefinedRust depends on being able to install a specific version of Rust using `rustup`.
+   You can check if your install is okay by running `rustup show`. If this command succeeds, you should be good to go.
+   Otherwise, remove your existing Rust install and install it via https://rustup.rs/.
 2. Run `./refinedrust build` in `rr_frontend` to build the frontend.
 3. Run `./refinedrust install` in `rr_frontend` to install the frontend.
 
