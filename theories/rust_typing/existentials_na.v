@@ -9,7 +9,6 @@ Record na_ex_inv_def `{!typeGS Σ} (X : Type) (Y : Type) : Type := na_mk_ex_inv_
 
   na_inv_P_lfts : list lft;
   na_inv_P_wf_E : elctx;
-  (* na_inv_P_timeless : ∀ π x y, Timeless (na_inv_P π x y); *)
 }.
 
 (* Stop Typeclass resolution for the [inv_P_pers] argument, to make it more deterministic. *)
@@ -18,27 +17,19 @@ Definition na_mk_ex_inv_def `{!typeGS Σ} {X Y : Type}
 
   inv_P_lfts
   (inv_P_wf_E : elctx)
-  (* (inv_P_timeless: TCNoResolve (∀ (π : thread_id) (x : X) (y : Y), Timeless (inv_P π x y))) *)
 
   := na_mk_ex_inv_def' _ _ _ _
-       inv_P inv_P_lfts inv_P_wf_E (* inv_P_timeless *).
+       inv_P inv_P_lfts inv_P_wf_E.
 
 Global Arguments na_inv_P {_ _ _ _}.
 Global Arguments na_inv_P_lfts {_ _ _ _}.
 Global Arguments na_inv_P_wf_E {_ _ _ _}.
-(* Global Arguments na_inv_P_timeless {_ _ _ _}. *)
-(* Global Existing Instance na_inv_P_timeless. *)
 Global Typeclasses Opaque na_mk_ex_inv_def.
 
 (** Smart constructor for persistent and timeless [P] *)
 Program Definition na_mk_pers_ex_inv_def
-  `{!typeGS Σ} {X : Type} {Y : Type} (P : X → Y → iProp Σ)
-  (* (_: TCNoResolve (∀ x y, Timeless (P x y))): na_ex_inv_def X Y *) :=
+  `{!typeGS Σ} {X : Type} {Y : Type} (P : X → Y → iProp Σ) :=
     na_mk_ex_inv_def (λ _, P) [] [] (* _ *).
-(* Next Obligation. *)
-(*   by rewrite /TCNoResolve. *)
-(* Qed. *)
-
 Global Typeclasses Opaque na_mk_pers_ex_inv_def.
 
 Section na_ex.
@@ -420,26 +411,29 @@ Section generated_code.
       simp_ltypes. done.
     Qed.
 
-    Lemma na_ex_plain_t_open_shared F π (ty : type rt) q κ l (x : X) :
-      lftE ⊆ F →
+    Lemma na_ex_plain_t_open_shared E F π (ty : type rt) q κ l (x : X) :
+      lftE ⊆ E →
+      ↑shrN.@l ⊆ E →
       ↑shrN.@l ⊆ F →
 
       lft_ctx -∗
-      na_own π ⊤ -∗
+      na_own π F -∗
       £ 1 -∗ (* Required: P.(na_inv_P) is not Timeless *)
 
       q.[κ] -∗
-      l ◁ₗ[π, Shared κ] (#x) @ (◁ (∃na; P, ty)) ={F}=∗
+      l ◁ₗ[π, Shared κ] (#x) @ (◁ (∃na; P, ty)) ={E}=∗
 
       ∃ r : rt,
         P.(na_inv_P) π r x ∗
         ▷ (l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
+        (* NOTE: Make &na appears, as it's required afterwards. *)
+        &na{κ, π, shrN.@l} (∃ r : rt, l ↦: ty_own_val ty π r ∗ na_inv_P P π r x) ∗
 
-        ( l ◁ₗ[π, Owned false] #r @ (◁ ty) ∗ P.(na_inv_P) π r x ={F}=∗
-            q.[κ] ∗ na_own π ⊤ ).
+        ( l ◁ₗ[π, Owned false] #r @ (◁ ty) ∗ P.(na_inv_P) π r x ={E}=∗
+            q.[κ] ∗ na_own π F ).
     (* TODO: Closing view-shift here. *)
     Proof.
-      iIntros (??) "#LFT Hna Hcred Hq #Hb".
+      iIntros (???) "#LFT Hna Hcred Hq #Hb".
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hb".
       iDestruct "Hb" as (ly Halg Hly) "(Hsc & Hlb & %v & -> & #Hb)".
 
@@ -450,8 +444,7 @@ Section generated_code.
       iMod (na_bor_acc with "LFT Hbor Hq Hna") as "((%r & Hl & HP) & Hna & Hvs)"; [ solve_ndisj.. |].
       iMod (lc_fupd_elim_later with "Hcred HP") as "HP".
 
-      iModIntro; iExists r.
-      iSplitL "HP"; first done.
+      iModIntro; iExists r; iFrame.
 
       iSplitL "Hl".
       { rewrite ltype_own_ofty_unfold /lty_of_ty_own.
@@ -460,12 +453,12 @@ Section generated_code.
         iExists r; iR.
         by iModIntro. }
 
-      iIntros "(Hl & HP)".
+      iR; iIntros "(Hl & HP)".
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
       iDestruct "Hl" as (???) "(_ & _ & _ & (%r' & -> & Hl)) /=".
       iMod (fupd_mask_mono with "Hl") as "Hl"; first solve_ndisj.
 
-      iApply ("Hvs" with "[Hl HP]"); last done.
+      iApply ("Hvs" with "[Hl HP] Hna").
       iExists r'; iFrame.
     Qed.
 
@@ -474,8 +467,12 @@ Section generated_code.
         li_tactic (lctx_lft_alive_count_goal E L1 κ)  (λ '(_, L2),
           ∀ r, introduce_with_hooks E L2 (P.(na_inv_P) π r x)
             (λ L3, typed_place π E L3 l
-                    (MagicLtype (◁ ty) (◁ (∃na; P, ty)) (λ rfn, P.(na_inv_P) π rfn x) (λ rfn, na_own π (↑shrN.@l)))
-                    (#x) bmin (Owned true) K
+                    (ShadowedLtype
+                       (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
+                         (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
+                         (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l)))
+                       (#r) (◁ (∃na; P, ty)))
+                    (#x) (Owned false) (Shared κ) K
             (λ L2 κs li b2 bmin' rti ltyi ri strong weak,
               T L2 κs li b2 bmin' rti ltyi ri strong None)
         )))
@@ -489,32 +486,48 @@ Section generated_code.
       iApply fupd_place_to_wp.
 
       iMod ("HT" with "[] [] [$LFT $TIME $LLCTX] HE HL")
-          as "(% & % & % & >(Hcred & HR) & HL & HT)"; [ solve_ndisj.. |].
+          as "(% & % & % & >(Hcred & HR) & HL & HT)"; [ done.. |].
       iSpecialize ("HT" with "HR").
 
       rewrite /li_tactic /lctx_lft_alive_count_goal.
       iDestruct "HT" as "(% & % & %Hal & HT)".
 
-      iMod (lctx_lft_alive_count_tok with "HE HL") as (q) "(Htok & Htokcl & HL)"; [ solve_ndisj | done |].
-      iMod (na_ex_plain_t_open_shared with "LFT [] Hcred Htok Hl") as (r) "(HP & Hl & Hvs)"; [ done.. | |].
-      { (* TODO: Correctly pass na_own π ⊤ *) admit. }
+      iMod (lctx_lft_alive_count_tok with "HE HL") as (q) "(Htok & Htokcl & HL)"; [ done.. |].
+      iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & #Hbor & Hvs)"; [ done.. |].
+
+      iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
+      iDestruct "Hl" as (ly) "(>%Halg & >%Hly & >#Hsc & >#Hlb & _ & (% & >%Heq & Hl))".
+      rewrite <- Heq; clear Heq; simpl.
 
       iMod ("HT" with "[] HE HL HP") as "(% & HL & HT)"; first done.
-      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna [Hincl] [Hl]").
-      { by iApply (bor_kind_incl_trans with "Hincl"). }
-      { admit. }
+      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] [Hincl] [Hl Hsc Hlb]").
+      { admit. (* TODO: na_token *) }
+      { unfold bor_kind_incl. admit. (* NOTE: Is (Owned _) possible? *) }
+      { rewrite ltype_own_shadowed_unfold /shadowed_ltype_own.
+        rewrite ltype_own_opened_unfold /opened_ltype_own.
+        rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+
+        simp_ltypes; iR.
+
+        iSplitR; iExists ly; repeat iR.
+        { admit. (* TODO: opened_ltype_own (ltypes.v:3213) *) }
+
+        iExists x; iR.
+        rewrite /na_ex_plain_t /ty_shr.
+        repeat iR; by iExists ly. }
 
       iModIntro.
-      iIntros (L'' κs' l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl Hc".
+      iIntros (L'' κs' l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl [ Hstrong _ ]".
       iApply ("Hcont" with "Hincl Hl").
-      admit.
+
+      destruct strong; iSplit; [| done.. ].
+      by simp_ltypes.
     Admitted.
 
-    (* Instances for Magic *)
-    Lemma typed_place_magic_owned π E L {rt_cur rt_full}
-        (lt_cur : ltype rt_cur) (lt_full : ltype rt_full) Cpre Cpost
-        (r: place_rfn rt_full) bmin0 l wl P'' (T : place_cont_t rt_full) :
-      typed_place π E L l lt_full r bmin0 (Owned false) P''
+    Lemma typed_place_opened_shared π E L {rt_cur rt_inner rt_full}
+        (lt_cur : ltype rt_cur) (lt_inner: ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost
+        (r: place_rfn rt_cur) bmin0 l wl P'' (T : place_cont_t rt_cur) :
+      typed_place π E L l lt_cur r bmin0 (Owned false) P''
         (λ L' κs l2 b2 bmin rti ltyi ri strong weak,
           T L' κs l2 b2 bmin rti ltyi ri
             (option_map (λ strong, mk_strong strong.(strong_rt)
@@ -525,7 +538,7 @@ Section generated_code.
               (λ rti2 ri2, strong.(strong_rfn) _ ri2)
               strong.(strong_R)) strong)
             None)
-      ⊢ typed_place π E L l (MagicLtype lt_cur lt_full Cpre Cpost) r bmin0 (Owned wl) P'' T.
+      ⊢ typed_place π E L l (OpenedLtype lt_cur lt_inner lt_full Cpre Cpost) r bmin0 (Shared wl) P'' T.
     Proof.
     Admitted.
   End na_subtype.
@@ -576,121 +589,43 @@ Section generated_code.
 
       repeat liRStep; liShow.
 
+      unfold Cell_inv_t; simpl.
+
+      unfold bor_kind_min.
       iApply na_typed_place_ex_plain_t_shared.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
 
-      iApply typed_place_magic_owned.
+      iApply typed_place_opened_shared.
       liSimpl; liShow.
 
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-
-      rewrite ltype_core_magic.
+      do 187 liRStep; liShow.
 
       liRStep; liShow.
-      repeat liRStep; liShow.
-
-
-      simpl.
-
-      Unset Printing Notations.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
+      liRStep; liShow.
 
       all: print_remaining_goal.
       Unshelve. all: sidecond_solver.
