@@ -57,7 +57,7 @@ struct EvenInt {
 
 impl EvenInt {
     /// Create a new even integer.
-    unsafe pub fn new(x: i32) -> Self {
+    pub unsafe fn new(x: i32) -> Self {
         Self {num: x}
     }
 
