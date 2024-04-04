@@ -21,7 +21,7 @@ pub struct Vec<T, A: Allocator = Global> {
 }
 
 #[rr::export_as(alloc::vec::Vec)]
-#[rr::trust_me]
+#[rr::only_spec]
 impl<T> Vec<T> {
 
     #[rr::returns("[]")]
@@ -29,10 +29,17 @@ impl<T> Vec<T> {
         unreachable!();
     }
 
+    #[rr::params("cap")]
+    #[rr::args("cap")]
+    #[rr::requires("(size_of_array_in_bytes {st_of T} (Z.to_nat cap) ≤ max_int isize_t)%Z")]
+    #[rr::returns("[]")]
+    pub fn with_capacity(capacity: usize) -> Self {
+        unimplemented!();
+    }
 }
 
 #[rr::export_as(alloc::vec::Vec)]
-#[rr::trust_me]
+#[rr::only_spec]
 impl<T, A: Allocator> Vec<T, A> {
 
     #[rr::params("xs")]
