@@ -1,64 +1,55 @@
-#![feature(register_tool)]
-#![register_tool(rr)]
-#![feature(custom_inner_attributes)]
-#![rr::package("refinedrust-stdlib")]
-#![rr::coq_prefix("stdlib.rwlock")]
-
 use std::ops::{Deref, DerefMut};
+use crate::relax::*;
 
-#[rr::export_as(std::sync::poison::LockResult)]
-pub type LockResult<Guard> = Result<Guard, PoisonError<Guard>>;
 
-#[rr::export_as(std::sync::poison::PoisonError)]
+#[rr::export_as(spin::rwlock::RwLock)]
 #[rr::refined_by("()" : "()")]
-#[rr::exists("x")]
-pub struct PoisonError<T> {
+#[rr::exists("x", "y")]
+pub struct RwLock<T, R = Spin> {
     #[rr::field("x")]
-    guard: T,
+    _t : T,
+    #[rr::field("y")]
+    _r : R,
 }
 
-#[rr::export_as(std::sync::rwlock::RwLock)]
-#[rr::refined_by("()" : "()")]
-#[rr::exists("x")]
-pub struct RwLock<T> {
-    #[rr::field("x")]
-    _t : T, 
-}
-
-#[rr::export_as(std::sync::rwlock::RwLockReadGuard)]
+#[rr::export_as(spin::rwlock::RwLockReadGuard)]
 #[rr::refined_by("x" : "{rt_of T}")]
 pub struct RwLockReadGuard<'a, T: 'a> {
     #[rr::field("#x")]
     _t: &'a T,
 }
 
-#[rr::export_as(std::sync::rwlock::RwLockWriteGuard)]
+#[rr::export_as(spin::rwlock::RwLockWriteGuard)]
 #[rr::refined_by("x" : "place_rfn {rt_of T}")]
-pub struct RwLockWriteGuard<'a, T: 'a> {
+pub struct RwLockWriteGuard<'a, T: 'a, R = Spin> {
     #[rr::field("#()")]
     _l: &'a RwLock<T>,
+    _r: R,
 }
 
 
-#[rr::export_as(std::sync::rwlock::RwLock)]
+#[rr::export_as(spin::rwlock::RwLock)]
 #[rr::only_spec]
-impl<T> RwLock<T> {
+impl<T, R> RwLock<T, R> {
 
     #[rr::params("x")]
     #[rr::args("x")]
     #[rr::returns("()")]
-    pub fn new(t: T) -> RwLock<T> {
+    pub fn new(t: T) -> RwLock<T, R> {
         unimplemented!();
     }
+}
+
+impl<T, R: RelaxStrategy> RwLock<T, R> {
 
     // TODO: ensure the lock isn't already held by current thread (need to rule out panic).
     // For that, also need Drop.
     #[rr::skip]
     #[rr::params("x")]
     #[rr::args("#x")]
-    #[rr::exists("y" : "sum (place_rfn {rt_of T}) _")]
+    #[rr::exists("y")]
     #[rr::returns("y")]
-    pub fn read(&self) -> LockResult<RwLockReadGuard<'_, T>> {
+    pub fn read(&self) -> RwLockReadGuard<T> {
         unimplemented!();
     }
 
@@ -67,9 +58,9 @@ impl<T> RwLock<T> {
     #[rr::skip]
     #[rr::params("x")]
     #[rr::args("#x")]
-    #[rr::exists("y" : "sum (place_rfn {rt_of T}) _")]
-    #[rr::returns("map_inl (#) y")]
-    pub fn write(&self) -> LockResult<RwLockWriteGuard<'_, T>> {
+    #[rr::exists("y")]
+    #[rr::returns("#y")]
+    pub fn write(&self) -> RwLockWriteGuard<T, R> {
         unimplemented!();
     }
 }
@@ -83,7 +74,7 @@ impl<T> Deref for RwLockWriteGuard<'_, T> {
     #[rr::args("#x")]
     #[rr::returns("#x")]
     fn deref(&self) -> &T {
-        unimplemented!(); 
+        unimplemented!();
     }
 }
 

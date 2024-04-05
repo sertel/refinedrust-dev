@@ -1002,6 +1002,7 @@ impl InvariantSpec {
         base_type: &str,
         base_rfn_type: &str,
         generics: &[String],
+        context_names: &[String],
     ) -> String {
         let mut out = String::with_capacity(200);
         let indent = "  ";
@@ -1068,8 +1069,9 @@ impl InvariantSpec {
         write!(out, "{indent}Definition {}_rt : Type.\n", self.type_name).unwrap();
         write!(
             out,
-            "{indent}Proof using {}. let __a := eval hnf in (rt_of {}) in exact __a. Defined.\n",
+            "{indent}Proof using {} {}. let __a := eval hnf in (rt_of {}) in exact __a. Defined.\n",
             generics.join(" "),
+            context_names.join(" "),
             self.type_name
         )
         .unwrap();
@@ -1111,16 +1113,7 @@ impl InvariantSpec {
             out.push_str(".\n");
         }
 
-        // write coq parameters
-        write!(out, "{} (* Additional parameters *)\n", indent).unwrap();
-        if !self.coq_params.is_empty() {
-            write!(out, "{}Context", indent).unwrap();
-            for param in self.coq_params.iter() {
-                write!(out, " {}", param).unwrap();
-            }
-            write!(out, ".\n").unwrap();
-        }
-        write!(out, "\n").unwrap();
+        let (context_names, dep_sigma) = format_extra_context_items(&self.coq_params, &mut out).unwrap();
 
         // get the applied base_rfn_type
         let rfn_instantiations: Vec<String> =
@@ -1137,14 +1130,27 @@ impl InvariantSpec {
             self.generate_coq_type_def_core(
                 applied_base_type.to_string().as_str(),
                 applied_base_rfn_type.to_string().as_str(),
-                &rfn_instantiations
+                &rfn_instantiations,
+                &context_names
             )
         )
         .unwrap();
 
         // finish
         write!(out, "End {}.\n", self.type_name).unwrap();
-        write!(out, "Global Arguments {}_rt : clear implicits.\n", self.type_name).unwrap();
+        write!(out, "Global Arguments {} : clear implicits.\n", self.rt_def_name()).unwrap();
+        if !context_names.is_empty() {
+            let dep_sigma_str = if dep_sigma { format!("{{_}} ") } else { format!("") };
+            write!(
+                out,
+                "Global Arguments {} {}{} {{{}}}.\n",
+                self.rt_def_name(),
+                dep_sigma_str,
+                "_ ".repeat(generic_params.len()),
+                "_ ".repeat(context_names.len())
+            )
+            .unwrap();
+        }
 
         out
     }
@@ -1332,7 +1338,11 @@ impl<'def> AbstractVariant<'def> {
         out
     }
 
-    pub fn generate_coq_type_def_core(&self, ty_params: &[LiteralTyParam]) -> String {
+    pub fn generate_coq_type_def_core(
+        &self,
+        ty_params: &[LiteralTyParam],
+        context_names: &[String],
+    ) -> String {
         let mut out = String::with_capacity(200);
         let indent = "  ";
 
@@ -1348,8 +1358,9 @@ impl<'def> AbstractVariant<'def> {
         write!(out, "{}Definition {} : type ({}).\n", indent, self.plain_ty_name, self.rfn_type).unwrap();
         write!(
             out,
-            "{indent}Proof using {} Type*. exact ({}). Defined.\n",
+            "{indent}Proof using {} {}. exact ({}). Defined.\n",
             ty_params.iter().map(|x| x.type_term.clone()).collect::<Vec<_>>().join(" "),
+            context_names.join(" "),
             self.generate_coq_type_term(sls_app)
         )
         .unwrap();
@@ -1359,8 +1370,9 @@ impl<'def> AbstractVariant<'def> {
         write!(out, "{indent}Definition {} : Type.\n", self.plain_rt_def_name).unwrap();
         write!(
             out,
-            "{indent}Proof using {}. let __a := eval hnf in (rt_of {}) in exact __a. Defined.\n",
+            "{indent}Proof using {} {}. let __a := eval hnf in (rt_of {}) in exact __a. Defined.\n",
             rt_params.join(" "),
+            context_names.join(" "),
             self.plain_ty_name
         )
         .unwrap();
@@ -1400,22 +1412,54 @@ impl<'def> AbstractVariant<'def> {
         out.push_str("\n");
 
         // write coq parameters
-        write!(out, "{} (* Additional parameters *)\n", indent).unwrap();
-        if !extra_context.is_empty() {
-            write!(out, "{}Context", indent).unwrap();
-            for param in extra_context.iter() {
-                write!(out, " {}", param).unwrap();
-            }
-            write!(out, ".\n").unwrap();
-        }
-        write!(out, "\n").unwrap();
-
-        write!(out, "{}", self.generate_coq_type_def_core(ty_params)).unwrap();
+        let (context_names, dep_sigma) = format_extra_context_items(extra_context, &mut out).unwrap();
+        write!(out, "{}", self.generate_coq_type_def_core(ty_params, &context_names)).unwrap();
 
         write!(out, "End {}.\n", self.plain_ty_name).unwrap();
         write!(out, "Global Arguments {} : clear implicits.\n", self.plain_rt_def_name).unwrap();
+        if !context_names.is_empty() {
+            let dep_sigma_str = if dep_sigma { format!("{{_}} ") } else { format!("") };
+            write!(
+                out,
+                "Global Arguments {} {}{} {{{}}}.\n",
+                self.plain_rt_def_name,
+                dep_sigma_str,
+                "_ ".repeat(ty_params.len()),
+                "_ ".repeat(extra_context.len())
+            )
+            .unwrap();
+        }
         out
     }
+}
+
+fn format_extra_context_items<F>(items: &[CoqParam], f: &mut F) -> Result<(Vec<String>, bool), fmt::Error>
+where
+    F: Write,
+{
+    let mut context_names = Vec::new();
+    let mut counter = 0;
+
+    let mut depends_on_sigma = false;
+
+    // write coq parameters
+    if !items.is_empty() {
+        write!(f, "{} (* Additional parameters *)\n", BASE_INDENT)?;
+        write!(f, "{}Context ", BASE_INDENT)?;
+
+        for it in items.iter() {
+            let name = format!("_CTX{}", counter);
+            counter += 1;
+
+            write!(f, "{}", it.with_name(name.clone()))?;
+            context_names.push(name);
+            depends_on_sigma = depends_on_sigma || it.depends_on_sigma;
+        }
+        write!(f, ".\n")?;
+    }
+    write!(f, "\n")?;
+
+    Ok((context_names, depends_on_sigma))
 }
 
 pub type AbstractStructRef<'def> = &'def RefCell<Option<AbstractStruct<'def>>>;
@@ -2109,13 +2153,15 @@ impl<'def> AbstractEnum<'def> {
         for (_name, variant, _) in self.variants.iter() {
             let v = variant.borrow();
             let v = v.as_ref().unwrap();
-            write!(out, "{}\n", v.variant_def.generate_coq_type_def_core(&v.ty_params)).unwrap();
+            // TODO: might also need to handle extra context items
+            write!(out, "{}\n", v.variant_def.generate_coq_type_def_core(&v.ty_params, &[])).unwrap();
 
             if let Some(inv) = &v.invariant {
                 let inv_def = inv.generate_coq_type_def_core(
                     v.variant_def.plain_ty_name.as_str(),
                     v.variant_def.plain_rt_def_name.as_str(),
                     &rt_params,
+                    &[],
                 );
                 write!(out, "{}\n", inv_def).unwrap();
             }
@@ -2582,19 +2628,46 @@ pub struct LoopSpec {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CoqParam {
+    /// the name
     pub name: CoqName,
+    /// the type
     pub ty: CoqType,
+    /// implicit or not?
     pub implicit: bool,
+    /// does this depend on Σ?
+    pub depends_on_sigma: bool,
 }
 
 impl CoqParam {
     pub fn new(name: CoqName, ty: CoqType, implicit: bool) -> Self {
-        Self { name, ty, implicit }
+        let depends_on_sigma = if let CoqType::Literal(ref lit) = ty { lit.contains("Σ") } else { false };
+        Self {
+            name,
+            ty,
+            implicit,
+            depends_on_sigma,
+        }
+    }
+
+    pub fn with_name(&self, name: String) -> Self {
+        Self::new(CoqName::Named(name), self.ty.clone(), self.implicit)
     }
 
     pub fn format(&self, f: &mut Formatter, make_implicits: bool) -> fmt::Result {
         if self.implicit {
-            if make_implicits { write!(f, "`{{{}}}", self.ty) } else { write!(f, "`({})", self.ty) }
+            if make_implicits {
+                if let CoqName::Named(ref name) = self.name {
+                    write!(f, "`{{{} : !{}}}", name, self.ty)
+                } else {
+                    write!(f, "`{{!{}}}", self.ty)
+                }
+            } else {
+                if let CoqName::Named(ref name) = self.name {
+                    write!(f, "`({} : !{})", name, self.ty)
+                } else {
+                    write!(f, "`(!{})", self.ty)
+                }
+            }
         } else {
             write!(f, "({} : {})", self.name, self.ty)
         }
