@@ -1037,7 +1037,7 @@ impl<'def> Function<'def> {
             writeln!(f, ", ")?;
         }
 
-        // assume Coq assumptions
+        // assume link-time Coq assumptions
         // layoutable
         for st in self.layoutable_syntys.iter() {
             write!(f, "syn_type_is_layoutable ({}) →\n", st)?;
@@ -1045,6 +1045,14 @@ impl<'def> Function<'def> {
         // statics are registered
         for s in self.used_statics.iter() {
             write!(f, "static_is_registered \"{}\" {} (existT _ {}) →\n", s.ident, s.loc_name, s.ty)?;
+        }
+
+        // write extra link-time assumptions
+        if !self.spec.extra_link_assum.is_empty() {
+            write!(f, "(* extra link-time assumptions *)\n")?;
+            for s in self.spec.extra_link_assum.iter() {
+                write!(f, "{s} →\n")?;
+            }
         }
 
         // write iris assums

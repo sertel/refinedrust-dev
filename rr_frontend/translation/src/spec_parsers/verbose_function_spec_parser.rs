@@ -122,6 +122,8 @@ enum MetaIProp {
     Type(specs::TyOwnSpec),
     /// #[rr::ensures(#observe "γ" : "2 * x")]
     Observe(String, String),
+    /// #[rr::requires(#linktime "st_size {st_of T} < MaxInt isize")]
+    Linktime(String),
 }
 
 impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
@@ -163,6 +165,11 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
 
                     Ok(MetaIProp::Observe(gname.value().to_string(), term))
                 },
+                "linktime" => {
+                    let term: parse::LitStr = input.parse(meta)?;
+                    let (term, meta) = process_coq_literal(&term.value(), *meta);
+                    Ok(MetaIProp::Linktime(term))
+                },
                 _ => {
                     panic!("invalid macro command: {:?}", macro_cmd.value());
                 },
@@ -202,6 +209,7 @@ impl Into<specs::IProp> for MetaIProp {
                 specs::IProp::Atom(lit)
             },
             Self::Observe(name, term) => specs::IProp::Atom(format!("gvar_pobs {name} ({term})")),
+            Self::Linktime(p) => specs::IProp::Linktime(p),
         }
     }
 }

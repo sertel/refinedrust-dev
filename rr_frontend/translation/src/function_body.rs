@@ -434,6 +434,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // For closures, we only handle the parent's args here!
                 // TODO: do we need to do something special for the parent's late-bound region
                 // parameters?
+                // TODO: should we always take the lifetime parameters?
                 let params = parent_args;
                 //proc.get_type_params();
                 info!("Function generic args: {:?}", params);

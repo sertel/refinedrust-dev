@@ -163,6 +163,7 @@ This can be changed by format specifiers starting with `#` which preceed the str
 
 - The `#iris` format specifier interprets `P` as an Iris proposition.
 - Type assignments for locations/places can be specified by the `#type "l" : "r" @ "ty"` template, specifying that `l` is an owned pointer storing a value of type `r @ ty`.
+- In `rr::requires` clauses on functions, the `#linktime` specifier makes this a link-time assumption. This is useful for assumptions on the size of a datatype under the used layout algorithm. These assumptions do not become part of the set of preconditions one has to prove when calling this function, but instead have to be proved when linking the whole program together for a closed adequacy result.
 - In `rr::invariant` clauses on structs, the `#own` specifier only makes the following Iris proposition available in the invariant for owned types.
 - In `rr::invariant` clauses on structs, the `#shr` specifier only makes the following Iris proposition available in the invariant for shared types.
 

@@ -249,6 +249,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                             // ignore
                             v.push(None);
                         },
+                        ty::RegionKind::ReVar(..) => {
+                            // ignore
+                            v.push(None);
+                        },
                         _ => {
                             return Err(TranslationError::UnsupportedFeature {
                                 description: format!("Unsupported lifetime generic {:?}", r),

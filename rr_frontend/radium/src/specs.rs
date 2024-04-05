@@ -605,7 +605,15 @@ impl<'def> Type<'def> {
             },
             Self::Unit => CoqType::Unit,
             Self::Never => CoqType::Unit, // NOTE: could also choose to use an uninhabited type here
-            Self::Var(i) => env.get(*i).unwrap().as_ref().unwrap().clone(),
+            Self::Var(i) => match env.get(*i) {
+                Some(e) => match e.as_ref() {
+                    Some(e) => e.clone(),
+                    None => unimplemented!("expected type parameter, got lifetime"),
+                },
+                None => {
+                    unimplemented!("did not find type parameter {i} in environment {:?}", env)
+                },
+            },
             Self::RawPtr => CoqType::Loc,
         }
     }
@@ -2538,6 +2546,7 @@ pub enum IProp {
     Pure(String),
     // prop, name
     PureWithName(String, String),
+    Linktime(String),
     Sep(Vec<IProp>),
     Disj(Vec<IProp>),
     Conj(Vec<IProp>),
@@ -2578,22 +2587,23 @@ impl Display for IProp {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
             Self::True => write!(f, "True"),
-            Self::Atom(a) => write!(f, "{}", a),
-            Self::Pure(a) => write!(f, "⌜{}⌝", a),
+            Self::Atom(a) => write!(f, "{a}"),
+            Self::Pure(a) => write!(f, "⌜{a}⌝"),
+            Self::Linktime(a) => write!(f, "⌜{a}⌝"),
             Self::PureWithName(p, name) => write!(f, "⌜name_hint \"{name}\" ({p})⌝"),
             Self::Sep(v) => fmt_with_op(&v, "∗", f),
             Self::Disj(v) => fmt_with_op(&v, "∨", f),
             Self::Conj(v) => fmt_with_op(&v, "∧", f),
             Self::Wand(l, r) => {
-                write!(f, "({}) -∗ {}", l, r)
+                write!(f, "({l}) -∗ {r}")
             },
             Self::Exists(b, p) => {
                 fmt_binders(b, "∃", f)?;
-                write!(f, ", {}", p)
+                write!(f, ", {p}")
             },
             Self::All(b, p) => {
                 fmt_binders(b, "∀", f)?;
-                write!(f, ", {}", p)
+                write!(f, ", {p}")
             },
         }
     }
@@ -2691,6 +2701,9 @@ pub struct FunctionSpec<'def> {
     pub function_name: String,
     /// The name of the spec
     pub spec_name: String,
+
+    /// Extra linktime assumptions
+    pub extra_link_assum: Vec<String>,
 
     /// lifetime parameters (available in the typing proof)
     pub lifetimes: Vec<Lft>,
@@ -2846,6 +2859,9 @@ pub struct FunctionSpecBuilder<'def> {
     coq_params: Vec<CoqParam>,
     late_coq_params: Vec<CoqParam>,
 
+    /// Extra link-time assumptions
+    extra_link_assum: Vec<String>,
+
     lifetimes: Vec<Lft>,
     params: Vec<(CoqName, CoqType)>,
     ty_params: Vec<(CoqName, CoqType)>,
@@ -2877,8 +2893,8 @@ impl<'def> FunctionSpecBuilder<'def> {
             ret: None,
             post: IProp::Sep(Vec::new()),
             coq_names: HashSet::new(),
-            //ty_params: Vec::new(),
             has_spec: false,
+            extra_link_assum: Vec::new(),
         }
     }
 
@@ -2999,6 +3015,11 @@ impl<'def> FunctionSpecBuilder<'def> {
 
     /// Add a new (separating) conjunct to the function's precondition.
     pub fn add_precondition(&mut self, pre: IProp) -> Result<(), String> {
+        if let IProp::Linktime(p) = pre {
+            self.extra_link_assum.push(p);
+            return Ok(());
+        }
+
         if let IProp::Sep(v) = &mut self.pre {
             v.push(pre);
         } else {
@@ -3050,6 +3071,7 @@ impl<'def> FunctionSpecBuilder<'def> {
         self.coq_params.extend(self.late_coq_params.into_iter());
         let ret = self.ret.unwrap_or(TypeWithRef::make_unit());
         FunctionSpec {
+            extra_link_assum: self.extra_link_assum,
             function_name: name.to_string(),
             spec_name: spec_name.to_string(),
             coq_params: self.coq_params,
