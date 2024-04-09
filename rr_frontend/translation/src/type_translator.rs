@@ -1445,15 +1445,19 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 })
             },
             TyKind::RawPtr(_) =>
-            // just use a dummmy raw ptr type here that has no semantic interpretation, but of which we can
-            // get the syntype
             {
                 Ok(radium::Type::RawPtr)
             },
-            //Ok(radium::Layout::PtrLayout),
             // TODO: this will have to change for handling fat ptrs. see the corresponding rustc
             // def for inspiration.
             TyKind::Ref(region, ty, mutability) => {
+                if ty.is_str() || ty.is_array_slice() {
+                    // special handling for slice types commonly used in error handling branches we
+                    // don't care about
+                    // TODO: emit a warning
+                    return Ok(radium::Type::Unit);
+                }
+
                 let translated_ty = self.translate_type_with_deps(ty, adt_deps)?;
                 // in case this isn't a universal region, we usually won't care about it.
                 let lft = if let Some(lft) = self.translate_region(region) {
