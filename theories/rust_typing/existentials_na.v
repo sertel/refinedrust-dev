@@ -140,11 +140,20 @@ Notation "'∃na;' P ',' τ" := (na_ex_plain_t _ _ P τ) (at level 40) : stdpp_s
 Section generated_code.
   From refinedrust Require Import typing shims.
 
+  Section UnsafeCell_sls.
+    Context `{!typeGS Σ}.
+
+    (* NOTE: Is StructReprTransparent ready? *)
+    Definition UnsafeCell_sls : struct_layout_spec := mk_sls "UnsafeCell" [
+      ("value", IntSynType I32)] StructReprTransparent.
+    Definition UnsafeCell_st : syn_type := UnsafeCell_sls.
+  End UnsafeCell_sls.
+
   Section Cell_sls.
     Context `{!typeGS Σ}.
 
     Definition Cell_sls  : struct_layout_spec := mk_sls "Cell" [
-      ("value", IntSynType I32)] StructReprRust.
+      ("value", UnsafeCell_st)] StructReprRust.
     Definition Cell_st  : syn_type := Cell_sls .
   End Cell_sls.
 
@@ -152,26 +161,43 @@ Section generated_code.
     Context `{!typeGS Σ}.
     Open Scope printing_sugar.
 
-    Definition Cell_new_def : function := {|
+    Definition UnsafeCell_new_def : function := {|
       f_args := [
         ("value", (it_layout I32) : layout)
       ];
       f_local_vars := [
-        ("__0", (use_layout_alg' (Cell_st)) : layout);
+        ("__0", (use_layout_alg' (UnsafeCell_st)) : layout);
         ("__2", (it_layout I32) : layout)
       ];
       f_code :=
         <[
         "_bb0" :=
         "__2" <-{ IntOp I32 } use{ IntOp I32 } ("value");
-        "__0" <-{ (use_op_alg' (Cell_st)) } StructInit (Cell_sls) [("value", use{ IntOp I32 } ("__2") : expr)];
-        return (use{ (use_op_alg' (Cell_st)) } ("__0"))
+        "__0" <-{ (use_op_alg' (UnsafeCell_st)) } StructInit UnsafeCell_sls [("value", use{ IntOp I32 } ("__2") : expr)];
+        return (use{ (use_op_alg' (UnsafeCell_st)) } ("__0"))
         ]>%E $
         ∅;
       f_init := "_bb0";
     |}.
 
-    Definition Cell_get_def : function := {|
+    Definition UnsafeCell_into_inner_def : function := {|
+      f_args := [
+        ("self", (use_layout_alg' (UnsafeCell_st)) : layout)
+      ];
+      f_local_vars := [
+        ("__0", (it_layout I32) : layout)
+      ];
+      f_code :=
+        <[
+        "_bb0" :=
+        "__0" <-{ IntOp I32 } use{ IntOp I32 } (("self") at{ UnsafeCell_sls } "value");
+        return (use{ IntOp I32 } ("__0"))
+        ]>%E $
+        ∅;
+      f_init := "_bb0";
+    |}.
+
+    Definition UnsafeCell_get_old_def : function := {|
       f_args := [
         ("self", void* : layout)
       ];
@@ -182,35 +208,123 @@ Section generated_code.
         <[
         "_bb0" :=
         annot: CopyLftNameAnnot "plft3" "ulft__";
-        "__0" <-{ IntOp I32 } use{ IntOp I32 } ((!{ PtrOp } ( "self" )) at{ (Cell_sls) } "value");
+        "__0" <-{ IntOp I32 } use{ IntOp I32 } ((!{ PtrOp } ( "self" )) at{ (UnsafeCell_sls) } "value");
         return (use{ IntOp I32 } ("__0"))
         ]>%E $
         ∅;
       f_init := "_bb0";
     |}.
 
-    Definition Cell_into_inner_def : function := {|
+    Definition UnsafeCell_get_def : function := {|
       f_args := [
-        ("self", (use_layout_alg' (Cell_st)) : layout)
+        ("self", void* : layout)
       ];
       f_local_vars := [
-        ("__0", (it_layout I32) : layout)
+        ("__0", void* : layout);
+        ("__2", void* : layout);
+        ("__3", void* : layout)
       ];
       f_code :=
         <[
         "_bb0" :=
-        "__0" <-{ IntOp I32 } use{ IntOp I32 } (("self") at{ (Cell_sls) } "value");
+        annot: CopyLftNameAnnot "plft3" "ulft_1";
+        "__3" <-{ PtrOp } &raw{ Shr } (!{ PtrOp } ( "self" ));
+        "__2" <-{ PtrOp } use{ PtrOp } ("__3");
+        "__0" <-{ PtrOp } use{ PtrOp } ("__2");
+        return (use{ PtrOp } ("__0"))
+        ]>%E $
+        ∅;
+      f_init := "_bb0";
+    |}.
+
+    Definition Cell_new_def (UnsafeCell_new_loc : loc) : function := {|
+      f_args := [
+        ("value", (it_layout I32) : layout)
+      ];
+      f_local_vars := [
+        ("__0", (use_layout_alg' (Cell_st)) : layout);
+        ("__2", (use_layout_alg' (UnsafeCell_st)) : layout);
+        ("__3", (it_layout I32) : layout)
+      ];
+      f_code :=
+        <[
+        "_bb0" :=
+        "__3" <-{ IntOp I32 } use{ IntOp I32 } ("value");
+        "__2" <-{ (use_op_alg' (UnsafeCell_st)) } CallE UnsafeCell_new_loc [] [@{expr} use{ IntOp I32 } ("__3")];
+        Goto "_bb1"
+        ]>%E $
+        <[
+        "_bb1" :=
+        "__0" <-{ (use_op_alg' (Cell_st)) } StructInit Cell_sls [("value", use{ (use_op_alg' (UnsafeCell_st)) } ("__2") : expr)];
+        return (use{ (use_op_alg' (Cell_st)) } ("__0"))
+        ]>%E $
+        ∅;
+      f_init := "_bb0";
+    |}.
+
+    Definition Cell_into_inner_def (UnsafeCell_into_inner_loc : loc) : function := {|
+      f_args := [
+        ("self", (use_layout_alg' (Cell_st)) : layout)
+      ];
+      f_local_vars := [
+        ("__0", (it_layout I32) : layout);
+        ("__2", (use_layout_alg' (UnsafeCell_st)) : layout)
+      ];
+      f_code :=
+        <[
+        "_bb0" :=
+        "__2" <-{ (use_op_alg' (UnsafeCell_st)) } use{ (use_op_alg' (UnsafeCell_st)) } (("self") at{ Cell_sls } "value");
+        "__0" <-{ IntOp I32 } CallE UnsafeCell_into_inner_loc [] [@{expr} use{ (use_op_alg' (UnsafeCell_st)) } ("__2")];
+        Goto "_bb1"
+        ]>%E $
+        <[
+        "_bb1" :=
         return (use{ IntOp I32 } ("__0"))
         ]>%E $
         ∅;
       f_init := "_bb0";
     |}.
+
   End code.
+
+  Section UnsafeCell_ty.
+    Context `{!typeGS Σ}.
+
+    Definition UnsafeCell_ty : type (plist place_rfn [Z : Type]).
+    Proof using  Type*. exact (struct_t UnsafeCell_sls +[(int I32)]). Defined.
+
+    Definition UnsafeCell_rt : Type.
+    Proof using . let __a := eval hnf in (rt_of UnsafeCell_ty) in exact __a. Defined.
+
+    Global Typeclasses Transparent UnsafeCell_ty.
+    Global Typeclasses Transparent UnsafeCell_rt.
+ End UnsafeCell_ty.
+ Global Arguments UnsafeCell_rt : clear implicits.
+
+  Section UnsafeCell_inv_t.
+    Context `{!typeGS Σ}.
+
+    Program Definition UnsafeCell_inv_t_inv_spec : na_ex_inv_def (UnsafeCell_rt) (Z) :=
+      na_mk_ex_inv_def
+        (λ π inner_rfn 'x, ⌜inner_rfn = -[#(x)]⌝ ∗ ⌜Zeven x⌝ ∗ True)%I
+        [] [].
+
+    Definition UnsafeCell_inv_t : type (Z) :=
+      na_ex_plain_t _ _ UnsafeCell_inv_t_inv_spec UnsafeCell_ty.
+
+    Definition UnsafeCell_inv_t_rt : Type.
+    Proof using. let __a := eval hnf in (rt_of UnsafeCell_inv_t) in exact __a. Defined.
+
+    Global Typeclasses Transparent UnsafeCell_inv_t.
+    Global Typeclasses Transparent UnsafeCell_inv_t_rt.
+  End UnsafeCell_inv_t.
+  Global Arguments UnsafeCell_inv_t_rt : clear implicits.
 
   Section Cell_ty.
     Context `{!typeGS Σ}.
 
-    Definition Cell_ty : type (plist place_rfn [Z : Type]) := struct_t Cell_sls +[(int I32)].
+    Definition Cell_ty : type (plist place_rfn [UnsafeCell_inv_t_rt : Type]).
+    Proof using  Type*. exact (struct_t Cell_sls +[UnsafeCell_inv_t]). Defined.
     Definition Cell_rt : Type.
     Proof using . let __a := eval hnf in (rt_of Cell_ty) in exact __a. Defined.
 
@@ -225,15 +339,15 @@ Section generated_code.
     Program Definition Cell_inv_t_inv_spec : na_ex_inv_def (Cell_rt) (Z) :=
       na_mk_ex_inv_def
         (λ π inner_rfn 'x, ⌜inner_rfn = -[#(x)]⌝ ∗ ⌜Zeven x⌝ ∗ True)%I
-        [] [] (* _ *).
-    (* Next Obligation. ex_t_solve_timeless. Qed. *)
+        [] [].
 
     Definition Cell_inv_t : type (Z) :=
       na_ex_plain_t _ _ Cell_inv_t_inv_spec Cell_ty.
-    Global Typeclasses Transparent Cell_inv_t.
 
     Definition Cell_inv_t_rt : Type.
-    Proof using. let __a := eval hnf in (rt_of Cell_inv_t) in exact __a. Defined.
+    Proof using . let __a := eval hnf in (rt_of Cell_inv_t) in exact __a. Defined.
+
+    Global Typeclasses Transparent Cell_inv_t.
     Global Typeclasses Transparent Cell_inv_t_rt.
   End Cell_inv_t.
   Global Arguments Cell_inv_t_rt : clear implicits.
@@ -241,61 +355,83 @@ Section generated_code.
   Section specs.
     Context `{!typeGS Σ}.
 
+    Definition type_of_UnsafeCell_new  :=
+      fn(∀ (()) : 0 | (x) : (Z), (λ ϝ, []); x @ (int I32); (λ π : thread_id, (⌜Zeven x⌝)))
+        → ∃ _ : unit, x @ UnsafeCell_inv_t; (λ π : thread_id, True).
+
+    Definition type_of_UnsafeCell_into_inner  :=
+      fn(∀ (()) : 0 | (x) : (Z), (λ ϝ, []); x @ UnsafeCell_inv_t; (λ π : thread_id, True))
+        → ∃ _ : unit, x @ (int I32); (λ π : thread_id, (⌜Zeven x⌝)).
+
+    Definition type_of_UnsafeCell_get_old  :=
+      fn(∀ ((), ulft__) : 1 | (x) : (_), (λ ϝ, []); #x @ (shr_ref UnsafeCell_inv_t ulft__); (λ π : thread_id, True))
+        → ∃ _ : unit, x @ (int I32); (λ π : thread_id, (⌜Zeven x⌝)).
+
     Definition type_of_Cell_new  :=
-      fn(∀ (()) : 0 | (x) : (_), (λ ϝ, []); x @ (int I32); (λ π : thread_id, (⌜Zeven x⌝)))
+      fn(∀ (()) : 0 | (x) : (Z), (λ ϝ, []); x @ (int I32); (λ π : thread_id, (⌜Zeven x⌝)))
         → ∃ _ : unit, x @ Cell_inv_t; (λ π : thread_id, True).
 
     Definition type_of_Cell_into_inner  :=
-      fn(∀ (()) : 0 | (x) : (_), (λ ϝ, []); x @ Cell_inv_t; (λ π : thread_id, True))
-        → ∃ _ : unit, x @ (int I32); (λ π : thread_id, (⌜Zeven x⌝)).
-
-    Definition type_of_Cell_get  :=
-      fn(∀ ((), ulft__) : 1 | (x) : (_), (λ ϝ, []); #x @ (shr_ref Cell_inv_t ulft__); (λ π : thread_id, True))
+      fn(∀ (()) : 0 | (x) : (Z), (λ ϝ, []); x @ Cell_inv_t; (λ π : thread_id, True))
         → ∃ _ : unit, x @ (int I32); (λ π : thread_id, (⌜Zeven x⌝)).
   End specs.
 
   Section proof.
     Context `{!typeGS Σ}.
 
-    Definition Cell_new_lemma  (π : thread_id) : Prop :=
-      syn_type_is_layoutable ((syn_type_of_sls (Cell_sls))) →
-      ⊢ typed_function π (Cell_new_def ) [(syn_type_of_sls (Cell_sls)); IntSynType I32] (type_of_Cell_new ).
+    Definition UnsafeCell_new_lemma (π : thread_id) : Prop :=
+      syn_type_is_layoutable ((UnsafeCell_sls : syn_type)) →
+      ⊢ typed_function π (UnsafeCell_new_def ) [UnsafeCell_st; IntSynType I32] (type_of_UnsafeCell_new ).
+
+    Definition UnsafeCell_into_inner_lemma (π : thread_id) : Prop :=
+      syn_type_is_layoutable ((UnsafeCell_sls : syn_type)) →
+      ⊢ typed_function π (UnsafeCell_into_inner_def ) [IntSynType I32] (type_of_UnsafeCell_into_inner ).
+
+    Definition UnsafeCell_get_old_lemma (π : thread_id) : Prop :=
+      syn_type_is_layoutable (Cell_st) →
+      ⊢ typed_function π (UnsafeCell_get_old_def ) [IntSynType I32] (type_of_UnsafeCell_get_old ).
+
+    Definition Cell_new_lemma (π : thread_id) : Prop :=
+      ∀ (UnsafeCell_new_loc : loc) ,
+      syn_type_is_layoutable ((Cell_sls : syn_type)) →
+      syn_type_is_layoutable ((UnsafeCell_sls : syn_type)) →
+      UnsafeCell_new_loc ◁ᵥ{π} UnsafeCell_new_loc @ function_ptr [IntSynType I32] (type_of_UnsafeCell_new ) -∗
+      typed_function π (Cell_new_def UnsafeCell_new_loc  ) [Cell_st; UnsafeCell_st; IntSynType I32] (type_of_Cell_new ).
 
     Definition Cell_into_inner_lemma (π : thread_id) : Prop :=
-      syn_type_is_layoutable (Cell_st) →
-      ⊢ typed_function π (Cell_into_inner_def ) [IntSynType I32] (type_of_Cell_into_inner ).
-
-    Definition Cell_get_lemma (π : thread_id) : Prop :=
-      syn_type_is_layoutable (Cell_st) →
-      ⊢ typed_function π (Cell_get_def ) [IntSynType I32] (type_of_Cell_get ).
+      ∀ (UnsafeCell_into_inner_loc : loc) ,
+      syn_type_is_layoutable ((Cell_sls : syn_type)) →
+      syn_type_is_layoutable ((UnsafeCell_sls : syn_type)) →
+      UnsafeCell_into_inner_loc ◁ᵥ{π} UnsafeCell_into_inner_loc @ function_ptr [UnsafeCell_st] (type_of_UnsafeCell_into_inner ) -∗
+      typed_function π (Cell_into_inner_def UnsafeCell_into_inner_loc  ) [IntSynType I32; UnsafeCell_st] (type_of_Cell_into_inner ).
   End proof.
 
-  Ltac Cell_new_prelude :=
-    unfold Cell_new_lemma;
-    set (FN_NAME := FUNCTION_NAME "Cell_new");
+  Ltac UnsafeCell_new_prelude :=
+    unfold UnsafeCell_new_lemma;
+    set (FN_NAME := FUNCTION_NAME "UnsafeCell_new");
     intros;
     iStartProof;
-    start_function "Cell_new" ( [] ) (  x );
+    start_function "UnsafeCell_new" ( [] ) (  x );
     set (loop_map := BB_INV_MAP (PolyNil));
     intros arg_value local___0 local___2;
     prepare_parameters ( x );
     init_lfts (∅ );
     init_tyvars ( ∅ ).
 
-  Ltac Cell_into_inner_prelude := (* self -> T *)
-    unfold Cell_into_inner_lemma;
-    set (FN_NAME := FUNCTION_NAME "Cell_into_inner");
+  Ltac UnsafeCell_into_inner_prelude :=
+    unfold UnsafeCell_into_inner_lemma;
+    set (FN_NAME := FUNCTION_NAME "UnsafeCell_into_inner");
     intros;
     iStartProof;
-    start_function "Cell_into_inner" ( [] ) (  x );
+    start_function "UnsafeCell_into_inner" ( [] ) (  x );
     set (loop_map := BB_INV_MAP (PolyNil));
     intros arg_self local___0;
     prepare_parameters ( x );
     init_lfts (∅ );
     init_tyvars ( ∅ ).
 
-  Ltac Cell_get_prelude := (* &self -> T *)
-    unfold Cell_get_lemma;
+  Ltac UnsafeCell_get_old_prelude :=
+    unfold UnsafeCell_get_old_lemma;
     set (FN_NAME := FUNCTION_NAME "Cell_get");
     intros;
     iStartProof;
@@ -307,6 +443,31 @@ Section generated_code.
     init_lfts (named_lft_update "ulft__" ulft__ $ ∅ );
     init_tyvars ( ∅ ).
 
+  Ltac Cell_new_prelude :=
+    unfold Cell_new_lemma;
+    set (FN_NAME := FUNCTION_NAME "Cell_new");
+    intros;
+    iStartProof;
+    start_function "Cell_new" ( [] ) (  x );
+    set (loop_map := BB_INV_MAP (PolyNil));
+    intros arg_value local___0 local___2 local___3;
+    prepare_parameters ( x );
+    init_lfts (∅ );
+    init_tyvars ( ∅ ).
+
+  Ltac Cell_into_inner_prelude :=
+    unfold Cell_into_inner_lemma;
+    set (FN_NAME := FUNCTION_NAME "Cell_into_inner");
+    intros;
+    iStartProof;
+    start_function "Cell_into_inner" ( [] ) (  x );
+    set (loop_map := BB_INV_MAP (PolyNil));
+    intros arg_self local___0 local___2;
+    prepare_parameters ( x );
+    init_lfts (∅ );
+    init_tyvars ( ∅ ).
+
+  (* === V TYPING RULES V === *)
 
   Section na_subtype.
     Context `{!typeGS Σ}.
@@ -387,8 +548,8 @@ Section generated_code.
     Lemma na_typed_place_ex_plain_t_owned π E L l (ty : type rt) x wl bmin K T :
       (∀ r, introduce_with_hooks E L (P.(na_inv_P) π r x)
         (λ L2, typed_place π E L2 l
-                 (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty)) (λ (r : rt) (x : X), P.(na_inv_P) π r x) (λ r x, True))
-                 (#r) bmin (Owned wl) K
+                (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty)) (λ (r : rt) (x : X), P.(na_inv_P) π r x) (λ r x, True))
+                (#r) bmin (Owned wl) K
           (λ L2 κs li b2 bmin' rti ltyi ri strong weak,
             (* no weak update possible - after all, we have just opened this invariant *)
             T L2 κs li b2 bmin' rti ltyi ri strong None)))
@@ -468,10 +629,10 @@ Section generated_code.
           ∀ r, introduce_with_hooks E L2 (P.(na_inv_P) π r x)
             (λ L3, typed_place π E L3 l
                     (ShadowedLtype
-                       (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
-                         (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
-                         (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l)))
-                       (#r) (◁ (∃na; P, ty)))
+                      (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
+                        (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
+                        (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l)))
+                      (#r) (◁ (∃na; P, ty)))
                     (#x) (Owned false) (Shared κ) K
             (λ L2 κs li b2 bmin' rti ltyi ri strong weak,
               T L2 κs li b2 bmin' rti ltyi ri strong None)
@@ -524,6 +685,24 @@ Section generated_code.
       by simp_ltypes.
     Admitted.
 
+    Lemma opened_ltype_acc_shared π {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost κ l r :
+      l ◁ₗ[π, Shared κ] r @ OpenedLtype lt_cur lt_inner lt_full Cpre Cpost -∗
+      l ◁ₗ[π, Owned false] r @ lt_cur ∗
+      (∀ rt_cur' (lt_cur' : ltype rt_cur') r',
+        l ◁ₗ[π, Owned false] r' @ lt_cur' -∗
+        ⌜ltype_st lt_cur' = ltype_st lt_cur⌝ -∗
+        l ◁ₗ[π, Shared κ] r' @ OpenedLtype lt_cur' lt_inner lt_full Cpre Cpost).
+    Proof.
+      rewrite ltype_own_opened_unfold /opened_ltype_own.
+      iIntros "(%ly & ? & ? & ? & ? & ? & Hown)".
+      iSplitL "Hown".
+      { admit. }
+
+      iIntros (rt_cur' lt_cur' r') "? %Hst".
+      rewrite ltype_own_opened_unfold /opened_ltype_own.
+      iExists ly. rewrite Hst. iFrame.
+    Admitted.
+
     Lemma typed_place_opened_shared π E L {rt_cur rt_inner rt_full}
         (lt_cur : ltype rt_cur) (lt_inner: ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost
         (r: place_rfn rt_cur) bmin0 l wl P'' (T : place_cont_t rt_cur) :
@@ -532,60 +711,115 @@ Section generated_code.
           T L' κs l2 b2 bmin rti ltyi ri
             (option_map (λ strong, mk_strong strong.(strong_rt)
               (λ rti2 ltyi2 ri2,
-                MagicLtype ltyi2 (strong.(strong_lt) _ ltyi2 ri2)
-                            (λ _, ⌜1234 = 5678⌝) (λ _, ⌜12345 = 67890⌝))
-                                      (* Cpre Cpost) *)
+                OpenedLtype (strong.(strong_lt) _ ltyi2 ri2) lt_inner lt_full Cpre Cpost)
               (λ rti2 ri2, strong.(strong_rfn) _ ri2)
               strong.(strong_R)) strong)
             None)
       ⊢ typed_place π E L l (OpenedLtype lt_cur lt_inner lt_full Cpre Cpost) r bmin0 (Shared wl) P'' T.
     Proof.
-    Admitted.
+      rewrite /typed_place.
+
+      iIntros "HT". iIntros (Φ F ??) "#CTX #HE HL Hna #Hincl0 Hl HR".
+      iPoseProof (opened_ltype_acc_shared with "Hl") as "(Hl & Hcl)".
+      iApply ("HT" with "[//] [//] CTX HE HL Hna [] Hl").
+      { destruct bmin0; done. }
+      iIntros (L' ??????? strong weak) "? Hl Hv".
+      iApply ("HR" with "[$] Hl").
+      iSplit; last done.
+      destruct strong as [ strong | ]; last done.
+      iIntros (???) "Hl Hst".
+      iDestruct "Hv" as "[Hv _]".
+      iMod ("Hv" with "Hl Hst") as "(Hl & %Hst & $)".
+      iPoseProof ("Hcl" with "Hl [//]") as "Hl".
+      cbn. eauto with iFrame.
+    Qed.
   End na_subtype.
+
+  (* === ^ TYPING RULES ^ === *)
+
+  (* NOTE: Is stratisfy only appear after read/write? *)
 
   Section proof.
     Context `{!typeGS Σ}.
 
-    (* Lemma Cell_T_new_proof (π : thread_id) : *)
-    (*   Cell_new_lemma π. *)
-    (* Proof. *)
-    (*   Cell_new_prelude. *)
-
-    (*   rep <- 1 liRStep; liShow. *)
-
-    (*   iApply na_owned_subtype_ex_plain_t. *)
-    (*   liSimpl; liShow. *)
-
-    (*   repeat liRStep; liShow. *)
-
-    (*   all: print_remaining_goal. *)
-    (*   Unshelve. all: sidecond_solver. *)
-    (*   Unshelve. all: sidecond_hammer. *)
-    (*   Unshelve. all: print_remaining_sidecond. *)
-    (* Qed. *)
-
-    (* Lemma Cell_into_inner_proof (π : thread_id) : *)
-    (*   Cell_into_inner_lemma π. *)
-    (* Proof. *)
-    (*   Cell_into_inner_prelude. *)
-
-    (*   repeat liRStep; liShow. *)
-
-    (*   iApply na_typed_place_ex_plain_t_owned. *)
-    (*   liSimpl; liShow. *)
-
-    (*   repeat liRStep; liShow. *)
-
-    (*   all: print_remaining_goal. *)
-    (*   Unshelve. all: sidecond_solver. *)
-    (*   Unshelve. all: sidecond_hammer. *)
-    (*   Unshelve. all: print_remaining_sidecond. *)
-    (* Qed. *)
-
-    Lemma Cell_get_proof (π : thread_id) :
-      Cell_get_lemma π.
+    Lemma UnsafeCell_new_proof (π : thread_id) :
+      UnsafeCell_new_lemma π.
     Proof.
-      Cell_get_prelude.
+      UnsafeCell_new_prelude.
+
+      rep <- 1 liRStep; liShow.
+
+      iApply na_owned_subtype_ex_plain_t.
+      liSimpl; liShow.
+
+      repeat liRStep; liShow.
+
+      all: print_remaining_goal.
+      Unshelve. all: sidecond_solver.
+      Unshelve. all: sidecond_hammer.
+      Unshelve. all: print_remaining_sidecond.
+    Qed.
+
+    Lemma UnsafeCell_into_inner_proof (π : thread_id) :
+      UnsafeCell_into_inner_lemma π.
+    Proof.
+      UnsafeCell_into_inner_prelude.
+
+      repeat liRStep; liShow.
+
+      iApply na_typed_place_ex_plain_t_owned.
+      liSimpl; liShow.
+
+      repeat liRStep; liShow.
+
+      all: print_remaining_goal.
+      Unshelve. all: sidecond_solver.
+      Unshelve. all: sidecond_hammer.
+      Unshelve. all: print_remaining_sidecond.
+    Qed.
+
+    Lemma Cell_new_proof (π : thread_id) :
+      Cell_new_lemma π.
+    Proof.
+      Cell_new_prelude.
+
+      rep <- 1 liRStep; liShow.
+
+      iApply na_owned_subtype_ex_plain_t.
+      liSimpl; liShow.
+
+      repeat liRStep; liShow.
+
+      all: print_remaining_goal.
+      Unshelve. all: sidecond_solver.
+      Unshelve. all: sidecond_hammer.
+      Unshelve. all: print_remaining_sidecond.
+
+      (* NOTE: The QED takes a lot of time *)
+    Admitted.
+
+    Lemma Cell_into_inner_proof (π : thread_id) :
+      Cell_into_inner_lemma π.
+    Proof.
+      Cell_into_inner_prelude.
+
+      repeat liRStep; liShow.
+
+      iApply na_typed_place_ex_plain_t_owned.
+      liSimpl; liShow.
+
+      repeat liRStep; liShow.
+
+      all: print_remaining_goal.
+      Unshelve. all: sidecond_solver.
+      Unshelve. all: sidecond_hammer.
+      Unshelve. all: print_remaining_sidecond.
+    Admitted.
+
+    Lemma UnsafeCell_get_old_proof (π : thread_id) :
+      UnsafeCell_get_old_lemma π.
+    Proof.
+      UnsafeCell_get_old_prelude.
 
       repeat liRStep; liShow.
 
@@ -600,32 +834,7 @@ Section generated_code.
       iApply typed_place_opened_shared.
       liSimpl; liShow.
 
-      do 187 liRStep; liShow.
-
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
-      liRStep; liShow.
+      repeat liRStep; liShow.
 
       all: print_remaining_goal.
       Unshelve. all: sidecond_solver.
