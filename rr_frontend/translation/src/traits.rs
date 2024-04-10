@@ -3,13 +3,32 @@
 use log::info;
 use rustc_hir::def_id::DefId;
 use rustc_infer::infer::TyCtxtInferExt;
+use rustc_middle::ty;
 use rustc_middle::ty::{
     AssocItem, AssocItemContainer, GenericArgsRef, ParamEnv, TraitRef, TyCtxt, TypeVisitableExt,
 };
-use rustc_trait_selection::traits::ImplSource;
+use rustc_trait_selection::traits::{ImplSource, NormalizeExt};
 
 pub(crate) fn associated_items(tcx: TyCtxt, def_id: DefId) -> impl Iterator<Item = &AssocItem> {
     tcx.associated_items(def_id).in_definition_order()
+}
+
+/// Normalize a type in the given environment.
+pub fn normalize_type<'tcx, T>(
+    tcx: TyCtxt<'tcx>,
+    param_env: ParamEnv<'tcx>,
+    ty: T,
+) -> Result<T, Vec<rustc_trait_selection::traits::FulfillmentError<'tcx>>>
+where
+    T: ty::TypeFoldable<ty::TyCtxt<'tcx>>,
+{
+    let infer_ctx = tcx.infer_ctxt().build();
+    rustc_trait_selection::traits::fully_normalize(
+        &infer_ctx,
+        rustc_middle::traits::ObligationCause::dummy(),
+        param_env,
+        ty,
+    )
 }
 
 /// Resolve an implementation of a trait using codegen candidate selection.

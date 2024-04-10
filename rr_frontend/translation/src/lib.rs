@@ -1026,9 +1026,9 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
         }
 
         let ty = ty.skip_binder();
-        match vcx.type_translator.translate_type(&ty).map_err(|x| format!("{:?}", x)) {
+        match vcx.type_translator.translate_type_in_empty_scope(&ty).map_err(|x| format!("{:?}", x)) {
             Ok(translated_ty) => {
-                let full_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(s.to_def_id()));
+                let _full_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(s.to_def_id()));
 
                 let mut const_parser = const_parser::VerboseConstAttrParser::new();
                 let const_spec = const_parser.parse_const_attrs(*s, &const_attrs)?;
