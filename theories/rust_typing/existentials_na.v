@@ -623,27 +623,31 @@ Section generated_code.
       iExists r'; iFrame.
     Qed.
 
-    Lemma na_typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
+    Lemma na_typed_place_ex_plain_t_shared_2 π E L l (ty : type rt) x κ bmin K T :
       prove_with_subtype E L false ProveDirect (£ 1) (λ L1 _ R, R -∗
-        li_tactic (lctx_lft_alive_count_goal E L1 κ)  (λ '(_, L2),
-          ∀ r, introduce_with_hooks E L2 (P.(na_inv_P) π r x)
-            (λ L3, typed_place π E L3 l
-                    (ShadowedLtype
-                      (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
-                        (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
-                        (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l)))
-                      (#r) (◁ (∃na; P, ty)))
-                    (#x) (Owned false) (Shared κ) K
-            (λ L2 κs li b2 bmin' rti ltyi ri strong weak,
-              T L2 κs li b2 bmin' rti ltyi ri strong None)
-        )))
+        li_tactic (lctx_lft_alive_count_goal E L1 κ) (λ '(κs, L2),
+          ∀ r, introduce_with_hooks E L2
+            (P.(na_inv_P) π r x ∗
+             l ◁ₗ[π, Owned false] (#r) @
+               (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
+                  (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
+                  (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l) ∗ llft_elt_toks κs)))
+            (λ L3,
+              typed_place π E L3 l
+                (ShadowedLtype (AliasLtype _ (ty_syn_type ty) l) #tt (◁ (∃na; P, ty)))
+                (#x) (bmin (* intersect Shared *)) (Shared κ) K
+                (λ L4 κs li b2 bmin' rti ltyi ri strong weak,
+                  T L4 κs li b2 bmin' rti ltyi ri strong None))))
       ⊢ typed_place π E L l (◁ (∃na; P, ty))%I (#x) bmin (Shared κ) K T.
     Proof.
+      (* TODO: Check if Hbor is still used. *)
+
       rewrite /prove_with_subtype.
       iIntros "HT".
 
       rewrite /typed_place /introduce_with_hooks.
       iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL Hna Hincl Hl Hcont".
+
       iApply fupd_place_to_wp.
 
       iMod ("HT" with "[] [] [$LFT $TIME $LLCTX] HE HL")
@@ -651,93 +655,80 @@ Section generated_code.
       iSpecialize ("HT" with "HR").
 
       rewrite /li_tactic /lctx_lft_alive_count_goal.
-      iDestruct "HT" as "(% & % & %Hal & HT)".
+      iDestruct "HT" as (???) "HT".
 
       iMod (lctx_lft_alive_count_tok with "HE HL") as (q) "(Htok & Htokcl & HL)"; [ done.. |].
       iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & #Hbor & Hvs)"; [ done.. |].
 
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
       iDestruct "Hl" as (ly) "(>%Halg & >%Hly & >#Hsc & >#Hlb & _ & (% & >%Heq & Hl))".
-      rewrite <- Heq; clear Heq; simpl.
 
-      iMod ("HT" with "[] HE HL HP") as "(% & HL & HT)"; first done.
-      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] [Hincl] [Hl Hsc Hlb]").
-      { admit. (* TODO: na_token *) }
-      { unfold bor_kind_incl. admit. (* NOTE: Is (Owned _) possible? *) }
-      { rewrite ltype_own_shadowed_unfold /shadowed_ltype_own.
-        rewrite ltype_own_opened_unfold /opened_ltype_own.
+      iMod ("HT" with "[] HE HL [$HP Hl]") as "HT"; first done.
+      { rewrite ltype_own_opened_unfold /opened_ltype_own.
+        iExists ly; repeat iR.
+
         rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+        iSplitL "Hl".
+        { iExists ly; repeat iR.
+          iExists r; iR.
+          admit. (* TODO: Get rid of the later modality *) }
 
-        simp_ltypes; iR.
+        rewrite /logical_step.
+        iExists 0%nat.
+        iSplitR.
+        { iApply additive_time_receipt_0. }
 
-        iSplitR; iExists ly; repeat iR.
-        { admit. (* TODO: opened_ltype_own (ltypes.v:3213) *) }
+        iIntros "!> _ _ !> % % % HP".
+        iSplitR.
+        { admit. }
 
-        iExists x; iR.
-        rewrite /na_ex_plain_t /ty_shr.
-        repeat iR; by iExists ly. }
+        iIntros "Hκs Hl".
+        iMod ("HP" with "Hκs") as "(-> & HP)".
+        rewrite ltype_own_core_equiv.
+        simp_ltypes.
+
+        admit. }
+
+      iDestruct "HT" as (?) "(HL & HT)".
+
+      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hincl [Htokcl Hvs]").
+      { admit. (* TODO: na_token *) }
+      { rewrite ltype_own_shadowed_unfold /shadowed_ltype_own.
+
+        iR; iSplitR.
+        { rewrite ltype_own_alias_unfold /alias_lty_own.
+          admit. (* TODO: Contradiction *) }
+
+        admit. }
 
       iModIntro.
-      iIntros (L'' κs' l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl [ Hstrong _ ]".
+      iIntros (? ? ? ? ? ? ? ? strong ?) "Hincl Hl [ Hstrong _ ]".
       iApply ("Hcont" with "Hincl Hl").
-
       destruct strong; iSplit; [| done.. ].
       by simp_ltypes.
     Admitted.
 
-    Lemma opened_ltype_acc_shared π {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost κ l r :
-      l ◁ₗ[π, Shared κ] r @ OpenedLtype lt_cur lt_inner lt_full Cpre Cpost -∗
-      l ◁ₗ[π, Owned false] r @ lt_cur ∗
-      (∀ rt_cur' (lt_cur' : ltype rt_cur') r',
-        l ◁ₗ[π, Owned false] r' @ lt_cur' -∗
-        ⌜ltype_st lt_cur' = ltype_st lt_cur⌝ -∗
-        l ◁ₗ[π, Shared κ] r' @ OpenedLtype lt_cur' lt_inner lt_full Cpre Cpost).
+    (* alias_lty_own: Add Shared from Owned without maybe_cred *)
+    Lemma typed_place_alias_shared π E L l l2 rt''' (r : place_rfn rt''') st bmin0 κ P''' T :
+      find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
+        typed_place π E L l2 lt2 r2 b2 b2 P''' (λ L' κs li b3 bmin rti ltyi ri strong weak,
+          T L' κs li b3 bmin rti ltyi ri
+            (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, AliasLtype rt''' st l2) (λ _ _, r)
+              (* give back ownership through R *)
+              (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
+            (fmap (λ weak, mk_weak (λ _ _, AliasLtype rt''' st l2) (λ _, r)
+              (λ ltyi2 ri2, l2 ◁ₗ[π, b2] weak.(weak_rfn) ri2 @ weak.(weak_lt) ltyi2 ri2 ∗ weak.(weak_R) ltyi2 ri2)) weak)
+            ))
+      ⊢ typed_place π E L l (AliasLtype rt''' st l2) r bmin0 (Shared κ) P''' T.
     Proof.
-      rewrite ltype_own_opened_unfold /opened_ltype_own.
-      iIntros "(%ly & ? & ? & ? & ? & ? & Hown)".
-      iSplitL "Hown".
-      { admit. }
-
-      iIntros (rt_cur' lt_cur' r') "? %Hst".
-      rewrite ltype_own_opened_unfold /opened_ltype_own.
-      iExists ly. rewrite Hst. iFrame.
     Admitted.
 
-    Lemma typed_place_opened_shared π E L {rt_cur rt_inner rt_full}
-        (lt_cur : ltype rt_cur) (lt_inner: ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost
-        (r: place_rfn rt_cur) bmin0 l wl P'' (T : place_cont_t rt_cur) :
-      typed_place π E L l lt_cur r bmin0 (Owned false) P''
-        (λ L' κs l2 b2 bmin rti ltyi ri strong weak,
-          T L' κs l2 b2 bmin rti ltyi ri
-            (option_map (λ strong, mk_strong strong.(strong_rt)
-              (λ rti2 ltyi2 ri2,
-                OpenedLtype (strong.(strong_lt) _ ltyi2 ri2) lt_inner lt_full Cpre Cpost)
-              (λ rti2 ri2, strong.(strong_rfn) _ ri2)
-              strong.(strong_R)) strong)
-            None)
-      ⊢ typed_place π E L l (OpenedLtype lt_cur lt_inner lt_full Cpre Cpost) r bmin0 (Shared wl) P'' T.
-    Proof.
-      rewrite /typed_place.
-
-      iIntros "HT". iIntros (Φ F ??) "#CTX #HE HL Hna #Hincl0 Hl HR".
-      iPoseProof (opened_ltype_acc_shared with "Hl") as "(Hl & Hcl)".
-      iApply ("HT" with "[//] [//] CTX HE HL Hna [] Hl").
-      { destruct bmin0; done. }
-      iIntros (L' ??????? strong weak) "? Hl Hv".
-      iApply ("HR" with "[$] Hl").
-      iSplit; last done.
-      destruct strong as [ strong | ]; last done.
-      iIntros (???) "Hl Hst".
-      iDestruct "Hv" as "[Hv _]".
-      iMod ("Hv" with "Hl Hst") as "(Hl & %Hst & $)".
-      iPoseProof ("Hcl" with "Hl [//]") as "Hl".
-      cbn. eauto with iFrame.
-    Qed.
   End na_subtype.
 
   (* === ^ TYPING RULES ^ === *)
 
   (* NOTE: Is stratisfy only appear after read/write? *)
+  (* > I was not able to reach it. *)
 
   Section proof.
     Context `{!typeGS Σ}.
@@ -826,22 +817,20 @@ Section generated_code.
       unfold Cell_inv_t; simpl.
 
       unfold bor_kind_min.
-      iApply na_typed_place_ex_plain_t_shared.
+      iApply na_typed_place_ex_plain_t_shared_2.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
 
-      iApply typed_place_opened_shared.
+      iApply typed_place_alias_shared.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
 
-      all: print_remaining_goal.
-      Unshelve. all: sidecond_solver.
-      Unshelve. all: sidecond_hammer.
-      Unshelve. all: print_remaining_sidecond.
-    Qed.
+      (* Unshelve. all: sidecond_solver. *)
+      (* Unshelve. all: sidecond_hammer. *)
+      (* Unshelve. all: print_remaining_sidecond. *)
+    Admitted.
   End proof.
-
 
 End generated_code.
