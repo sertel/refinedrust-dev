@@ -59,7 +59,6 @@ nix-cache:
 
 clippy:
   stage: lint
-  allow_failure: true
   script:
    - cd rr_frontend
    - nix develop -c cargo clippy --all-targets --all-features --no-deps
