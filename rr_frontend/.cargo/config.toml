@@ -1,0 +1,245 @@
+[build]
+rustflags = [
+    # === ENABLE ALL LINTS ===
+
+    "-Dclippy::complexity",
+    "-Dclippy::correctness",
+    "-Dclippy::nursery",
+    "-Dclippy::pedantic",
+    "-Dclippy::perf",
+    "-Dclippy::restriction",
+    "-Dclippy::style",
+    "-Dclippy::suspicious",
+
+    # === REASONABLE LINTS ===
+
+    # Rust warnings
+    "-Adead_code",
+    "-Adeprecated",
+    "-Aunused_imports",
+    "-Aunused_mut",
+    "-Aunused_variables",
+
+    # clippy::complexity
+    "-Aclippy::bind_instead_of_map",
+    "-Aclippy::borrow_deref_ref",
+    "-Aclippy::clone_on_copy",
+    "-Aclippy::explicit_auto_deref",
+    "-Aclippy::extra_unused_lifetimes",
+    "-Aclippy::manual_find",
+    "-Aclippy::manual_flatten",
+    "-Aclippy::match_single_binding",
+    "-Aclippy::needless_borrowed_reference",
+    "-Aclippy::needless_lifetimes",
+    "-Aclippy::only_used_in_recursion",
+    "-Aclippy::unnecessary_unwrap",
+    "-Aclippy::useless_conversion",
+    "-Aclippy::useless_format",
+
+    # clippy::correctness
+    "-Aclippy::never_loop",
+    "-Aclippy::option_env_unwrap",
+    "-Aclippy::redundant_locals",
+    "-Aclippy::unused_io_amount",
+
+    # clippy::nursery
+    "-Aclippy::collection_is_never_read",
+    "-Aclippy::debug_assert_with_mut_call",
+    "-Aclippy::derive_partial_eq_without_eq",
+    "-Aclippy::empty_line_after_doc_comments",
+    "-Aclippy::equatable_if_let",
+    "-Aclippy::iter_on_single_items",
+    "-Aclippy::missing_const_for_fn",
+    "-Aclippy::needless_collect",
+    "-Aclippy::needless_pass_by_ref_mut",
+    "-Aclippy::option_if_let_else",
+    "-Aclippy::or_fun_call",
+    "-Aclippy::redundant_clone",
+    "-Aclippy::redundant_pub_crate",
+    "-Aclippy::string_lit_as_bytes",
+    "-Aclippy::type_repetition_in_bounds",
+    "-Aclippy::use_self",
+    "-Aclippy::useless_let_if_seq",
+
+    # clippy::pedantic
+    "-Aclippy::bool_to_int_with_if",
+    "-Aclippy::cast_lossless",
+    "-Aclippy::cloned_instead_of_copied",
+    "-Aclippy::default_trait_access",
+    "-Aclippy::doc_markdown",
+    "-Aclippy::expl_impl_clone_on_copy",
+    "-Aclippy::flat_map_option",
+    "-Aclippy::from_iter_instead_of_collect",
+    "-Aclippy::if_not_else",
+    "-Aclippy::inefficient_to_string",
+    "-Aclippy::items_after_statements",
+    "-Aclippy::manual_let_else",
+    "-Aclippy::manual_string_new",
+    "-Aclippy::map_unwrap_or",
+    "-Aclippy::match_same_arms",
+    "-Aclippy::must_use_candidate",
+    "-Aclippy::needless_continue",
+    "-Aclippy::needless_pass_by_value",
+    "-Aclippy::redundant_closure_for_method_calls",
+    "-Aclippy::ref_binding_to_reference",
+    "-Aclippy::semicolon_if_nothing_returned",
+    "-Aclippy::trivially_copy_pass_by_ref",
+    "-Aclippy::unnecessary_wraps",
+    "-Aclippy::unused_self",
+
+    # clippy::perf
+    "-Aclippy::manual_retain",
+    "-Aclippy::map_entry",
+    "-Aclippy::to_string_in_format_args",
+
+    # clippy::restriction
+    "-Aclippy::create_dir",
+    "-Aclippy::empty_structs_with_brackets",
+    "-Aclippy::get_unwrap",
+    "-Aclippy::if_then_some_else_none",
+    "-Aclippy::impl_trait_in_params",
+    "-Aclippy::mod_module_files",
+    "-Aclippy::non_ascii_literal",
+    "-Aclippy::panic_in_result_fn",
+    "-Aclippy::partial_pub_fields",
+    "-Aclippy::pub_use",
+    "-Aclippy::pub_with_shorthand",
+    "-Aclippy::redundant_type_annotations",
+    "-Aclippy::ref_patterns",
+    "-Aclippy::semicolon_inside_block",
+    "-Aclippy::str_to_string",
+    "-Aclippy::string_to_string",
+    "-Aclippy::tests_outside_test_module",
+    "-Aclippy::unneeded_field_pattern",
+    "-Aclippy::unwrap_in_result",
+
+    # clippy::style
+    "-Aclippy::collapsible_else_if",
+    "-Aclippy::collapsible_if",
+    "-Aclippy::collapsible_match",
+    "-Aclippy::explicit_into_iter_loop",
+    "-Aclippy::explicit_iter_loop",
+    "-Aclippy::from_over_into",
+    "-Aclippy::if_same_then_else",
+    "-Aclippy::inherent_to_string",
+    "-Aclippy::into_iter_on_ref",
+    "-Aclippy::len_zero",
+    "-Aclippy::let_and_return",
+    "-Aclippy::manual_map",
+    "-Aclippy::manual_while_let_some",
+    "-Aclippy::map_clone",
+    "-Aclippy::match_like_matches_macro",
+    "-Aclippy::needless_borrow",
+    "-Aclippy::needless_late_init",
+    "-Aclippy::needless_return",
+    "-Aclippy::new_without_default",
+    "-Aclippy::op_ref",
+    "-Aclippy::redundant_closure",
+    "-Aclippy::redundant_field_names",
+    "-Aclippy::redundant_pattern_matching",
+    "-Aclippy::redundant_static_lifetimes",
+    "-Aclippy::single_char_add_str",
+    "-Aclippy::single_component_path_imports",
+    "-Aclippy::single_match",
+    "-Aclippy::toplevel_ref_arg",
+    "-Aclippy::unused_unit",
+    "-Aclippy::unwrap_or_default",
+    "-Aclippy::write_with_newline",
+
+    # clippy::suspicious
+    "-Aclippy::non_canonical_partial_ord_impl",
+    "-Aclippy::suspicious_doc_comments",
+
+    # === REQUIRE DISCUSSION ===
+
+    # clippy::pedantic
+    "-Aclippy::cast_possible_truncation",
+    "-Aclippy::enum_glob_use",
+    "-Aclippy::manual_assert",
+    "-Aclippy::missing_errors_doc",
+    "-Aclippy::missing_panics_doc",
+    "-Aclippy::module_name_repetitions",
+    "-Aclippy::redundant_else",
+    "-Aclippy::single_match_else",
+    "-Aclippy::uninlined_format_args",
+    "-Aclippy::wildcard_imports",
+
+    # clippy::restriction
+    "-Aclippy::absolute_paths",
+    "-Aclippy::arithmetic_side_effects",
+    "-Aclippy::as_conversions",
+    "-Aclippy::clone_on_ref_ptr",
+    "-Aclippy::exit",
+    "-Aclippy::expect_used",
+    "-Aclippy::indexing_slicing",
+    "-Aclippy::missing_assert_message",
+    "-Aclippy::missing_asserts_for_indexing",
+    "-Aclippy::missing_docs_in_private_items",
+    "-Aclippy::panic",
+    "-Aclippy::pattern_type_mismatch",
+    "-Aclippy::print_stderr",
+    "-Aclippy::print_stdout",
+    "-Aclippy::string_slice",
+    "-Aclippy::undocumented_unsafe_blocks",
+    "-Aclippy::unimplemented",
+    "-Aclippy::unnecessary_safety_comment",
+    "-Aclippy::unwrap_used",
+    "-Aclippy::use_debug",
+
+    # clippy::style
+    "-Aclippy::enum_variant_names",
+
+    # === AVOIDABLE LINTS ===
+
+    # clippy::complexity
+    "-Aclippy::too_many_arguments",
+    "-Aclippy::type_complexity",
+
+    # clippy::nursery
+    "-Aclippy::cognitive_complexity",
+
+    # clippy::pedantic
+    "-Aclippy::implicit_hasher",
+    "-Aclippy::many_single_char_names",
+    "-Aclippy::match_wildcard_for_single_variants",
+    "-Aclippy::too_many_lines",
+
+    # clippy::restriction
+    "-Aclippy::default_numeric_fallback",
+    "-Aclippy::else_if_without_else",
+    "-Aclippy::exhaustive_enums",
+    "-Aclippy::exhaustive_structs",
+    "-Aclippy::implicit_return",
+    "-Aclippy::integer_division",
+    "-Aclippy::min_ident_chars",
+    "-Aclippy::missing_inline_in_public_items",
+    "-Aclippy::missing_trait_methods",
+    "-Aclippy::pub_with_shorthand", # ("pub_without_shortand" is allowed)
+    "-Aclippy::question_mark_used",
+    "-Aclippy::self_named_module_files", # ("mod_module_files" is allowed)
+    "-Aclippy::semicolon_outside_block", # ("semicolon_outside_block" is allowed)
+    "-Aclippy::shadow_reuse",
+    "-Aclippy::shadow_same",
+    "-Aclippy::shadow_unrelated",
+    "-Aclippy::similar_names",
+    "-Aclippy::single_call_fn",
+    "-Aclippy::single_char_lifetime_names",
+    "-Aclippy::std_instead_of_alloc",
+    "-Aclippy::std_instead_of_core",
+    "-Aclippy::unreachable",
+    "-Aclippy::wildcard_enum_match_arm",
+
+    # clippy::style
+    "-Aclippy::just_underscores_and_digits",
+    "-Aclippy::upper-case-acronyms",
+
+    # === SPECIFIC LINTS ===
+
+    # `clippy::restriction` is enabled globally, but used carefully.
+    "-Aclippy::blanket_clippy_restriction_lints",
+
+    # These lints could be false positives, and should be caught by other lints.
+    "-Aclippy::ignored_unit_patterns",
+    "-Aclippy::let_underscore_untyped",
+    "-Aclippy::let_unit_value",
+]
