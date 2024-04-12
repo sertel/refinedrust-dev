@@ -3143,11 +3143,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let translated_pl = self.translate_place(pl)?;
                 info!("getting discriminant of {:?} at type {:?}", pl, ty);
 
-                let translated_ty = self.ty_translator.translate_type(&ty.ty)?;
-                if let radium::Type::Enum(eu) = translated_ty {
-                    let els = eu.generate_enum_layout_spec_term();
+                if let ty::TyKind::Adt(adt_def, args) = ty.ty.kind() {
+                    let enum_use = self.ty_translator.generate_enum_use(*adt_def, args.iter())?;
+                    let els = enum_use.generate_raw_syn_type_term();
+
                     let discriminant_acc = radium::Expr::EnumDiscriminant {
-                        els,
+                        els: els.to_string(),
                         e: Box::new(translated_pl),
                     };
                     // need to do a load from this place
@@ -3168,8 +3169,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 } else {
                     Err(TranslationError::UnsupportedFeature {
                         description: format!(
-                            "We do not support discriminant accesses on non-enum types: {:?}",
-                            rval
+                            "We do not support discriminant accesses on non-enum types: {:?}; got type {:?}",
+                            rval, ty.ty
                         )
                         .to_string(),
                     })

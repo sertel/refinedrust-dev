@@ -649,9 +649,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         num_components: usize,
     ) -> (radium::AbstractStructRef<'def>, radium::LiteralTypeRef<'def>) {
-        if self.tuple_registry.borrow().get(&num_components).is_none() {
-            self.register_tuple(num_components);
-        }
+        self.register_tuple(num_components);
         let registry = self.tuple_registry.borrow();
         let (struct_ref, lit) = registry.get(&num_components).unwrap();
         (struct_ref, lit)
@@ -659,6 +657,9 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
     /// Register a tuple type with [num_components] components.
     fn register_tuple(&self, num_components: usize) {
+        if self.tuple_registry.borrow().get(&num_components).is_some() {
+            return;
+        }
         info!("Generating a tuple type with {} components", num_components);
         let struct_def = radium::make_tuple_struct_repr(num_components);
         let literal = self.intern_literal(struct_def.make_literal_type());
@@ -668,7 +669,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
     /// Register an ADT that is being used by the program.
     fn register_adt(&self, def: ty::AdtDef<'tcx>) -> Result<(), TranslationError> {
-        info!("Registering ADT {:?}", def);
+        trace!("Registering ADT {:?}", def.did());
 
         if def.is_union() {
             Err(TranslationError::Unimplemented {
@@ -693,7 +694,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
     /// Register a struct ADT type that is used by the program.
     fn register_struct(&self, ty: &'tcx ty::VariantDef, adt: ty::AdtDef) -> Result<(), TranslationError> {
-        if let Some(_) = self.variant_registry.borrow().get(&ty.def_id) {
+        if self.lookup_adt_variant_literal(ty.def_id).is_ok() {
             // already there, that's fine.
             return Ok(());
         }
@@ -1078,11 +1079,11 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
     /// Register an enum ADT
     fn register_enum(&self, def: ty::AdtDef<'tcx>) -> Result<(), TranslationError> {
-        if let Some(_) = self.enum_registry.borrow().get(&def.did()) {
+        if self.lookup_enum_literal(def.did()).is_ok() {
             // already there, that's fine.
             return Ok(());
         }
-        info!("Registering enum {:?}", def);
+        info!("Registering enum {:?}", def.did());
 
         // pre-register the enum for recursion
         let enum_def_init = self.enum_arena.alloc(RefCell::new(None));
@@ -1668,8 +1669,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
         info!("generating enum use for {:?}", adt_def.did());
-        // TODO: register?
-        //self.register_adt(adt_def)?;
+        self.register_adt(adt_def)?;
 
         let enum_ref: radium::LiteralTypeRef<'def> = self.lookup_enum_literal(adt_def.did())?;
         let params =

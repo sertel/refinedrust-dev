@@ -7,10 +7,10 @@ mod enums;
 mod structs;
 mod char;
 mod traits;
-//mod statics;
+mod statics;
 
 mod vec_client;
 mod mixed;
 mod closures;
 mod references;
-//mod option;
+mod option;
