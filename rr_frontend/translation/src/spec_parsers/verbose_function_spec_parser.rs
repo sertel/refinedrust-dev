@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::fmt::Write;
 
-use log::{debug, info, warn};
+use log::{info, warn};
 use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
 use radium::specs;
 use rustc_ast::ast::AttrItem;
@@ -161,13 +161,13 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     input.parse::<_, parse::MToken![:]>(meta)?;
 
                     let term: parse::LitStr = input.parse(meta)?;
-                    let (term, meta) = process_coq_literal(&term.value(), *meta);
+                    let (term, _meta) = process_coq_literal(&term.value(), *meta);
 
                     Ok(MetaIProp::Observe(gname.value().to_string(), term))
                 },
                 "linktime" => {
                     let term: parse::LitStr = input.parse(meta)?;
-                    let (term, meta) = process_coq_literal(&term.value(), *meta);
+                    let (term, _meta) = process_coq_literal(&term.value(), *meta);
                     Ok(MetaIProp::Linktime(term))
                 },
                 _ => {
@@ -183,7 +183,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 input.parse::<_, parse::MToken![:]>(meta)?;
 
                 let pure_prop: parse::LitStr = input.parse(meta)?;
-                let (pure_str, annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
+                let (pure_str, _annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
                 // TODO: should we use annot_meta?
 
                 Ok(MetaIProp::Pure(pure_str, Some(name_str)))
@@ -690,7 +690,7 @@ where
                     Ok(b) => {
                         if !b {
                             let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
-                            let meta: ParseMeta = (&meta, &lfts);
+                            let _meta: ParseMeta = (&meta, &lfts);
 
                             match &*seg.ident.name.as_str() {
                                 _ => {

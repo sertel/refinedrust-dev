@@ -9,8 +9,6 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-use serde::Deserialize;
-
 pub fn get_current_executable_dir() -> PathBuf {
     env::current_exe()
         .expect("current executable path invalid")

@@ -8,7 +8,6 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 
 use log::{info, trace, warn};
 use radium;
-use rustc_ast::ast::Attribute;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::tcx::PlaceTy;
@@ -770,10 +769,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         info!("inputs: {:?}, output: {:?}", normalized_inputs, normalized_output);
         let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
         for arg in normalized_inputs.iter() {
-            let mut translated: radium::Type<'def> = self.ty_translator.translate_type_no_normalize(arg)?;
+            let translated: radium::Type<'def> = self.ty_translator.translate_type_no_normalize(arg)?;
             translated_arg_types.push(translated);
         }
-        let mut translated_ret_type: radium::Type<'def> =
+        let translated_ret_type: radium::Type<'def> =
             // output is already normalized
             self.ty_translator.translate_type_no_normalize(normalized_output)?;
         info!("translated function type: {:?} → {}", translated_arg_types, translated_ret_type);
@@ -810,10 +809,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         info!("inputs: {:?}, output: {:?}", normalized_inputs, normalized_output);
         let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
         for arg in normalized_inputs.iter() {
-            let mut translated: radium::Type<'def> = self.ty_translator.translate_type_no_normalize(arg)?;
+            let translated: radium::Type<'def> = self.ty_translator.translate_type_no_normalize(arg)?;
             translated_arg_types.push(translated);
         }
-        let mut translated_ret_type: radium::Type<'def> =
+        let translated_ret_type: radium::Type<'def> =
             self.ty_translator.translate_type_no_normalize(normalized_output)?;
         info!("translated function type: {:?} → {}", translated_arg_types, translated_ret_type);
 
@@ -855,7 +854,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translation that only generates a specification.
-    pub fn generate_spec(mut self) -> Result<radium::FunctionSpec<'def>, TranslationError> {
+    pub fn generate_spec(self) -> Result<radium::FunctionSpec<'def>, TranslationError> {
         Ok(self.translated_fn.into())
     }
 
@@ -973,7 +972,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             }
 
             // type:
-            let mut tr_ty = self.ty_translator.translate_type(ty)?;
+            let tr_ty = self.ty_translator.translate_type(ty)?;
             let st = tr_ty.get_syn_type();
 
             let name = Self::make_local_name(body, &local, &mut used_names);
@@ -1035,8 +1034,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     /// with universals.
     fn get_initial_universal_arg_constraints(
         &mut self,
-        sig_args: &[Ty<'tcx>],
-        local_args: &[Ty<'tcx>],
+        _sig_args: &[Ty<'tcx>],
+        _local_args: &[Ty<'tcx>],
     ) -> Vec<(info::AtomicRegion, info::AtomicRegion)> {
         // Polonius generates a base subset constraint uregion ⊑ pregion.
         // We turn that into pregion = uregion, as we do strong updates at the top-level.
@@ -1087,7 +1086,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         // We turn that into pregion = uregion, as we do strong updates at the top-level.
         assert!(sig_args.len() == local_args.len());
 
-        let mut initial_arg_mapping = Vec::new();
+        let initial_arg_mapping = Vec::new();
         // TODO: implement a bitypefolder to solve this issue.
 
         initial_arg_mapping
@@ -1163,8 +1162,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         mut self,
         initial_constraints: Vec<(info::AtomicRegion, info::AtomicRegion)>,
     ) -> Result<radium::Function<'def>, TranslationError> {
-        let body = self.proc.get_mir();
-
         // add loop info
         let loop_info = self.proc.loop_info();
         info!("loop heads: {:?}", loop_info.loop_heads);
@@ -1354,7 +1351,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             for p in tup.1.iter() {
                 mangled_name.push_str(format!("_{}", p).as_str());
 
-                let mut translated_ty = self.ty_translator.translate_type(p)?;
+                let translated_ty = self.ty_translator.translate_type(p)?;
 
                 translated_params.push(translated_ty);
             }
@@ -2544,7 +2541,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             }
             if let Some(r) = included_region {
                 //info!("Found inclusion {:?}⊑  {:?}", r, region);
-                let lft1 = self.info.mk_atomic_region(*r);
                 stmt_annots.push(radium::Annotation::CopyLftName(
                     self.format_region(*r),
                     self.format_region(region),
@@ -2583,7 +2579,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         let new_dyn_inclusions;
         let expr_annot;
-        let mut stmt_annot;
+        let stmt_annot;
         if strongly_writeable {
             // we are going to update the region mapping through annotations,
             // and hence put up a barrier for propagation of region constraints
@@ -3272,7 +3268,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             });
                         }
                     },
-                    box mir::AggregateKind::Closure(def, args) => {
+                    box mir::AggregateKind::Closure(def, _args) => {
                         trace!("Translating Closure aggregate value for {:?}", def);
                         // We basically translate this to a tuple
                         if operand_types.len() == 0 {

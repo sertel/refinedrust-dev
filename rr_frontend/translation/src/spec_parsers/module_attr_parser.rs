@@ -7,7 +7,7 @@
 use attribute_parse as parse;
 use radium::specs;
 use rustc_ast::ast::AttrItem;
-use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::def_id::LocalDefId;
 
 use crate::spec_parsers::parse_utils::{self, str_err};
 

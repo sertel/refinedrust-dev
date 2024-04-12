@@ -12,7 +12,6 @@ use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
 /// This provides some general utilities for RefinedRust-specific attribute parsing.
 use radium::specs;
 use regex::{self, Captures, Regex};
-use rustc_ast::ast::AttrItem;
 
 /// Parse either a literal string (a term/pattern) or an identifier, e.g.
 /// `x`, `z`, `"w"`, `"(a, b)"`

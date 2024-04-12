@@ -1312,9 +1312,6 @@ pub struct FunctionBuilder<'def> {
     other_functions: Vec<(String, String, Vec<Type<'def>>, Vec<SynType>)>,
     /// name of this function
     function_name: String,
-    /// available refinement types
-    /// TODO: may not need this anymore.
-    rfn_types: Vec<CoqType>,
     /// generic types in scope for this function
     generic_types: Vec<LiteralTyParam>,
     /// generic lifetimes
@@ -1339,7 +1336,6 @@ impl<'def> FunctionBuilder<'def> {
             function_name: name.to_string(),
             spec_name: spec_name.to_string(),
             other_functions: Vec::new(),
-            rfn_types: Vec::new(),
             generic_types: Vec::new(),
             generic_lifetimes: Vec::new(),
             code: code_builder,
@@ -1360,12 +1356,6 @@ impl<'def> FunctionBuilder<'def> {
         syntypes: Vec<SynType>,
     ) {
         self.other_functions.push((loc_name, spec_name, params, syntypes));
-    }
-
-    /// Require refinements by a given CoqType to be available.
-    /// It does not matter when a type is registered via this function.
-    fn require_rfn_type(&mut self, t: CoqType) {
-        self.rfn_types.push(t);
     }
 
     /// Require a static variable to be in scope.
