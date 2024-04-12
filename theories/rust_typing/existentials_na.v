@@ -586,11 +586,10 @@ Section generated_code.
 
       ∃ r : rt,
         P.(na_inv_P) π r x ∗
-        ▷ (l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
-        (* NOTE: Make &na appears, as it's required afterwards. *)
-        &na{κ, π, shrN.@l} (∃ r : rt, l ↦: ty_own_val ty π r ∗ na_inv_P P π r x) ∗
+        (l ◁ₗ[π, Owned false] (#r) @ (◁ ty)) ∗
 
-        ( l ◁ₗ[π, Owned false] #r @ (◁ ty) ∗ P.(na_inv_P) π r x ={E}=∗
+        ( ∀ r' : rt,
+            l ◁ₗ[π, Owned false] #r' @ (◁ ty) ∗ P.(na_inv_P) π r' x ={E}=∗
             q.[κ] ∗ na_own π F ).
     (* TODO: Closing view-shift here. *)
     Proof.
@@ -603,9 +602,9 @@ Section generated_code.
       iDestruct "Hb'" as "(Hscr & Hbor & %ly' & %Hly' & %Halg')".
 
       iMod (na_bor_acc with "LFT Hbor Hq Hna") as "((%r & Hl & HP) & Hna & Hvs)"; [ solve_ndisj.. |].
-      iMod (lc_fupd_elim_later with "Hcred HP") as "HP".
+      iApply (lc_fupd_add_later with "Hcred").
 
-      iModIntro; iExists r; iFrame.
+      do 2 iModIntro; iExists r; iFrame.
 
       iSplitL "Hl".
       { rewrite ltype_own_ofty_unfold /lty_of_ty_own.
@@ -614,9 +613,9 @@ Section generated_code.
         iExists r; iR.
         by iModIntro. }
 
-      iR; iIntros "(Hl & HP)".
+      iIntros (r') "(Hl & HP)".
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
-      iDestruct "Hl" as (???) "(_ & _ & _ & (%r' & -> & Hl)) /=".
+      iDestruct "Hl" as (???) "(_ & _ & _ & (% & <- & Hl)) /=".
       iMod (fupd_mask_mono with "Hl") as "Hl"; first solve_ndisj.
 
       iApply ("Hvs" with "[Hl HP] Hna").
@@ -629,7 +628,7 @@ Section generated_code.
           ∀ r, introduce_with_hooks E L2
             (P.(na_inv_P) π r x ∗
              l ◁ₗ[π, Owned false] (#r) @
-               (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
+               (MagicLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
                   (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
                   (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l) ∗ llft_elt_toks κs)))
             (λ L3,
@@ -640,8 +639,6 @@ Section generated_code.
                   T L4 κs li b2 bmin' rti ltyi ri strong None))))
       ⊢ typed_place π E L l (◁ (∃na; P, ty))%I (#x) bmin (Shared κ) K T.
     Proof.
-      (* TODO: Check if Hbor is still used. *)
-
       rewrite /prove_with_subtype.
       iIntros "HT".
 
@@ -658,40 +655,43 @@ Section generated_code.
       iDestruct "HT" as (???) "HT".
 
       iMod (lctx_lft_alive_count_tok with "HE HL") as (q) "(Htok & Htokcl & HL)"; [ done.. |].
-      iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & #Hbor & Hvs)"; [ done.. |].
+      (* iMod (fupd_mask_subseteq (↑lftE)) as "Hmask"; first solve_ndisj. *)
+      iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & Hvs)"; [ done.. |].
 
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
-      iDestruct "Hl" as (ly) "(>%Halg & >%Hly & >#Hsc & >#Hlb & _ & (% & >%Heq & Hl))".
+      iDestruct "Hl" as (ly Halg Hly) "(#Hsc & #Hlb & _ & (% & <- & Hl))".
 
-      iMod ("HT" with "[] HE HL [$HP Hl]") as "HT"; first done.
-      { rewrite ltype_own_opened_unfold /opened_ltype_own.
+      iMod ("HT" with "[] HE HL [$HP Hl Htokcl Hvs]") as "HT"; first done.
+      { rewrite ltype_own_magic_unfold /magic_ltype_own.
         iExists ly; repeat iR.
 
-        rewrite ltype_own_ofty_unfold /lty_of_ty_own.
         iSplitL "Hl".
-        { iExists ly; repeat iR.
-          iExists r; iR.
-          admit. (* TODO: Get rid of the later modality *) }
+        { rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+          iExists ly; repeat iR.
+          by iExists r; iR. }
 
-        rewrite /logical_step.
-        iExists 0%nat.
-        iSplitR.
-        { iApply additive_time_receipt_0. }
+        iApply logical_step_intro.
 
-        iIntros "!> _ _ !> % % % HP".
-        iSplitR.
-        { admit. }
+        iIntros (r' x') "(<- & Hinv) Hl !>".
+        iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
+        iDestruct "Hl" as (ly' Halg' Hly') "(_ & #Hlb' & _ & (% & <- & Hl))".
 
-        iIntros "Hκs Hl".
-        iMod ("HP" with "Hκs") as "(-> & HP)".
-        rewrite ltype_own_core_equiv.
-        simp_ltypes.
+        iSplitL "Hl Hinv".
+        { rewrite ltype_own_core_ofty_unfold /lty_of_ty_own.
+          iExists ly'; repeat iR.
+          iExists x; iR.
 
+          iMod "Hl" as (v) "(Hl & Hv)".
+          iExists v; iFrame.
+          by iExists r'; iFrame. }
+
+        iR.
+        iSplitR; first admit.
         admit. }
 
       iDestruct "HT" as (?) "(HL & HT)".
 
-      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hincl [Htokcl Hvs]").
+      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hincl []").
       { admit. (* TODO: na_token *) }
       { rewrite ltype_own_shadowed_unfold /shadowed_ltype_own.
 
