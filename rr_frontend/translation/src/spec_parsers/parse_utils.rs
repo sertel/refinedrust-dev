@@ -12,6 +12,7 @@ use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
 /// This provides some general utilities for RefinedRust-specific attribute parsing.
 use radium::specs;
 use regex::{self, Captures, Regex};
+use rustc_ast::ast::AttrItem;
 
 /// Parse either a literal string (a term/pattern) or an identifier, e.g.
 /// `x`, `z`, `"w"`, `"(a, b)"`
@@ -242,6 +243,10 @@ impl<U> parse::Parse<U> for RRGlobalCoqContextItem {
 
         Ok(RRGlobalCoqContextItem { item: item.value() })
     }
+}
+
+pub fn str_err(e: parse::ParseError) -> String {
+    format!("{:?}", e)
 }
 
 pub type ParseMeta<'a> = (&'a [specs::LiteralTyParam], &'a [(Option<String>, specs::Lft)]);

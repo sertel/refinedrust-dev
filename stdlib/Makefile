@@ -1,4 +1,4 @@
-STDLIB = alloc option result spin vec btreemap rwlock
+STDLIB = alloc option result spin vec btreemap rwlock controlflow
 
 RUST_TARGET ?= $(shell rustc -vV | sed -n 's|host: ||p')
 RUST_PATH ?=	target/$(RUST_TARGET)/release
@@ -11,7 +11,6 @@ generate_stdlib: $(STDLIB:=.crate)
 clean_stdlib: $(STDLIB:=.clean)
 
 stdlib.proof:	$(STDLIB:=.proof)
-	dune build --display short
 
 %.proof:	%.crate
 	cd $* && dune build --display short

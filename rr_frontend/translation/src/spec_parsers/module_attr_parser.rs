@@ -9,7 +9,7 @@ use radium::specs;
 use rustc_ast::ast::AttrItem;
 use rustc_hir::def_id::{DefId, LocalDefId};
 
-use crate::spec_parsers::parse_utils;
+use crate::spec_parsers::parse_utils::{self, str_err};
 
 /// Parse attributes on a module.
 /// Permitted attributes:
@@ -43,10 +43,6 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
         _did: LocalDefId,
         attrs: &'a [&'a AttrItem],
     ) -> Result<ModuleAttrs, String> {
-        fn str_err(e: parse::ParseError) -> String {
-            format!("{:?}", e)
-        }
-
         let meta = ();
         let mut imports: Vec<specs::CoqPath> = Vec::new();
         let mut includes: Vec<String> = Vec::new();

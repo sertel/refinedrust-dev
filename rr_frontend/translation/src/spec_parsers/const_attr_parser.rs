@@ -9,7 +9,7 @@ use radium::specs;
 use rustc_ast::ast::AttrItem;
 use rustc_hir::def_id::{DefId, LocalDefId};
 
-use crate::spec_parsers::parse_utils;
+use crate::spec_parsers::parse_utils::{self, str_err};
 
 /// Parse attributes on a const.
 /// Permitted attributes:
@@ -41,10 +41,6 @@ impl ConstAttrParser for VerboseConstAttrParser {
         _did: LocalDefId,
         attrs: &'a [&'a AttrItem],
     ) -> Result<ConstAttrs, String> {
-        fn str_err(e: parse::ParseError) -> String {
-            format!("{:?}", e)
-        }
-
         let meta = ();
         let mut name: Option<String> = None;
 

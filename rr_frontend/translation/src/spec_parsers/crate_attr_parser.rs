@@ -8,7 +8,7 @@ use attribute_parse as parse;
 use radium::specs;
 use rustc_ast::ast::AttrItem;
 
-use crate::spec_parsers::parse_utils;
+use crate::spec_parsers::parse_utils::{self, str_err};
 
 /// Parse attributes on a crate.
 /// Permitted attributes:
@@ -36,10 +36,6 @@ impl VerboseCrateAttrParser {
 
 impl CrateAttrParser for VerboseCrateAttrParser {
     fn parse_crate_attrs<'a>(&'a mut self, attrs: &'a [&'a AttrItem]) -> Result<CrateAttrs, String> {
-        fn str_err(e: parse::ParseError) -> String {
-            format!("{:?}", e)
-        }
-
         let meta = ();
         let mut imports: Vec<specs::CoqPath> = Vec::new();
         let mut includes: Vec<String> = Vec::new();

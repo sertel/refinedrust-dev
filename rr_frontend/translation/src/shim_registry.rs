@@ -16,6 +16,8 @@ use log::info;
 use serde::{Deserialize, Serialize};
 use typed_arena::Arena;
 
+use crate::utils::*;
+
 type Path<'a> = Vec<&'a str>;
 
 /// A file entry for a function/method shim.
@@ -24,6 +26,22 @@ struct ShimFunctionEntry {
     /// The rustc path for this symbol.
     path: Vec<String>,
     /// a kind: either "method" or "function"
+    kind: String,
+    /// the basis name to use for generated Coq names
+    name: String,
+    /// the Coq name of the spec
+    spec: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ShimTraitMethodImplEntry {
+    /// The rustc path for the trait
+    trait_path: PathWithArgs,
+    /// for which type is this implementation?
+    for_type: FlatType,
+    /// The method identifier
+    method_ident: String,
+    /// a kind: always "trait_method"
     kind: String,
     /// the basis name to use for generated Coq names
     name: String,
@@ -50,6 +68,7 @@ struct ShimAdtEntry {
 pub enum ShimKind {
     Method,
     Function,
+    TraitMethod,
     Adt,
 }
 
@@ -66,6 +85,28 @@ impl<'a> Into<ShimFunctionEntry> for FunctionShim<'a> {
         ShimFunctionEntry {
             path: self.path.iter().map(|x| x.to_string()).collect(),
             kind: if self.is_method { "method".to_string() } else { "function".to_string() },
+            name: self.name,
+            spec: self.spec_name,
+        }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug, Clone)]
+pub struct TraitMethodImplShim {
+    pub trait_path: PathWithArgs,
+    pub method_ident: String,
+    pub for_type: FlatType,
+    pub name: String,
+    pub spec_name: String,
+}
+
+impl<'a> Into<ShimTraitMethodImplEntry> for TraitMethodImplShim {
+    fn into(self) -> ShimTraitMethodImplEntry {
+        ShimTraitMethodImplEntry {
+            trait_path: self.trait_path,
+            method_ident: self.method_ident,
+            for_type: self.for_type,
+            kind: "trait_method".to_string(),
             name: self.name,
             spec: self.spec_name,
         }
@@ -105,6 +146,8 @@ pub struct ShimRegistry<'a> {
     arena: &'a Arena<String>,
     /// function/method shims
     function_shims: Vec<FunctionShim<'a>>,
+    /// trait method implementation shims
+    trait_method_shims: Vec<TraitMethodImplShim>,
     /// adt shims
     adt_shims: Vec<AdtShim<'a>>,
     /// extra imports
@@ -122,6 +165,7 @@ impl<'a> ShimRegistry<'a> {
             "function" => Ok(ShimKind::Function),
             "method" => Ok(ShimKind::Method),
             "adt" => Ok(ShimKind::Adt),
+            "trait_method" => Ok(ShimKind::TraitMethod),
             k => Err(format!("unknown kind {:?}", k)),
         }
     }
@@ -139,6 +183,7 @@ impl<'a> ShimRegistry<'a> {
         Self {
             arena,
             function_shims: Vec::new(),
+            trait_method_shims: Vec::new(),
             adt_shims: Vec::new(),
             imports: Vec::new(),
             depends: Vec::new(),
@@ -180,7 +225,7 @@ impl<'a> ShimRegistry<'a> {
 
                 let name =
                     obj.get("refinedrust_name").ok_or(format!("Missing attribute \"refinedrust_name\""))?;
-                let name =
+                let _name =
                     name.as_str().ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
 
                 let coq_path = radium::specs::CoqPath {
@@ -225,7 +270,7 @@ impl<'a> ShimRegistry<'a> {
                 };
 
                 self.adt_shims.push(entry);
-            } else {
+            } else if kind == ShimKind::Function || kind == ShimKind::Method {
                 let b: ShimFunctionEntry = serde_json::value::from_value(i).map_err(|e| e.to_string())?;
                 let path = self.intern_path(b.path);
                 let entry = FunctionShim {
@@ -236,6 +281,18 @@ impl<'a> ShimRegistry<'a> {
                 };
 
                 self.function_shims.push(entry);
+            } else if kind == ShimKind::TraitMethod {
+                let b: ShimTraitMethodImplEntry =
+                    serde_json::value::from_value(i).map_err(|e| e.to_string())?;
+                let entry = TraitMethodImplShim {
+                    trait_path: b.trait_path,
+                    method_ident: b.method_ident,
+                    for_type: b.for_type,
+                    name: b.name,
+                    spec_name: b.spec,
+                };
+
+                self.trait_method_shims.push(entry);
             }
         }
 
@@ -244,6 +301,10 @@ impl<'a> ShimRegistry<'a> {
 
     pub fn get_function_shims(&self) -> &[FunctionShim] {
         &self.function_shims
+    }
+
+    pub fn get_trait_method_shims(&self) -> &[TraitMethodImplShim] {
+        &self.trait_method_shims
     }
 
     pub fn get_adt_shims(&self) -> &[AdtShim] {
@@ -268,6 +329,7 @@ pub fn write_shims<'a>(
     module_dependencies: &[String],
     adt_shims: Vec<AdtShim<'a>>,
     function_shims: Vec<FunctionShim<'a>>,
+    trait_method_shims: Vec<TraitMethodImplShim>,
 ) {
     let writer = BufWriter::new(f);
 
@@ -278,6 +340,10 @@ pub fn write_shims<'a>(
     }
     for x in function_shims.into_iter() {
         let x: ShimFunctionEntry = x.into();
+        values.push(serde_json::to_value(x).unwrap());
+    }
+    for x in trait_method_shims.into_iter() {
+        let x: ShimTraitMethodImplEntry = x.into();
         values.push(serde_json::to_value(x).unwrap());
     }
 
@@ -302,14 +368,13 @@ pub fn is_valid_refinedrust_module(f: File) -> Option<String> {
     let deser: serde_json::Value = serde_json::from_reader(reader).unwrap();
 
     // We support both directly giving the items array, or also specifying a path to import
-    let v: Vec<serde_json::Value>;
     match deser {
         serde_json::Value::Object(obj) => {
             let path = obj.get("refinedrust_path")?;
-            let path = path.as_str()?;
+            let _path = path.as_str()?;
 
             let module = obj.get("refinedrust_module")?;
-            let module = module.as_str()?;
+            let _module = module.as_str()?;
 
             let name = obj.get("refinedrust_name")?;
             let name = name.as_str()?;

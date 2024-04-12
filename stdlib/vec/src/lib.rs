@@ -31,7 +31,7 @@ impl<T> Vec<T> {
 
     #[rr::params("cap")]
     #[rr::args("cap")]
-    #[rr::requires("(size_of_array_in_bytes {st_of T} (Z.to_nat cap) ≤ max_int isize_t)%Z")]
+    #[rr::requires("(size_of_array_in_bytes {st_of T} (Z.to_nat cap) ≤ MaxInt isize_t)%Z")]
     #[rr::returns("[]")]
     pub fn with_capacity(capacity: usize) -> Self {
         unimplemented!();
@@ -51,8 +51,8 @@ impl<T, A: Allocator> Vec<T, A> {
 
     #[rr::params("xs", "γ", "x")]
     #[rr::args("(#xs, γ)", "x")]
-    #[rr::requires("(length xs < max_int usize_t)%Z")]
-    #[rr::requires("(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ max_int isize_t)%Z")]
+    #[rr::requires("(length xs < MaxInt usize_t)%Z")]
+    #[rr::requires("(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ MaxInt isize_t)%Z")]
     #[rr::observe("γ": "xs ++ [ #x]")]
     pub fn push(&mut self, elem: T) {
         unreachable!();
@@ -69,8 +69,8 @@ impl<T, A: Allocator> Vec<T, A> {
     #[rr::params("xs", "γ", "i" : "nat", "x")]
     #[rr::args("(#(<#>xs), γ)", "Z.of_nat i", "x")]
     #[rr::requires("i ≤ length xs")]
-    #[rr::requires("(length xs < max_int usize_t)%Z")]
-    #[rr::requires("(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ max_int isize_t)%Z")]
+    #[rr::requires("(length xs < MaxInt usize_t)%Z")]
+    #[rr::requires("(size_of_array_in_bytes {st_of T} (2 * length xs) ≤ MaxInt isize_t)%Z")]
     #[rr::observe("γ": "(<#> take i xs) ++ [ #x] ++ (<#> drop i xs)")]
     pub fn insert(&mut self, index: usize, elem: T) {
         unreachable!();

@@ -34,7 +34,7 @@ use std::fs;
 use std::io::{self, Read, Write};
 use std::path::Path;
 
-use log::{error, info, warn};
+use log::{info, trace, warn};
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
@@ -63,12 +63,12 @@ use environment::Environment;
 use function_body::{ConstScope, FunctionTranslator, ProcedureMode, ProcedureScope};
 use mod_parser::ModuleAttrParser;
 use rrconfig;
-use spec_parsers::verbose_function_spec_parser::{get_export_as_attr, get_shim_attrs};
 use spec_parsers::{
-    const_attr_parser as const_parser, crate_attr_parser as crate_parser, module_attr_parser as mod_parser,
+    const_attr_parser as const_parser, crate_attr_parser as crate_parser, get_shim_attrs,
+    module_attr_parser as mod_parser,
 };
 use topological_sort::TopologicalSort;
-use type_translator::TypeTranslator;
+use type_translator::{normalize_in_function, TypeTranslator};
 
 /// Order ADT definitions topologically.
 fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
@@ -115,46 +115,8 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
 }
 
 impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
-    fn extract_def_path(path: rustc_hir::definitions::DefPath) -> Vec<String> {
-        let mut components = Vec::new();
-        for p in path.data.iter() {
-            if let Some(name) = p.data.get_opt_name() {
-                components.push(name.as_str().to_string());
-            }
-        }
-        components
-    }
-
     fn get_path_for_shim(&self, did: DefId) -> Vec<&str> {
-        let attrs = self.env.get_attributes(did);
-        //info!("get_path_for_shim has attrs {:?}", attrs);
-
-        let mut path = None;
-        if crate::utils::has_tool_attr(attrs, "export_as") {
-            let filtered_attrs = crate::utils::filter_tool_attrs(attrs);
-            path = Some(get_export_as_attr(filtered_attrs.as_slice()).unwrap());
-        } else {
-            // Check for an annotation on the surrounding impl
-            if let Some(impl_did) = self.env.tcx().impl_of_method(did) {
-                let attrs = self.env.get_attributes(impl_did);
-                if crate::utils::has_tool_attr(attrs, "export_as") {
-                    let filtered_attrs = crate::utils::filter_tool_attrs(attrs);
-                    let mut path_prefix = get_export_as_attr(filtered_attrs.as_slice()).unwrap();
-
-                    // push the last component of this path
-                    let def_path = self.env.tcx().def_path(did);
-                    let mut this_path = Self::extract_def_path(def_path);
-                    path_prefix.push(this_path.pop().unwrap());
-                    path = Some(path_prefix)
-                }
-            }
-        }
-        if path.is_none() {
-            let def_path = self.env.tcx().def_path(did);
-            path = Some(Self::extract_def_path(def_path));
-        }
-
-        let path = path.unwrap();
+        let path = utils::get_export_path_for_did(self.env, did);
         let interned_path = self.shim_registry.intern_path(path);
         interned_path
     }
@@ -198,6 +160,83 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         None
     }
 
+    fn make_shim_trait_method_entry(
+        &self,
+        did: DefId,
+        spec_name: &str,
+    ) -> Option<shim_registry::TraitMethodImplShim> {
+        trace!("enter make_shim_trait_method_entry; did={did:?}");
+        if let Some(mode) = self.procedure_registry.lookup_function_mode(&did) {
+            if mode == ProcedureMode::Prove
+                || mode == ProcedureMode::OnlySpec
+                || mode == ProcedureMode::TrustMe
+            {
+                match self.env.tcx().visibility(did) {
+                    // only export public items
+                    ty::Visibility::Public => {
+                        let impl_did = self.env.tcx().impl_of_method(did).unwrap();
+
+                        let impl_ref: Option<ty::EarlyBinder<ty::TraitRef<'_>>> =
+                            self.env.tcx().impl_trait_ref(impl_did);
+                        if let Some(impl_ref) = impl_ref {
+                            let impl_ref =
+                                normalize_in_function(impl_did, self.env.tcx(), impl_ref.skip_binder())
+                                    .unwrap();
+
+                            let args = impl_ref.args;
+                            let trait_did = impl_ref.def_id;
+                            // the first arg is self, skip that
+                            let trait_args = &args.as_slice()[1..];
+                            let impl_for = args[0].expect_ty();
+
+                            // flatten the trait reference
+                            let trait_path = utils::PathWithArgs::from_item(self.env, trait_did, trait_args)?;
+                            trace!("got trait path: {:?}", trait_path);
+
+                            // flatten the self type.
+                            let maybe_flattened_for_type =
+                                utils::convert_ty_to_flat_type(&self.env, impl_for);
+                            let flattened_for_type;
+                            if let Some(a) = maybe_flattened_for_type {
+                                flattened_for_type = a;
+                            } else {
+                                return None;
+                            }
+
+                            trace!("implementation for: {:?}", impl_for);
+
+                            // get name of this function
+                            let method_ident;
+                            if let Some(ident) = self.env.tcx().opt_item_ident(did) {
+                                method_ident = ident.as_str().to_string();
+                            } else {
+                                // can not find name of this function
+                                return None;
+                            }
+
+                            let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
+
+                            let a = shim_registry::TraitMethodImplShim {
+                                trait_path,
+                                method_ident,
+                                for_type: flattened_for_type,
+                                name,
+                                spec_name: spec_name.to_string(),
+                            };
+                            trace!("leave make_shim_trait_method_entry (success)");
+                            return Some(a);
+                        }
+                    },
+                    ty::Visibility::Restricted(_) => {
+                        // don't  export
+                    },
+                }
+            }
+        }
+        trace!("leave make_shim_trait_method_entry (failed)");
+        None
+    }
+
     fn make_adt_shim_entry(&self, did: DefId, lit: radium::LiteralType) -> Option<shim_registry::AdtShim> {
         info!("making shim entry for {:?}", did);
         if did.is_local() {
@@ -229,6 +268,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     fn generate_module_summary(&self, module_path: &str, module: &str, name: &str, path: &Path) {
         let mut function_shims = Vec::new();
         let mut adt_shims = Vec::new();
+        let mut trait_method_shims = Vec::new();
 
         let variant_defs = self.type_translator.get_variant_defs();
         let enum_defs = self.type_translator.get_enum_defs();
@@ -250,15 +290,40 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
+        // trait method implementations are handled differently
+        let mut trait_methods = Vec::new();
+
         for (did, fun) in self.procedure_registry.iter_code() {
+            if let Some(impl_did) = self.env.tcx().impl_of_method(*did) {
+                info!("found impl method: {:?}", did);
+                if self.env.tcx().trait_id_of_impl(impl_did).is_some() {
+                    info!("found trait method: {:?}", did);
+                    trait_methods.push((did, &fun.spec));
+                    continue;
+                }
+            }
             if let Some(shim) = self.make_shim_function_entry(*did, &fun.spec.spec_name) {
                 function_shims.push(shim);
             }
         }
 
         for (did, fun) in self.procedure_registry.iter_only_spec() {
+            if let Some(impl_did) = self.env.tcx().impl_of_method(*did) {
+                info!("found impl method: {:?}", did);
+                if self.env.tcx().trait_id_of_impl(impl_did).is_some() {
+                    info!("found trait method: {:?}", did);
+                    trait_methods.push((did, fun));
+                    continue;
+                }
+            }
             if let Some(shim) = self.make_shim_function_entry(*did, &fun.spec_name) {
                 function_shims.push(shim);
+            }
+        }
+
+        for (did, fun) in trait_methods.into_iter() {
+            if let Some(shim) = self.make_shim_trait_method_entry(*did, &fun.spec_name) {
+                trait_method_shims.push(shim);
             }
         }
 
@@ -278,6 +343,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             &module_dependencies,
             adt_shims,
             function_shims,
+            trait_method_shims,
         );
     }
 
@@ -764,6 +830,52 @@ fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<
             info!("Resolved ADT shim {:?} as {:?} did", shim, did);
         } else {
             println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
+        }
+    }
+
+    for shim in vcx.shim_registry.get_trait_method_shims() {
+        // resolve the trait
+        if let Some((trait_did, args)) = shim.trait_path.to_item(vcx.env.tcx()) {
+            if !vcx.env.tcx().is_trait(trait_did) {
+                println!("Warning: This is not a trait: {:?}", shim.trait_path);
+                continue;
+            }
+            // resolve the type
+            if let Some(for_type) = shim.for_type.to_type(vcx.env.tcx()) {
+                let trait_method_did = utils::try_resolve_trait_method_did(
+                    vcx.env.tcx(),
+                    trait_did,
+                    &args,
+                    &shim.method_ident,
+                    for_type,
+                );
+
+                match trait_method_did {
+                    Some(did) => {
+                        // register as usual in the procedure registry
+                        info!(
+                            "registering shim for implementation of {:?}::{:?} for {:?}, using method {:?}",
+                            shim.trait_path, shim.method_ident, for_type, trait_method_did
+                        );
+                        let meta = function_body::ProcedureMeta::new(
+                            shim.spec_name.to_string(),
+                            shim.name.to_string(),
+                            function_body::ProcedureMode::Shim,
+                        );
+                        vcx.procedure_registry.register_function(&did, meta)?;
+                    },
+                    _ => {
+                        println!(
+                            "Warning: cannot find defid for implementation of {:?}::{:?} for {:?}",
+                            shim.trait_path, shim.method_ident, for_type
+                        );
+                    },
+                }
+            } else {
+                println!("Warning: cannot resolve {:?} as a type, skipping shim", shim.for_type);
+            }
+        } else {
+            println!("Warning: cannot resolve {:?} as a trait, skipping shim", shim.trait_path);
         }
     }
 

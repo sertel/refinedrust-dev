@@ -188,7 +188,30 @@ In particular, we support the following escape sequences:
 To prevent an expression wrapped in curly braces to be transformed, write two curly braces: `{{ ... }}`.
 This will be replaced by `{ ... }`.
 
+## On export behavior
 
+Specifications for public definitions in a crate that RefinedRust verifies are exported through the automatically generated `interface.rrlib` files.
+This file can be imported in other verified client crates through the `rr::include` attribute, so that the specifications are available and RefinedRust can use the exported types and functions.
+
+For most exported definitions, an `rr::export_as` attribute can be used to influence the path under which they are exported.
+This is particularly useful to provide axiomatized shims for libraries we don't want to verify (yet), but use as part of other verification projects.
+Examples of this are provided in the `stdlib` folder, which provides axiomatized specifications for some libraries.
+
+Currently, the following objects are exported:
+- functions
+- methods in inherent impls (i.e., impls without a trait)
+- ADTs (structs and enums)
+- methods in trait impls (restrictions apply)
+
+For methods in trait implementations, what is exported are specifications for the particular implementation of this trait (which may be stronger than the generic specification one would give to all implementors of the trait).
+These specifications are used by RefinedRust in places where the trait implementation can be statically resolved.
+Some restrictions apply to exporting these kinds of specifications, as it is hard to uniquely identify specific trait implementations in Rust:
+- we can not export specifications for blanket implementations,
+- we can only export specifications for trait implementations where `self` is an ADT,
+- we currently do not disambiguate implementations depending on the set of predicates (enforced by `where` clauses).
+
+On importing a specification for a trait method, if there are multiple candidate implementations this specification could attach to, a warning is issued.
+This case should be avoided, as it is fragile; if you encounter such a case, file an issue, so that the disambiguation criteria can be improved.
 
 ## Types
 TODO: provide an overview of RefinedRust types.

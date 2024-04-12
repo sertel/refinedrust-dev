@@ -82,9 +82,6 @@ impl EnumSpecParser for VerboseEnumSpecParser {
         params: &'a [specs::LiteralTyParam],
         lfts: &'a [(Option<String>, specs::Lft)],
     ) -> Result<specs::EnumSpec, String> {
-        fn str_err(e: parse::ParseError) -> String {
-            format!("{:?}", e)
-        }
         let meta = (params, lfts);
 
         let mut variant_patterns: Vec<(String, Vec<String>, String)> = Vec::new();

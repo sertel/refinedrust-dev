@@ -17,21 +17,211 @@ use rustc_data_structures::fx::FxHashSet;
 use rustc_hir::def_id::{DefId, CRATE_DEF_INDEX};
 use rustc_middle::mir;
 use rustc_middle::ty::{self, TyCtxt};
+use serde::{Deserialize, Serialize};
 
-use crate::force_matches;
+use crate::spec_parsers::get_export_as_attr;
+use crate::type_translator::normalize_in_function;
+use crate::{force_matches, Environment};
+
+/// An item path that receives generic arguments.
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+pub struct PathWithArgs {
+    path: Vec<String>,
+    /// An encoding of the GenericArgs for this definition.
+    /// This is `Some(ty)` if:
+    /// - the argument represents a type (not a constant or region)
+    /// - and the arg is not the trivial identity arg (in case of ADTs)
+    args: Vec<Option<FlatType>>,
+}
+
+impl PathWithArgs {
+    pub fn to_item<'tcx>(&self, tcx: ty::TyCtxt<'tcx>) -> Option<(DefId, Vec<Option<ty::GenericArg<'tcx>>>)> {
+        let did = try_resolve_did(tcx, self.path.as_slice())?;
+
+        let mut ty_args = Vec::new();
+
+        for arg in self.args.iter() {
+            if let Some(arg) = arg {
+                let ty = arg.to_type(tcx)?;
+                ty_args.push(Some(ty::GenericArg::from(ty)));
+            } else {
+                ty_args.push(None);
+            }
+        }
+
+        Some((did, ty_args))
+    }
+
+    /// `args` should be normalized already.
+    pub fn from_item<'tcx>(
+        env: &Environment<'tcx>,
+        did: DefId,
+        args: &[ty::GenericArg<'tcx>],
+    ) -> Option<Self> {
+        let path = get_export_path_for_did(env, did);
+        let mut flattened_args = Vec::new();
+        // TODO: how to represent type variables in case the definition is open?
+        let mut index = 0;
+        info!("flattening args {:?}", args);
+        for arg in args.iter() {
+            if let Some(ty) = arg.as_type() {
+                // TODO not quite right yet (see above)
+                if !ty.is_param(index) {
+                    let flattened_ty = convert_ty_to_flat_type(env, ty)?;
+                    flattened_args.push(Some(flattened_ty));
+                }
+                index += 1;
+            } else {
+                flattened_args.push(None);
+            }
+        }
+        Some(Self {
+            path,
+            args: flattened_args,
+        })
+    }
+}
+
+#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+/// A "flattened" representation of types that should be suitable serialized storage, and should be
+/// stable enough to resolve to the same actual type across compilations.
+/// Currently mostly geared to our trait resolution needs.
+pub enum FlatType {
+    /// Path + generic args
+    /// empty args represents the identity substitution
+    Adt(PathWithArgs),
+}
+
+impl FlatType {
+    /// Try to convert a flat type to a type.
+    pub fn to_type<'tcx>(&self, tcx: ty::TyCtxt<'tcx>) -> Option<ty::Ty<'tcx>> {
+        match self {
+            FlatType::Adt(path_with_args) => {
+                let (did, flat_args) = path_with_args.to_item(tcx)?;
+                let ty: ty::EarlyBinder<ty::Ty<'tcx>> = tcx.type_of(did);
+
+                let args = if let ty::TyKind::Adt(_, adt_args) = ty.skip_binder().kind() {
+                    adt_args
+                } else {
+                    return None;
+                };
+
+                // build substitution
+                let mut substs = Vec::new();
+                for (ty_arg, flat_arg) in args.iter().zip(flat_args.into_iter()) {
+                    match ty_arg.unpack() {
+                        ty::GenericArgKind::Type(_ty) => {
+                            if let Some(flat_arg) = flat_arg {
+                                substs.push(flat_arg);
+                            }
+                        },
+                        _ => {
+                            substs.push(ty_arg);
+                        },
+                    }
+                }
+
+                // substitute
+                info!("substituting {:?} with {:?}", ty, substs);
+                let subst_ty;
+                if !substs.is_empty() {
+                    subst_ty = ty.instantiate(tcx, &substs);
+                } else {
+                    subst_ty = ty.instantiate_identity();
+                }
+                Some(subst_ty)
+            },
+        }
+    }
+}
+
+/// Try to convert a type to a flat type. Assumes the type has been normalized already.
+pub fn convert_ty_to_flat_type<'tcx>(env: &Environment<'tcx>, ty: ty::Ty<'tcx>) -> Option<FlatType> {
+    match ty.kind() {
+        ty::TyKind::Adt(def, args) => {
+            let did = def.did();
+            // TODO: if this is downcast to a variant, this might not work
+            let path_with_args = PathWithArgs::from_item(env, did, args.as_slice())?;
+            Some(FlatType::Adt(path_with_args))
+        },
+        _ => None,
+    }
+}
+
+pub fn get_cleaned_def_path<'tcx>(tcx: TyCtxt<'tcx>, did: DefId) -> Vec<String> {
+    let def_path = tcx.def_path_str(did);
+    // we clean this up a bit and segment it
+    let mut components = Vec::new();
+    for i in def_path.split("::") {
+        if i.starts_with("<") && i.ends_with(">") {
+            // this is a generic specialization, skip
+            continue;
+        }
+        components.push(i.to_string());
+    }
+    info!("split def path {:?} to {:?}", def_path, components);
+
+    components
+}
+
+// Alternative implementation of `get_cleaned_def_path`, but this doesn't always yield a rooted
+// path (but only a suffix of the full path)
+fn extract_def_path(path: rustc_hir::definitions::DefPath) -> Vec<String> {
+    let mut components = Vec::new();
+    for p in path.data.iter() {
+        if let Some(name) = p.data.get_opt_name() {
+            components.push(name.as_str().to_string());
+        }
+    }
+    components
+}
+
+/// Get the path we should export an item at.
+pub fn get_export_path_for_did(env: &Environment, did: DefId) -> Vec<String> {
+    let attrs = env.get_attributes(did);
+
+    let mut path = None;
+    if has_tool_attr(attrs, "export_as") {
+        let filtered_attrs = filter_tool_attrs(attrs);
+        path = Some(get_export_as_attr(filtered_attrs.as_slice()).unwrap());
+    } else {
+        // Check for an annotation on the surrounding impl
+        if let Some(impl_did) = env.tcx().impl_of_method(did) {
+            let attrs = env.get_attributes(impl_did);
+            if has_tool_attr(attrs, "export_as") {
+                let filtered_attrs = filter_tool_attrs(attrs);
+                let mut path_prefix = get_export_as_attr(filtered_attrs.as_slice()).unwrap();
+
+                // push the last component of this path
+                //let def_path = env.tcx().def_path(did);
+                let mut this_path = get_cleaned_def_path(env.tcx(), did);
+                path_prefix.push(this_path.pop().unwrap());
+                path = Some(path_prefix)
+            }
+        }
+    }
+    if path.is_none() {
+        //let def_path = env.tcx().def_path(did);
+        path = Some(get_cleaned_def_path(env.tcx(), did));
+    }
+
+    path.unwrap()
+}
 
 /// Gets an instance for a path.
 /// Taken from Miri https://github.com/rust-lang/miri/blob/31fb32e49f42df19b45baccb6aa80c3d726ed6d5/src/helpers.rs#L48.
-pub fn try_resolve_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<DefId> {
+pub fn try_resolve_did_direct<'tcx, T>(tcx: TyCtxt<'tcx>, path: &[T]) -> Option<DefId>
+where
+    T: AsRef<str>,
+{
     tcx.crates(())
         .iter()
-        .find(|&&krate| tcx.crate_name(krate).as_str() == path[0])
+        .find(|&&krate| tcx.crate_name(krate).as_str() == path[0].as_ref())
         .and_then(|krate| {
             let krate = DefId {
                 krate: *krate,
                 index: CRATE_DEF_INDEX,
             };
-            //ModChild
 
             let mut items: &'tcx [rustc_middle::metadata::ModChild] = tcx.module_children(krate);
             let mut path_it = path.iter().skip(1).peekable();
@@ -39,7 +229,7 @@ pub fn try_resolve_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<DefId> 
             while let Some(segment) = path_it.next() {
                 for item in mem::take(&mut items).iter() {
                     let item: &rustc_middle::metadata::ModChild = item;
-                    if item.ident.name.as_str() == *segment {
+                    if item.ident.name.as_str() == segment.as_ref() {
                         if path_it.peek().is_none() {
                             return Some(item.res.def_id());
                         }
@@ -53,13 +243,147 @@ pub fn try_resolve_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<DefId> 
         })
 }
 
+pub fn try_resolve_did<'tcx, T>(tcx: TyCtxt<'tcx>, path: &[T]) -> Option<DefId>
+where
+    T: AsRef<str>,
+{
+    if let Some(did) = try_resolve_did_direct(tcx, path) {
+        return Some(did);
+    }
+
+    // if the first component is "std", try if we can replace it with "alloc" or "core"
+    if path[0].as_ref() == "std" {
+        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_string()).collect();
+        components[0] = "core".to_string();
+        if let Some(did) = try_resolve_did_direct(tcx, &components) {
+            return Some(did);
+        }
+        // try "alloc"
+        components[0] = "alloc".to_string();
+        try_resolve_did_direct(tcx, &components)
+    } else {
+        None
+    }
+}
+
+/// Determine whether the two argument lists match for the type positions (ignoring consts and regions).
+/// The first argument is the authority determining which argument positions are types.
+/// The second argument may contain `None` for non-type positions.
+fn args_match_types<'tcx>(
+    reference: &[ty::GenericArg<'tcx>],
+    compare: &[Option<ty::GenericArg<'tcx>>],
+) -> bool {
+    if reference.len() != compare.len() {
+        return false;
+    }
+
+    for (arg1, arg2) in reference.iter().zip(compare.iter()) {
+        if let Some(ty1) = arg1.as_type() {
+            if let Some(arg2) = arg2 {
+                if let Some(ty2) = arg2.as_type() {
+                    if ty1 != ty2 {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+// Useful queries:
+//tcx.trait_id_of_impl
+//tcx.associated_items
+//tcx.impl_trait_parent
+//tcx.implementations_of_trait
+//tcx.trait_impls_of
+//tcx.trait_impls_in_crate
+/// Try to resolve the DefId of a method in an implementation of a trait for a particular type.
+/// Note that this does not, in general, find a unique solution, in case there are complex things
+/// with different where clauses going on.
+pub fn try_resolve_trait_method_did<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    trait_did: DefId,
+    trait_args: &[Option<ty::GenericArg<'tcx>>],
+    method_name: &str,
+    for_type: ty::Ty<'tcx>,
+) -> Option<DefId> {
+    // get all impls of this trait
+    let impls: &ty::trait_def::TraitImpls = tcx.trait_impls_of(trait_did);
+
+    let simplified_type = rustc_middle::ty::fast_reject::simplify_type(
+        tcx,
+        for_type,
+        ty::fast_reject::TreatParams::AsCandidateKey,
+    )?;
+    let defs = impls.non_blanket_impls().get(&simplified_type)?;
+    info!("found implementations: {:?}", impls);
+
+    let mut solution = None;
+    for did in defs.iter() {
+        let impl_self_ty: ty::Ty<'tcx> = tcx.type_of(did).instantiate_identity();
+        let impl_self_ty = normalize_in_function(*did, tcx, impl_self_ty).unwrap();
+
+        // check if this is an implementation for the right type
+        // TODO: is this the right way to compare the types?
+        if impl_self_ty == for_type {
+            let impl_ref: Option<ty::EarlyBinder<ty::TraitRef<'_>>> = tcx.impl_trait_ref(did);
+
+            if let Some(impl_ref) = impl_ref {
+                let impl_ref = normalize_in_function(*did, tcx, impl_ref.skip_binder()).unwrap();
+
+                let this_impl_args = impl_ref.args;
+                // filter by the generic instantiation for the trait
+                info!("found impl with args {:?}", this_impl_args);
+                // args has self at position 0 and generics of the trait at position 1..
+
+                // check if the generic argument types match up
+                if !args_match_types(&this_impl_args.as_slice()[1..], trait_args) {
+                    continue;
+                }
+
+                let impl_assoc_items: &ty::AssocItems = tcx.associated_items(did);
+                // find the right item
+                if let Some(item) = impl_assoc_items.find_by_name_and_kind(
+                    tcx,
+                    rustc_span::symbol::Ident::from_str(method_name),
+                    ty::AssocKind::Fn,
+                    trait_did,
+                ) {
+                    info!("found impl {:?} with item {:?}", impl_ref, item);
+                    if solution.is_some() {
+                        println!(
+                            "Warning: Ambiguous resolution for method {method_name} of trait {:?} on type {:?}; solution {:?} but found also {:?}",
+                            trait_did,
+                            for_type,
+                            solution.unwrap(),
+                            item.def_id
+                        );
+                    } else {
+                        solution = Some(item.def_id);
+                    }
+                }
+            }
+        }
+    }
+
+    solution
+}
+
 /// Try to get a defid of a method at the given path.
-/// TODO: this doesn't handle overlapping method definitions that are distinguished by generics.
-pub fn try_resolve_method_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<DefId> {
-    info!("trying to resolve method did: {:?}", path);
+/// This does not handle trait methods.
+/// This also does not handle overlapping method definitions/specialization well.
+pub fn try_resolve_method_did_direct<'tcx, T>(tcx: TyCtxt<'tcx>, path: &[T]) -> Option<DefId>
+where
+    T: AsRef<str>,
+{
     tcx.crates(())
         .iter()
-        .find(|&&krate| tcx.crate_name(krate).as_str() == path[0])
+        .find(|&&krate| tcx.crate_name(krate).as_str() == path[0].as_ref())
         .and_then(|krate| {
             let krate = DefId {
                 krate: *krate,
@@ -70,10 +394,11 @@ pub fn try_resolve_method_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<
             let mut path_it = path.iter().skip(1).peekable();
 
             while let Some(segment) = path_it.next() {
+                //info!("items to look at: {:?}", items);
                 for item in mem::take(&mut items).iter() {
                     let item: &rustc_middle::metadata::ModChild = item;
-                    if item.ident.name.as_str() == *segment {
-                        info!("taking path: {:?}", segment);
+                    if item.ident.name.as_str() == segment.as_ref() {
+                        info!("taking path: {:?}", segment.as_ref());
                         if path_it.peek().is_none() {
                             return Some(item.res.def_id());
                         }
@@ -93,7 +418,7 @@ pub fn try_resolve_method_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<
                                 // TODO more robust error handling if there are multiple matches.
                                 for item in items.in_definition_order() {
                                     //info!("comparing: {:?} with {:?}", item.name.as_str(), find);
-                                    if &item.name.as_str() == find {
+                                    if item.name.as_str() == find.as_ref() {
                                         return Some(item.def_id);
                                     }
                                 }
@@ -110,6 +435,29 @@ pub fn try_resolve_method_did<'tcx>(tcx: TyCtxt<'tcx>, path: &[&str]) -> Option<
             }
             None
         })
+}
+
+pub fn try_resolve_method_did<'tcx, T>(tcx: TyCtxt<'tcx>, path: &[T]) -> Option<DefId>
+where
+    T: AsRef<str>,
+{
+    if let Some(did) = try_resolve_method_did_direct(tcx, path) {
+        return Some(did);
+    }
+
+    // if the first component is "std", try if we can replace it with "alloc" or "core"
+    if path[0].as_ref() == "std" {
+        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_string()).collect();
+        components[0] = "core".to_string();
+        if let Some(did) = try_resolve_method_did_direct(tcx, &components) {
+            return Some(did);
+        }
+        // try "alloc"
+        components[0] = "alloc".to_string();
+        try_resolve_method_did_direct(tcx, &components)
+    } else {
+        None
+    }
 }
 
 /// Check if the place `potential_prefix` is a prefix of `place`. For example:
