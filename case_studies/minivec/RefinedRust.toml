@@ -6,4 +6,3 @@ run_check = false
 extra_specs = "extra_specs.v"
 lib_load_paths = ["../../stdlib"]
 post_generation_hook = "patch output/minivec/generated/generated_code_minivec.v annotation_patch.patch"
-#post_generation_hook = "sh -c ls"

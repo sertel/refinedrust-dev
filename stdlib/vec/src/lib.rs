@@ -6,6 +6,7 @@
 #![rr::package("refinedrust-stdlib")]
 #![feature(allocator_api)]
 #![rr::coq_prefix("stdlib.alloc")]
+#![allow(unused)]
 
 use std::alloc::{Allocator, Global};
 

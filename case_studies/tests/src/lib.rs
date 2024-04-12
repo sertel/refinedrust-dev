@@ -2,6 +2,7 @@
 #![register_tool(rr)]
 #![feature(custom_inner_attributes)]
 #![feature(stmt_expr_attributes)]
+#![allow(dead_code)]
 
 mod enums;
 mod structs;

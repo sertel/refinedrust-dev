@@ -3,6 +3,7 @@
 #![feature(custom_inner_attributes)]
 #![rr::import("refinedrust.extra_proofs.minivec", "minivec")]
 #![rr::include("option")]
+#![allow(dead_code)]
 
 /// Vec implementation from https://doc.rust-lang.org/nomicon/vec/vec-final.html
 
@@ -19,7 +20,7 @@ mod client;
 /// General assumptions we make:
 /// - the global allocator has _not_ been reconfigured to not abort on allocation failure,
 ///   in particular we assume that the allocation failure handler does not panic.
-mod RRAlloc {
+mod rralloc {
     use std::alloc::{self, Layout};
 
     #[rr::shim("alloc_array", "type_of_alloc_array")]
@@ -84,7 +85,7 @@ mod RRAlloc {
 }
 
 /// A wrapper module around ptr operations we need.
-mod RRPtr {
+mod rrptr {
     use std::ptr::NonNull;
 
 
@@ -234,7 +235,7 @@ impl<T> RawVec<T> {
 
         // `NonNull::dangling()` doubles as "unallocated" and "zero-sized allocation"
         RawVec {
-            ptr: RRPtr::dangling(),
+            ptr: rrptr::dangling(),
             cap,
             _marker: PhantomData,
         }
@@ -275,14 +276,14 @@ impl<T> RawVec<T> {
         // This limit is due to GEP / ptr::offset taking isize offsets, so Rust std generally
         // limits allocations to isize::MAX bytes.
         // Allocation too large?
-        assert!(RRAlloc::check_array_layoutable::<T>(new_cap));
+        assert!(rralloc::check_array_layoutable::<T>(new_cap));
 
         let new_ptr = if self.cap == 0 {
-            unsafe { RRAlloc::alloc_array::<T>(new_cap) }
+            unsafe { rralloc::alloc_array::<T>(new_cap) }
         } else {
             // this works because we have already checked that the new array is layoutable
             let old_ptr = self.ptr;
-            unsafe { RRAlloc::realloc_array::<T>(self.cap, old_ptr as *mut T, new_cap) }
+            unsafe { rralloc::realloc_array::<T>(self.cap, old_ptr as *mut T, new_cap) }
         };
 
         // move ownership into self.ptr
@@ -339,7 +340,7 @@ impl<T> Vec<T> {
 
         // important: ptr::write does not call drop on the uninit mem.
         unsafe {
-            ptr::write(RRPtr::mut_add(self.ptr(), self.len), elem);
+            ptr::write(rrptr::mut_add(self.ptr(), self.len), elem);
         }
 
         // Can't overflow, we'll OOM first.
@@ -355,7 +356,7 @@ impl<T> Vec<T> {
             None
         } else {
             self.len -= 1;
-            unsafe { Some(ptr::read(RRPtr::mut_add(self.ptr(), self.len))) }
+            unsafe { Some(ptr::read(rrptr::mut_add(self.ptr(), self.len))) }
         }
     }
 
@@ -378,11 +379,11 @@ impl<T> Vec<T> {
             // doing a memmove, effectively
             // we will want to spec this in terms of our array type
             ptr::copy(
-                RRPtr::mut_add(self.ptr(), index),
-                RRPtr::mut_add(self.ptr(), index + 1),
+                rrptr::mut_add(self.ptr(), index),
+                rrptr::mut_add(self.ptr(), index + 1),
                 self.len - index,
             );
-            ptr::write(RRPtr::mut_add(self.ptr(), index), elem);
+            ptr::write(rrptr::mut_add(self.ptr(), index), elem);
             self.len += 1;
         }
     }
@@ -398,11 +399,11 @@ impl<T> Vec<T> {
         assert!(index < self.len);
         unsafe {
             self.len -= 1;
-            let result = ptr::read(RRPtr::mut_add(self.ptr(), index));
+            let result = ptr::read(rrptr::mut_add(self.ptr(), index));
             // memmove
             ptr::copy(
-                RRPtr::mut_add(self.ptr(), index + 1),
-                RRPtr::mut_add(self.ptr(), index),
+                rrptr::mut_add(self.ptr(), index + 1),
+                rrptr::mut_add(self.ptr(), index),
                 self.len - index,
             );
             result
@@ -418,7 +419,7 @@ impl<T> Vec<T> {
     pub unsafe fn get_unchecked_mut(&mut self, index: usize) -> &mut T {
         self.len;
         unsafe {
-            let p = RRPtr::mut_add(self.ptr(), index);
+            let p = rrptr::mut_add(self.ptr(), index);
             let ret = &mut *p;
             ret
         }
@@ -450,7 +451,7 @@ impl<T> Vec<T> {
     pub unsafe fn get_unchecked(&self, index: usize) -> &T {
         self.len;
         unsafe {
-            let p = RRPtr::mut_add(self.ptr(), index);
+            let p = rrptr::mut_add(self.ptr(), index);
             let ret = &*p;
             ret
         }

@@ -46,5 +46,5 @@ impl<T> Bla for Option<T> {
 #[rr::returns("()")]
 fn test_bla() {
     let x = Some(3);
-    let bla = x.bla();
+    let _bla = x.bla();
 }

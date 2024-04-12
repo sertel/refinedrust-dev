@@ -5,6 +5,7 @@
 
 #![rr::package("refinedrust-stdlib")]
 #![rr::coq_prefix("stdlib.controlflow")]
+#![allow(unused)]
 
 #[rr::refined_by("sum (place_rfn {rt_of C}) (place_rfn {rt_of B})")]
 #[rr::export_as(core::ops::ControlFlow)]

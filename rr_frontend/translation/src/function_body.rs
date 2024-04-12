@@ -2609,6 +2609,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 self.inclusion_tracker.add_static_inclusion(*r1, *r2, *p);
                 self.inclusion_tracker.add_static_inclusion(*r2, *r1, *p);
 
+                // TODO: use this instead of the expr_annot below
                 //stmt_annot.push(
                 //radium::Annotation::CopyLftName(
                 //self.format_region(*r1),
@@ -2616,6 +2617,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 //));
             }
 
+            // TODO: get rid of this
             // similarly generate an annotation that encodes these constraints in the RR
             // type system
             expr_annot = self.generate_strong_update_annot(plc_ty);

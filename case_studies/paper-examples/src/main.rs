@@ -1,6 +1,7 @@
 #![feature(register_tool)]
 #![register_tool(rr)]
 #![feature(custom_inner_attributes)]
+#![allow(dead_code)]
 
 // Examples from Section 2
 

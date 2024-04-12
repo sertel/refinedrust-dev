@@ -1,13 +1,15 @@
+#![allow(unused)]
+
 #[rr::returns("()")]
 fn closure_test1() {
 
     // Fn-closure
-    let x = 
+    let x =
         #[rr::params("i")]
         #[rr::args("i")]
         #[rr::requires("(2 * i)%Z ∈ i32")]
         #[rr::returns("(2 * i)%Z")]
-        |x: i32| { 
+        |x: i32| {
             x * 2
         };
 
@@ -20,12 +22,12 @@ fn closure_test5() {
     let x = 5;
 
     // Fn-closure
-    let x = 
+    let x =
         #[rr::params("i")]
         #[rr::capture("x": "i")]
         #[rr::requires("(2 * i)%Z ∈ i32")]
         #[rr::returns("(2 * i)%Z")]
-        || { 
+        || {
             x * 2
         };
 
@@ -41,13 +43,13 @@ fn closure_test6(z: &i32) {
     let x = 5;
 
     // Fn-closure
-    let x = 
+    let x =
         #[rr::params("i", "j")]
         #[rr::capture("x": "i")]
         #[rr::capture("z": "j")]
         #[rr::requires("(j * i)%Z ∈ i32")]
         #[rr::returns("(j * i)%Z")]
-        || { 
+        || {
             x * z
         };
 
@@ -62,7 +64,7 @@ fn closure_test2() {
 
     // here, we prove initialization of the closure
 
-    let mut x =  
+    let mut x =
         // Note: the closure code has a doubly-nested mutable references, since it gets a mutref to
         // the capture also.
         #[rr::params("i")]
@@ -88,7 +90,7 @@ fn closure_test3(y: &mut i32) {
     let mut z = 5;
     let mut yy = 423;
 
-    let mut x =  
+    let mut x =
         // this effectively takes a mutable reference for initialization
         #[rr::params("i", "j")]
         // TODO: we should specify the projection here.
@@ -107,7 +109,7 @@ fn closure_test3(y: &mut i32) {
 fn closure_test4(y: &mut i32) {
     let mut z = 5;
 
-    let mut x =  
+    let mut x =
         // this effectively takes a mutable reference for initialization
         #[rr::params("i", "γ", "j", "γj")]
         #[rr::capture_pre("y" : "(i, γ)")]

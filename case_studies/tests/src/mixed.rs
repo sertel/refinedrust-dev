@@ -1,3 +1,4 @@
+#![allow(unused)]
 
 #[macro_export]
 macro_rules! rr_stop {

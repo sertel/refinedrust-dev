@@ -6,6 +6,7 @@
 #![rr::coq_prefix("stdlib.btreemap")]
 #![rr::include("option")]
 #![rr::include("alloc")]
+#![allow(unused)]
 
 #![feature(allocator_api)]
 

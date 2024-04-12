@@ -5,6 +5,7 @@
 #![feature(allocator_api)]
 #![rr::package("refinedrust-stdlib")]
 #![rr::coq_prefix("stdlib.alloc")]
+#![allow(unused)]
 
 use std::ptr::NonNull;
 use std::alloc::{Allocator, AllocError, Layout};
