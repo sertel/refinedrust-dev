@@ -27,7 +27,6 @@ rustflags = [
     "-Aclippy::useless_format",
 
     # clippy::correctness
-    "-Aclippy::never_loop",
     "-Aclippy::option_env_unwrap",
     "-Aclippy::redundant_locals",
     "-Aclippy::unused_io_amount",

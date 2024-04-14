@@ -2068,10 +2068,9 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         panic!("unconstrained lifetime");
                     } else if rs.len() == 1 {
                         // this is really just an equality constraint
-                        for r2 in rs.iter() {
+                        if let Some(r2) = rs.iter().next() {
                             let lft2 = self.format_region(*r2);
                             stmt_annots.push(radium::Annotation::CopyLftName(lft2, lft));
-                            break;
                         }
                     } else {
                         // a proper intersection
