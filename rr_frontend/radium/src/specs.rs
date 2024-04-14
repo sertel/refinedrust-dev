@@ -1223,12 +1223,7 @@ impl Display for UnionRepr {
 
 /// Lookup a Rust-level type parameter identifier `name` in the given type parameter environment.
 pub fn lookup_ty_param<'a, 'b>(name: &'a str, env: &'b [LiteralTyParam]) -> Option<&'b LiteralTyParam> {
-    for names in env.iter() {
-        if names.rust_name == name {
-            return Some(names);
-        }
-    }
-    None
+    env.iter().find(|&names| names.rust_name == name)
 }
 
 pub type AbstractVariantRef<'def> = &'def RefCell<Option<AbstractVariant<'def>>>;
