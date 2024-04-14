@@ -77,7 +77,7 @@ impl<'a, 'tcx: 'a> InclusionTracker<'a, 'tcx> {
         let static_incl = iteration.variable::<(Region, Region, PointIndex)>("static_incl");
         static_incl.extend(self.static_incl_base.clone());
         if !self.fully_invalidated && self.static_incl.is_some() {
-            static_incl.extend(self.static_incl.take().unwrap().into_iter());
+            static_incl.extend(self.static_incl.take().unwrap());
         }
 
         self.compute_transitive_closure(&mut iteration, &static_incl);
@@ -140,7 +140,7 @@ impl<'a, 'tcx: 'a> InclusionTracker<'a, 'tcx> {
         // incl(r1, r2, p) :- dynamic_incl_base(r1, r2, p)
         let incl = iteration.variable::<(Region, Region, PointIndex)>("incl");
         if !self.fully_invalidated && self.full_incl.is_some() {
-            incl.extend(self.full_incl.take().unwrap().into_iter());
+            incl.extend(self.full_incl.take().unwrap());
         }
         incl.extend(self.static_incl.as_ref().unwrap().clone());
         incl.extend(self.dynamic_incl_base.clone());

@@ -2784,7 +2784,7 @@ impl<'def> FunctionSpec<'def> {
             pattern.push_str("(");
             types.push_str("(");
             let mut need_sep = false;
-            for (name, t) in v.into_iter() {
+            for (name, t) in v {
                 if need_sep {
                     pattern.push_str(", ");
                     types.push_str(" * ");
@@ -3061,7 +3061,7 @@ impl<'def> FunctionSpecBuilder<'def> {
     /// `code_params` are the parameters the code body needs to be provided (e.g., locations of
     /// other functions).
     pub fn into_function_spec(mut self, name: &str, spec_name: &str) -> FunctionSpec<'def> {
-        self.coq_params.extend(self.late_coq_params.into_iter());
+        self.coq_params.extend(self.late_coq_params);
         let ret = self.ret.unwrap_or(TypeWithRef::make_unit());
         FunctionSpec {
             extra_link_assum: self.extra_link_assum,

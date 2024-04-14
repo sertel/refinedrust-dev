@@ -188,11 +188,12 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         let mir = procedure.get_mir();
 
         // write raw dump
-        let raw_path = PathBuf::from(config::log_dir())
+        let raw_path = config::log_dir()
             .join("nll-facts")
             .join(def_path.to_filename_friendly_no_crate())
             .join("polonius_info.txt");
         debug!("Writing raw polonius info to {:?}", raw_path);
+
         let prefix = raw_path.parent().expect("Unable to determine parent dir");
         std::fs::create_dir_all(prefix).expect("Unable to create parent dir");
         let raw_file = File::create(raw_path).expect("Unable to create file");
@@ -203,11 +204,12 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         let real_edges = RealEdges::new(mir);
         let loop_info = loops::ProcedureLoops::new(mir, &real_edges);
 
-        let graph_path = PathBuf::from(config::log_dir())
+        let graph_path = config::log_dir()
             .join("nll-facts")
             .join(def_path.to_filename_friendly_no_crate())
             .join("graph.dot");
         debug!("Writing graph to {:?}", graph_path);
+
         let prefix = graph_path.parent().expect("Unable to determine parent dir");
         std::fs::create_dir_all(prefix).expect("Unable to create parent dir");
         let graph_file = File::create(graph_path).expect("Unable to create file");

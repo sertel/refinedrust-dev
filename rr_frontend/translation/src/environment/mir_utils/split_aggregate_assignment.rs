@@ -43,7 +43,7 @@ impl<'tcx> SplitAggregateAssignment<'tcx> for mir::Statement<'tcx> {
                 let items_ty = mir.local_decls[local].ty.tuple_items().unwrap();
                 operands
                     .into_iter()
-                    .zip(items_ty.into_iter())
+                    .zip(items_ty)
                     .enumerate()
                     .map(|(i, (rhs, ty))| {
                         let lhs = tcx.mk_place_field(local.into(), i.into(), ty);

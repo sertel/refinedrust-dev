@@ -216,7 +216,7 @@ pub fn graphviz<'tcx>(
     //let borrowck_out_facts = Output::compute(&borrowck_in_facts, Algorithm::Naive, true);
 
     use std::io::Write;
-    let graph_path = PathBuf::from(config::log_dir())
+    let graph_path = config::log_dir()
         .join("nll-facts")
         .join(def_path.to_filename_friendly_no_crate())
         .join("polonius.dot");
@@ -293,7 +293,7 @@ pub fn compute_transitive_closure(
     let mut iter = datafrog::Iteration::new();
 
     let incl = iter.variable::<(facts::Region, facts::Region)>("incl");
-    incl.extend(constraints.into_iter());
+    incl.extend(constraints);
 
     let incl1 = iter.variable_indistinct::<(facts::Region, facts::Region)>("incl1");
 

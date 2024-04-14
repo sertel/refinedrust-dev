@@ -455,9 +455,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     })
                 }
             },
-            TyKind::Tuple(args) => {
-                self.generate_tuple_use(args.into_iter(), adt_deps).map(|x| radium::Type::Literal(x))
-            },
+            TyKind::Tuple(args) => self.generate_tuple_use(*args, adt_deps).map(|x| radium::Type::Literal(x)),
             _ => Err(TranslationError::UnknownError("not a structlike".to_string())),
         }
     }
@@ -1644,13 +1642,13 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
                 }
             },
             TyKind::Tuple(args) => self
-                .generate_tuple_use(args.into_iter(), &mut TranslationStateInner::InFunction(scope))
+                .generate_tuple_use(*args, &mut TranslationStateInner::InFunction(scope))
                 .map(|x| Some(x)),
             TyKind::Closure(_, args) => {
                 // use the upvar tuple
                 let closure_args = args.as_closure();
                 let upvars = closure_args.upvar_tys();
-                self.generate_tuple_use(upvars.into_iter(), &mut TranslationStateInner::InFunction(scope))
+                self.generate_tuple_use(upvars, &mut TranslationStateInner::InFunction(scope))
                     .map(|x| Some(x))
             },
             _ => Err(TranslationError::UnknownError("not a structlike".to_string())),

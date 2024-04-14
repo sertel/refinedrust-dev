@@ -1254,7 +1254,6 @@ where
     crate_spec.includes.into_iter().map(|name| includes.insert(name)).count();
     module_attrs
         .into_values()
-        .into_iter()
         .map(|attrs| attrs.includes.into_iter().map(|name| includes.insert(name)).count())
         .count();
     info!("Including RefinedRust modules: {:?}", includes);
