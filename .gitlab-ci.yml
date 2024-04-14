@@ -21,13 +21,18 @@ default:
    - nix build --print-build-logs .#theories.inputDerivation
    - nix build --print-build-logs .#frontend.inputDerivation
 
-  cache:
+  cache: &nix_cache
     key:
       files: [ flake.lock, flake.nix ]
     paths: [ "${NIX_STORE_CACHE_PATH}" ]
+    policy: pull
 
 
 .build_to_cache:
+  cache:
+    <<: *nix_cache
+    policy: pull-push
+
   script:
    - nix build --print-build-logs ${NIX_DERIVATION}
    - nix store sign --key-file <(echo "${NIX_CI_CACHE_PRIV_KEY}") --recursive ${NIX_DERIVATION}
