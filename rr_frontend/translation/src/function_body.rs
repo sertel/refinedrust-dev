@@ -1523,25 +1523,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         Ok(false)
     }
 
-    /// Get the region variables of a type (we assume that region variables have not been erased
-    /// yet after the borrow checker ran) and append them to `ret`.
-    fn get_ty_region_variables(&self, ty: Ty<'tcx>, ret: &mut Vec<Region>) {
-        match ty.kind() {
-            TyKind::Ref(reg, _, _) => {
-                if let ty::RegionKind::ReVar(reg2) = reg.kind() {
-                    ret.push(reg2);
-                }
-            },
-            TyKind::Tuple(_) => {
-                for ty0 in ty.tuple_fields() {
-                    self.get_ty_region_variables(ty0, ret);
-                }
-            },
-            // TODO also descend below structs/adts/box, like the borrowcheck does.
-            _ => {},
-        }
-    }
-
     fn get_assignment_strong_update_constraints(
         &mut self,
         loc: Location,
