@@ -21,7 +21,6 @@ rustflags = [
     "-Aunused_variables",
 
     # clippy::complexity
-    "-Aclippy::explicit_auto_deref",
     "-Aclippy::extra_unused_lifetimes",
     "-Aclippy::manual_find",
     "-Aclippy::manual_flatten",

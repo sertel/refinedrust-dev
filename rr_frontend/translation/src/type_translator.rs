@@ -1791,20 +1791,20 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
     pub fn translate_type_to_syn_type(&self, ty: &Ty<'tcx>) -> Result<radium::SynType, TranslationError> {
         let ty = self.normalize(*ty)?;
         let mut scope = self.scope.borrow_mut();
-        self.translator.translate_type_to_syn_type(&ty, &mut *scope)
+        self.translator.translate_type_to_syn_type(&ty, &mut scope)
     }
 
     /// Translate type.
     pub fn translate_type(&self, ty: &Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
         let ty = self.normalize(*ty)?;
         let mut scope = self.scope.borrow_mut();
-        self.translator.translate_type(&ty, &mut *scope)
+        self.translator.translate_type(&ty, &mut scope)
     }
 
     /// Translate type without normalizing first.
     pub fn translate_type_no_normalize(&self, ty: &Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
         let mut scope = self.scope.borrow_mut();
-        self.translator.translate_type(ty, &mut *scope)
+        self.translator.translate_type(ty, &mut scope)
     }
 
     /// Translate a MIR type to the Caesium syntactic type we need when storing an element of the type,
@@ -1814,7 +1814,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         ty: &Ty<'tcx>,
     ) -> Result<radium::SynType, TranslationError> {
         let mut scope = self.scope.borrow_mut();
-        self.translator.translate_type_to_syn_type(ty, &mut *scope)
+        self.translator.translate_type_to_syn_type(ty, &mut scope)
     }
 
     /// Assumes that the current state of the ADT registry is consistent, i.e. we are not currently
@@ -1825,7 +1825,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         variant: Option<rustc_target::abi::VariantIdx>,
     ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError> {
         let mut scope = self.scope.borrow_mut();
-        self.translator.generate_structlike_use(ty, variant, &mut *scope)
+        self.translator.generate_structlike_use(ty, variant, &mut scope)
     }
 
     /// Assumes that the current state of the ADT registry is consistent, i.e. we are not currently
@@ -1839,7 +1839,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
         let mut scope = self.scope.borrow_mut();
-        self.translator.generate_enum_use(adt_def, args, &mut *scope)
+        self.translator.generate_enum_use(adt_def, args, &mut scope)
     }
 
     /// Generate a struct use.
@@ -1855,7 +1855,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
         let mut scope = self.scope.borrow_mut();
-        self.translator.generate_struct_use(variant_id, args, &mut *scope)
+        self.translator.generate_struct_use(variant_id, args, &mut scope)
     }
 
     /// Generate a struct use.
@@ -1869,13 +1869,13 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
         let mut scope = self.scope.borrow_mut();
-        self.translator.generate_enum_variant_use(variant_id, args, &mut *scope)
+        self.translator.generate_enum_variant_use(variant_id, args, &mut scope)
     }
 
     pub fn make_tuple_use(&self, translated_tys: Vec<radium::Type<'def>>) -> radium::Type<'def> {
         let mut scope = self.scope.borrow_mut();
         self.translator
-            .make_tuple_use(translated_tys, &mut TranslationStateInner::InFunction(&mut *scope))
+            .make_tuple_use(translated_tys, &mut TranslationStateInner::InFunction(&mut scope))
     }
 
     /// Translates a syntactic type to an op type.
@@ -1896,7 +1896,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
     {
         let mut scope = self.scope.borrow_mut();
         self.translator
-            .generate_tuple_use(tys, &mut TranslationStateInner::InFunction(&mut *scope))
+            .generate_tuple_use(tys, &mut TranslationStateInner::InFunction(&mut scope))
     }
 
     /// Format the Coq representation of an atomic region.
