@@ -2,14 +2,14 @@
 rustflags = [
     # === ENABLE ALL LINTS ===
 
-    "-Dclippy::complexity",
-    "-Dclippy::correctness",
-    "-Dclippy::nursery",
-    "-Dclippy::pedantic",
-    "-Dclippy::perf",
-    "-Dclippy::restriction",
-    "-Dclippy::style",
-    "-Dclippy::suspicious",
+    "-Wclippy::complexity",
+    "-Wclippy::correctness",
+    "-Wclippy::nursery",
+    "-Wclippy::pedantic",
+    "-Wclippy::perf",
+    "-Wclippy::restriction",
+    "-Wclippy::style",
+    "-Wclippy::suspicious",
 
     # === REASONABLE LINTS ===
 
@@ -21,7 +21,6 @@ rustflags = [
     "-Aunused_variables",
 
     # clippy::complexity
-    "-Aclippy::bind_instead_of_map",
     "-Aclippy::borrow_deref_ref",
     "-Aclippy::clone_on_copy",
     "-Aclippy::explicit_auto_deref",

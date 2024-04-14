@@ -3787,7 +3787,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             .get_mir()
             .local_decls
             .get(*local)
-            .and_then(|decl| Some(decl.ty))
+            .map(|decl| decl.ty)
             .ok_or(TranslationError::UnknownVar("".to_string()))
     }
 
