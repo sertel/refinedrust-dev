@@ -442,7 +442,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // dump graphviz files
                 // color code: red: dying loan, pink: becoming a zombie; green: is zombie
                 if rrconfig::dump_borrowck_info() {
-                    crate::environment::dump_borrowck_info(&*env, &proc.get_id(), &info);
+                    crate::environment::dump_borrowck_info(env, &proc.get_id(), &info);
                 }
 
                 let (tupled_inputs, output, mut universal_lifetimes) =
@@ -637,7 +637,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // dump graphviz files
                 // color code: red: dying loan, pink: becoming a zombie; green: is zombie
                 if rrconfig::dump_borrowck_info() {
-                    crate::environment::dump_borrowck_info(&*env, &proc.get_id(), &info);
+                    crate::environment::dump_borrowck_info(env, &proc.get_id(), &info);
                 }
 
                 let (inputs, output, universal_lifetimes) =

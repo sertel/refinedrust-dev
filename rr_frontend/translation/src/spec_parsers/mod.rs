@@ -30,7 +30,7 @@ pub fn get_export_as_attr(attrs: &[&AttrItem]) -> Result<Vec<String>, String> {
 
         if let Some(seg) = path_segs.get(1) {
             let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-            match &*seg.ident.name.as_str() {
+            match seg.ident.name.as_str() {
                 "export_as" => {
                     let path = RustPath::parse(&buffer, meta).map_err(parse_utils::str_err)?;
                     return Ok(path.path);
@@ -79,7 +79,7 @@ pub fn get_shim_attrs(attrs: &[&AttrItem]) -> Result<ShimAnnot, String> {
 
         if let Some(seg) = path_segs.get(1) {
             let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-            match &*seg.ident.name.as_str() {
+            match seg.ident.name.as_str() {
                 "shim" => {
                     let annot = ShimAnnot::parse(&buffer, meta).map_err(parse_utils::str_err)?;
                     return Ok(annot);

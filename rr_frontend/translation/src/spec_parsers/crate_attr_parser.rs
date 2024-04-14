@@ -49,7 +49,7 @@ impl CrateAttrParser for VerboseCrateAttrParser {
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-                match &*seg.ident.name.as_str() {
+                match seg.ident.name.as_str() {
                     "import" => {
                         let path: parse_utils::CoqPath = buffer.parse(&meta).map_err(str_err)?;
                         imports.push(path.into());

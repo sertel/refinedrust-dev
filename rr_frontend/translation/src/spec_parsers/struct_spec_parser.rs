@@ -208,7 +208,7 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&args.inner_tokens());
-                match &*seg.ident.name.as_str() {
+                match seg.ident.name.as_str() {
                     "refined_by" => {
                         let pat = RfnPattern::parse(&buffer, &meta).map_err(str_err)?;
                         rfn_pat = pat.rfn_pat;
@@ -400,7 +400,7 @@ where
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&args.inner_tokens());
-                match &*seg.ident.name.as_str() {
+                match seg.ident.name.as_str() {
                     "field" => {
                         let mut expect_ty = false;
                         if self.expect_rfn {

@@ -21,7 +21,6 @@ rustflags = [
     "-Aunused_variables",
 
     # clippy::complexity
-    "-Aclippy::borrow_deref_ref",
     "-Aclippy::clone_on_copy",
     "-Aclippy::explicit_auto_deref",
     "-Aclippy::extra_unused_lifetimes",

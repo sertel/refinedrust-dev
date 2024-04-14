@@ -623,7 +623,7 @@ where
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&args.inner_tokens());
-                let name = &*seg.ident.name.as_str();
+                let name = seg.ident.name.as_str();
                 match name {
                     "capture" => {
                         let spec: ClosureCaptureSpec = buffer.parse(&meta).map_err(str_err)?;
@@ -642,7 +642,7 @@ where
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-                let name = &*seg.ident.name.as_str();
+                let name = seg.ident.name.as_str();
 
                 match self.handle_common_attributes(name, &buffer, builder, &lfts) {
                     Ok(b) => {
@@ -686,13 +686,13 @@ where
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
 
-                match self.handle_common_attributes(&*seg.ident.name.as_str(), &buffer, builder, &lfts) {
+                match self.handle_common_attributes(seg.ident.name.as_str(), &buffer, builder, &lfts) {
                     Ok(b) => {
                         if !b {
                             let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
                             let _meta: ParseMeta = (&meta, &lfts);
 
-                            match &*seg.ident.name.as_str() {
+                            match seg.ident.name.as_str() {
                                 _ => {
                                     info!("ignoring function attribute: {:?}", args);
                                 },

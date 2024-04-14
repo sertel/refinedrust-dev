@@ -682,8 +682,7 @@ impl<'tcx> VecPlace<'tcx> {
 /// Any arguments of the attribute are ignored.
 pub fn has_tool_attr(attrs: &[ast::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| match &attr.kind {
-        ast::AttrKind::Normal(n) => {
-            let na: &rustc_ast::ast::NormalAttr = &(*n);
+        ast::AttrKind::Normal(na) => {
             let segments = &na.item.path.segments;
             segments.len() == 2
                 && segments[0].ident.as_str() == config::spec_hotword().as_str()
@@ -706,8 +705,7 @@ pub fn has_tool_attr_filtered(attrs: &[&ast::AttrItem], name: &str) -> bool {
 /// Check if any attribute starting with `<tool>` is among the attributes.
 pub fn has_any_tool_attr(attrs: &[ast::Attribute]) -> bool {
     attrs.iter().any(|attr| match &attr.kind {
-        ast::AttrKind::Normal(n) => {
-            let na: &rustc_ast::ast::NormalAttr = &(*n);
+        ast::AttrKind::Normal(na) => {
             let segments = &na.item.path.segments;
             segments[0].ident.as_str() == config::spec_hotword().as_str()
         },
@@ -722,8 +720,7 @@ pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
         .iter()
         .filter_map(|attr| {
             match attr.kind {
-                ast::AttrKind::Normal(ref n) => {
-                    let na: &rustc_ast::ast::NormalAttr = &*(n);
+                ast::AttrKind::Normal(ref na) => {
                     let it = &na.item;
                     let ref path_segs = it.path.segments;
 
@@ -732,7 +729,7 @@ pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
                         return None;
                     }
                     if let Some(seg) = path_segs.get(0) {
-                        if (&*seg.ident.name.as_str()) == &config::spec_hotword() { Some(it) } else { None }
+                        if seg.ident.name.as_str() == &config::spec_hotword() { Some(it) } else { None }
                     } else {
                         None
                     }

@@ -93,7 +93,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-                match &*seg.ident.name.as_str() {
+                match seg.ident.name.as_str() {
                     "refined_by" => {
                         let ty: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
                         let (ty, _) = process_coq_literal(ty.value().as_str(), meta);
@@ -116,7 +116,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
 
                 if let Some(seg) = path_segs.get(1) {
                     let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-                    match &*seg.ident.name.as_str() {
+                    match seg.ident.name.as_str() {
                         "pattern" => {
                             let pat: EnumPattern = buffer.parse(&meta).map_err(str_err)?;
                             pattern = Some(pat);
