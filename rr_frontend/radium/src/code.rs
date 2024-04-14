@@ -118,7 +118,7 @@ impl RustType {
                 let ty = env.get(*var).unwrap().as_ref().unwrap();
                 Self::TyVar(ty.rust_name.clone())
             },
-            Type::Int(it) => Self::Int(it.clone()),
+            Type::Int(it) => Self::Int(*it),
             Type::Bool => Self::Bool,
             Type::Char => Self::Char,
             Type::MutRef(ty, lft) => {

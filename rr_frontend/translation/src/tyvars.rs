@@ -47,7 +47,7 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyVarFolder<'tcx> {
     fn fold_ty(&mut self, t: Ty<'tcx>) -> Ty<'tcx> {
         match t.kind() {
             TyKind::Param(param) => {
-                self.tyvars.insert(param.clone());
+                self.tyvars.insert(*param);
                 t
             },
             _ => t.super_fold_with(self),
