@@ -19,6 +19,7 @@ pub fn find_compiled_executable(name: &str) -> PathBuf {
     );
 }
 
+#[allow(clippy::option_env_unwrap)]
 pub fn find_sysroot() -> String {
     // Taken from https://github.com/Manishearth/rust-clippy/pull/911.
     let home = option_env!("RUSTUP_HOME").or(option_env!("MULTIRUST_HOME"));
