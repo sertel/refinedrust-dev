@@ -538,10 +538,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 )?;
                 // add generic args to the fn
                 let generics = &type_scope.generic_scope;
-                for t in generics.iter() {
-                    if let Some(ref t) = t {
-                        translated_fn.add_generic_type(t.clone());
-                    }
+                for t in generics.iter().flatten() {
+                    translated_fn.add_generic_type(t.clone());
                 }
 
                 let mut t = Self {
@@ -672,10 +670,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 let type_scope = TypeTranslationScope::new(proc.get_id(), params, universal_lifetime_map)?;
                 // add generic args to the fn
                 let generics = &type_scope.generic_scope;
-                for t in generics.iter() {
-                    if let Some(t) = t {
-                        translated_fn.add_generic_type(t.clone());
-                    }
+                for t in generics.iter().flatten() {
+                    translated_fn.add_generic_type(t.clone());
                 }
 
                 let mut t = Self {
@@ -1201,10 +1197,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // assume that all generics are layoutable
         {
             let scope = self.ty_translator.scope.borrow();
-            for g in scope.generic_scope.iter() {
-                if let Some(ty) = g {
-                    self.translated_fn.assume_synty_layoutable(radium::SynType::Literal(ty.syn_type.clone()));
-                }
+            for ty in scope.generic_scope.iter().flatten() {
+                self.translated_fn.assume_synty_layoutable(radium::SynType::Literal(ty.syn_type.clone()));
             }
         }
         // assume that all used literals are layoutable

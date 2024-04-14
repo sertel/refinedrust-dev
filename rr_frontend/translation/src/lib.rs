@@ -742,20 +742,18 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 }
             }
 
-            for file in read {
-                if let Ok(file) = file {
-                    // check if the file name is okay
-                    let filename = file.file_name();
-                    if let Some(filename) = filename.to_str() {
-                        if filename == "dune" {
-                            continue;
-                        } else if proof_files_to_generate.contains(filename) {
-                            continue;
-                        } else {
-                            println!(
-                                "Warning: Proof file {filename} does not have a matching Rust function to verify."
-                            );
-                        }
+            for file in read.flatten() {
+                // check if the file name is okay
+                let filename = file.file_name();
+                if let Some(filename) = filename.to_str() {
+                    if filename == "dune" {
+                        continue;
+                    } else if proof_files_to_generate.contains(filename) {
+                        continue;
+                    } else {
+                        println!(
+                            "Warning: Proof file {filename} does not have a matching Rust function to verify."
+                        );
                     }
                 }
             }
