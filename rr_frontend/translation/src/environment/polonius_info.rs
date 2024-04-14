@@ -374,40 +374,43 @@ fn get_borrowed_places<'a, 'tcx: 'a>(
     } else {
         let statement = &statements[location.statement_index];
         match statement.kind {
-            mir::StatementKind::Assign(box (ref _lhs, ref rhs)) => match rhs {
-                &mir::Rvalue::Ref(_, _, ref place)
-                | &mir::Rvalue::Discriminant(ref place)
-                | &mir::Rvalue::Use(mir::Operand::Copy(ref place))
-                | &mir::Rvalue::Use(mir::Operand::Move(ref place)) => Ok(vec![place]),
-                &mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
-                &mir::Rvalue::Aggregate(_, ref operands) => Ok(operands
+            mir::StatementKind::Assign(box (ref _lhs, ref rhs)) => match *rhs {
+                mir::Rvalue::Use(mir::Operand::Copy(ref place) | mir::Operand::Move(ref place))
+                | mir::Rvalue::Ref(_, _, ref place)
+                | mir::Rvalue::Discriminant(ref place) => Ok(vec![place]),
+
+                mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
+
+                mir::Rvalue::Aggregate(_, ref operands) => Ok(operands
                     .iter()
-                    .flat_map(|operand| match operand {
+                    .flat_map(|operand| match *operand {
                         mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => Some(place),
                         mir::Operand::Constant(_) => None,
                     })
                     .collect()),
+
                 // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
-                &mir::Rvalue::Cast(
+                mir::Rvalue::Cast(
                     mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize),
                     ref operand,
                     ref ty,
                 ) if ty.is_slice() && !ty.is_unsafe_ptr() => {
                     trace!("slice: operand={:?}, ty={:?}", operand, ty);
-                    Ok(match operand {
+                    Ok(match *operand {
                         mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => vec![place],
                         mir::Operand::Constant(_) => vec![],
                     })
                 },
 
-                &mir::Rvalue::Cast(..) => {
+                mir::Rvalue::Cast(..) => {
                     // all other loan-casts are unsupported
                     Err(PoloniusInfoError::LoanInUnsupportedStatement(
                         "cast statements that create loans are not supported".to_string(),
                         *location,
                     ))
                 },
-                x => unreachable!("{:?}", x),
+
+                ref x => unreachable!("{:?}", x),
             },
             ref x => unreachable!("{:?}", x),
         }
