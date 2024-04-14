@@ -1222,7 +1222,7 @@ impl Display for UnionRepr {
 }
 
 /// Lookup a Rust-level type parameter identifier `name` in the given type parameter environment.
-pub fn lookup_ty_param<'a, 'b>(name: &'a str, env: &'b [LiteralTyParam]) -> Option<&'b LiteralTyParam> {
+pub fn lookup_ty_param<'a>(name: &'_ str, env: &'a [LiteralTyParam]) -> Option<&'a LiteralTyParam> {
     env.iter().find(|&names| names.rust_name == name)
 }
 

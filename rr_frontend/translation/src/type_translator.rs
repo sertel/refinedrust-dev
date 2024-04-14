@@ -47,7 +47,7 @@ pub(crate) struct AdtUseKey {
 }
 
 impl AdtUseKey {
-    pub fn new<'def>(defid: DefId, params: &[radium::Type<'def>]) -> Self {
+    pub fn new(defid: DefId, params: &[radium::Type<'_>]) -> Self {
         let generic_syntys: Vec<_> = params.iter().map(|ty| ty.get_syn_type()).collect();
         Self {
             base_did: defid,
@@ -95,9 +95,9 @@ impl<'def> TypeTranslationScope<'def> {
     }
 
     /// Create a new scope for a function translation with the given generic parameters.
-    pub fn new<'tcx>(
+    pub fn new(
         did: DefId,
-        ty_params: ty::GenericArgsRef<'tcx>,
+        ty_params: ty::GenericArgsRef<'_>,
         univ_lfts: HashMap<ty::RegionVid, String>,
     ) -> Result<Self, TranslationError> {
         info!("Entering procedure with ty_params {:?} and univ_lfts {:?}", ty_params, univ_lfts);
@@ -1930,9 +1930,9 @@ where
 }
 
 /// Format the Coq representation of an atomic region.
-pub fn format_atomic_region_direct<'def>(
+pub fn format_atomic_region_direct(
     r: &info::AtomicRegion,
-    scope: Option<&TypeTranslationScope<'def>>,
+    scope: Option<&TypeTranslationScope<'_>>,
 ) -> String {
     match r {
         info::AtomicRegion::Loan(_, r) => {

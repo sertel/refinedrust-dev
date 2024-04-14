@@ -44,7 +44,7 @@ fn get_rr_version_info() -> String {
 struct RRCompilerCalls {}
 
 // From Prusti.
-fn mir_borrowck<'tcx>(tcx: TyCtxt<'tcx>, def_id: LocalDefId) -> mir_borrowck::ProvidedValue<'tcx> {
+fn mir_borrowck(tcx: TyCtxt<'_>, def_id: LocalDefId) -> mir_borrowck::ProvidedValue<'_> {
     let body_with_facts = rustc_borrowck::consumers::get_body_with_borrowck_facts(
         tcx,
         def_id,
@@ -70,7 +70,7 @@ fn override_queries(_session: &Session, local: &mut Providers, _: &mut ExternPro
 
 /// Main entry point to the frontend that is called by the driver.
 /// This translates a crate.
-pub fn analyze<'tcx>(tcx: TyCtxt<'tcx>) {
+pub fn analyze(tcx: TyCtxt<'_>) {
     match translation::generate_coq_code(tcx, |vcx| vcx.write_coq_files()) {
         Ok(_) => (),
         Err(e) => {

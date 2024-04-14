@@ -123,8 +123,8 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
 }
 
 /// Returns the list of basic blocks ordered in the topological order (ignoring back edges).
-fn order_basic_blocks<'tcx>(
-    mir: &mir::Body<'tcx>,
+fn order_basic_blocks(
+    mir: &mir::Body<'_>,
     real_edges: &RealEdges,
     back_edges: &HashSet<(BasicBlockIndex, BasicBlockIndex)>,
     loop_depth: &dyn Fn(BasicBlockIndex) -> usize,

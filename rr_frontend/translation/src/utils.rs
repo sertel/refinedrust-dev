@@ -148,7 +148,7 @@ pub fn convert_ty_to_flat_type<'tcx>(env: &Environment<'tcx>, ty: ty::Ty<'tcx>) 
     }
 }
 
-pub fn get_cleaned_def_path<'tcx>(tcx: TyCtxt<'tcx>, did: DefId) -> Vec<String> {
+pub fn get_cleaned_def_path(tcx: TyCtxt<'_>, did: DefId) -> Vec<String> {
     let def_path = tcx.def_path_str(did);
     // we clean this up a bit and segment it
     let mut components = Vec::new();
@@ -210,7 +210,7 @@ pub fn get_export_path_for_did(env: &Environment, did: DefId) -> Vec<String> {
 
 /// Gets an instance for a path.
 /// Taken from Miri https://github.com/rust-lang/miri/blob/31fb32e49f42df19b45baccb6aa80c3d726ed6d5/src/helpers.rs#L48.
-pub fn try_resolve_did_direct<'tcx, T>(tcx: TyCtxt<'tcx>, path: &[T]) -> Option<DefId>
+pub fn try_resolve_did_direct<T>(tcx: TyCtxt<'_>, path: &[T]) -> Option<DefId>
 where
     T: AsRef<str>,
 {
@@ -223,7 +223,7 @@ where
                 index: CRATE_DEF_INDEX,
             };
 
-            let mut items: &'tcx [rustc_middle::metadata::ModChild] = tcx.module_children(krate);
+            let mut items: &[rustc_middle::metadata::ModChild] = tcx.module_children(krate);
             let mut path_it = path.iter().skip(1).peekable();
 
             while let Some(segment) = path_it.next() {
@@ -243,7 +243,7 @@ where
         })
 }
 
-pub fn try_resolve_did<'tcx, T>(tcx: TyCtxt<'tcx>, path: &[T]) -> Option<DefId>
+pub fn try_resolve_did<T>(tcx: TyCtxt<'_>, path: &[T]) -> Option<DefId>
 where
     T: AsRef<str>,
 {
@@ -377,7 +377,7 @@ pub fn try_resolve_trait_method_did<'tcx>(
 /// Try to get a defid of a method at the given path.
 /// This does not handle trait methods.
 /// This also does not handle overlapping method definitions/specialization well.
-pub fn try_resolve_method_did_direct<'tcx, T>(tcx: TyCtxt<'tcx>, path: &[T]) -> Option<DefId>
+pub fn try_resolve_method_did_direct<T>(tcx: TyCtxt<'_>, path: &[T]) -> Option<DefId>
 where
     T: AsRef<str>,
 {
@@ -390,7 +390,7 @@ where
                 index: CRATE_DEF_INDEX,
             };
 
-            let mut items: &'tcx [rustc_middle::metadata::ModChild] = tcx.module_children(krate);
+            let mut items: &[rustc_middle::metadata::ModChild] = tcx.module_children(krate);
             let mut path_it = path.iter().skip(1).peekable();
 
             while let Some(segment) = path_it.next() {
@@ -406,7 +406,7 @@ where
                         // just the method remaining
                         if path_it.len() == 1 {
                             let did: DefId = item.res.def_id();
-                            let impls: &'tcx [DefId] = tcx.inherent_impls(did);
+                            let impls: &[DefId] = tcx.inherent_impls(did);
                             info!("trying to find method among impls {:?}", impls);
 
                             let find = path_it.next().unwrap();
@@ -437,7 +437,7 @@ where
         })
 }
 
-pub fn try_resolve_method_did<'tcx, T>(tcx: TyCtxt<'tcx>, path: &[T]) -> Option<DefId>
+pub fn try_resolve_method_did<T>(tcx: TyCtxt<'_>, path: &[T]) -> Option<DefId>
 where
     T: AsRef<str>,
 {

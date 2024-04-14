@@ -110,7 +110,7 @@ impl Display for RustType {
 }
 
 impl RustType {
-    pub fn of_type<'def>(ty: &Type<'def>, env: &[Option<LiteralTyParam>]) -> Self {
+    pub fn of_type(ty: &Type<'_>, env: &[Option<LiteralTyParam>]) -> Self {
         info!("Translating rustType: {:?}", ty);
         match ty {
             Type::Var(var) => {

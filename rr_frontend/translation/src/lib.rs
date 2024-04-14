@@ -788,7 +788,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 }
 
 /// Register shims in the procedure registry.
-fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<(), String> {
+fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
     for shim in vcx.shim_registry.get_function_shims().iter() {
         let did;
         if shim.is_method {
@@ -886,8 +886,8 @@ fn register_shims<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<
     Ok(())
 }
 
-fn get_most_restrictive_function_mode<'tcx, 'rcx>(
-    vcx: &VerificationCtxt<'tcx, 'rcx>,
+fn get_most_restrictive_function_mode(
+    vcx: &VerificationCtxt<'_, '_>,
     did: DefId,
 ) -> function_body::ProcedureMode {
     let mut mode = function_body::ProcedureMode::Prove;
@@ -912,7 +912,7 @@ fn get_most_restrictive_function_mode<'tcx, 'rcx>(
 }
 
 /// Register functions of the crate in the procedure registry.
-fn register_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<(), String> {
+fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
     for &f in vcx.functions {
         let mut mode = get_most_restrictive_function_mode(vcx, f.to_def_id());
 
@@ -1089,7 +1089,7 @@ fn exit_with_error(s: &str) {
 
 /// Get all functions and closures in the current crate that have attributes on them and are not
 /// skipped due to rr::skip attributes.
-pub fn get_filtered_functions<'tcx>(env: &Environment<'tcx>) -> Vec<LocalDefId> {
+pub fn get_filtered_functions(env: &Environment<'_>) -> Vec<LocalDefId> {
     let mut functions = env.get_procedures();
     let closures = env.get_closures();
     info!("Found {} function(s) and {} closure(s)", functions.len(), closures.len());
@@ -1162,8 +1162,8 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
 }
 
 /// Get and parse all module attributes.
-pub fn get_module_attributes<'tcx>(
-    env: &Environment<'tcx>,
+pub fn get_module_attributes(
+    env: &Environment<'_>,
 ) -> Result<HashMap<LocalDefId, mod_parser::ModuleAttrs>, String> {
     let modules = env.get_modules();
     let mut attrs = HashMap::new();
