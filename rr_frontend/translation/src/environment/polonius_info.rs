@@ -1119,7 +1119,6 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             return Ok(None);
         };
         let (dest, source) = assignment.as_assign().unwrap();
-        let dest = dest;
         let source = source.clone();
         let location = self.loan_position[loan];
         Ok(Some(LoanPlaces {
