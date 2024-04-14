@@ -3123,12 +3123,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 })
             },
             Rvalue::NullaryOp(op, _ty) => {
-                match op {
-                    _ => Err(TranslationError::UnsupportedFeature {
-                        description: "nullary ops (AlignOf, Sizeof) are not supported currently".to_string(),
-                    }),
-                }
                 // TODO: SizeOf
+                Err(TranslationError::UnsupportedFeature {
+                    description: "nullary ops (AlignOf, Sizeof) are not supported currently".to_string(),
+                })
             },
             Rvalue::Discriminant(pl) => {
                 let ty = self.get_type_of_place(pl)?;

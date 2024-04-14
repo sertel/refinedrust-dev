@@ -692,11 +692,7 @@ where
                             let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
                             let _meta: ParseMeta = (&meta, &lfts);
 
-                            match seg.ident.name.as_str() {
-                                _ => {
-                                    info!("ignoring function attribute: {:?}", args);
-                                },
-                            }
+                            info!("ignoring function attribute: {:?}", args);
                         }
                     },
                     Err(e) => {

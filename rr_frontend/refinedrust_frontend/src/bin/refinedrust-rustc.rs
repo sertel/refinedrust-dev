@@ -180,22 +180,18 @@ fn main() {
             // Very first arg: binary name.
             rustc_args.push(arg);
         } else {
-            match arg.as_str() {
-                _ => {
-                    // Disable incremental compilation because it causes mir_borrowck not to be called.
-                    if arg == "--codegen" || arg == "-C" {
-                        is_codegen = true;
-                    } else if is_codegen && arg.starts_with("incremental=") {
-                        // Just drop the argument.
-                        is_codegen = false;
-                    } else {
-                        if is_codegen {
-                            rustc_args.push("-C".to_owned());
-                            is_codegen = false;
-                        }
-                        rustc_args.push(arg);
-                    }
-                },
+            // Disable incremental compilation because it causes mir_borrowck not to be called.
+            if arg == "--codegen" || arg == "-C" {
+                is_codegen = true;
+            } else if is_codegen && arg.starts_with("incremental=") {
+                // Just drop the argument.
+                is_codegen = false;
+            } else {
+                if is_codegen {
+                    rustc_args.push("-C".to_owned());
+                    is_codegen = false;
+                }
+                rustc_args.push(arg);
             }
         }
     }
