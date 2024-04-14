@@ -295,7 +295,7 @@ impl SynType {
     /// Determine the optype used to access a value of this syntactic type.
     /// Note that we may also always use UntypedOp, but this here computes the more specific
     /// op_type that triggers more UB on invalid values.
-    pub fn optype_typaram<'def>(&self, env: &[Option<LiteralTyParam>]) -> OpType {
+    pub fn optype_typaram(&self, env: &[Option<LiteralTyParam>]) -> OpType {
         self.optype_core(env, |x| SynType::Literal(x.syn_type.clone()))
     }
 

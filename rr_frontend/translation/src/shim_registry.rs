@@ -100,7 +100,7 @@ pub struct TraitMethodImplShim {
     pub spec_name: String,
 }
 
-impl<'a> Into<ShimTraitMethodImplEntry> for TraitMethodImplShim {
+impl Into<ShimTraitMethodImplEntry> for TraitMethodImplShim {
     fn into(self) -> ShimTraitMethodImplEntry {
         ShimTraitMethodImplEntry {
             trait_path: self.trait_path,

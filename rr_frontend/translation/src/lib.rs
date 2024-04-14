@@ -71,7 +71,7 @@ use topological_sort::TopologicalSort;
 use type_translator::{normalize_in_function, TypeTranslator};
 
 /// Order ADT definitions topologically.
-fn order_adt_defs<'tcx>(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
+fn order_adt_defs(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
     let mut topo = TopologicalSort::new();
     let mut defs = HashSet::new();
 

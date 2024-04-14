@@ -20,7 +20,8 @@ pub enum IdentOrTerm {
     Ident(String),
     Term(String),
 }
-impl<'tcx, U> parse::Parse<U> for IdentOrTerm
+
+impl<U> parse::Parse<U> for IdentOrTerm
 where
     U: ?Sized,
 {
@@ -53,7 +54,7 @@ pub struct LiteralTypeWithRef {
     pub meta: specs::TypeAnnotMeta,
 }
 
-impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
+impl<'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         // check if a #raw annotation is present
         let loc = input.pos();
@@ -101,7 +102,8 @@ pub struct LiteralType {
     pub ty: String,
     pub meta: specs::TypeAnnotMeta,
 }
-impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralType {
+
+impl<'a> parse::Parse<ParseMeta<'a>> for LiteralType {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         let ty: parse::LitStr = input.parse(meta)?;
         let (ty, meta) = process_coq_literal(&ty.value(), *meta);
@@ -111,6 +113,7 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for LiteralType {
 }
 
 pub struct IProp(specs::IProp);
+
 impl Into<specs::IProp> for IProp {
     fn into(self) -> specs::IProp {
         self.0
@@ -138,7 +141,7 @@ pub struct RRParam {
     pub ty: specs::CoqType,
 }
 
-impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for RRParam {
+impl<'a> parse::Parse<ParseMeta<'a>> for RRParam {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         let name: IdentOrTerm = input.parse(meta)?;
         let name = specs::CoqName::Named(name.to_string());
@@ -163,7 +166,8 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for RRParam {
 pub(crate) struct RRParams {
     pub(crate) params: Vec<RRParam>,
 }
-impl<'tcx, 'a> Parse<ParseMeta<'a>> for RRParams {
+
+impl<'a> Parse<ParseMeta<'a>> for RRParams {
     fn parse(input: ParseStream, meta: &ParseMeta) -> ParseResult<Self> {
         let params: parse::Punctuated<RRParam, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
@@ -174,6 +178,7 @@ impl<'tcx, 'a> Parse<ParseMeta<'a>> for RRParams {
 }
 
 pub(crate) struct CoqPath(specs::CoqPath);
+
 impl Into<specs::CoqPath> for CoqPath {
     fn into(self) -> specs::CoqPath {
         self.0
@@ -181,7 +186,7 @@ impl Into<specs::CoqPath> for CoqPath {
 }
 
 /// Parse a CoqPath.
-impl<'a, U> Parse<U> for CoqPath {
+impl<U> Parse<U> for CoqPath {
     fn parse(input: ParseStream, meta: &U) -> ParseResult<Self> {
         let path_or_module: parse::LitStr = input.parse(meta)?;
         let path_or_module = path_or_module.value();

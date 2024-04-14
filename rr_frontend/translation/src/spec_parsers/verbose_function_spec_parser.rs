@@ -126,7 +126,7 @@ enum MetaIProp {
     Linktime(String),
 }
 
-impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
+impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         if parse::Pound::peek(input) {
             input.parse::<_, parse::MToken![#]>(meta)?;

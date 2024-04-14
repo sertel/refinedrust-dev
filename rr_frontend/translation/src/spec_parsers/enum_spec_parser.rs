@@ -38,7 +38,7 @@ pub struct EnumPattern {
     pub args: Vec<String>,
 }
 
-impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
+impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         // parse the pattern
         let pat: parse::LitStr = input.parse(meta)?;

@@ -42,7 +42,7 @@ struct RfnPattern {
     rfn_type: Option<specs::CoqType>,
 }
 
-impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
+impl<'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         let pat = parse::LitStr::parse(input, meta)?;
         let (pat, _) = process_coq_literal(pat.value().as_str(), *meta);
@@ -79,7 +79,7 @@ enum MetaIProp {
     Shared(specs::IProp),
 }
 
-impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
+impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         if parse::Pound::peek(input) {
             input.parse::<_, parse::MToken![#]>(meta)?;
@@ -145,13 +145,14 @@ impl<'tcx, 'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
 }
 
 pub struct InvariantSpecFlags(specs::InvariantSpecFlags);
+
 impl Into<specs::InvariantSpecFlags> for InvariantSpecFlags {
     fn into(self) -> specs::InvariantSpecFlags {
         self.0
     }
 }
 
-impl<'tcx, U> parse::Parse<U> for InvariantSpecFlags {
+impl<U> parse::Parse<U> for InvariantSpecFlags {
     fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
         let mode: parse::Ident = input.parse(meta)?;
         match mode.value().as_str() {

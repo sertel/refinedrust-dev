@@ -135,7 +135,7 @@ fn order_basic_blocks<'tcx>(
     let mut temporary_mark = permanent_mark.clone();
 
     #[allow(clippy::too_many_arguments)]
-    fn visit<'tcx>(
+    fn visit(
         real_edges: &RealEdges,
         back_edges: &HashSet<(BasicBlockIndex, BasicBlockIndex)>,
         loop_depth: &dyn Fn(BasicBlockIndex) -> usize,

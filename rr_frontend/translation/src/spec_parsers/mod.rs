@@ -14,7 +14,8 @@ use rustc_ast::ast::AttrItem;
 pub struct RustPath {
     path: Vec<String>,
 }
-impl<'tcx, F> parse::Parse<F> for RustPath {
+
+impl<F> parse::Parse<F> for RustPath {
     fn parse(input: parse::ParseStream, meta: &F) -> parse::ParseResult<Self> {
         let x: parse::Punctuated<parse::Ident, parse::MToken![::]> =
             parse::Punctuated::parse_separated_nonempty(input, meta)?;
@@ -22,6 +23,7 @@ impl<'tcx, F> parse::Parse<F> for RustPath {
         Ok(RustPath { path })
     }
 }
+
 pub fn get_export_as_attr(attrs: &[&AttrItem]) -> Result<Vec<String>, String> {
     let meta: () = ();
     let meta = &meta;
@@ -48,6 +50,7 @@ pub struct ShimAnnot {
     pub code_name: String,
     pub spec_name: String,
 }
+
 impl<U> parse::Parse<U> for ShimAnnot
 where
     U: ?Sized,
