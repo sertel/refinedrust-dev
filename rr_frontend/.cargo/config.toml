@@ -21,7 +21,6 @@ rustflags = [
     "-Aunused_variables",
 
     # clippy::complexity
-    "-Aclippy::unnecessary_unwrap",
     "-Aclippy::useless_conversion",
     "-Aclippy::useless_format",
 

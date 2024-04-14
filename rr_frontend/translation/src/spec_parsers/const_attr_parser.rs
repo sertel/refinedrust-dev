@@ -63,12 +63,11 @@ impl ConstAttrParser for VerboseConstAttrParser {
                 }
             }
         }
-        if name.is_none() {
-            Err(format!("no name attribute specified on const"))
+
+        if let Some(name) = name {
+            Ok(ConstAttrs { name })
         } else {
-            Ok(ConstAttrs {
-                name: name.unwrap(),
-            })
+            Err(format!("no name attribute specified on const"))
         }
     }
 }
