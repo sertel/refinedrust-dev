@@ -700,11 +700,11 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     ) -> Vec<AtomicRegion> {
         // get set of superset regions
         let a = self.superset.get(&loc);
-        if let None = a {
+        if a.is_none() {
             return Vec::new();
         }
         let b = a.unwrap().get(&r);
-        if let None = b {
+        if b.is_none() {
             return Vec::new();
         }
         let b: &BTreeSet<facts::Region> = b.unwrap();
@@ -753,11 +753,11 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     ) -> Vec<AtomicRegion> {
         // get set of superset regions
         let a = self.superset.get(&loc);
-        if let None = a {
+        if a.is_none() {
             return Vec::new();
         }
         let b = a.unwrap().get(&r);
-        if let None = b {
+        if b.is_none() {
             return Vec::new();
         }
         let b: &BTreeSet<facts::Region> = b.unwrap();

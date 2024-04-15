@@ -573,7 +573,7 @@ pub fn try_pop_one_level<'tcx>(
 /// Pop the last element from the place if it is a dereference.
 pub fn try_pop_deref<'tcx>(tcx: TyCtxt<'tcx>, place: mir::Place<'tcx>) -> Option<mir::Place<'tcx>> {
     try_pop_one_level(tcx, place)
-        .and_then(|(elem, base)| if let mir::ProjectionElem::Deref = elem { Some(base) } else { None })
+        .and_then(|(elem, base)| if elem == mir::ProjectionElem::Deref { Some(base) } else { None })
 }
 
 /// Subtract the `subtrahend` place from the `minuend` place. The

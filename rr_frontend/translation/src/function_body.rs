@@ -1803,12 +1803,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let mut new_regions = HashSet::new();
         let mut relevant_constraints = Vec::new();
         for (r1, r2) in new_constraints.iter() {
-            if let info::RegionKind::Unknown = self.info.get_region_kind(*r1) {
+            if matches!(self.info.get_region_kind(*r1), info::RegionKind::Unknown) {
                 // this is probably a inference variable for the call
                 new_regions.insert(*r1);
                 relevant_constraints.push((*r1, *r2));
             }
-            if let info::RegionKind::Unknown = self.info.get_region_kind(*r2) {
+            if matches!(self.info.get_region_kind(*r2), info::RegionKind::Unknown) {
                 new_regions.insert(*r2);
                 relevant_constraints.push((*r1, *r2));
             }

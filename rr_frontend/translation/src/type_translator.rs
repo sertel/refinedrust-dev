@@ -560,7 +560,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     {
         info!("generating struct use for {:?}", variant_id);
 
-        if let Some(true) = self.is_struct_definitely_zero_sized(variant_id) {
+        if self.is_struct_definitely_zero_sized(variant_id) == Some(true) {
             info!("replacing zero-sized struct with unit");
             return Ok(radium::AbstractStructUse::new_unit());
         }
@@ -673,7 +673,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             Err(TranslationError::Unimplemented {
                 description: "union ADTs are not yet supported".to_string(),
             })
-        } else if let Some(true) = self.is_struct_definitely_zero_sized(def.did()) {
+        } else if self.is_struct_definitely_zero_sized(def.did()) == Some(true) {
             Ok(())
         } else if def.is_enum() {
             self.register_enum(def)
@@ -1361,7 +1361,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     let ty = substs[0].expect_ty();
                     let translated_ty = self.translate_type_with_deps(&ty, &mut *state)?;
                     Ok(radium::Type::BoxType(Box::new(translated_ty)))
-                } else if let Some(true) = self.is_struct_definitely_zero_sized(adt.did()) {
+                } else if self.is_struct_definitely_zero_sized(adt.did()) == Some(true) {
                     // make this unit
                     Ok(radium::Type::Unit)
                 } else {
@@ -1699,7 +1699,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     {
         info!("generating struct use for {:?}", variant_id);
 
-        if let Some(true) = self.is_struct_definitely_zero_sized(variant_id) {
+        if self.is_struct_definitely_zero_sized(variant_id) == Some(true) {
             info!("replacing zero-sized struct with unit");
             return Ok(None);
         }

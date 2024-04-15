@@ -420,7 +420,7 @@ where
 
                         if expect_ty {
                             let ty = LiteralType::parse(&buffer, &meta).map_err(str_err)?;
-                            if let None = field_type {
+                            if field_type.is_none() {
                                 field_type = Some(self.make_type(ty, self.field_type));
                             } else {
                                 return Err(format!(
