@@ -16,3 +16,4 @@ _opam
 **/case_studies/*/log
 **/case_studies/*/Cargo.lock
 **/rustc-ice-*
+_CoqProject

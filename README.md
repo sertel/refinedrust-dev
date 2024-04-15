@@ -102,7 +102,13 @@ The `lib_load_paths` config option influences where the verifier searches for th
 The crate-level `rr::include` directive can be used to import these proof files (see the description in `SPEC_FORMAT.md`).
 
 ## Proof editing
-In order to interactively look at the generated code using a Coq plugin like Coqtail, VSCoq, or Proof General for the editor of your choice, you need to add a line pointing to the directory of the generated code in the `_CoqProject` file.
+You can interactively look at the generated Coq code using a Coq plugin like Coqtail, VSCoq, Proof General, or CoqIDE for the editor of your choice.
+To do so, your editor needs to know about the Coq project structure.
+As RefinedRust uses the `dune` build system to compile the Coq files, if your editor/plugin supports `dune`, it will automatically find the dependencies.
+
+Otherwise, you will need to explicitly tell it how to find the dependencies in `dune`'s build directory.
+You can generate a basic `_CoqProject` file that is read by your editor using `make coqproject`, which includes RefinedRust's core and the set of case studies.
+If you add a new verification, you can manually add a line for your verification in this file.
 See the existing includes for inspiration.
 
 Changes to the `proof_*.v` files in the generated `proofs` folder are persistent and files are not changed once RefinedRust has generated them once.

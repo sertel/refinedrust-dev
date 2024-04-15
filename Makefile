@@ -110,3 +110,26 @@ builddep: builddep/refinedrust-builddep.opam
 	@echo "# Installing package $^."
 	@opam install $(OPAMFLAGS) $^
 .PHONY: builddep
+
+
+### Generating _CoqProject
+define COQPROJECT_BASE_BODY
+# RefinedRust core
+-Q _build/default/theories/lithium lithium
+-Q _build/default/theories/caesium caesium
+-Q _build/default/theories/rust_typing refinedrust
+
+-Q _build/default/case_studies/extra_proofs refinedrust.extra_proofs
+endef
+export COQPROJECT_BASE_BODY
+
+coqproject-base:
+	@echo "$$COQPROJECT_BASE_BODY" > _CoqProject
+
+case_studies/%.coqproject: coqproject-base
+	@echo "-Q _build/default/case_studies/$*/output/$* refinedrust.examples.$*" >> _CoqProject
+
+coqproject-case-studies: $(CASE_STUDIES:=.coqproject)
+
+coqproject: coqproject-base coqproject-case-studies
+
