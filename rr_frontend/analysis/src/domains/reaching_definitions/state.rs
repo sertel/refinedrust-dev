@@ -46,6 +46,7 @@ impl<'mir, 'tcx: 'mir> fmt::Debug for ReachingDefsState<'mir, 'tcx> {
     }
 }
 
+#[allow(clippy::debug_assert_with_mut_call)]
 impl<'mir, 'tcx: 'mir> PartialEq for ReachingDefsState<'mir, 'tcx> {
     fn eq(&self, other: &Self) -> bool {
         debug_assert_eq!(
