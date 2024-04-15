@@ -179,6 +179,8 @@
       devShells.default = pkgs.mkShell {
         inputsFrom = with packages; [frontend theories];
 
+        packages = with pkgs; [gnumake gnupatch gnused];
+
         shellHook = ''
           export LD_LIBRARY_PATH=''${LD_LIBRARY_PATH}:${rust.lib}
           export DYLD_FALLBACK_LIBRARY_PATH=''${DYLD_FALLBACK_LIBRARY_PATH}:${rust.lib}

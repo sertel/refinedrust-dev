@@ -4,7 +4,7 @@
 stages: [ nix-cache, lint, build, tests ]
 
 variables:
-  DEPENDENCIES: ".#theories.inputDerivation .#frontend.inputDerivation .#frontend.cargoArtifacts nixpkgs#gnumake nixpkgs#gnupatch"
+  DEPENDENCIES: ".#theories.inputDerivation .#frontend.inputDerivation .#frontend.cargoArtifacts nixpkgs#gnumake nixpkgs#gnupatch nixpkgs#gnused"
   NIX_STORE_ARTIFACTS_PATH: ".ci_nix_artifacts"
   NIX_STORE_CACHE_PATH: ".ci_nix_cache"
 
