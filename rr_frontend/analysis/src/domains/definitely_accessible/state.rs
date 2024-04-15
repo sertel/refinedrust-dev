@@ -19,7 +19,7 @@ use serde::{Serialize, Serializer};
 use crate::mir_utils::{is_prefix, Place};
 use crate::PointwiseState;
 
-#[derive(Clone, Default, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Default)]
 pub struct DefinitelyAccessibleState<'tcx> {
     /// Places that are definitely not moved-out nor blocked by a *mutable* reference.
     pub(super) definitely_accessible: FxHashSet<Place<'tcx>>,

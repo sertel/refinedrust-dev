@@ -112,7 +112,7 @@ pub type ParseResult<T> = Result<T, ParseError>;
 // TODO: maybe change to just have a shared reference to the vector? (or a RefCell)?
 // we anyways only ever read from it, and making ParseBuffer Copy might be nice for
 // having multiple different cursors at once into the same vector.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct ParseBuffer {
     trees: Vec<rustc_ast::tokenstream::TokenTree>,
     index: Cell<usize>,

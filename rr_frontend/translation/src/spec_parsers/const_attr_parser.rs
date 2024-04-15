@@ -21,7 +21,7 @@ pub trait ConstAttrParser {
     ) -> Result<ConstAttrs, String>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct ConstAttrs {
     pub name: String,
 }

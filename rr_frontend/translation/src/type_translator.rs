@@ -40,7 +40,7 @@ pub type FnGenericKey<'tcx> = Vec<ty::Ty<'tcx>>;
 
 /// Keys used to deduplicate adt uses for syn_type assumptions.
 /// TODO maybe we should use SimplifiedType + simplify_type instead of the syntys?
-#[derive(Debug, PartialEq, Eq, Hash)]
+#[derive(Eq, PartialEq, Hash, Debug)]
 pub(crate) struct AdtUseKey {
     pub base_did: DefId,
     pub generics: Vec<radium::SynType>,

@@ -41,7 +41,7 @@ fn collect_loop_body(
     debug!("Loop body (head={:?}): {:?}", head, body);
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum PlaceAccessKind {
     /// The place is assigned to.
     Store,

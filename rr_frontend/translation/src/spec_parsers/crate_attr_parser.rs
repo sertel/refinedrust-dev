@@ -17,7 +17,7 @@ pub trait CrateAttrParser {
     fn parse_crate_attrs<'a>(&'a mut self, attrs: &'a [&'a AttrItem]) -> Result<CrateAttrs, String>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct CrateAttrs {
     pub imports: Vec<specs::CoqPath>,
     pub prefix: Option<String>,

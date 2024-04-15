@@ -13,7 +13,7 @@ use serde::{Serialize, Serializer};
 use crate::domains::DefinitelyAccessibleState;
 use crate::mir_utils::{is_prefix, Place};
 
-#[derive(Clone, Default, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Default)]
 pub struct FramingState<'tcx> {
     /// Places of `definitely_accessible` that can be framed across the *next* statement.
     pub(super) framed_accessible: FxHashSet<Place<'tcx>>,

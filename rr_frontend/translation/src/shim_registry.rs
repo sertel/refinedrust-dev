@@ -64,7 +64,7 @@ struct ShimAdtEntry {
     semtype: String,
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum ShimKind {
     Method,
     Function,
@@ -72,7 +72,7 @@ pub enum ShimKind {
     Adt,
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct FunctionShim<'a> {
     pub path: Path<'a>,
     pub is_method: bool,
@@ -91,7 +91,7 @@ impl<'a> Into<ShimFunctionEntry> for FunctionShim<'a> {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct TraitMethodImplShim {
     pub trait_path: PathWithArgs,
     pub method_ident: String,
@@ -113,7 +113,7 @@ impl Into<ShimTraitMethodImplEntry> for TraitMethodImplShim {
     }
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct AdtShim<'a> {
     pub path: Path<'a>,
     pub refinement_type: String,

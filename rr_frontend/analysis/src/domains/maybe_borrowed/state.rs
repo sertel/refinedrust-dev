@@ -10,7 +10,7 @@ use serde::{Serialize, Serializer};
 
 use crate::mir_utils::Place;
 
-#[derive(Clone, Default, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Default)]
 pub struct MaybeBorrowedState<'tcx> {
     pub(super) maybe_shared_borrowed: FxHashSet<Place<'tcx>>,
     pub(super) maybe_mut_borrowed: FxHashSet<Place<'tcx>>,

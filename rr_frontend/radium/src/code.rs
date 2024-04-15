@@ -48,7 +48,7 @@ where
 
 /// A representation of syntactic Rust types that we can use in annotations for the RefinedRust
 /// type system.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum RustType {
     Lit(Vec<String>, Vec<RustType>),
     TyVar(String),
@@ -180,7 +180,7 @@ impl RustType {
  * This is much more constrained than the Coq version of values, as we do not need to represent
  * runtime values.
  */
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Literal {
     LitI8(i8),
     LitI16(i16),
@@ -224,7 +224,7 @@ impl Display for Literal {
 /**
  * Caesium expressions
  */
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Expr {
     Var(String),
     /// a Coq-level parameter with a given Coq name
@@ -415,7 +415,7 @@ impl Display for Expr {
 }
 
 /// for unique/shared pointers
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Mutability {
     Mut,
     Shared,
@@ -432,7 +432,7 @@ impl Mutability {
 /**
  * Borrows allowed in Caesium
  */
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum BorKind {
     Mutable,
     Shared,
@@ -446,7 +446,7 @@ impl BorKind {
     }
 }
 
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum LftNameTree {
     Leaf,
     Ref(Lft, Box<LftNameTree>),
@@ -468,7 +468,7 @@ impl fmt::Display for LftNameTree {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Annotation {
     /// Start a lifetime as a sublifetime of the intersection of a few other lifetimes
     StartLft(Lft, Vec<Lft>),
@@ -668,7 +668,7 @@ impl Stmt {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Unop {
     NegOp,
     NotBoolOp,
@@ -684,7 +684,7 @@ impl Display for Unop {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Binop {
     //arithmetic
     AddOp,
@@ -958,7 +958,7 @@ impl FunctionCodeBuilder {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 struct InvariantMap(HashMap<usize, LoopSpec>);
 
 impl Display for InvariantMap {
@@ -1290,7 +1290,7 @@ impl<'def> Function<'def> {
 }
 
 /// Information on a used static variable
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct StaticMeta<'def> {
     pub ident: String,
     pub loc_name: String,

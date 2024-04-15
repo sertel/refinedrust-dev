@@ -43,7 +43,7 @@ pub struct BorrowckFacts {
 
 /// The type of the point. Either the start of a statement or in the
 /// middle of it.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum PointType {
     Start,
     Mid,
@@ -68,7 +68,7 @@ impl std::cmp::Ord for PointType {
 }
 
 /// A program point used in the borrow checker analysis.
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, PartialOrd, Ord)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct Point {
     pub location: mir::Location,
     pub typ: PointType,

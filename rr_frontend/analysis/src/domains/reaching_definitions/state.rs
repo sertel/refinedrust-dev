@@ -32,7 +32,7 @@ pub struct ReachingDefsState<'mir, 'tcx: 'mir> {
     pub(super) tcx: TyCtxt<'tcx>,
 }
 
-#[derive(Hash, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub enum DefLocation {
     Assignment(mir::Location),
     /// The value is the index of the function parameter in ``mir.args_iter()``

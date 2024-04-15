@@ -15,7 +15,7 @@ use crate::utils::{self, is_prefix};
 /// Invariant: we never have a place and any of its descendants in the
 /// set at the same time. For example, having `x.f` and `x.f.g` in the
 /// set at the same time is illegal.
-#[derive(Clone, PartialEq, Eq, Debug, Default)]
+#[derive(Clone, Eq, PartialEq, Debug, Default)]
 pub struct PlaceSet<'tcx> {
     places: FxHashSet<mir::Place<'tcx>>,
 }

@@ -93,7 +93,7 @@ impl AtomicRegion {
 }
 
 /// for an overview fo universal regions, see also rustc_borrowck/src/universal_regions.rs
-#[derive(Clone, Debug, PartialEq, Copy)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum UniversalRegionKind {
     /// the static region
     Static,

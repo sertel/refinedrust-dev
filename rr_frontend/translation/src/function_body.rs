@@ -41,7 +41,7 @@ use crate::tyvars::*;
  * actually translated the function.
  */
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum ProcedureMode {
     Prove,
     OnlySpec,

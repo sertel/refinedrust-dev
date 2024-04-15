@@ -16,7 +16,7 @@ pub type Path = <RustcFacts as FactTypes>::Path;
 
 /// Error type used for the MIR to Caesium translation.
 //TODO: add location info based on Span
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum TranslationError {
     UnsupportedFeature { description: String },
     UnsupportedType { description: String },

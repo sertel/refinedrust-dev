@@ -105,7 +105,7 @@ pub fn resolve_trait<'tcx>(
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TraitResolutionKind {
     Param,
     UserDefined,

@@ -14,7 +14,7 @@ use indent_write::fmt::IndentWriter;
 
 pub use crate::coq::*;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 /// Encodes a RR type with an accompanying refinement.
 pub struct TypeWithRef<'def>(pub Type<'def>, pub String);
 
@@ -66,7 +66,7 @@ impl Display for UniversalLft {
 /// A lifetime constraint enforces a relation between two external lifetimes.
 type ExtLftConstr = (UniversalLft, UniversalLft);
 
-#[derive(Hash, Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash, Debug)]
 pub enum IntType {
     I8,
     I16,
@@ -140,7 +140,7 @@ impl IntType {
 }
 
 /// Representation of Caesium's optypes.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum OpType {
     IntOp(IntType),
     BoolOp,
@@ -198,7 +198,7 @@ pub static BOOL_REPR: IntType = IntType::U8;
 /// representation in memory.
 /// A syntactic type does not necessarily specify a concrete layout. A layout is only fixed once
 /// a specific layout algorithm that resolves the non-deterministic choice of the compiler.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum SynType {
     Int(IntType),
     Bool,
@@ -329,14 +329,14 @@ impl SynType {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Copy)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum TypeIsRaw {
     Yes,
     No,
 }
 
 /// Meta information from parsing type annotations
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct TypeAnnotMeta {
     /// Used lifetime variables
     escaped_lfts: HashSet<Lft>,
@@ -372,7 +372,7 @@ impl TypeAnnotMeta {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct LiteralType {
     /// Rust name
     pub rust_name: Option<String>,
@@ -386,7 +386,7 @@ pub struct LiteralType {
 
 pub type LiteralTypeRef<'def> = &'def LiteralType;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct LiteralTypeUse<'def> {
     /// definition
     pub def: LiteralTypeRef<'def>,
@@ -472,7 +472,7 @@ impl<'def> LiteralTypeUse<'def> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct LiteralTyParam {
     /// Rust name
     pub rust_name: String,
@@ -498,7 +498,7 @@ impl LiteralTyParam {
 
 /// Representation of (semantic) RefinedRust types.
 /// 'def is the lifetime of the frontend for referencing struct definitions.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum Type<'def> {
     /// variable that is bound, e.g., by a surrounding struct definition
     Var(usize),
@@ -748,7 +748,7 @@ impl<'def> Type<'def> {
 }
 
 /// Specification for location ownership of a type.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct TyOwnSpec {
     loc: String,
     with_later: bool,
@@ -779,7 +779,7 @@ impl TyOwnSpec {
     }
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum InvariantSpecFlags {
     /// fully persistent and timeless invariant
     Persistent,
@@ -789,14 +789,14 @@ pub enum InvariantSpecFlags {
     Atomic,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum InvariantMode {
     All,
     OnlyShared,
     OnlyOwned,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct InvariantSpec {
     /// the name of the type definition
     type_name: String,
@@ -1169,7 +1169,7 @@ impl InvariantSpec {
 }
 
 /// Representation options for structs.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 /// Struct representation options supported by Radium
 pub enum StructRepr {
     ReprRust,
@@ -1187,7 +1187,7 @@ impl Display for StructRepr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 /// Enum representation options supported by Radium
 pub enum EnumRepr {
     ReprRust,
@@ -1205,7 +1205,7 @@ impl Display for EnumRepr {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 /// Union representation options supported by Radium
 pub enum UnionRepr {
     ReprRust,
@@ -1229,7 +1229,7 @@ pub fn lookup_ty_param<'a>(name: &'_ str, env: &'a [LiteralTyParam]) -> Option<&
 pub type AbstractVariantRef<'def> = &'def RefCell<Option<AbstractVariant<'def>>>;
 
 /// Description of a variant of a struct or enum.
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct AbstractVariant<'def> {
     /// the fields. The types are closed, i.e. have no `Var` variables (but may have literals
     /// referring to the Coq binders introduced by a surrounding AbstractStruct)
@@ -1469,7 +1469,7 @@ pub type AbstractStructRef<'def> = &'def RefCell<Option<AbstractStruct<'def>>>;
 
 /// Description of a struct type.
 // TODO: mechanisms for resolving mutually recursive types.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct AbstractStruct<'def> {
     /// an optional invariant/ existential abstraction for this struct
     invariant: Option<InvariantSpec>,
@@ -1681,7 +1681,7 @@ pub fn make_tuple_struct_repr<'def>(num_fields: usize) -> AbstractStruct<'def> {
 }
 
 /// A usage of an `AbstractStruct` that instantiates its type parameters.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct AbstractStructUse<'def> {
     /// reference to the struct's definition, or None if unit
     pub def: Option<AbstractStructRef<'def>>,
@@ -1843,7 +1843,7 @@ impl<'def> AbstractStructUse<'def> {
 }
 
 /// Specification of an enum in terms of a Coq type refining it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct EnumSpec {
     /// the refinement type of the enum
     pub rfn_type: CoqType,
@@ -1854,7 +1854,7 @@ pub struct EnumSpec {
     pub variant_patterns: Vec<(String, Vec<String>, String)>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct AbstractEnum<'def> {
     /// variants of this enum: name, variant, a mask describing which of the type parameters it uses, and the
     /// discriminant
@@ -2334,7 +2334,7 @@ impl<'def> EnumBuilder<'def> {
 }
 
 /// A usage of an `AbstractEnum` that instantiates its type parameters.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct AbstractEnumUse<'def> {
     /// reference to the enum's definition
     pub def: AbstractEnumRef<'def>,
@@ -2441,7 +2441,7 @@ impl<'def> AbstractEnumUse<'def> {
 type LayoutEnv = HashMap<String, Layout>;
 
 /// A representation of Caesium layouts we are interested in.
-#[derive(Hash, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Layout {
     // in the case of  32bits
     PtrLayout,
@@ -2518,7 +2518,7 @@ impl Layout {
 // - DeBruijn probably not worth it, I don't need subst or anything like that. just try to keep variables
 //   apart when generating them.
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct CoqBinder(CoqName, CoqType);
 impl CoqBinder {
     pub fn new(n: CoqName, t: CoqType) -> Self {
@@ -2532,7 +2532,7 @@ impl Display for CoqBinder {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum IProp {
     True,
     Atom(String),
@@ -2603,7 +2603,7 @@ impl Display for IProp {
 }
 
 /// Representation of an Iris predicate
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct IPropPredicate {
     binders: Vec<CoqBinder>,
     prop: IProp,
@@ -2623,13 +2623,13 @@ impl Display for IPropPredicate {
 }
 
 /// Representation of a loop invariant
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct LoopSpec {
     /// the functional invariant as a predicate on the refinement of local variables.
     pub func_predicate: IPropPredicate,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct CoqParam {
     /// the name
     pub name: CoqName,

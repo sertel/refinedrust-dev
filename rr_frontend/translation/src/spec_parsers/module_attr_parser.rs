@@ -22,7 +22,7 @@ pub trait ModuleAttrParser {
     ) -> Result<ModuleAttrs, String>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct ModuleAttrs {
     pub imports: Vec<specs::CoqPath>,
     pub includes: Vec<String>,

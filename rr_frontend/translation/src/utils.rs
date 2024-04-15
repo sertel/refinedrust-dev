@@ -24,7 +24,7 @@ use crate::type_translator::normalize_in_function;
 use crate::{force_matches, Environment};
 
 /// An item path that receives generic arguments.
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub struct PathWithArgs {
     path: Vec<String>,
     /// An encoding of the GenericArgs for this definition.
@@ -82,7 +82,7 @@ impl PathWithArgs {
     }
 }
 
-#[derive(Serialize, Deserialize, PartialEq, Eq, Debug, Clone)]
+#[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 /// A "flattened" representation of types that should be suitable serialized storage, and should be
 /// stable enough to resolve to the same actual type across compilations.
 /// Currently mostly geared to our trait resolution needs.

@@ -13,7 +13,7 @@ pub(crate) const BASE_INDENT: &'static str = "  ";
 
 /// Represents a Coq path of the form
 /// `From A.B.C Import D`
-#[derive(Hash, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct CoqPath {
     pub path: Option<String>,
     pub module: String,
@@ -30,7 +30,7 @@ impl fmt::Display for CoqPath {
 
 /// Represents an application of a term to an rhs.
 /// (commonly used for layouts and instantiating them with generics).
-#[derive(Hash, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct CoqAppTerm<T> {
     pub(crate) lhs: T,
     pub(crate) rhs: Vec<String>,
@@ -66,7 +66,7 @@ where
     }
 }
 
-#[derive(PartialOrd, Ord, Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub enum CoqName {
     Named(String),
     Unnamed,
@@ -83,7 +83,7 @@ impl Display for CoqName {
 /// A Coq pattern, e.g., "x" or "'(x, y)".
 pub type CoqPattern = String;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum CoqType {
     /// free variable that is bound, e.g., by a surrounding struct definition
     Var(usize),
@@ -260,7 +260,7 @@ impl CoqType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct CoqParamList(pub Vec<(CoqName, CoqType)>);
 
 impl CoqParamList {
@@ -283,7 +283,7 @@ impl Display for CoqParamList {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct CoqVariant {
     pub name: String,
     pub params: CoqParamList,
@@ -295,7 +295,7 @@ impl Display for CoqVariant {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub struct CoqInductive {
     pub name: String,
     pub parameters: CoqParamList,
@@ -313,7 +313,7 @@ impl Display for CoqInductive {
 }
 
 /// A single tactic call.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum CoqProofItem {
     Literal(String),
 }
@@ -327,7 +327,7 @@ impl Display for CoqProofItem {
 }
 
 /// A Coq proof script.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct CoqProofScript(pub Vec<CoqProofItem>);
 
 impl Display for CoqProofScript {
@@ -340,7 +340,7 @@ impl Display for CoqProofScript {
 }
 
 /// A Coq Gallina term.
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum GallinaTerm {
     Literal(String),
 }
@@ -356,7 +356,7 @@ impl Display for GallinaTerm {
 }
 
 /// A terminator for a proof script
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum CoqProofScriptTerminator {
     Qed,
     Defined,
@@ -373,7 +373,7 @@ impl Display for CoqProofScriptTerminator {
 }
 
 /// A body of a Coq definition
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum CoqDefBody {
     /// a proof script invoking Ltac tactics
     Script(CoqProofScript, CoqProofScriptTerminator),
@@ -399,7 +399,7 @@ impl Display for CoqDefBody {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum CoqAttribute {
     Global,
     Local,
@@ -413,7 +413,7 @@ impl Display for CoqAttribute {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct CoqAttributes {
     attrs: Vec<CoqAttribute>,
 }
@@ -445,7 +445,7 @@ impl Display for CoqAttributes {
 }
 
 /// A Coq typeclass instance declaration
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct CoqInstanceDecl {
     pub attrs: CoqAttributes,
     pub name: Option<String>,
@@ -465,7 +465,7 @@ impl Display for CoqInstanceDecl {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum CoqTopLevelAssertion {
     /// A declaration of a Coq Inductive
     InductiveDecl(CoqInductive),
@@ -486,7 +486,7 @@ impl Display for CoqTopLevelAssertion {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct CoqTopLevelAssertions(pub Vec<CoqTopLevelAssertion>);
 
 impl CoqTopLevelAssertions {

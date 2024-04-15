@@ -6,7 +6,7 @@
 
 use rustc_middle::mir;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct MirPlace<'tcx> {
     pub local: mir::Local,
     pub projection: Vec<mir::PlaceElem<'tcx>>,
