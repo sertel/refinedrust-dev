@@ -22,7 +22,17 @@
     nixpkgs,
   }:
     flake-utils.lib.eachDefaultSystem (system: let
-      overlays = [fenix.overlays.default];
+      ocamlFlambda = self: super: rec {
+        ocamlPackages_4_14 = super.ocamlPackages.overrideScope' (self: super: {
+          ocaml = super.ocaml.override { flambdaSupport = true; };
+        });
+        coqPackages_8_17 = super.coqPackages_8_17.overrideScope' (self: super: {
+          coq = super.coq.override {
+            ocamlPackages_4_14 = ocamlPackages_4_14;
+          };
+        });
+      };
+      overlays = [fenix.overlays.default ocamlFlambda];
       pkgs = import nixpkgs {inherit overlays system;};
 
       name = "refinedrust";
