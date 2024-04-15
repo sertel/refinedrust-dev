@@ -87,7 +87,7 @@ pub struct ProcedureMeta {
 }
 
 impl ProcedureMeta {
-    pub fn new(spec_name: String, name: String, mode: ProcedureMode) -> Self {
+    pub const fn new(spec_name: String, name: String, mode: ProcedureMode) -> Self {
         Self {
             spec_name,
             name,
@@ -103,7 +103,7 @@ impl ProcedureMeta {
         &self.name
     }
 
-    pub fn get_mode(&self) -> ProcedureMode {
+    pub const fn get_mode(&self) -> ProcedureMode {
         self.mode
     }
 }
@@ -1731,7 +1731,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Registers a drop shim for a particular type for the translation.
-    fn register_drop_shim_for(&self, _ty: Ty<'tcx>) {
+    const fn register_drop_shim_for(&self, _ty: Ty<'tcx>) {
         // TODO!
         //let drop_in_place_did: DefId = crate::utils::try_resolve_did(self.env.tcx(), &["std", "ptr",
         // "drop_in_place"]).unwrap();
@@ -2884,7 +2884,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    fn translate_mutability(&self, mt: &Mutability) -> Result<radium::Mutability, TranslationError> {
+    const fn translate_mutability(&self, mt: &Mutability) -> Result<radium::Mutability, TranslationError> {
         match mt {
             Mutability::Mut => Ok(radium::Mutability::Mut),
             Mutability::Not => Ok(radium::Mutability::Shared),

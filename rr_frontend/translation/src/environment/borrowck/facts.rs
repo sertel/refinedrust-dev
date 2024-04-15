@@ -85,7 +85,7 @@ pub struct Interner {
 }
 
 impl Interner {
-    pub fn new(location_table: LocationTable) -> Self {
+    pub const fn new(location_table: LocationTable) -> Self {
         Self { location_table }
     }
 

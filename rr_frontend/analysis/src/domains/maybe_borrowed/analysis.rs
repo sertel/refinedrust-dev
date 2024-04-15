@@ -21,7 +21,7 @@ pub struct MaybeBorrowedAnalysis<'mir, 'tcx: 'mir> {
 }
 
 impl<'mir, 'tcx: 'mir> MaybeBorrowedAnalysis<'mir, 'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, body_with_facts: &'mir BodyWithBorrowckFacts<'tcx>) -> Self {
+    pub const fn new(tcx: TyCtxt<'tcx>, body_with_facts: &'mir BodyWithBorrowckFacts<'tcx>) -> Self {
         MaybeBorrowedAnalysis {
             tcx,
             body_with_facts,

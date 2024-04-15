@@ -70,7 +70,7 @@ impl<'tcx> Procedure<'tcx> {
         }
     }
 
-    pub fn loop_info(&self) -> &loops::ProcedureLoops {
+    pub const fn loop_info(&self) -> &loops::ProcedureLoops {
         &self.loop_info
     }
 
@@ -90,7 +90,7 @@ impl<'tcx> Procedure<'tcx> {
     }
 
     /// Get definition ID of the procedure.
-    pub fn get_id(&self) -> ProcedureDefId {
+    pub const fn get_id(&self) -> ProcedureDefId {
         self.proc_def_id
     }
 
@@ -100,12 +100,12 @@ impl<'tcx> Procedure<'tcx> {
     }
 
     /// Get the typing context.
-    pub fn get_tcx(&self) -> TyCtxt<'tcx> {
+    pub const fn get_tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }
 
     /// Get the type parameters of this procedure.
-    pub fn get_type_params(&self) -> ty::GenericArgsRef<'tcx> {
+    pub const fn get_type_params(&self) -> ty::GenericArgsRef<'tcx> {
         self.ty_params
     }
 

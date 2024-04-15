@@ -68,7 +68,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
 pub struct VerboseEnumSpecParser {}
 
 impl VerboseEnumSpecParser {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         VerboseEnumSpecParser {}
     }
 }

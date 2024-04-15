@@ -264,7 +264,7 @@ impl CoqType {
 pub struct CoqParamList(pub Vec<(CoqName, CoqType)>);
 
 impl CoqParamList {
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self(vec![])
     }
 }
@@ -418,7 +418,7 @@ pub struct CoqAttributes {
     attrs: Vec<CoqAttribute>,
 }
 impl CoqAttributes {
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self { attrs: vec![] }
     }
 
@@ -490,7 +490,7 @@ impl Display for CoqTopLevelAssertion {
 pub struct CoqTopLevelAssertions(pub Vec<CoqTopLevelAssertion>);
 
 impl CoqTopLevelAssertions {
-    pub fn empty() -> Self {
+    pub const fn empty() -> Self {
         Self(vec![])
     }
 

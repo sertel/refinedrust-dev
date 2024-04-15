@@ -842,26 +842,26 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         Ok(())
     }
 
-    fn show_statement_indices(&self) -> bool {
+    const fn show_statement_indices(&self) -> bool {
         true
         //unimplemented!("Should use SETTINGS.");
         // get_config_option("PRUSTI_DUMP_SHOW_STATEMENT_INDICES", true)
     }
 
-    fn show_temp_variables(&self) -> bool {
+    const fn show_temp_variables(&self) -> bool {
         true
         //unimplemented!("Should use SETTINGS.");
         // get_config_option("PRUSTI_DUMP_SHOW_TEMP_VARIABLES", true)
     }
 
-    fn show_borrow_regions(&self) -> bool {
+    const fn show_borrow_regions(&self) -> bool {
         //true
         false
         //unimplemented!("Should use SETTINGS.");
         // get_config_option("PRUSTI_DUMP_SHOW_BORROW_REGIONS", false)
     }
 
-    fn show_restricts(&self) -> bool {
+    const fn show_restricts(&self) -> bool {
         //true
         false
         //unimplemented!("Should use SETTINGS.");

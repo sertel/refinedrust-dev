@@ -170,7 +170,7 @@ impl<U> parse::Parse<U> for InvariantSpecFlags {
 pub struct VerboseInvariantSpecParser {}
 
 impl VerboseInvariantSpecParser {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         VerboseInvariantSpecParser {}
     }
 }
@@ -336,7 +336,7 @@ impl<'a, 'def, F> VerboseStructFieldSpecParser<'a, 'def, F>
 where
     F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
-    pub fn new(
+    pub const fn new(
         field_type: &'a specs::Type<'def>,
         params: &'a [specs::LiteralTyParam],
         lfts: &'a [(Option<String>, specs::Lft)],

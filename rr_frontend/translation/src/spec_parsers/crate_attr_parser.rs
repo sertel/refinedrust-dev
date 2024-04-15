@@ -29,7 +29,7 @@ pub struct CrateAttrs {
 pub struct VerboseCrateAttrParser {}
 
 impl VerboseCrateAttrParser {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         VerboseCrateAttrParser {}
     }
 }

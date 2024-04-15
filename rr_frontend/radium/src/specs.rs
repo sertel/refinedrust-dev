@@ -25,7 +25,7 @@ impl<'def> Display for TypeWithRef<'def> {
 }
 
 impl<'def> TypeWithRef<'def> {
-    pub fn new(ty: Type<'def>, rfn: String) -> Self {
+    pub const fn new(ty: Type<'def>, rfn: String) -> Self {
         TypeWithRef(ty, rfn)
     }
 
@@ -33,7 +33,7 @@ impl<'def> TypeWithRef<'def> {
         TypeWithRef(Type::Unit, "()".to_string())
     }
 
-    pub fn ty(&self) -> &Type<'def> {
+    pub const fn ty(&self) -> &Type<'def> {
         &self.0
     }
 
@@ -103,7 +103,7 @@ impl Display for IntType {
 
 impl IntType {
     /// Get the size in bytes of the Caesium representation.
-    pub fn size(&self) -> u32 {
+    pub const fn size(&self) -> u32 {
         match self {
             Self::I8 => 1,
             Self::I16 => 2,
@@ -121,7 +121,7 @@ impl IntType {
     }
 
     /// Get the alignment in bytes of the Caesium representation.
-    pub fn alignment(&self) -> u32 {
+    pub const fn alignment(&self) -> u32 {
         match self {
             Self::I8 => 1,
             Self::I16 => 2,
@@ -305,7 +305,7 @@ impl SynType {
     }
 
     /// Check if the SynType contains a free variable `Var(i)`.
-    pub fn is_closed(&self) -> bool {
+    pub const fn is_closed(&self) -> bool {
         match self {
             Self::Var(_) => false,
             _ => true,
@@ -356,7 +356,7 @@ impl TypeAnnotMeta {
         }
     }
 
-    pub fn new(tyvars: HashSet<LiteralTyParam>, lfts: HashSet<Lft>) -> Self {
+    pub const fn new(tyvars: HashSet<LiteralTyParam>, lfts: HashSet<Lft>) -> Self {
         Self {
             escaped_lfts: lfts,
             escaped_tyvars: tyvars,
@@ -760,7 +760,13 @@ pub struct TyOwnSpec {
 }
 
 impl TyOwnSpec {
-    pub fn new(loc: String, rfn: String, ty: String, with_later: bool, annot_meta: TypeAnnotMeta) -> Self {
+    pub const fn new(
+        loc: String,
+        rfn: String,
+        ty: String,
+        with_later: bool,
+        annot_meta: TypeAnnotMeta,
+    ) -> Self {
         TyOwnSpec {
             loc,
             with_later,
@@ -1702,7 +1708,7 @@ impl<'def> AbstractStructUse<'def> {
     }
 
     /// Creates a new use of unit.
-    pub fn new_unit() -> Self {
+    pub const fn new_unit() -> Self {
         AbstractStructUse {
             def: None,
             ty_params: Vec::new(),
@@ -1711,7 +1717,7 @@ impl<'def> AbstractStructUse<'def> {
     }
 
     /// Returns true iff this is a use of unit.
-    pub fn is_unit(&self) -> bool {
+    pub const fn is_unit(&self) -> bool {
         self.def.is_none()
     }
 
@@ -2521,7 +2527,7 @@ impl Layout {
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CoqBinder(CoqName, CoqType);
 impl CoqBinder {
-    pub fn new(n: CoqName, t: CoqType) -> Self {
+    pub const fn new(n: CoqName, t: CoqType) -> Self {
         CoqBinder(n, t)
     }
 }
@@ -2766,7 +2772,7 @@ impl<'def> FunctionSpec<'def> {
         out
     }
 
-    pub fn has_spec(&self) -> bool {
+    pub const fn has_spec(&self) -> bool {
         self.has_spec
     }
 

@@ -29,11 +29,11 @@ pub struct DefinitelyAccessibleState<'tcx> {
 }
 
 impl<'tcx> DefinitelyAccessibleState<'tcx> {
-    pub fn get_definitely_accessible(&self) -> &FxHashSet<Place<'tcx>> {
+    pub const fn get_definitely_accessible(&self) -> &FxHashSet<Place<'tcx>> {
         &self.definitely_accessible
     }
 
-    pub fn get_definitely_owned(&self) -> &FxHashSet<Place<'tcx>> {
+    pub const fn get_definitely_owned(&self) -> &FxHashSet<Place<'tcx>> {
         &self.definitely_owned
     }
 

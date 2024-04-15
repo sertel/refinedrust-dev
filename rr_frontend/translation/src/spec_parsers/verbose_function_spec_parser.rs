@@ -231,7 +231,11 @@ where
     F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
     /// Type parameters must already have been substituted in the given types.
-    pub fn new(arg_types: &'a [specs::Type<'def>], ret_type: &'a specs::Type<'def>, make_literal: F) -> Self {
+    pub const fn new(
+        arg_types: &'a [specs::Type<'def>],
+        ret_type: &'a specs::Type<'def>,
+        make_literal: F,
+    ) -> Self {
         VerboseFunctionSpecParser {
             arg_types,
             ret_type,

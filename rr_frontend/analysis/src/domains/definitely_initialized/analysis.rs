@@ -21,7 +21,7 @@ pub struct DefinitelyInitializedAnalysis<'mir, 'tcx: 'mir> {
 }
 
 impl<'mir, 'tcx: 'mir> DefinitelyInitializedAnalysis<'mir, 'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, def_id: DefId, mir: &'mir mir::Body<'tcx>) -> Self {
+    pub const fn new(tcx: TyCtxt<'tcx>, def_id: DefId, mir: &'mir mir::Body<'tcx>) -> Self {
         DefinitelyInitializedAnalysis {
             tcx,
             def_id,
@@ -31,7 +31,7 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedAnalysis<'mir, 'tcx> {
     }
 
     /// This analysis will not uninitialize Copy types when they are moved.
-    pub fn new_relaxed(tcx: TyCtxt<'tcx>, def_id: DefId, mir: &'mir mir::Body<'tcx>) -> Self {
+    pub const fn new_relaxed(tcx: TyCtxt<'tcx>, def_id: DefId, mir: &'mir mir::Body<'tcx>) -> Self {
         DefinitelyInitializedAnalysis {
             tcx,
             def_id,

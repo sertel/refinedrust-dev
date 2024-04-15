@@ -22,7 +22,11 @@ pub struct FramingAnalysis<'mir, 'tcx: 'mir> {
 }
 
 impl<'mir, 'tcx: 'mir> FramingAnalysis<'mir, 'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, def_id: DefId, body_with_facts: &'mir BodyWithBorrowckFacts<'tcx>) -> Self {
+    pub const fn new(
+        tcx: TyCtxt<'tcx>,
+        def_id: DefId,
+        body_with_facts: &'mir BodyWithBorrowckFacts<'tcx>,
+    ) -> Self {
         FramingAnalysis {
             tcx,
             def_id,

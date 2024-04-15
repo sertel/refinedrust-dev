@@ -641,7 +641,7 @@ pub struct VecPlaceComponent<'tcx> {
 }
 
 impl<'tcx> VecPlaceComponent<'tcx> {
-    pub fn get_mir_place(&self) -> &mir::Place<'tcx> {
+    pub const fn get_mir_place(&self) -> &mir::Place<'tcx> {
         &self.place
     }
 }

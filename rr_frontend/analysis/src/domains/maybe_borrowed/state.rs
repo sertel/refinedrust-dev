@@ -17,11 +17,11 @@ pub struct MaybeBorrowedState<'tcx> {
 }
 
 impl<'tcx> MaybeBorrowedState<'tcx> {
-    pub fn get_maybe_shared_borrowed(&self) -> &FxHashSet<Place<'tcx>> {
+    pub const fn get_maybe_shared_borrowed(&self) -> &FxHashSet<Place<'tcx>> {
         &self.maybe_shared_borrowed
     }
 
-    pub fn get_maybe_mut_borrowed(&self) -> &FxHashSet<Place<'tcx>> {
+    pub const fn get_maybe_mut_borrowed(&self) -> &FxHashSet<Place<'tcx>> {
         &self.maybe_mut_borrowed
     }
 }

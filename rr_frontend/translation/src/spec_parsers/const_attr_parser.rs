@@ -29,7 +29,7 @@ pub struct ConstAttrs {
 pub struct VerboseConstAttrParser {}
 
 impl VerboseConstAttrParser {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         VerboseConstAttrParser {}
     }
 }

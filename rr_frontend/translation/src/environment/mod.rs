@@ -83,7 +83,7 @@ impl<'tcx> Environment<'tcx> {
     }
 
     /// Returns the typing context
-    pub fn tcx(&self) -> TyCtxt<'tcx> {
+    pub const fn tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }
 

@@ -17,7 +17,7 @@ pub struct DefinitelyAllocatedAnalysis<'mir, 'tcx: 'mir> {
 }
 
 impl<'mir, 'tcx: 'mir> DefinitelyAllocatedAnalysis<'mir, 'tcx> {
-    pub fn new(def_id: DefId, mir: &'mir mir::Body<'tcx>) -> Self {
+    pub const fn new(def_id: DefId, mir: &'mir mir::Body<'tcx>) -> Self {
         DefinitelyAllocatedAnalysis { def_id, mir }
     }
 }

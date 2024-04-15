@@ -81,7 +81,7 @@ impl<'mir, 'tcx: 'mir> Serialize for DefinitelyInitializedState<'mir, 'tcx> {
 }
 
 impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
-    pub fn get_def_init_places(&self) -> &FxHashSet<Place<'tcx>> {
+    pub const fn get_def_init_places(&self) -> &FxHashSet<Place<'tcx>> {
         &self.def_init_places
     }
 

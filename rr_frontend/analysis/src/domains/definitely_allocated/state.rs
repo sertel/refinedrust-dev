@@ -51,7 +51,7 @@ impl<'mir, 'tcx: 'mir> Serialize for DefinitelyAllocatedState<'mir, 'tcx> {
 }
 
 impl<'mir, 'tcx: 'mir> DefinitelyAllocatedState<'mir, 'tcx> {
-    pub fn get_def_allocated_locals(&self) -> &FxHashSet<mir::Local> {
+    pub const fn get_def_allocated_locals(&self) -> &FxHashSet<mir::Local> {
         &self.def_allocated_locals
     }
 

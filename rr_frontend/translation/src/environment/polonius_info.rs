@@ -54,35 +54,35 @@ pub enum AtomicRegion {
 }
 
 impl AtomicRegion {
-    pub fn is_loan(&self) -> bool {
+    pub const fn is_loan(&self) -> bool {
         match *self {
             Self::Loan(_, _) => true,
             _ => false,
         }
     }
 
-    pub fn is_universal(&self) -> bool {
+    pub const fn is_universal(&self) -> bool {
         match *self {
             Self::Universal(_, _) => true,
             _ => false,
         }
     }
 
-    pub fn is_place(&self) -> bool {
+    pub const fn is_place(&self) -> bool {
         match *self {
             Self::PlaceRegion(_) => true,
             _ => false,
         }
     }
 
-    pub fn is_value(&self) -> bool {
+    pub const fn is_value(&self) -> bool {
         match *self {
             Self::Unknown(_) => true,
             _ => false,
         }
     }
 
-    pub fn get_region(&self) -> facts::Region {
+    pub const fn get_region(&self) -> facts::Region {
         match self {
             Self::Loan(_, r) => *r,
             Self::Universal(_, r) => *r,
@@ -874,7 +874,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         (loans, zombie_loans)
     }
 
-    fn get_borrow_live_at(&self, zombie: bool) -> &FxHashMap<facts::PointIndex, Vec<facts::Loan>> {
+    const fn get_borrow_live_at(&self, zombie: bool) -> &FxHashMap<facts::PointIndex, Vec<facts::Loan>> {
         if zombie {
             &self.additional_facts.zombie_borrow_live_at
         } else {
@@ -1229,7 +1229,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     }
 
     /// Find a variable that has the given region in its type.
-    pub fn find_variable(&self, _region: facts::Region) -> Option<mir::Local> {
+    pub const fn find_variable(&self, _region: facts::Region) -> Option<mir::Local> {
         // TODO
         None
     }

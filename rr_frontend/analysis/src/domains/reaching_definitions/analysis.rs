@@ -19,7 +19,7 @@ pub struct ReachingDefsAnalysis<'mir, 'tcx: 'mir> {
 }
 
 impl<'mir, 'tcx: 'mir> ReachingDefsAnalysis<'mir, 'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>, def_id: DefId, mir: &'mir mir::Body<'tcx>) -> Self {
+    pub const fn new(tcx: TyCtxt<'tcx>, def_id: DefId, mir: &'mir mir::Body<'tcx>) -> Self {
         ReachingDefsAnalysis { tcx, def_id, mir }
     }
 }

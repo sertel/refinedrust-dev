@@ -187,14 +187,14 @@ pub type InFunctionState<'a, 'def> = &'a mut TypeTranslationScope<'def>;
 pub type TranslateAdtState<'a> = &'a mut HashSet<DefId>;
 
 impl<'a, 'def> TranslationStateInner<'a, 'def> {
-    fn in_function(&self) -> bool {
+    const fn in_function(&self) -> bool {
         match *self {
             Self::InFunction(_) => true,
             _ => false,
         }
     }
 
-    fn translate_adt(&self) -> bool {
+    const fn translate_adt(&self) -> bool {
         match *self {
             Self::TranslateAdt(_) => true,
             _ => false,
@@ -1466,7 +1466,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Translate a rustc_attr::IntType (this is different from the rustc_ty IntType).
-    fn translate_int_type(&self, it: rustc_attr::IntType) -> Result<radium::IntType, TranslationError> {
+    const fn translate_int_type(&self, it: rustc_attr::IntType) -> Result<radium::IntType, TranslationError> {
         match it {
             rustc_attr::IntType::SignedInt(it) => Ok(match it {
                 rustc_ast::IntTy::I8 => radium::IntType::I8,
@@ -1488,7 +1488,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Translate a rustc_attr::IntType (this is different from the rustc_ty IntType).
-    fn translate_integer_type(
+    const fn translate_integer_type(
         &self,
         it: rustc_abi::IntegerType,
     ) -> Result<radium::IntType, TranslationError> {
@@ -1777,7 +1777,7 @@ pub struct LocalTypeTranslator<'a, 'def, 'tcx> {
     pub scope: RefCell<TypeTranslationScope<'def>>,
 }
 impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
-    pub fn new(translator: &'a TypeTranslator<'def, 'tcx>, scope: TypeTranslationScope<'def>) -> Self {
+    pub const fn new(translator: &'a TypeTranslator<'def, 'tcx>, scope: TypeTranslationScope<'def>) -> Self {
         Self {
             translator,
             scope: RefCell::new(scope),

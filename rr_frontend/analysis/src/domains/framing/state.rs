@@ -22,11 +22,11 @@ pub struct FramingState<'tcx> {
 }
 
 impl<'tcx> FramingState<'tcx> {
-    pub fn get_framed_accessible(&self) -> &FxHashSet<Place<'tcx>> {
+    pub const fn get_framed_accessible(&self) -> &FxHashSet<Place<'tcx>> {
         &self.framed_accessible
     }
 
-    pub fn get_framed_owned(&self) -> &FxHashSet<Place<'tcx>> {
+    pub const fn get_framed_owned(&self) -> &FxHashSet<Place<'tcx>> {
         &self.framed_owned
     }
 

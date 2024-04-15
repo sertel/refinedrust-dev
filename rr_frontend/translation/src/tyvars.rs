@@ -120,7 +120,7 @@ pub struct TyRegionEraseFolder<'tcx> {
     tcx: TyCtxt<'tcx>,
 }
 impl<'tcx> TyRegionEraseFolder<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+    pub const fn new(tcx: TyCtxt<'tcx>) -> Self {
         TyRegionEraseFolder { tcx }
     }
 }
@@ -148,7 +148,7 @@ pub struct TyRegionCollectFolder<'tcx> {
     regions: Vec<Region>,
 }
 impl<'tcx> TyRegionCollectFolder<'tcx> {
-    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+    pub const fn new(tcx: TyCtxt<'tcx>) -> Self {
         TyRegionCollectFolder {
             tcx,
             regions: Vec::new(),
