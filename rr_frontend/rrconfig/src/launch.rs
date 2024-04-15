@@ -33,7 +33,7 @@ fn env_prepend_path(name: &str, value: Vec<PathBuf>, cmd: &mut Command) {
     let old_value = env::var_os(name);
     let mut parts = value;
     if let Some(ref v) = old_value {
-        parts.extend(env::split_paths(v).collect::<Vec<_>>());
+        parts.extend(env::split_paths(v));
     };
     match env::join_paths(parts) {
         Ok(new_value) => {
