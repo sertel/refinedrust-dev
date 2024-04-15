@@ -28,7 +28,6 @@ rustflags = [
 
     # clippy::nursery
     "-Aclippy::empty_line_after_doc_comments",
-    "-Aclippy::iter_on_single_items",
     "-Aclippy::missing_const_for_fn",
     "-Aclippy::needless_collect",
     "-Aclippy::needless_pass_by_ref_mut",

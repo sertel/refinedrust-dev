@@ -41,7 +41,7 @@ where
 
     // TODO: If we're using workspaces, we should figure out the right dir for the workspace
     let cargo_target_path = env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string());
-    let cargo_target: PathBuf = [cargo_target_path.to_string()].into_iter().collect();
+    let cargo_target = PathBuf::from(cargo_target_path.to_string());
 
     let maybe_output_dir = rrconfig::output_dir();
     let output_dir;
