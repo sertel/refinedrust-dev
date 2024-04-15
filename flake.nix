@@ -3,22 +3,22 @@
     nixpkgs.url = "nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
 
-    fenix = {
-      url = "github:nix-community/fenix";
+    crane = {
+      url = "github:ipetkov/crane";
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    naersk = {
-      url = "github:nix-community/naersk";
+    fenix = {
+      url = "github:nix-community/fenix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
   outputs = {
     self,
+    crane,
     fenix,
     flake-utils,
-    naersk,
     nixpkgs,
   }:
     flake-utils.lib.eachDefaultSystem (system: let
@@ -60,10 +60,7 @@
           sha256 = "sha256-0NR5RJ4nNCMl9ZQDA6eGAyrDWS8fB28xIIS1QGLlOxw=";
         };
 
-        env = naersk.lib.${system}.override {
-          cargo = rust.toolchain;
-          rustc = rust.toolchain;
-        };
+        env = (crane.mkLib pkgs).overrideToolchain rust.toolchain;
         lib = "${rust.toolchain}/lib/rustlib/$(rustc -Vv | grep '^host:' | cut -d' ' -f2)/lib";
         src = "${rust.toolchain}/lib/rustlib/rustc-src/rust/compiler";
       };
@@ -119,27 +116,33 @@
             useDune = true;
           };
 
-        frontend = rust.env.buildPackage rec {
-          inherit meta version;
-
-          pname = "cargo-${name}";
+        frontend = let
           src = ./rr_frontend;
+          pname = "cargo-${name}";
 
-          buildInputs = [rust.toolchain pkgs.gnupatch];
-          nativeBuildInputs = with pkgs;
-            [makeWrapper]
-            ++ lib.optionals stdenv.isDarwin [libzip];
+          deps = rust.env.buildDepsOnly {
+            inherit meta pname src version;
+          };
+        in
+          rust.env.buildPackage rec {
+            inherit deps meta pname src version;
 
-          postInstall = with pkgs.lib.strings; ''
-            wrapProgram $out/bin/refinedrust-rustc \
-              --set LD_LIBRARY_PATH "${rust.lib}" \
-              --set DYLD_FALLBACK_LIBRARY_PATH "${rust.lib}"
+            buildInputs = [rust.toolchain pkgs.gnupatch];
+            nativeBuildInputs = with pkgs;
+              [makeWrapper]
+              ++ lib.optionals stdenv.isDarwin [libzip];
 
-            wrapProgram $out/bin/${pname} \
-              --set PATH "${makeSearchPath "bin" buildInputs}"
-          '';
-        };
+            postInstall = with pkgs.lib.strings; ''
+              wrapProgram $out/bin/refinedrust-rustc \
+                --set LD_LIBRARY_PATH "${rust.lib}" \
+                --set DYLD_FALLBACK_LIBRARY_PATH "${rust.lib}"
 
+              wrapProgram $out/bin/${pname} \
+                --set PATH "${makeSearchPath "bin" buildInputs}"
+            '';
+
+            doCheck = false;
+          };
 
         stdlib = coq.pkgs.mkCoqDerivation {
           inherit meta version;

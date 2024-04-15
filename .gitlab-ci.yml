@@ -4,6 +4,7 @@
 stages: [ nix-cache, lint, build, tests ]
 
 variables:
+  DEPENDENCIES: ".#theories.inputDerivation .#frontend.inputDerivation .#frontend.cargoArtifacts nixpkgs#gnumake nixpkgs#gnupatch"
   NIX_STORE_ARTIFACTS_PATH: ".ci_nix_artifacts"
   NIX_STORE_CACHE_PATH: ".ci_nix_cache"
 
@@ -18,8 +19,7 @@ default:
    - echo "trusted-public-keys = ${NIX_CI_CACHE_PUB_KEY} cache.nixos.org-1:6NCHdD59X431o0gWypbMrAURkbJ16ZPMQFGspcDShjY=" >> /etc/nix/nix.conf
 
    # Since the cache is not guaranteed to be available, it is preferable to build the dependencies for each job (which is no-op if the cache is available)
-   - nix build --print-build-logs .#theories.inputDerivation
-   - nix build --print-build-logs .#frontend.inputDerivation
+   - nix build --print-build-logs ${DEPENDENCIES}
 
   cache: &nix_cache
     key:
@@ -59,7 +59,7 @@ default:
 nix-cache:
   stage: nix-cache
   variables:
-    NIX_DERIVATION: .#theories.inputDerivation .#frontend.inputDerivation nixpkgs#gnumake nixpkgs#gnupatch
+    NIX_DERIVATION: ${DEPENDENCIES}
   extends: .build_to_cache
 
 clippy:
