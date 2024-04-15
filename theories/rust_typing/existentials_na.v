@@ -587,6 +587,7 @@ Section generated_code.
       ∃ r : rt,
         P.(na_inv_P) π r x ∗
         (l ◁ₗ[π, Owned false] (#r) @ (◁ ty)) ∗
+        &na{κ,π,shrN.@l} (∃ r' : rt, l ↦: ty_own_val ty π r' ∗ na_inv_P P π r' x) ∗
 
         ( ∀ r' : rt,
             l ◁ₗ[π, Owned false] #r' @ (◁ ty) ∗ P.(na_inv_P) π r' x ={E}=∗
@@ -613,7 +614,7 @@ Section generated_code.
         iExists r; iR.
         by iModIntro. }
 
-      iIntros (r') "(Hl & HP)".
+      iR; iIntros (r') "(Hl & HP)".
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
       iDestruct "Hl" as (???) "(_ & _ & _ & (% & <- & Hl)) /=".
       iMod (fupd_mask_mono with "Hl") as "Hl"; first solve_ndisj.
@@ -669,7 +670,7 @@ Section generated_code.
 
       iMod (lctx_lft_alive_count_tok with "HE HL") as (q) "(Htok & Htokcl & HL)"; [ done.. |].
       (* iMod (fupd_mask_subseteq (↑lftE)) as "Hmask"; first solve_ndisj. *)
-      iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & Hvs)"; [ done.. |].
+      iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & #Hbor & Hvs)"; [ done.. |].
 
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
       iDestruct "Hl" as (ly Halg Hly) "(#Hsc & #Hlb & _ & (% & <- & Hl))".
@@ -711,7 +712,13 @@ Section generated_code.
         { rewrite ltype_own_alias_unfold /alias_lty_own.
           iExists ly. by repeat iR. }
 
-        admit. }
+        rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+        iExists ly; repeat iR.
+        iExists x; repeat iR.
+
+        rewrite /ty_shr /na_ex_plain_t.
+        repeat iR.
+        by iExists ly; repeat iR. }
 
       iModIntro.
       iIntros (? ? ? ? ? ? ? ? strong ?) "Hincl Hl [ Hstrong _ ]".
