@@ -329,14 +329,14 @@ impl SynType {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum TypeIsRaw {
     Yes,
     No,
 }
 
 /// Meta information from parsing type annotations
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct TypeAnnotMeta {
     /// Used lifetime variables
     escaped_lfts: HashSet<Lft>,
@@ -372,7 +372,7 @@ impl TypeAnnotMeta {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct LiteralType {
     /// Rust name
     pub rust_name: Option<String>,
@@ -748,7 +748,7 @@ impl<'def> Type<'def> {
 }
 
 /// Specification for location ownership of a type.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct TyOwnSpec {
     loc: String,
     with_later: bool,
@@ -779,7 +779,7 @@ impl TyOwnSpec {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum InvariantSpecFlags {
     /// fully persistent and timeless invariant
     Persistent,
@@ -789,7 +789,7 @@ pub enum InvariantSpecFlags {
     Atomic,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum InvariantMode {
     All,
     OnlyShared,
@@ -1169,7 +1169,7 @@ impl InvariantSpec {
 }
 
 /// Representation options for structs.
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 /// Struct representation options supported by Radium
 pub enum StructRepr {
     ReprRust,
@@ -1187,7 +1187,7 @@ impl Display for StructRepr {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 /// Enum representation options supported by Radium
 pub enum EnumRepr {
     ReprRust,
@@ -1205,7 +1205,7 @@ impl Display for EnumRepr {
     }
 }
 
-#[derive(Copy, Clone, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
 /// Union representation options supported by Radium
 pub enum UnionRepr {
     ReprRust,
@@ -1843,7 +1843,7 @@ impl<'def> AbstractStructUse<'def> {
 }
 
 /// Specification of an enum in terms of a Coq type refining it.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct EnumSpec {
     /// the refinement type of the enum
     pub rfn_type: CoqType,
@@ -2518,7 +2518,7 @@ impl Layout {
 // - DeBruijn probably not worth it, I don't need subst or anything like that. just try to keep variables
 //   apart when generating them.
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CoqBinder(CoqName, CoqType);
 impl CoqBinder {
     pub fn new(n: CoqName, t: CoqType) -> Self {
@@ -2629,7 +2629,7 @@ pub struct LoopSpec {
     pub func_predicate: IPropPredicate,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CoqParam {
     /// the name
     pub name: CoqName,

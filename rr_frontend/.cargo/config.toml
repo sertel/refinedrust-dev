@@ -27,7 +27,6 @@ rustflags = [
     "-Aclippy::unused_io_amount",
 
     # clippy::nursery
-    "-Aclippy::derive_partial_eq_without_eq",
     "-Aclippy::empty_line_after_doc_comments",
     "-Aclippy::equatable_if_let",
     "-Aclippy::iter_on_single_items",

@@ -180,7 +180,7 @@ impl RustType {
  * This is much more constrained than the Coq version of values, as we do not need to represent
  * runtime values.
  */
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Literal {
     LitI8(i8),
     LitI16(i16),
@@ -415,7 +415,7 @@ impl Display for Expr {
 }
 
 /// for unique/shared pointers
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Mutability {
     Mut,
     Shared,
@@ -432,7 +432,7 @@ impl Mutability {
 /**
  * Borrows allowed in Caesium
  */
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum BorKind {
     Mutable,
     Shared,
@@ -668,7 +668,7 @@ impl Stmt {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Unop {
     NegOp,
     NotBoolOp,
@@ -684,7 +684,7 @@ impl Display for Unop {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Binop {
     //arithmetic
     AddOp,

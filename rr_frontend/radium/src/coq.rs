@@ -260,7 +260,7 @@ impl CoqType {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CoqParamList(pub Vec<(CoqName, CoqType)>);
 
 impl CoqParamList {
@@ -283,7 +283,7 @@ impl Display for CoqParamList {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CoqVariant {
     pub name: String,
     pub params: CoqParamList,
@@ -295,7 +295,7 @@ impl Display for CoqVariant {
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CoqInductive {
     pub name: String,
     pub parameters: CoqParamList,
