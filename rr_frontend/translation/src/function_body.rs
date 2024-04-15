@@ -3009,6 +3009,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let translated_op = self.translate_operand(op, true)?;
                 Ok(translated_op)
             },
+
             Rvalue::Ref(region, bk, pl) => {
                 let translated_pl = self.translate_place(pl)?;
                 let translated_bk = self.translate_borrow_kind(bk)?;
@@ -3033,9 +3034,9 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         ty: ty_annot,
                         e: Box::new(translated_pl),
                     })
-                    //Err(TranslationError::LoanNotFound(loc))
                 }
             },
+
             Rvalue::AddressOf(mt, pl) => {
                 let translated_pl = self.translate_place(pl)?;
                 let translated_mt = self.translate_mutability(mt)?;
@@ -3044,6 +3045,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     e: Box::new(translated_pl),
                 })
             },
+
             Rvalue::BinaryOp(op, operands) => {
                 let e1 = &operands.as_ref().0;
                 let e2 = &operands.as_ref().1;
@@ -3067,6 +3069,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     e2: Box::new(translated_e2),
                 })
             },
+
             Rvalue::CheckedBinaryOp(op, operands) => {
                 let e1 = &operands.as_ref().0;
                 let e2 = &operands.as_ref().1;
@@ -3090,6 +3093,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     e2: Box::new(translated_e2),
                 })
             },
+
             Rvalue::UnaryOp(op, operand) => {
                 let translated_e1 = self.translate_operand(operand, true)?;
                 let e1_ty = self.get_type_of_operand(operand)?;
@@ -3102,12 +3106,14 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     e: Box::new(translated_e1),
                 })
             },
+
             Rvalue::NullaryOp(op, _ty) => {
                 // TODO: SizeOf
                 Err(TranslationError::UnsupportedFeature {
                     description: "nullary ops (AlignOf, Sizeof) are not supported currently".to_string(),
                 })
             },
+
             Rvalue::Discriminant(pl) => {
                 let ty = self.get_type_of_place(pl)?;
                 let translated_pl = self.translate_place(pl)?;
@@ -3141,11 +3147,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         description: format!(
                             "We do not support discriminant accesses on non-enum types: {:?}; got type {:?}",
                             rval, ty.ty
-                        )
-                        .to_string(),
+                        ),
                     })
                 }
             },
+
             Rvalue::Aggregate(kind, op) => {
                 // translate operands
                 let mut translated_ops: Vec<radium::Expr> = Vec::new();
@@ -3235,8 +3241,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 description: format!(
                                     "TODO: implement Aggregate rvalue for other adts: {:?}",
                                     rval
-                                )
-                                .to_string(),
+                                ),
                             });
                         }
                     },
@@ -3264,20 +3269,21 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     _ => {
                         // TODO
                         Err(TranslationError::UnsupportedFeature {
-                            description: format!("TODO: implement Aggregate rvalue: {:?}", rval).to_string(),
+                            description: format!("TODO: implement Aggregate rvalue: {:?}", rval),
                         })
                     },
                 }
             },
+
             Rvalue::Cast(kind, op, ty) => {
                 let op_ty = self.get_type_of_operand(op)?;
                 let translated_op = self.translate_operand(op, true)?;
                 match kind {
                     mir::CastKind::PointerExposeAddress => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                        description: format!("unsupported rvalue: {:?}", rval),
                     }),
                     mir::CastKind::PointerFromExposedAddress => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                        description: format!("unsupported rvalue: {:?}", rval),
                     }),
                     mir::CastKind::PointerCoercion(x) => {
                         match x {
@@ -3287,48 +3293,48 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             },
                             ty::adjustment::PointerCoercion::ArrayToPointer => {
                                 Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                                    description: format!("unsupported rvalue: {:?}", rval),
                                 })
                             },
                             ty::adjustment::PointerCoercion::ClosureFnPointer(_) => {
                                 Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                                    description: format!("unsupported rvalue: {:?}", rval),
                                 })
                             },
                             ty::adjustment::PointerCoercion::ReifyFnPointer => {
                                 Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                                    description: format!("unsupported rvalue: {:?}", rval),
                                 })
                             },
                             ty::adjustment::PointerCoercion::UnsafeFnPointer => {
                                 Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                                    description: format!("unsupported rvalue: {:?}", rval),
                                 })
                             },
                             ty::adjustment::PointerCoercion::Unsize => {
                                 Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                                    description: format!("unsupported rvalue: {:?}", rval),
                                 })
                             },
                         }
                     },
                     mir::CastKind::DynStar => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported dyn* cast").to_string(),
+                        description: format!("unsupported dyn* cast"),
                     }),
                     mir::CastKind::IntToInt => {
                         // TODO
                         Err(TranslationError::Unimplemented {
-                            description: format!("unsupported int-to-int cast").to_string(),
+                            description: format!("unsupported int-to-int cast"),
                         })
                     },
                     mir::CastKind::IntToFloat => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported int-to-float cast").to_string(),
+                        description: format!("unsupported int-to-float cast"),
                     }),
                     mir::CastKind::FloatToInt => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported float-to-int cast").to_string(),
+                        description: format!("unsupported float-to-int cast"),
                     }),
                     mir::CastKind::FloatToFloat => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported float-to-float cast").to_string(),
+                        description: format!("unsupported float-to-float cast"),
                     }),
                     mir::CastKind::PtrToPtr => {
                         match (op_ty.kind(), ty.kind()) {
@@ -3339,34 +3345,38 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             _ => {
                                 // TODO: any other cases we should handle?
                                 Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported ptr-to-ptr cast: {:?}", rval)
-                                        .to_string(),
+                                    description: format!("unsupported ptr-to-ptr cast: {:?}", rval),
                                 })
                             },
                         }
                     },
                     mir::CastKind::FnPtrToPtr => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported fnptr-to-ptr cast: {:?}", rval).to_string(),
+                        description: format!("unsupported fnptr-to-ptr cast: {:?}", rval),
                     }),
                     mir::CastKind::Transmute => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported transmute cast: {:?}", rval).to_string(),
+                        description: format!("unsupported transmute cast: {:?}", rval),
                     }),
                 }
             },
+
             Rvalue::Len(..) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                description: format!("unsupported rvalue: {:?}", rval),
             }),
+
             Rvalue::Repeat(..) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                description: format!("unsupported rvalue: {:?}", rval),
             }),
+
             Rvalue::ThreadLocalRef(..) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                description: format!("unsupported rvalue: {:?}", rval),
             }),
+
             Rvalue::ShallowInitBox(_, _) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                description: format!("unsupported rvalue: {:?}", rval),
             }),
+
             Rvalue::CopyForDeref(_) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval).to_string(),
+                description: format!("unsupported rvalue: {:?}", rval),
             }),
         }
     }
@@ -3491,71 +3501,45 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate a scalar at a specific type to a radium::Expr.
+    // TODO: Use `TryFrom` instead
     fn translate_scalar(&mut self, sc: &Scalar, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
+        // TODO: Use `TryFrom` instead
+        fn translate_literal<T, U>(
+            sc: Result<T, U>,
+            fptr: fn(T) -> radium::Literal,
+        ) -> Result<radium::Expr, TranslationError> {
+            sc.map_or(Err(TranslationError::InvalidLayout), |lit| Ok(radium::Expr::Literal(fptr(lit))))
+        }
+
         match ty.kind() {
             TyKind::Int(it) => {
                 match it {
-                    ty::IntTy::I8 => sc.to_i8().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitI8(i))),
-                    ),
-                    ty::IntTy::I16 => sc.to_i16().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitI16(i))),
-                    ),
-                    ty::IntTy::I32 => sc.to_i32().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitI32(i))),
-                    ),
-                    ty::IntTy::I64 => sc.to_i64().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitI64(i))),
-                    ),
-                    ty::IntTy::I128 => sc.to_i128().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitI128(i))),
-                    ),
+                    ty::IntTy::I8 => translate_literal(sc.to_i8(), radium::Literal::LitI8),
+                    ty::IntTy::I16 => translate_literal(sc.to_i16(), radium::Literal::LitI16),
+                    ty::IntTy::I32 => translate_literal(sc.to_i32(), radium::Literal::LitI32),
+                    ty::IntTy::I64 => translate_literal(sc.to_i64(), radium::Literal::LitI64),
+                    ty::IntTy::I128 => translate_literal(sc.to_i128(), radium::Literal::LitI128),
                     // for radium, the pointer size is 8 bytes
-                    ty::IntTy::Isize => sc.to_i64().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitI64(i))),
-                    ),
+                    ty::IntTy::Isize => translate_literal(sc.to_i64(), radium::Literal::LitI64),
                 }
             },
+
             TyKind::Uint(it) => {
                 match it {
-                    ty::UintTy::U8 => sc.to_u8().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitU8(i))),
-                    ),
-                    ty::UintTy::U16 => sc.to_u16().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitU16(i))),
-                    ),
-                    ty::UintTy::U32 => sc.to_u32().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitU32(i))),
-                    ),
-                    ty::UintTy::U64 => sc.to_u64().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitU64(i))),
-                    ),
-                    ty::UintTy::U128 => sc.to_u128().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitU128(i))),
-                    ),
+                    ty::UintTy::U8 => translate_literal(sc.to_u8(), radium::Literal::LitU8),
+                    ty::UintTy::U16 => translate_literal(sc.to_u16(), radium::Literal::LitU16),
+                    ty::UintTy::U32 => translate_literal(sc.to_u32(), radium::Literal::LitU32),
+                    ty::UintTy::U64 => translate_literal(sc.to_u64(), radium::Literal::LitU64),
+                    ty::UintTy::U128 => translate_literal(sc.to_u128(), radium::Literal::LitU128),
                     // for radium, the pointer size is 8 bytes
-                    ty::UintTy::Usize => sc.to_u64().map_or_else(
-                        |_| Err(TranslationError::InvalidLayout),
-                        |i| Ok(radium::Expr::Literal(radium::Literal::LitU64(i))),
-                    ),
+                    ty::UintTy::Usize => translate_literal(sc.to_u64(), radium::Literal::LitU64),
                 }
             },
-            TyKind::Bool => sc.to_bool().map_or_else(
-                |_| Err(TranslationError::InvalidLayout),
-                |b| Ok(radium::Expr::Literal(radium::Literal::LitBool(b))),
-            ),
+
+            TyKind::Bool => translate_literal(sc.to_bool(), radium::Literal::LitBool),
+
             TyKind::FnDef(_, _) => self.translate_fn_def_use(ty),
+
             TyKind::Tuple(tys) => {
                 if tys.is_empty() {
                     Ok(radium::Expr::Literal(radium::Literal::LitZST))
@@ -3568,6 +3552,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     })
                 }
             },
+
             TyKind::Ref(_, _, _) => match sc {
                 Scalar::Int(_) => {
                     unreachable!();
@@ -3600,6 +3585,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     }
                 },
             },
+
             _ => Err(TranslationError::UnsupportedFeature {
                 description: format!("Unsupported layout for const value: {:?}", ty),
             }),

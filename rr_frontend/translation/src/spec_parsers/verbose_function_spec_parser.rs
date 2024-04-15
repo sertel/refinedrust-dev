@@ -163,7 +163,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let term: parse::LitStr = input.parse(meta)?;
                     let (term, _meta) = process_coq_literal(&term.value(), *meta);
 
-                    Ok(MetaIProp::Observe(gname.value().to_string(), term))
+                    Ok(MetaIProp::Observe(gname.value(), term))
                 },
                 "linktime" => {
                     let term: parse::LitStr = input.parse(meta)?;
@@ -343,7 +343,7 @@ where
 
                     let term: parse::LitStr = buffer.parse(&meta)?;
                     let (term, _) = process_coq_literal(&term.value(), meta);
-                    Ok(MetaIProp::Observe(gname.value().to_string(), term))
+                    Ok(MetaIProp::Observe(gname.value(), term))
                 };
                 let m = m().map_err(str_err)?;
                 builder.spec.add_postcondition(m.into())?;

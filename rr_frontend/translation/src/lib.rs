@@ -250,7 +250,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                         path: interned_path,
                         refinement_type: lit.refinement_type.to_string(),
                         syn_type: lit.syn_type.to_string(),
-                        sem_type: lit.type_term.to_string(),
+                        sem_type: lit.type_term,
                     };
                     return Some(a);
                 },
@@ -624,14 +624,11 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let stem = crate_name.as_str();
 
         // create output directory
-        let output_dir_path: std::path::PathBuf = if let Some(output) = rrconfig::output_dir() {
-            output
-        } else {
+        let Some(mut base_dir_path) = rrconfig::output_dir() else {
             info!("No output directory specified, not writing files");
             return;
         };
 
-        let mut base_dir_path = output_dir_path.clone();
         base_dir_path.push(&stem);
 
         if let Err(_) = fs::read_dir(base_dir_path.as_path()) {

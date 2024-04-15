@@ -29,7 +29,6 @@ rustflags = [
     # clippy::nursery
     "-Aclippy::empty_line_after_doc_comments",
     "-Aclippy::option_if_let_else",
-    "-Aclippy::redundant_clone",
     "-Aclippy::redundant_pub_crate",
     "-Aclippy::string_lit_as_bytes",
     "-Aclippy::type_repetition_in_bounds",

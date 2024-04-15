@@ -1535,7 +1535,7 @@ impl<'def> AbstractStruct<'def> {
 
     pub fn public_rt_def_name(&self) -> String {
         match self.invariant {
-            Some(ref inv) => inv.rt_def_name().to_string(),
+            Some(ref inv) => inv.rt_def_name(),
             None => self.plain_rt_def_name().to_string(),
         }
     }
@@ -1795,9 +1795,7 @@ impl<'def> AbstractStructUse<'def> {
             // TODO generates too many apps
 
             // use_struct_layout_alg' ([my_spec] [params])
-            let specialized_spec =
-                format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts));
-            specialized_spec.to_string()
+            format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts))
         } else {
             panic!("unit has no sls");
         }
@@ -2408,11 +2406,7 @@ impl<'def> AbstractEnumUse<'def> {
         }
 
         // use_struct_layout_alg' ([my_spec] [params])
-        let specialized_spec = format!(
-            "({})",
-            CoqAppTerm::new(self.def.borrow().as_ref().unwrap().els_def_name.clone(), param_sts)
-        );
-        specialized_spec.to_string()
+        format!("({})", CoqAppTerm::new(self.def.borrow().as_ref().unwrap().els_def_name.clone(), param_sts))
     }
 
     /// Get the syn_type term for this enum use.

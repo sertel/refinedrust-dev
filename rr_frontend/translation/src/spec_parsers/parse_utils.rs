@@ -197,13 +197,13 @@ impl<U> Parse<U> for CoqPath {
             let module = module.value();
 
             Ok(CoqPath(specs::CoqPath {
-                path: Some(path_or_module.to_string()),
+                path: Some(path_or_module),
                 module,
             }))
         } else {
             Ok(CoqPath(specs::CoqPath {
                 path: None,
-                module: path_or_module.to_string(),
+                module: path_or_module,
             }))
         }
     }

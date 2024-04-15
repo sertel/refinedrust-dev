@@ -732,7 +732,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let struct_name = strip_coq_ident(&ty.ident(tcx).to_string());
         self.variant_registry
             .borrow_mut()
-            .insert(ty.def_id, (struct_name.clone(), &*struct_def_init, ty, false, None));
+            .insert(ty.def_id, (struct_name, &*struct_def_init, ty, false, None));
 
         let translate_adt = || {
             let struct_name = strip_coq_ident(&ty.ident(tcx).to_string());
