@@ -1253,7 +1253,7 @@ where
     let mut crate_parser = crate_parser::VerboseCrateAttrParser::new();
     let crate_spec = crate_parser.parse_crate_attrs(&crate_attrs)?;
 
-    let path_prefix = crate_spec.prefix.unwrap_or("refinedrust.examples".to_string());
+    let path_prefix = crate_spec.prefix.unwrap_or_else(|| "refinedrust.examples".to_string());
     info!("Setting Coq path prefix: {:?}", path_prefix);
 
     let package = crate_spec.package;

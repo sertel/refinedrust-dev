@@ -3068,7 +3068,7 @@ impl<'def> FunctionSpecBuilder<'def> {
     /// other functions).
     pub fn into_function_spec(mut self, name: &str, spec_name: &str) -> FunctionSpec<'def> {
         self.coq_params.extend(self.late_coq_params);
-        let ret = self.ret.unwrap_or(TypeWithRef::make_unit());
+
         FunctionSpec {
             extra_link_assum: self.extra_link_assum,
             function_name: name.to_string(),
@@ -3081,7 +3081,7 @@ impl<'def> FunctionSpecBuilder<'def> {
             pre: self.pre,
             args: self.args,
             existentials: self.existential,
-            ret,
+            ret: self.ret.unwrap_or_else(|| TypeWithRef::make_unit()),
             post: self.post,
             has_spec: self.has_spec,
         }

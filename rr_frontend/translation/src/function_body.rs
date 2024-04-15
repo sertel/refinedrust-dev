@@ -3660,12 +3660,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     fn translate_place(&mut self, pl: &Place<'tcx>) -> Result<radium::Expr, TranslationError> {
         // Get the type of the underlying local. We will use this to
         // get the necessary layout information for dereferencing
-        let cur_ty = self.get_type_of_local(&pl.local)?;
-        let mut cur_ty = PlaceTy::from_ty(cur_ty);
+        let mut cur_ty = self.get_type_of_local(&pl.local).map(PlaceTy::from_ty)?;
+
         let local_name = self
             .variable_map
             .get(&pl.local)
-            .ok_or(TranslationError::UnknownVar(format!("{:?}", pl.local)))?;
+            .ok_or_else(|| TranslationError::UnknownVar(format!("{:?}", pl.local)))?;
+
         let mut acc_expr: radium::Expr = radium::Expr::Var(local_name.to_string());
 
         // iterate in evaluation order
@@ -3760,7 +3761,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             .local_decls
             .get(*local)
             .map(|decl| decl.ty)
-            .ok_or(TranslationError::UnknownVar("".to_string()))
+            .ok_or_else(|| TranslationError::UnknownVar("".to_string()))
     }
 
     /// Get the type of a place expression.

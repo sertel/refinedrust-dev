@@ -134,7 +134,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
                 }
             }
             if let Some(pattern) = pattern {
-                let refinement = refinement.unwrap_or("-[]".to_string());
+                let refinement = refinement.unwrap_or_else(|| "-[]".to_string());
                 variant_patterns.push((pattern.pat, pattern.args, refinement));
             }
         }

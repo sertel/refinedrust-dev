@@ -951,13 +951,16 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                                 err
                             ))
                         })?;
-                    let evaluated_discr = evaluated_discr.ok_or(TranslationError::FatalError(format!(
-                        "Failed to const-evaluate discriminant"
-                    )))?;
+
+                    let evaluated_discr = evaluated_discr.ok_or_else(|| {
+                        TranslationError::FatalError(format!("Failed to const-evaluate discriminant"))
+                    })?;
 
                     let evaluated_int = evaluated_discr.try_to_scalar_int().unwrap();
-                    let evaluated_int = Self::try_scalar_int_to_i128(evaluated_int)
-                        .ok_or(TranslationError::FatalError(format!("Enum discriminant is too large")))?;
+                    let evaluated_int = Self::try_scalar_int_to_i128(evaluated_int).ok_or_else(|| {
+                        TranslationError::FatalError(format!("Enum discriminant is too large"))
+                    })?;
+
                     info!("const-evaluated enum discriminant: {:?}", evaluated_int);
 
                     last_explicit_discr = evaluated_int;
@@ -1535,15 +1538,15 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 info!("getting field name of {:?} at {} (variant {:?})", f, ty, variant);
                 if def.is_struct() {
                     let i = def.variants().get(rustc_target::abi::VariantIdx::from_usize(0)).unwrap();
-                    i.fields.get(*f).map(|f| f.ident(tcx).to_string()).ok_or(TranslationError::UnknownError(
-                        format!("could not get field {:?} of {}", f, ty),
-                    ))
+                    i.fields.get(*f).map(|f| f.ident(tcx).to_string()).ok_or_else(|| {
+                        TranslationError::UnknownError(format!("could not get field {:?} of {}", f, ty))
+                    })
                 } else if def.is_enum() {
                     let variant = variant.unwrap();
                     let i = def.variants().get(rustc_target::abi::VariantIdx::from_usize(variant)).unwrap();
-                    i.fields.get(*f).map(|f| f.ident(tcx).to_string()).ok_or(TranslationError::UnknownError(
-                        format!("could not get field {:?} of {}", f, ty),
-                    ))
+                    i.fields.get(*f).map(|f| f.ident(tcx).to_string()).ok_or_else(|| {
+                        TranslationError::UnknownError(format!("could not get field {:?} of {}", f, ty))
+                    })
                 } else {
                     Err(TranslationError::UnsupportedFeature {
                         description: format!("unsupported field access {:?}to ADT {:?}", f, ty),
