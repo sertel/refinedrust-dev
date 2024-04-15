@@ -2,7 +2,6 @@
   inputs = {
     nixpkgs.url = "nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
-    nix-filter.url = "github:numtide/nix-filter";
 
     fenix = {
       url = "github:nix-community/fenix";
@@ -20,7 +19,6 @@
     fenix,
     flake-utils,
     naersk,
-    nix-filter,
     nixpkgs,
   }:
     flake-utils.lib.eachDefaultSystem (system: let
