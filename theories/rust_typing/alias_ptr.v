@@ -179,23 +179,6 @@ Section alias_ltype.
     SimplifyHyp (l ◁ₗ[π, Owned wl] r @ AliasLtype rt st l2) (Some 0%N) :=
     λ T, i2p (alias_ltype_owned_simplify_hyp π rt st wl l l2 r T).
 
-  (** [AliasLtype] is always owned *)
-  Lemma alias_ltype_unowned_simplify_hyp π rt st b (l l2 : loc) (r : place_rfn rt) T :
-    (if b is Owned _ then False else True) →
-    (False -∗ T)
-    ⊢ simplify_hyp (l ◁ₗ[π, b] r @ AliasLtype rt st l2) T.
-  Proof.
-    iIntros (?) "HT Hl".
-    rewrite ltype_own_alias_unfold /alias_lty_own.
-    destruct b; done.
-  Qed.
-  Global Instance alias_ltype_uniq_simplify_hyp_inst π rt st κ γ l l2 r :
-    SimplifyHyp (l ◁ₗ[π, Uniq κ γ] r @ AliasLtype rt st l2) (Some 0%N) :=
-    λ T, i2p (alias_ltype_unowned_simplify_hyp π rt st (Uniq κ γ) l l2 r T I).
-  Global Instance alias_ltype_shared_simplify_hyp_inst π rt st κ l l2 r :
-    SimplifyHyp (l ◁ₗ[π, Shared κ] r @ AliasLtype rt st l2) (Some 0%N) :=
-    λ T, i2p (alias_ltype_unowned_simplify_hyp π rt st (Shared κ) l l2 r T I).
-
   (** Place typing for [AliasLtype].
     At the core this is really similar to the place lemma for alias_ptr_t - just without the deref *)
   Lemma typed_place_alias_owned π E L l l2 rt (r : place_rfn rt) st bmin0 wl P T :
@@ -278,15 +261,23 @@ Section alias_ltype.
     ⊢ typed_addr_of_mut_end π E L l (AliasLtype rt st l2) r b2 bmin T.
   Proof.
     iIntros "HT". iIntros (????) "#CTX #HE HL Hna Hincl Hl".
-    rewrite ltype_own_alias_unfold /alias_lty_own. destruct b2 as [wl | | ]; [| done..].
-    iDestruct "Hl" as "(%ly & %Hst & -> & %Hly & #Hlb & Hcred)".
-    iSpecialize ("HT" with "[//]").
-    iApply logical_step_intro. iExists _, _, _, _, _, _, _. iFrame.
-    iSplitR; first done.
-    rewrite !ltype_own_alias_unfold /alias_lty_own.
-    iSplitL "Hcred". { eauto 8 with iFrame. }
-    iSplitR. { eauto 8 with iFrame. }
-    done.
+    rewrite ltype_own_alias_unfold /alias_lty_own. destruct b2 as [wl | | ]; [| | done].
+    - iDestruct "Hl" as "(%ly & %Hst & -> & %Hly & #Hlb & Hcred)".
+      iSpecialize ("HT" with "[//]").
+      iApply logical_step_intro. iExists _, _, _, _, _, _, _. iFrame.
+      iSplitR; first done.
+      rewrite !ltype_own_alias_unfold /alias_lty_own.
+      iSplitL "Hcred". { eauto 8 with iFrame. }
+      iSplitR. { eauto 8 with iFrame. }
+      done.
+    - iDestruct "Hl" as "(%ly & %Hst & -> & %Hly & #Hlb)".
+      iSpecialize ("HT" with "[//]").
+      iApply logical_step_intro. iExists _, _, _, _, _, _, _. iFrame.
+      iSplitR; first done.
+      rewrite !ltype_own_alias_unfold /alias_lty_own.
+      iSplitL. { eauto 8 with iFrame. }
+      iSplitR. { eauto 8 with iFrame. }
+      done.
   Qed.
   Global Instance typed_addr_of_mut_end_alias_inst π E L l l2 rt st r b2 bmin :
     TypedAddrOfMutEnd π E L l (AliasLtype rt st l2) r b2 bmin | 10 :=

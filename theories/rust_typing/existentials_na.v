@@ -622,6 +622,19 @@ Section generated_code.
       iExists r'; iFrame.
     Qed.
 
+    (*
+      How to deal with the ownership: We unfold, we want own ownership.
+      1- We change the ownership to Owned: Below a shared reference, this might not be possible.
+         > Not possible: Unless changing typed_place => Not planned.
+
+      2- We keep Shared: Shared ownership of this ∃na into shared ownership of OpenedLtype.
+         > When we go under the OpenedLtype -> Definition of Shared's OpenedLtype.
+         > Not persistent: But we can add an exception for the Shared's OpenedLtype case.
+
+      3- We move out ownership of ∃na: New context item.
+         > Put an owned context item. See alias_ptr.v (Mattermost)
+     *)
+
     Lemma na_typed_place_ex_plain_t_shared_2 π E L l (ty : type rt) x κ bmin K T :
       prove_with_subtype E L false ProveDirect (£ 1) (λ L1 _ R, R -∗
         li_tactic (lctx_lft_alive_count_goal E L1 κ) (λ '(κs, L2),
@@ -630,7 +643,7 @@ Section generated_code.
              l ◁ₗ[π, Owned false] (#r) @
                (MagicLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
                   (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
-                  (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l) ∗ llft_elt_toks κs)))
+                  (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l) ∗ |={⊤}=> llft_elt_toks κs)))
             (λ L3,
               typed_place π E L3 l
                 (ShadowedLtype (AliasLtype _ (ty_syn_type ty) l) #tt (◁ (∃na; P, ty)))
@@ -662,7 +675,10 @@ Section generated_code.
       iDestruct "Hl" as (ly Halg Hly) "(#Hsc & #Hlb & _ & (% & <- & Hl))".
 
       iMod ("HT" with "[] HE HL [$HP Hl Htokcl Hvs]") as "HT"; first done.
-      { rewrite ltype_own_magic_unfold /magic_ltype_own.
+      { iAssert (na_own π (↑shrN.@l)) as "?".
+        { admit. }
+
+        rewrite ltype_own_magic_unfold /magic_ltype_own.
         iExists ly; repeat iR.
 
         iSplitL "Hl".
@@ -676,18 +692,14 @@ Section generated_code.
         iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
         iDestruct "Hl" as (ly' Halg' Hly') "(_ & #Hlb' & _ & (% & <- & Hl))".
 
-        iSplitL "Hl Hinv".
-        { rewrite ltype_own_core_ofty_unfold /lty_of_ty_own.
-          iExists ly'; repeat iR.
-          iExists x; iR.
+        do 2 iR.
+        iMod ("Hvs" with "[Hl Hinv]") as "(Hq & _)".
+        2: { by iApply "Htokcl". }
 
-          iMod "Hl" as (v) "(Hl & Hv)".
-          iExists v; iFrame.
-          by iExists r'; iFrame. }
-
-        iR.
-        iSplitR; first admit.
-        admit. }
+        iFrame.
+        rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+        iExists ly'; repeat iR.
+        by iExists r'; iR. }
 
       iDestruct "HT" as (?) "(HL & HT)".
 
@@ -695,9 +707,9 @@ Section generated_code.
       { admit. (* TODO: na_token *) }
       { rewrite ltype_own_shadowed_unfold /shadowed_ltype_own.
 
-        iR; iSplitR.
+        iR; iSplitL.
         { rewrite ltype_own_alias_unfold /alias_lty_own.
-          admit. (* TODO: Contradiction *) }
+          iExists ly. by repeat iR. }
 
         admit. }
 
@@ -723,6 +735,117 @@ Section generated_code.
     Proof.
     Admitted.
 
+    (* Lemma na_typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T : *)
+    (*   prove_with_subtype E L false ProveDirect (£ 1) (λ L1 _ R, R -∗ *)
+    (*     li_tactic (lctx_lft_alive_count_goal E L1 κ)  (λ '(_, L2), *)
+    (*       ∀ r, introduce_with_hooks E L2 (P.(na_inv_P) π r x) *)
+    (*         (λ L3, *)
+    (*           typed_place π E L3 l *)
+    (*                 (ShadowedLtype *)
+    (*                   (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty)) *)
+    (*                     (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x) *)
+    (*                     (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l))) *)
+    (*                   (#r) (◁ (∃na; P, ty))) *)
+    (*                 (#x) (Owned false) (Shared κ) K *)
+    (*         (λ L2 κs li b2 bmin' rti ltyi ri strong weak, *)
+    (*           T L2 κs li b2 bmin' rti ltyi ri strong None) *)
+    (*     ))) *)
+    (*   ⊢ typed_place π E L l (◁ (∃na; P, ty))%I (#x) bmin (Shared κ) K T. *)
+    (* Proof. *)
+    (*   rewrite /prove_with_subtype. *)
+    (*   iIntros "HT". *)
+
+    (*   rewrite /typed_place /introduce_with_hooks. *)
+    (*   iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL Hna Hincl Hl Hcont". *)
+    (*   iApply fupd_place_to_wp. *)
+
+    (*   iMod ("HT" with "[] [] [$LFT $TIME $LLCTX] HE HL") *)
+    (*       as "(% & % & % & >(Hcred & HR) & HL & HT)"; [ done.. |]. *)
+    (*   iSpecialize ("HT" with "HR"). *)
+
+    (*   rewrite /li_tactic /lctx_lft_alive_count_goal. *)
+    (*   iDestruct "HT" as "(% & % & %Hal & HT)". *)
+
+    (*   iMod (lctx_lft_alive_count_tok with "HE HL") as (q) "(Htok & Htokcl & HL)"; [ done.. |]. *)
+    (*   iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & #Hbor & Hvs)"; [ done.. |]. *)
+
+    (*   iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl". *)
+    (*   iDestruct "Hl" as (ly) "(>%Halg & >%Hly & >#Hsc & >#Hlb & _ & (% & >%Heq & Hl))". *)
+    (*   rewrite <- Heq; clear Heq; simpl. *)
+
+    (*   iMod ("HT" with "[] HE HL HP") as "(% & HL & HT)"; first done. *)
+    (*   iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] [Hincl] [Hl Hsc Hlb]"). *)
+    (*   { admit. (* TODO: na_token *) } *)
+    (*   { unfold bor_kind_incl. admit. (* NOTE: Is (Owned _) possible? *) } *)
+    (*   { rewrite ltype_own_shadowed_unfold /shadowed_ltype_own. *)
+    (*     rewrite ltype_own_opened_unfold /opened_ltype_own. *)
+    (*     rewrite ltype_own_ofty_unfold /lty_of_ty_own. *)
+
+    (*     simp_ltypes; iR. *)
+
+    (*     iSplitR; iExists ly; repeat iR. *)
+    (*     { admit. (* TODO: opened_ltype_own (ltypes.v:3213) *) } *)
+
+    (*     iExists x; iR. *)
+    (*     rewrite /na_ex_plain_t /ty_shr. *)
+    (*     repeat iR; by iExists ly. } *)
+
+    (*   iModIntro. *)
+    (*   iIntros (L'' κs' l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl [ Hstrong _ ]". *)
+    (*   iApply ("Hcont" with "Hincl Hl"). *)
+
+    (*   destruct strong; iSplit; [| done.. ]. *)
+    (*   by simp_ltypes. *)
+    (* Admitted. *)
+
+    (* Lemma opened_ltype_acc_shared π {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost κ l r : *)
+    (*   l ◁ₗ[π, Shared κ] r @ OpenedLtype lt_cur lt_inner lt_full Cpre Cpost -∗ *)
+    (*   l ◁ₗ[π, Owned false] r @ lt_cur ∗ *)
+    (*   (∀ rt_cur' (lt_cur' : ltype rt_cur') r', *)
+    (*     l ◁ₗ[π, Owned false] r' @ lt_cur' -∗ *)
+    (*     ⌜ltype_st lt_cur' = ltype_st lt_cur⌝ -∗ *)
+    (*     l ◁ₗ[π, Shared κ] r' @ OpenedLtype lt_cur' lt_inner lt_full Cpre Cpost). *)
+    (* Proof. *)
+    (*   rewrite ltype_own_opened_unfold /opened_ltype_own. *)
+    (*   iIntros "(%ly & ? & ? & ? & ? & ? & Hown)". *)
+    (*   iSplitL "Hown". *)
+    (*   { admit. } *)
+
+    (*   iIntros (rt_cur' lt_cur' r') "? %Hst". *)
+    (*   rewrite ltype_own_opened_unfold /opened_ltype_own. *)
+    (*   iExists ly. rewrite Hst. iFrame. *)
+    (* Admitted. *)
+
+    (* Lemma typed_place_opened_shared π E L {rt_cur rt_inner rt_full} *)
+    (*     (lt_cur : ltype rt_cur) (lt_inner: ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost *)
+    (*     (r: place_rfn rt_cur) bmin0 l wl P'' (T : place_cont_t rt_cur) : *)
+    (*   typed_place π E L l lt_cur r bmin0 (Owned false) P'' *)
+    (*     (λ L' κs l2 b2 bmin rti ltyi ri strong weak, *)
+    (*       T L' κs l2 b2 bmin rti ltyi ri *)
+    (*         (option_map (λ strong, mk_strong strong.(strong_rt) *)
+    (*           (λ rti2 ltyi2 ri2, *)
+    (*             OpenedLtype (strong.(strong_lt) _ ltyi2 ri2) lt_inner lt_full Cpre Cpost) *)
+    (*           (λ rti2 ri2, strong.(strong_rfn) _ ri2) *)
+    (*           strong.(strong_R)) strong) *)
+    (*         None) *)
+    (*   ⊢ typed_place π E L l (OpenedLtype lt_cur lt_inner lt_full Cpre Cpost) r bmin0 (Shared wl) P'' T. *)
+    (* Proof. *)
+    (*   rewrite /typed_place. *)
+
+    (*   iIntros "HT". iIntros (Φ F ??) "#CTX #HE HL Hna #Hincl0 Hl HR". *)
+    (*   iPoseProof (opened_ltype_acc_shared with "Hl") as "(Hl & Hcl)". *)
+    (*   iApply ("HT" with "[//] [//] CTX HE HL Hna [] Hl"). *)
+    (*   { destruct bmin0; done. } *)
+    (*   iIntros (L' ??????? strong weak) "? Hl Hv". *)
+    (*   iApply ("HR" with "[$] Hl"). *)
+    (*   iSplit; last done. *)
+    (*   destruct strong as [ strong | ]; last done. *)
+    (*   iIntros (???) "Hl Hst". *)
+    (*   iDestruct "Hv" as "[Hv _]". *)
+    (*   iMod ("Hv" with "Hl Hst") as "(Hl & %Hst & $)". *)
+    (*   iPoseProof ("Hcl" with "Hl [//]") as "Hl". *)
+    (*   cbn. eauto with iFrame. *)
+    (* Qed. *)
   End na_subtype.
 
   (* === ^ TYPING RULES ^ === *)

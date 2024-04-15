@@ -1221,6 +1221,9 @@ Section ltype_def.
     | Owned wl =>
       ∃ ly, ⌜syn_type_has_layout st ly⌝ ∗ ⌜p = l⌝ ∗
         ⌜l `has_layout_loc` ly⌝ ∗ loc_in_bounds l 0 (ly_size ly) ∗ maybe_creds wl
+    | Shared _ =>
+      ∃ ly, ⌜syn_type_has_layout st ly⌝ ∗ ⌜p = l⌝ ∗
+        ⌜l `has_layout_loc` ly⌝ ∗ loc_in_bounds l 0 (ly_size ly)
     | _ => False
     end%I.
 
@@ -1705,9 +1708,7 @@ Section ltype_def.
           (∃ (Heq_inner : rt_inner = lty_rt lt_inner) (Heq_full : rt_full = lty_rt lt_full),
             ∀ (r : rt_inner) (r' : rt_full),
               Cpre r r' -∗
-              lty_own_pre false lt_inner (Owned false) π (PlaceIn (rew [id] Heq_inner in r)) l ={lftE}=∗
-              lty_own_pre true lt_full (Owned wl) π (PlaceIn (rew [id] Heq_full in r')) l ∗
-              Cpost r r')
+              lty_own_pre false lt_inner (Owned false) π (PlaceIn (rew [id] Heq_inner in r)) l ={lftE}=∗ Cpost r r')
       | _ => False
       end
   .
@@ -1760,8 +1761,9 @@ Section ltype_def.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
-    - destruct k; [ | done..].
-      iDestruct "Hown" as "(%ly & ? & ? & ? & ? & ?)"; eauto.
+    - destruct k; last done.
+      + iDestruct "Hown" as "(%ly & ? & ? & ? & ? & ?)"; eauto.
+      + iDestruct "Hown" as "(%ly & ? & ? & ? & ?)"; eauto.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
     - iDestruct "Hown" as "(%ly & ? & ? & _)"; eauto.
@@ -1796,8 +1798,11 @@ Section ltype_def.
       have ?: ly' = ly by eapply syn_type_has_layout_inj. by subst.
     - iDestruct "Hown" as "(%ly' & % & _ & _ & ? & _)".
       have ?: ly' = ly by eapply syn_type_has_layout_inj. by subst.
-    - destruct k; [ | done..]. iDestruct "Hown" as "(%ly' & % & ? & ? & ? & ?)".
-      have ?: ly' = ly by eapply syn_type_has_layout_inj. by subst.
+    - destruct k; last done.
+      { iDestruct "Hown" as "(%ly' & % & ? & ? & ? & ?)".
+        have ?: ly' = ly by eapply syn_type_has_layout_inj. by subst. }
+      { iDestruct "Hown" as "(%ly' & % & ? & ? & ?)".
+        have ?: ly' = ly by eapply syn_type_has_layout_inj. by subst. }
     - iDestruct "Hown" as "(%ly' & % & _ & ? & _)".
       have ?: ly' = ly by eapply syn_type_has_layout_inj. by subst.
     - iDestruct "Hown" as "(%ly' & % & _ & ? & _)".
@@ -3254,9 +3259,7 @@ Section ltype_def.
             logical_step lftE
             (∀ (r : rt_inner) (r' : rt_full),
               Cpre r r' -∗
-              (ltype_own lt_inner (Owned false) π (PlaceIn r) l ={lftE}=∗
-              ltype_own_core lt_full (Owned wl) π (PlaceIn r') l ∗
-              Cpost r r'))
+              ltype_own lt_inner (Owned false) π (PlaceIn r) l ={lftE}=∗ Cpost r r')
       | _ => False
     end.
 
@@ -3801,14 +3804,15 @@ Section ltype_def.
     simpl.
     intros Heq1 Heq2 Heq3 Heq4. move : Cpre Cpost r.
     move: Heq1 Heq2 Heq3 Heq4.
-    intros <- <- <-.
-    intros Heq Cpre Cpost r. specialize (UIP_refl _ _ Heq) => ->. clear Heq.
+    intros <- <- ->.
+    intros Heq Cpre Cpost r.
+    specialize (UIP_refl _ _ Heq) => ->. clear Heq.
     repeat f_equiv.
     - done.
     - done.
     - iSplit.
       + iIntros "(%Heq1 & %Heq2 & Ha)".
-        rewrite (UIP_refl _ _ Heq1) (UIP_refl _ _ Heq2). done.
+        rewrite (UIP_refl _ _ Heq1). done.
       + iIntros "Ha". iExists eq_refl, eq_refl. done.
   Qed.
   Lemma ltype_own_core_magic_unfold {rt_cur rt_inner rt_full : Type} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full)
