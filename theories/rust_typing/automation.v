@@ -3,7 +3,7 @@ From refinedrust Require Export type.
 From lithium Require Export all.
 From lithium Require Import hooks.
 From refinedrust.automation Require Import ident_to_string lookup_definition.
-From refinedrust Require Import int programs program_rules functions references products arrays enum.
+From refinedrust Require Import int programs program_rules functions mut_ref shr_ref products arrays enum.
 (* Important: import proof_state last as it overrides some Lithium tactics *)
 From refinedrust.automation Require Export simpl solvers proof_state.
 Set Default Proof Using "Type".

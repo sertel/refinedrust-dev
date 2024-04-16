@@ -1,4 +1,4 @@
-From refinedrust Require Import base type ltypes programs references.
+From refinedrust Require Import base type ltypes programs shr_ref.
 From iris.base_logic Require Import ghost_map.
 
 Record btype `{!typeGS Σ} : Type := {

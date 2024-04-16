@@ -1,6 +1,6 @@
 From refinedrust Require Export type.
 From refinedrust Require Import alias_ptr existentials.
-From refinedrust Require Import int programs program_rules functions uninit references products automation.
+From refinedrust Require Import int programs program_rules functions uninit mut_ref shr_ref products automation.
 From refinedrust Require Import enum.
 Set Default Proof Using "Type".
 
