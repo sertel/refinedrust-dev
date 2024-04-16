@@ -135,6 +135,7 @@ These include:
 | `admit_proofs` | Boolean | Skip Coq's `Qed` check and instead run `Admitted` |
 | `extra_specs` | Relative/absolute path | File whose contents will be inlined at the end of the generated specs file |
 | `post_generation_hook` | Command | Run a command after code generation and before proof checking |
+| `generate_dune_project` | Boolean | Generate a dune-project file (on by default) |
 | `lib_load_paths` | Array of relative/absolute paths to directories | Search these paths (recursively) for RefinedRust libraries |
 
 The path to the config file can also be specified via the environment variable `RR_CONFIG`.

@@ -5,4 +5,5 @@ shims = "rr_shims.json"
 run_check = false
 extra_specs = "extra_specs.v"
 lib_load_paths = ["../../stdlib"]
+generate_dune_project = false
 post_generation_hook = "patch output/minivec/generated/generated_code_minivec.v annotation_patch.patch"

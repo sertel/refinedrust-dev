@@ -42,6 +42,7 @@ lazy_static! {
                 .set_default("cargo_path", "cargo")?
                 .set_default("cargo_command", "check")?
                 .set_default("admit_proofs", false)?
+                .set_default("generate_dune_project", true)?
                 .set_default("lib_load_paths", Vec::<String>::new())?
                 .set_default("work_dir", ".")?;
 
@@ -167,6 +168,11 @@ pub fn quiet() -> bool {
 /// Skip features that are unsupported or partially supported
 pub fn skip_unsupported_features() -> bool {
     read_setting("skip_unsupported_features")
+}
+
+/// Whether to generate a dune-project file for this project
+pub fn generate_dune_project() -> bool {
+    read_setting("generate_dune_project")
 }
 
 /// Which attribute parser to use? Currently, only the "verbose" parser is supported.
