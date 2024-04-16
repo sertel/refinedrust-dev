@@ -475,24 +475,19 @@ impl ProcedureLoops {
         debug!("accesses_pairs = {:?}", accesses_pairs);
         if let Some(paths) = definitely_initalised_paths {
             debug!("definitely_initalised_paths = {:?}", paths);
-            accesses_pairs = accesses_pairs
-                .into_iter()
-                .filter(|(place, kind)| {
-                    paths.iter().any(|initialised_place|
-                        // If the prefix is definitely initialised, then this place is a potential
-                        // loop invariant.
-                        utils::is_prefix(place, initialised_place) ||
-                        // If the access is store, then we only need the path to exist, which is
-                        // guaranteed if we have at least some of the leaves still initialised.
-                        //
-                        // Note that the Rust compiler is even more permissive as explained in this
-                        // issue: https://github.com/rust-lang/rust/issues/21232.
-                        (
-                            *kind == PlaceAccessKind::Store &&
-                            utils::is_prefix(initialised_place, place)
-                        ))
-                })
-                .collect();
+            accesses_pairs.retain(|(place, kind)| {
+                paths.iter().any(|initialised_place|
+                    // If the prefix is definitely initialised, then this place is a potential
+                    // loop invariant.
+                    utils::is_prefix(place, initialised_place) ||
+                    // If the access is store, then we only need the path to exist, which is
+                    // guaranteed if we have at least some of the leaves still initialised.
+                    //
+                    // Note that the Rust compiler is even more permissive as explained in this
+                    // issue: https://github.com/rust-lang/rust/issues/21232.
+                        *kind == PlaceAccessKind::Store &&
+                                     utils::is_prefix(initialised_place, place))
+            });
         }
         debug!("accesses_pairs = {:?}", accesses_pairs);
         // Paths to whose leaves we need write permissions.
