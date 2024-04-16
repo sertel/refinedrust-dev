@@ -223,10 +223,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RRCoqContextItem {
         let item: parse::LitStr = input.parse(meta)?;
         let (item_str, annot_meta) = process_coq_literal(&item.value(), *meta);
 
-        let mut at_end = false;
-        if !annot_meta.is_empty() {
-            at_end = true;
-        }
+        let at_end = !annot_meta.is_empty();
 
         //annot_meta.
         Ok(Self {

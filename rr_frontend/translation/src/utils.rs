@@ -123,12 +123,9 @@ impl FlatType {
 
                 // substitute
                 info!("substituting {:?} with {:?}", ty, substs);
-                let subst_ty;
-                if !substs.is_empty() {
-                    subst_ty = ty.instantiate(tcx, &substs);
-                } else {
-                    subst_ty = ty.instantiate_identity();
-                }
+                let subst_ty =
+                    if substs.is_empty() { ty.instantiate_identity() } else { ty.instantiate(tcx, &substs) };
+
                 Some(subst_ty)
             },
         }
@@ -180,32 +177,30 @@ fn extract_def_path(path: rustc_hir::definitions::DefPath) -> Vec<String> {
 pub fn get_export_path_for_did(env: &Environment, did: DefId) -> Vec<String> {
     let attrs = env.get_attributes(did);
 
-    let mut path = None;
     if has_tool_attr(attrs, "export_as") {
         let filtered_attrs = filter_tool_attrs(attrs);
-        path = Some(get_export_as_attr(filtered_attrs.as_slice()).unwrap());
-    } else {
-        // Check for an annotation on the surrounding impl
-        if let Some(impl_did) = env.tcx().impl_of_method(did) {
-            let attrs = env.get_attributes(impl_did);
-            if has_tool_attr(attrs, "export_as") {
-                let filtered_attrs = filter_tool_attrs(attrs);
-                let mut path_prefix = get_export_as_attr(filtered_attrs.as_slice()).unwrap();
 
-                // push the last component of this path
-                //let def_path = env.tcx().def_path(did);
-                let mut this_path = get_cleaned_def_path(env.tcx(), did);
-                path_prefix.push(this_path.pop().unwrap());
-                path = Some(path_prefix)
-            }
+        return get_export_as_attr(filtered_attrs.as_slice()).unwrap();
+    }
+
+    // Check for an annotation on the surrounding impl
+    if let Some(impl_did) = env.tcx().impl_of_method(did) {
+        let attrs = env.get_attributes(impl_did);
+
+        if has_tool_attr(attrs, "export_as") {
+            let filtered_attrs = filter_tool_attrs(attrs);
+            let mut path_prefix = get_export_as_attr(filtered_attrs.as_slice()).unwrap();
+
+            // push the last component of this path
+            //let def_path = env.tcx().def_path(did);
+            let mut this_path = get_cleaned_def_path(env.tcx(), did);
+            path_prefix.push(this_path.pop().unwrap());
+
+            return path_prefix;
         }
     }
-    if path.is_none() {
-        //let def_path = env.tcx().def_path(did);
-        path = Some(get_cleaned_def_path(env.tcx(), did));
-    }
 
-    path.unwrap()
+    get_cleaned_def_path(env.tcx(), did)
 }
 
 /// Gets an instance for a path.

@@ -44,23 +44,25 @@ impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
         let pat: parse::LitStr = input.parse(meta)?;
         let (pat, _) = process_coq_literal(&pat.value(), *meta);
 
-        let mut args: Vec<String> = Vec::new();
-
-        // optionally parse args
-        if parse::Dollar::peek(input) {
+        let args: Vec<String> = if parse::Dollar::peek(input) {
+            // optionally parse args
             input.parse::<_, parse::MToken![$]>(meta)?;
 
             // parse a sequence of args
             let parsed_args: parse::Punctuated<parse::LitStr, parse::MToken![,]> =
                 parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
-            args = parsed_args
+
+            parsed_args
                 .into_iter()
                 .map(|s| {
                     let (arg, _) = process_coq_literal(&s.value(), *meta);
                     arg
                 })
-                .collect();
-        }
+                .collect()
+        } else {
+            Vec::new()
+        };
+
         Ok(Self { pat, args })
     }
 }

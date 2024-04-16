@@ -185,12 +185,14 @@ impl<'mir, 'tcx: 'mir> DefinitelyInitializedState<'mir, 'tcx> {
     /// If the place is a Copy type, uninitialise the place iif `move_out_copy_types` is true.
     fn apply_operand_effect(&mut self, operand: &mir::Operand<'tcx>, move_out_copy_types: bool) {
         if let mir::Operand::Move(place) = operand {
-            let mut uninitialise = true;
-            if !move_out_copy_types {
+            let uninitialise = if move_out_copy_types {
+                true
+            } else {
                 let ty = place.ty(&self.mir.local_decls, self.tcx).ty;
                 let param_env = self.tcx.param_env(self.def_id);
-                uninitialise = !is_copy(self.tcx, ty, param_env);
-            }
+                !is_copy(self.tcx, ty, param_env)
+            };
+
             if uninitialise {
                 self.set_place_uninitialised(*place);
             }

@@ -1036,22 +1036,16 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let (variant_name, coq_def, variant_def, _, _) = registry.get(&v.def_id).unwrap();
             let coq_def = coq_def.borrow();
             let coq_def = coq_def.as_ref().unwrap();
-            let refinement_type = coq_def.plain_rt_def_name();
+            let refinement_type = coq_def.plain_rt_def_name().to_string();
 
-            let variant_args;
-            let variant_arg_binders;
-            let variant_rfn;
             // simple optimization: if the variant has no fields, also this constructor gets no arguments
-            if variant_def.fields.is_empty() {
-                variant_args = vec![];
-                variant_arg_binders = vec![];
-                variant_rfn = "-[]".to_string();
+            let (variant_args, variant_arg_binders, variant_rfn) = if variant_def.fields.is_empty() {
+                (vec![], vec![], "-[]".to_string())
             } else {
-                variant_args =
-                    vec![(radium::CoqName::Unnamed, radium::CoqType::Literal(refinement_type.to_string()))];
-                variant_arg_binders = vec!["x".to_string()];
-                variant_rfn = "x".to_string();
-            }
+                let args = vec![(radium::CoqName::Unnamed, radium::CoqType::Literal(refinement_type))];
+                (args, vec!["x".to_string()], "x".to_string())
+            };
+
             let variant_def = radium::CoqVariant {
                 name: variant_name.to_string(),
                 params: radium::CoqParamList(variant_args),
