@@ -1385,9 +1385,9 @@ impl<'a, T, P> Clone for PrivateIter<'a, T, P> {
     }
 }
 
-impl<'a, T: 'a, I: 'a> IterTrait<'a, T> for I
+impl<'a, T: 'a, I> IterTrait<'a, T> for I
 where
-    I: DoubleEndedIterator<Item = &'a T> + ExactSizeIterator<Item = &'a T> + Clone,
+    I: DoubleEndedIterator<Item = &'a T> + ExactSizeIterator<Item = &'a T> + Clone + 'a,
 {
     fn clone_box(&self) -> Box<dyn IterTrait<'a, T, Item = &'a T> + 'a> {
         Box::new(self.clone())
