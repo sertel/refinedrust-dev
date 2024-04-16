@@ -9,7 +9,7 @@ use rustc_middle::ty::{
 };
 use rustc_trait_selection::traits::{ImplSource, NormalizeExt};
 
-pub(crate) fn associated_items(tcx: TyCtxt, def_id: DefId) -> impl Iterator<Item = &AssocItem> {
+pub fn associated_items(tcx: TyCtxt, def_id: DefId) -> impl Iterator<Item = &AssocItem> {
     tcx.associated_items(def_id).in_definition_order()
 }
 

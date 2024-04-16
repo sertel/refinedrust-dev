@@ -163,7 +163,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RRParam {
 
 /// Parse a list of comma-separated parameter declarations.
 #[derive(Debug)]
-pub(crate) struct RRParams {
+pub struct RRParams {
     pub(crate) params: Vec<RRParam>,
 }
 
@@ -177,7 +177,7 @@ impl<'a> Parse<ParseMeta<'a>> for RRParams {
     }
 }
 
-pub(crate) struct CoqPath(specs::CoqPath);
+pub struct CoqPath(specs::CoqPath);
 
 impl Into<specs::CoqPath> for CoqPath {
     fn into(self) -> specs::CoqPath {
@@ -256,7 +256,7 @@ pub fn str_err(e: parse::ParseError) -> String {
 pub type ParseMeta<'a> = (&'a [specs::LiteralTyParam], &'a [(Option<String>, specs::Lft)]);
 
 /// Handle escape sequences in the given string.
-pub(crate) fn handle_escapes(s: &str) -> String {
+pub fn handle_escapes(s: &str) -> String {
     let s = String::from(s);
     let s = s.replace("\\\"", "\"");
 
@@ -274,7 +274,7 @@ pub(crate) fn handle_escapes(s: &str) -> String {
 /// - `{st_of T}` is replaced by the syntactic type of the type parameter `T`
 /// - `{ly_of T}` is replaced by a term giving the layout of the type parameter `T`'s syntactic type
 /// - `{'a}` is replaced by a term corresponding to the lifetime parameter 'a
-pub(crate) fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::TypeAnnotMeta) {
+pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::TypeAnnotMeta) {
     let params = meta.0;
     let lfts = meta.1;
 

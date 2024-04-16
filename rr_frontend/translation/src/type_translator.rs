@@ -25,7 +25,7 @@ use crate::tyvars::*;
 
 /// Strip symbols from an identifier to be compatible with Coq.
 /// In particular things like ' or ::.
-pub(crate) fn strip_coq_ident(s: &str) -> String {
+pub fn strip_coq_ident(s: &str) -> String {
     let s = str::replace(s, "'", "");
     let s = str::replace(&s, "::", "_");
     let s = s.replace(|c: char| !(c.is_alphanumeric() || c == '_'), "");
@@ -41,7 +41,7 @@ pub type FnGenericKey<'tcx> = Vec<ty::Ty<'tcx>>;
 /// Keys used to deduplicate adt uses for syn_type assumptions.
 /// TODO maybe we should use SimplifiedType + simplify_type instead of the syntys?
 #[derive(Eq, PartialEq, Hash, Debug)]
-pub(crate) struct AdtUseKey {
+pub struct AdtUseKey {
     pub base_did: DefId,
     pub generics: Vec<radium::SynType>,
 }
