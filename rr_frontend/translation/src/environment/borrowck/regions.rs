@@ -25,7 +25,7 @@ pub enum PlaceRegionsError {
 // TODO: extend to more nested things (nested tuples/structs?)
 impl PlaceRegions {
     fn new() -> Self {
-        PlaceRegions(HashMap::new())
+        Self(HashMap::new())
     }
 
     fn add_local(&mut self, local: mir::Local, rvid: facts::Region) {

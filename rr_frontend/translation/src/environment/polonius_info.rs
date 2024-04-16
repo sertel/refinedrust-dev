@@ -1610,7 +1610,7 @@ impl AdditionalFacts {
     }
 
     /// Derive additional facts from the borrow checker facts.
-    pub fn new(all_facts: &facts::AllInputFacts, output: &facts::AllOutputFacts) -> AdditionalFacts {
+    pub fn new(all_facts: &facts::AllInputFacts, output: &facts::AllOutputFacts) -> Self {
         let (zombie_requires, zombie_borrow_live_at, borrow_become_zombie_at) =
             Self::derive_zombie_requires(all_facts, output);
 
@@ -1630,7 +1630,7 @@ impl AdditionalFacts {
         let mut loans: Vec<_> = all_facts.loan_issued_at.iter().map(|&(_, l, _)| l).collect();
         loans.sort();
 
-        AdditionalFacts {
+        Self {
             loans,
             reborrows,
             reborrows_direct,

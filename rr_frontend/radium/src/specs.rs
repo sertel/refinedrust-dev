@@ -85,18 +85,18 @@ pub enum IntType {
 impl Display for IntType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            IntType::I8 => write!(f, "I8"),
-            IntType::I16 => write!(f, "I16"),
-            IntType::I32 => write!(f, "I32"),
-            IntType::I64 => write!(f, "I64"),
-            IntType::I128 => write!(f, "I128"),
-            IntType::U8 => write!(f, "U8"),
-            IntType::U16 => write!(f, "U16"),
-            IntType::U32 => write!(f, "U32"),
-            IntType::U64 => write!(f, "U64"),
-            IntType::U128 => write!(f, "U128"),
-            IntType::ISize => write!(f, "ISize"),
-            IntType::USize => write!(f, "USize"),
+            Self::I8 => write!(f, "I8"),
+            Self::I16 => write!(f, "I16"),
+            Self::I32 => write!(f, "I32"),
+            Self::I64 => write!(f, "I64"),
+            Self::I128 => write!(f, "I128"),
+            Self::U8 => write!(f, "U8"),
+            Self::U16 => write!(f, "U16"),
+            Self::U32 => write!(f, "U32"),
+            Self::U64 => write!(f, "U64"),
+            Self::U128 => write!(f, "U128"),
+            Self::ISize => write!(f, "ISize"),
+            Self::USize => write!(f, "USize"),
         }
     }
 }
@@ -235,7 +235,7 @@ impl Display for SynType {
 impl SynType {
     fn layout_term_core<F, G>(&self, env: &[Option<F>], to_syntype: G) -> Layout
     where
-        G: Fn(&F) -> SynType,
+        G: Fn(&F) -> Self,
     {
         match self {
             Self::Int(it) => Layout::IntLayout(*it),
@@ -260,17 +260,17 @@ impl SynType {
     /// Get a Coq term for the layout of this syntactic type.
     /// This may call the Coq-level layout algorithm that we assume.
     pub fn layout_term_typaram(&self, env: &[Option<LiteralTyParam>]) -> Layout {
-        self.layout_term_core(env, |x| SynType::Literal(x.syn_type.clone()))
+        self.layout_term_core(env, |x| Self::Literal(x.syn_type.clone()))
     }
 
     /// See `layout_term_typaram`.
-    pub fn layout_term(&self, env: &[Option<SynType>]) -> Layout {
+    pub fn layout_term(&self, env: &[Option<Self>]) -> Layout {
         self.layout_term_core(env, |x| x.clone())
     }
 
     fn optype_core<F, G>(&self, env: &[Option<F>], to_syntype: G) -> OpType
     where
-        G: Fn(&F) -> SynType,
+        G: Fn(&F) -> Self,
     {
         match self {
             Self::Int(it) => OpType::IntOp(*it),
@@ -296,11 +296,11 @@ impl SynType {
     /// Note that we may also always use UntypedOp, but this here computes the more specific
     /// op_type that triggers more UB on invalid values.
     pub fn optype_typaram(&self, env: &[Option<LiteralTyParam>]) -> OpType {
-        self.optype_core(env, |x| SynType::Literal(x.syn_type.clone()))
+        self.optype_core(env, |x| Self::Literal(x.syn_type.clone()))
     }
 
     /// See `optype_typaram`.
-    pub fn optype(&self, env: &[Option<SynType>]) -> OpType {
+    pub fn optype(&self, env: &[Option<Self>]) -> OpType {
         self.optype_core(env, |x| x.clone())
     }
 
@@ -316,7 +316,7 @@ impl SynType {
     /// index `i` in the vector).
     /// The types in `substi` should not contain variables themselves, as this substitution
     /// operation is capture-incurring!
-    pub fn subst(&mut self, substi: &[Option<SynType>]) {
+    pub fn subst(&mut self, substi: &[Option<Self>]) {
         match self {
             Self::Var(i) => {
                 if let Some(Some(ta)) = substi.get(*i) {
@@ -349,8 +349,8 @@ impl TypeAnnotMeta {
         self.escaped_lfts.is_empty() && self.escaped_tyvars.is_empty()
     }
 
-    pub fn empty() -> TypeAnnotMeta {
-        TypeAnnotMeta {
+    pub fn empty() -> Self {
+        Self {
             escaped_lfts: HashSet::new(),
             escaped_tyvars: HashSet::new(),
         }
@@ -363,7 +363,7 @@ impl TypeAnnotMeta {
         }
     }
 
-    pub fn join(&mut self, s: &TypeAnnotMeta) {
+    pub fn join(&mut self, s: &Self) {
         let lfts: HashSet<_> = self.escaped_lfts.union(&s.escaped_lfts).cloned().collect();
         let tyvars: HashSet<_> = self.escaped_tyvars.union(&s.escaped_tyvars).cloned().collect();
 
@@ -767,7 +767,7 @@ impl TyOwnSpec {
         with_later: bool,
         annot_meta: TypeAnnotMeta,
     ) -> Self {
-        TyOwnSpec {
+        Self {
             loc,
             with_later,
             rfn,
@@ -2522,7 +2522,7 @@ impl Layout {
 pub struct CoqBinder(CoqName, CoqType);
 impl CoqBinder {
     pub const fn new(n: CoqName, t: CoqType) -> Self {
-        CoqBinder(n, t)
+        Self(n, t)
     }
 }
 
@@ -2610,8 +2610,8 @@ pub struct IPropPredicate {
 }
 
 impl IPropPredicate {
-    pub fn new(binders: Vec<CoqBinder>, prop: IProp) -> IPropPredicate {
-        IPropPredicate { binders, prop }
+    pub fn new(binders: Vec<CoqBinder>, prop: IProp) -> Self {
+        Self { binders, prop }
     }
 }
 

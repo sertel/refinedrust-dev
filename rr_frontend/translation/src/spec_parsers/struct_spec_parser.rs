@@ -52,12 +52,12 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
             input.parse::<_, parse::MToken![:]>(meta)?;
             let ty: parse::LitStr = input.parse(meta)?;
             let (ty, _) = process_coq_literal(ty.value().as_str(), *meta);
-            Ok(RfnPattern {
+            Ok(Self {
                 rfn_pat: pat,
                 rfn_type: Some(specs::CoqType::Literal(ty)),
             })
         } else {
-            Ok(RfnPattern {
+            Ok(Self {
                 rfn_pat: pat,
                 rfn_type: None,
             })
@@ -87,15 +87,15 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
             match macro_cmd.value().as_str() {
                 "iris" => {
                     let prop: IProp = input.parse(meta)?;
-                    Ok(MetaIProp::Iris(prop.into()))
+                    Ok(Self::Iris(prop.into()))
                 },
                 "own" => {
                     let prop: IProp = input.parse(meta)?;
-                    Ok(MetaIProp::Own(prop.into()))
+                    Ok(Self::Own(prop.into()))
                 },
                 "shr" => {
                     let prop: IProp = input.parse(meta)?;
-                    Ok(MetaIProp::Shared(prop.into()))
+                    Ok(Self::Shared(prop.into()))
                 },
                 "type" => {
                     let loc_str: parse::LitStr = input.parse(meta)?;
@@ -116,7 +116,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     annot_meta.join(&annot_meta3);
 
                     let spec = specs::TyOwnSpec::new(loc_str, rfn_str, type_str, true, annot_meta);
-                    Ok(MetaIProp::Type(spec))
+                    Ok(Self::Type(spec))
                 },
                 _ => {
                     panic!("invalid macro command: {:?}", macro_cmd.value());
@@ -134,11 +134,11 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 let (pure_str, _annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
                 // TODO: should we use annot_meta?
 
-                Ok(MetaIProp::Pure(pure_str, Some(name_str)))
+                Ok(Self::Pure(pure_str, Some(name_str)))
             } else {
                 // this is a
                 let (lit, _) = process_coq_literal(&name_or_prop_str.value(), *meta);
-                Ok(MetaIProp::Pure(lit, None))
+                Ok(Self::Pure(lit, None))
             }
         }
     }
@@ -156,10 +156,10 @@ impl<U> parse::Parse<U> for InvariantSpecFlags {
     fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
         let mode: parse::Ident = input.parse(meta)?;
         match mode.value().as_str() {
-            "persistent" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Persistent)),
-            "plain" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Plain)),
-            "na" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::NonAtomic)),
-            "atomic" => Ok(InvariantSpecFlags(specs::InvariantSpecFlags::Atomic)),
+            "persistent" => Ok(Self(specs::InvariantSpecFlags::Persistent)),
+            "plain" => Ok(Self(specs::InvariantSpecFlags::Plain)),
+            "na" => Ok(Self(specs::InvariantSpecFlags::NonAtomic)),
+            "atomic" => Ok(Self(specs::InvariantSpecFlags::Atomic)),
             _ => {
                 panic!("invalid ADT mode: {:?}", mode.value())
             },
@@ -171,7 +171,7 @@ pub struct VerboseInvariantSpecParser {}
 
 impl VerboseInvariantSpecParser {
     pub const fn new() -> Self {
-        VerboseInvariantSpecParser {}
+        Self {}
     }
 }
 

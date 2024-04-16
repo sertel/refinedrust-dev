@@ -59,8 +59,8 @@ impl PlaceAccessKind {
     /// Does the access write to the path?
     const fn is_write_access(&self) -> bool {
         match &self {
-            PlaceAccessKind::Store | PlaceAccessKind::Move => true,
-            PlaceAccessKind::Read | PlaceAccessKind::MutableBorrow | PlaceAccessKind::SharedBorrow => false,
+            Self::Store | Self::Move => true,
+            Self::Read | Self::MutableBorrow | Self::SharedBorrow => false,
         }
     }
 }
@@ -227,7 +227,7 @@ pub struct ProcedureLoops {
 }
 
 impl ProcedureLoops {
-    pub fn new<'a, 'tcx: 'a>(mir: &'a mir::Body<'tcx>, real_edges: &RealEdges) -> ProcedureLoops {
+    pub fn new<'a, 'tcx: 'a>(mir: &'a mir::Body<'tcx>, real_edges: &RealEdges) -> Self {
         let dominators = dominators(&mir.basic_blocks);
 
         let mut back_edges: HashSet<(_, _)> = HashSet::new();
@@ -344,7 +344,7 @@ impl ProcedureLoops {
         }
         debug!("nonconditional_loop_blocks: {:?}", nonconditional_loop_blocks);
 
-        ProcedureLoops {
+        Self {
             loop_heads,
             loop_head_depths,
             loop_bodies,

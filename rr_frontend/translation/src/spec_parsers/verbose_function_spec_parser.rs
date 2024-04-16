@@ -62,7 +62,7 @@ impl<'a> Parse<ParseMeta<'a>> for RRArgs {
     fn parse(input: ParseStream, meta: &ParseMeta) -> ParseResult<Self> {
         let args: parse::Punctuated<LiteralTypeWithRef, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
-        Ok(RRArgs {
+        Ok(Self {
             args: args.into_iter().collect(),
         })
     }
@@ -96,14 +96,14 @@ impl<'a> parse::Parse<ParseMeta<'a>> for ClosureCaptureSpec {
                     format!("Did not expect type specification for capture postcondition"),
                 ))
             } else {
-                Ok(ClosureCaptureSpec {
+                Ok(Self {
                     variable: name,
                     pre: pre_spec,
                     post: Some(post_spec),
                 })
             }
         } else {
-            Ok(ClosureCaptureSpec {
+            Ok(Self {
                 variable: name,
                 pre: pre_spec,
                 post: None,
@@ -150,11 +150,11 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     annot_meta.join(&annot_meta3);
 
                     let spec = specs::TyOwnSpec::new(loc_str, rfn_str, type_str, false, annot_meta);
-                    Ok(MetaIProp::Type(spec))
+                    Ok(Self::Type(spec))
                 },
                 "iris" => {
                     let prop: IProp = input.parse(meta)?;
-                    Ok(MetaIProp::Iris(prop.into()))
+                    Ok(Self::Iris(prop.into()))
                 },
                 "observe" => {
                     let gname: parse::LitStr = input.parse(meta)?;
@@ -163,12 +163,12 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let term: parse::LitStr = input.parse(meta)?;
                     let (term, _meta) = process_coq_literal(&term.value(), *meta);
 
-                    Ok(MetaIProp::Observe(gname.value(), term))
+                    Ok(Self::Observe(gname.value(), term))
                 },
                 "linktime" => {
                     let term: parse::LitStr = input.parse(meta)?;
                     let (term, _meta) = process_coq_literal(&term.value(), *meta);
-                    Ok(MetaIProp::Linktime(term))
+                    Ok(Self::Linktime(term))
                 },
                 _ => {
                     panic!("invalid macro command: {:?}", macro_cmd.value());
@@ -186,11 +186,11 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 let (pure_str, _annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
                 // TODO: should we use annot_meta?
 
-                Ok(MetaIProp::Pure(pure_str, Some(name_str)))
+                Ok(Self::Pure(pure_str, Some(name_str)))
             } else {
                 // this is a
                 let (lit, _) = process_coq_literal(&name_or_prop_str.value(), *meta);
-                Ok(MetaIProp::Pure(lit, None))
+                Ok(Self::Pure(lit, None))
             }
         }
     }

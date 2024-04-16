@@ -20,7 +20,7 @@ impl<F> parse::Parse<F> for RustPath {
         let x: parse::Punctuated<parse::Ident, parse::MToken![::]> =
             parse::Punctuated::parse_separated_nonempty(input, meta)?;
         let path = x.into_iter().map(|x| x.value()).collect();
-        Ok(RustPath { path })
+        Ok(Self { path })
     }
 }
 
@@ -65,7 +65,7 @@ where
             let args: Vec<_> = args.into_iter().collect();
             let x = args[0].value();
             let y = args[1].value();
-            Ok(ShimAnnot {
+            Ok(Self {
                 code_name: x,
                 spec_name: y,
             })

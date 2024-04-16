@@ -61,7 +61,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
                 })
                 .collect();
         }
-        Ok(EnumPattern { pat, args })
+        Ok(Self { pat, args })
     }
 }
 
@@ -69,7 +69,7 @@ pub struct VerboseEnumSpecParser {}
 
 impl VerboseEnumSpecParser {
     pub const fn new() -> Self {
-        VerboseEnumSpecParser {}
+        Self {}
     }
 }
 

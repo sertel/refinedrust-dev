@@ -221,7 +221,7 @@ impl CoqType {
     /// index `i` in the vector).
     /// The types in `substi` should not contain variables themselves, as this substitution
     /// operation is capture-incurring!
-    pub fn subst(&mut self, substi: &Vec<CoqType>) {
+    pub fn subst(&mut self, substi: &Vec<Self>) {
         match self {
             Self::Ttype(box t) => t.subst(substi),
             Self::Prod(v) => {

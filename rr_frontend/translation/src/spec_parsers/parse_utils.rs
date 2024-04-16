@@ -28,9 +28,9 @@ where
     fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
         if let Ok(ident) = parse::Ident::parse(input, meta) {
             // it's an identifer
-            Ok(IdentOrTerm::Ident(ident.value()))
+            Ok(Self::Ident(ident.value()))
         } else {
-            parse::LitStr::parse(input, meta).map(|s| IdentOrTerm::Term(s.value()))
+            parse::LitStr::parse(input, meta).map(|s| Self::Term(s.value()))
         }
     }
 }
@@ -38,8 +38,8 @@ where
 impl ToString for IdentOrTerm {
     fn to_string(&self) -> String {
         match self {
-            IdentOrTerm::Ident(s) => s.to_string(),
-            IdentOrTerm::Term(s) => s.to_string(),
+            Self::Ident(s) => s.to_string(),
+            Self::Term(s) => s.to_string(),
         }
     }
 }
@@ -79,14 +79,14 @@ impl<'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
             let ty: parse::LitStr = input.parse(meta)?;
             let (ty, meta) = process_coq_literal(&ty.value(), *meta);
 
-            Ok(LiteralTypeWithRef {
+            Ok(Self {
                 rfn,
                 ty: Some(ty),
                 raw,
                 meta,
             })
         } else {
-            Ok(LiteralTypeWithRef {
+            Ok(Self {
                 rfn,
                 ty: None,
                 raw,
@@ -108,7 +108,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for LiteralType {
         let ty: parse::LitStr = input.parse(meta)?;
         let (ty, meta) = process_coq_literal(&ty.value(), *meta);
 
-        Ok(LiteralType { ty, meta })
+        Ok(Self { ty, meta })
     }
 }
 
@@ -126,7 +126,7 @@ impl<'a> Parse<ParseMeta<'a>> for IProp {
         let lit: parse::LitStr = input.parse(meta)?;
         let (lit, _) = process_coq_literal(&lit.value(), *meta);
 
-        Ok(IProp(specs::IProp::Atom(lit)))
+        Ok(Self(specs::IProp::Atom(lit)))
     }
 }
 
@@ -151,9 +151,9 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RRParam {
             let ty: parse::LitStr = input.parse(meta)?;
             let (ty, _) = process_coq_literal(&ty.value(), *meta);
             let ty = specs::CoqType::Literal(ty);
-            Ok(RRParam { name, ty })
+            Ok(Self { name, ty })
         } else {
-            Ok(RRParam {
+            Ok(Self {
                 name,
                 ty: specs::CoqType::Infer,
             })
@@ -171,7 +171,7 @@ impl<'a> Parse<ParseMeta<'a>> for RRParams {
     fn parse(input: ParseStream, meta: &ParseMeta) -> ParseResult<Self> {
         let params: parse::Punctuated<RRParam, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
-        Ok(RRParams {
+        Ok(Self {
             params: params.into_iter().collect(),
         })
     }
@@ -196,12 +196,12 @@ impl<U> Parse<U> for CoqPath {
             let module: parse::LitStr = input.parse(meta)?;
             let module = module.value();
 
-            Ok(CoqPath(specs::CoqPath {
+            Ok(Self(specs::CoqPath {
                 path: Some(path_or_module),
                 module,
             }))
         } else {
-            Ok(CoqPath(specs::CoqPath {
+            Ok(Self(specs::CoqPath {
                 path: None,
                 module: path_or_module,
             }))
@@ -229,7 +229,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RRCoqContextItem {
         }
 
         //annot_meta.
-        Ok(RRCoqContextItem {
+        Ok(Self {
             item: item_str,
             at_end,
         })
@@ -245,7 +245,7 @@ impl<U> parse::Parse<U> for RRGlobalCoqContextItem {
     fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
         let item: parse::LitStr = input.parse(meta)?;
 
-        Ok(RRGlobalCoqContextItem { item: item.value() })
+        Ok(Self { item: item.value() })
     }
 }
 

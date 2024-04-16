@@ -22,19 +22,19 @@ pub enum AnalysisError {
 impl AnalysisError {
     pub fn to_pretty_str(&self, mir: &mir::Body) -> String {
         match self {
-            AnalysisError::UnsupportedStatement(location) => {
+            Self::UnsupportedStatement(location) => {
                 let stmt = location_to_stmt_str(*location, mir);
                 format!("Unsupported statement at {:?}: {}", location, stmt)
             },
-            AnalysisError::NoStateBeforeLocation(location) => {
+            Self::NoStateBeforeLocation(location) => {
                 let stmt = location_to_stmt_str(*location, mir);
                 format!("There is no state before the statement at {:?} ({})", location, stmt)
             },
-            AnalysisError::NoStateAfterBlock(bb) => {
+            Self::NoStateAfterBlock(bb) => {
                 let terminator = &mir[*bb].terminator();
                 format!("There is no state after the terminator of block {:?} ({:?})", bb, terminator.kind)
             },
-            AnalysisError::NoStateAfterSuccessor(bb_src, bb_dst) => {
+            Self::NoStateAfterSuccessor(bb_src, bb_dst) => {
                 let terminator = &mir[*bb_src].terminator();
                 format!(
                     "There is no state for the block {:?} after the terminator of block {:?} ({:?})",

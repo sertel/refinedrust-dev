@@ -137,8 +137,7 @@ impl RustType {
                 let is_raw = as_use.is_raw();
                 if let Some(def) = as_use.def {
                     // translate type parameter instantiations
-                    let typarams: Vec<_> =
-                        as_use.ty_params.iter().map(|ty| RustType::of_type(ty, env)).collect();
+                    let typarams: Vec<_> = as_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
                     let def = def.borrow();
                     let def = def.as_ref().unwrap();
                     let ty_name = if is_raw {
@@ -152,14 +151,14 @@ impl RustType {
                 }
             },
             Type::Enum(ae_use) => {
-                let typarams: Vec<_> = ae_use.ty_params.iter().map(|ty| RustType::of_type(ty, env)).collect();
+                let typarams: Vec<_> = ae_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
                 let def = ae_use.def.borrow();
                 let def = def.as_ref().unwrap();
                 Self::Lit(vec![def.public_type_name().to_string()], typarams)
             },
             Type::LiteralParam(lit) => Self::TyVar(lit.rust_name.clone()),
             Type::Literal(lit) => {
-                let typarams: Vec<_> = lit.params.iter().map(|ty| RustType::of_type(ty, env)).collect();
+                let typarams: Vec<_> = lit.params.iter().map(|ty| Self::of_type(ty, env)).collect();
                 Self::Lit(vec![lit.def.type_term.clone()], typarams)
             },
             Type::Uninit(_) => {
@@ -313,9 +312,9 @@ pub enum Expr {
 }
 
 impl Expr {
-    pub fn with_optional_annotation(e: Expr, a: Option<Annotation>, why: Option<String>) -> Expr {
+    pub fn with_optional_annotation(e: Self, a: Option<Annotation>, why: Option<String>) -> Self {
         match a {
-            Some(a) => Expr::Annot {
+            Some(a) => Self::Annot {
                 a,
                 e: Box::new(e),
                 why,
@@ -583,27 +582,27 @@ impl Stmt {
         let ind = make_indent(indent);
         let ind = ind.as_str();
         match self {
-            Stmt::GotoBlock(block) => {
+            Self::GotoBlock(block) => {
                 format!("{ind}Goto \"_bb{}\"", block)
             },
-            Stmt::Return(e) => {
+            Self::Return(e) => {
                 format!("{ind}return ({})", e)
             },
-            Stmt::Assign { ot, e1, e2, s } => {
+            Self::Assign { ot, e1, e2, s } => {
                 let formatted_s = s.caesium_fmt(indent);
 
                 format!("{ind}{} <-{{ {} }} {};\n{}", e1, ot, e2, formatted_s.as_str())
             },
-            Stmt::ExprS { e, s } => {
+            Self::ExprS { e, s } => {
                 let formatted_s = s.caesium_fmt(indent);
                 format!("{ind}expr: {};\n{}", e, formatted_s.as_str())
             },
-            Stmt::Annot { a, s, why } => {
+            Self::Annot { a, s, why } => {
                 let formatted_s = s.caesium_fmt(indent);
                 let why_fmt = if let Some(why) = why { format!(" (* {why} *)") } else { format!("") };
                 format!("{ind}annot: {};{why_fmt}\n{}", a, formatted_s.as_str())
             },
-            Stmt::If { ot, e, s1, s2 } => {
+            Self::If { ot, e, s1, s2 } => {
                 let formatted_s1 = s1.caesium_fmt(indent + 1);
                 let formatted_s2 = s2.caesium_fmt(indent + 1);
                 format!(
@@ -614,14 +613,14 @@ impl Stmt {
                     formatted_s2.as_str()
                 )
             },
-            Stmt::AssertS { e, s } => {
+            Self::AssertS { e, s } => {
                 let formatted_s = s.caesium_fmt(indent);
                 format!("{ind}assert{{ {} }}: {};\n{}", OpType::BoolOp, e, formatted_s)
             },
-            Stmt::Stuck => {
+            Self::Stuck => {
                 format!("{ind}StuckS")
             },
-            Stmt::Switch {
+            Self::Switch {
                 e,
                 it,
                 index_map,
@@ -656,9 +655,9 @@ impl Stmt {
     }
 
     /// Annotate a statement with a list of annotations
-    pub fn with_annotations(mut s: Stmt, a: Vec<Annotation>, why: Option<String>) -> Stmt {
+    pub fn with_annotations(mut s: Self, a: Vec<Annotation>, why: Option<String>) -> Self {
         for annot in a.into_iter() {
-            s = Stmt::Annot {
+            s = Self::Annot {
                 a: annot,
                 s: Box::new(s),
                 why: why.clone(),
@@ -876,14 +875,10 @@ pub struct StackMap {
 
 impl StackMap {
     pub fn new() -> Self {
-        let local_map = Vec::new();
-        let arg_map = Vec::new();
-        let names = HashSet::new();
-
-        StackMap {
-            arg_map,
-            local_map,
-            used_names: names,
+        Self {
+            arg_map: Vec::new(),
+            local_map: Vec::new(),
+            used_names: HashSet::new(),
         }
     }
 
@@ -938,8 +933,8 @@ pub struct FunctionCodeBuilder {
 }
 
 impl FunctionCodeBuilder {
-    pub fn new() -> FunctionCodeBuilder {
-        FunctionCodeBuilder {
+    pub fn new() -> Self {
+        Self {
             stack_layout: StackMap::new(),
             basic_blocks: BTreeMap::new(),
         }

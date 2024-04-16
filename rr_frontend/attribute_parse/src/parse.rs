@@ -38,20 +38,20 @@ pub trait IntoSpans<S> {
     fn into_spans(self) -> S;
 }
 
-impl IntoSpans<[Span; 1]> for Span {
-    fn into_spans(self) -> [Span; 1] {
+impl IntoSpans<[Self; 1]> for Span {
+    fn into_spans(self) -> [Self; 1] {
         [self]
     }
 }
 
-impl IntoSpans<[Span; 2]> for Span {
-    fn into_spans(self) -> [Span; 2] {
+impl IntoSpans<[Self; 2]> for Span {
+    fn into_spans(self) -> [Self; 2] {
         [self, self]
     }
 }
 
-impl IntoSpans<[Span; 3]> for Span {
-    fn into_spans(self) -> [Span; 3] {
+impl IntoSpans<[Self; 3]> for Span {
+    fn into_spans(self) -> [Self; 3] {
         [self, self, self]
     }
 }
@@ -122,7 +122,8 @@ impl ParseBuffer {
     pub fn new(stream: &rustc_ast::tokenstream::TokenStream) -> Self {
         // TODO; maybe avoid the cloning
         let trees: Vec<TokenTree> = stream.trees().map(|c| c.clone()).collect();
-        ParseBuffer {
+
+        Self {
             trees,
             index: Cell::new(0),
         }
@@ -232,7 +233,7 @@ where
     U: ?Sized,
 {
     fn parse(input: ParseStream, meta: &U) -> ParseResult<Self> {
-        input.parse(meta).map(Box::new)
+        input.parse(meta).map(Self::new)
     }
 }
 
@@ -461,7 +462,7 @@ where
     fn parse(input: ParseStream, _: &U) -> ParseResult<Self> {
         let lit = input.expect_literal()?;
         match lit.0.kind {
-            LitKind::Str => Ok(LitStr {
+            LitKind::Str => Ok(Self {
                 span: lit.1,
                 sym: lit.0.symbol,
             }),
@@ -481,7 +482,7 @@ where
 {
     fn parse(input: ParseStream, _: &U) -> ParseResult<Self> {
         let (sym, span) = input.expect_ident()?;
-        Ok(Ident { span, sym })
+        Ok(Self { span, sym })
     }
 }
 
@@ -521,7 +522,7 @@ where
             LitKind::Integer => {
                 let sym = lit.0.symbol;
                 if let Some((digits, suffix)) = value::parse_lit_int(&sym.to_string()) {
-                    Ok(LitInt {
+                    Ok(Self {
                         span: lit.1,
                         sym: lit.0.symbol,
                         digits: digits,
@@ -655,7 +656,7 @@ pub struct BigInt {
 
 impl BigInt {
     pub const fn new() -> Self {
-        BigInt { digits: Vec::new() }
+        Self { digits: Vec::new() }
     }
 
     pub fn to_string(&self) -> String {
@@ -720,7 +721,7 @@ pub struct Punctuated<T, P> {
 impl<T, P> Punctuated<T, P> {
     /// Creates an empty punctuated sequence.
     pub const fn new() -> Self {
-        Punctuated {
+        Self {
             inner: Vec::new(),
             last: None,
         }
@@ -942,7 +943,7 @@ impl<T, P> Punctuated<T, P> {
         P: Parse<U>,
         U: ?Sized,
     {
-        let mut punctuated = Punctuated::new();
+        let mut punctuated = Self::new();
 
         loop {
             if input.is_empty() {
@@ -999,7 +1000,7 @@ impl<T, P> Punctuated<T, P> {
         P: Peek + Parse<U>,
         U: ?Sized,
     {
-        let mut punctuated = Punctuated::new();
+        let mut punctuated = Self::new();
 
         loop {
             let value = parser(input, meta)?;
@@ -1022,7 +1023,7 @@ where
     P: Default,
 {
     fn from_iter<I: IntoIterator<Item = T>>(i: I) -> Self {
-        let mut ret = Punctuated::new();
+        let mut ret = Self::new();
         ret.extend(i);
         ret
     }
@@ -1041,7 +1042,7 @@ where
 
 impl<T, P> FromIterator<Pair<T, P>> for Punctuated<T, P> {
     fn from_iter<I: IntoIterator<Item = Pair<T, P>>>(i: I) -> Self {
-        let mut ret = Punctuated::new();
+        let mut ret = Self::new();
         ret.extend(i);
         ret
     }
@@ -1104,7 +1105,7 @@ impl<'a, T, P> IntoIterator for &'a Punctuated<T, P> {
 
 impl<T, P> Default for Punctuated<T, P> {
     fn default() -> Self {
-        Punctuated::new()
+        Self::new()
     }
 }
 
@@ -1244,7 +1245,7 @@ where
     P: Clone,
 {
     fn clone(&self) -> Self {
-        IntoPairs {
+        Self {
             inner: self.inner.clone(),
             last: self.last.clone(),
         }
@@ -1289,7 +1290,7 @@ where
     T: Clone,
 {
     fn clone(&self) -> Self {
-        IntoIter {
+        Self {
             inner: self.inner.clone(),
         }
     }
@@ -1410,21 +1411,21 @@ impl<T, P> Pair<T, P> {
     /// following punctuation.
     pub fn into_value(self) -> T {
         match self {
-            Pair::Punctuated(t, _) | Pair::End(t) => t,
+            Self::Punctuated(t, _) | Self::End(t) => t,
         }
     }
 
     /// Borrows the syntax tree node from this punctuated pair.
     pub const fn value(&self) -> &T {
         match self {
-            Pair::Punctuated(t, _) | Pair::End(t) => t,
+            Self::Punctuated(t, _) | Self::End(t) => t,
         }
     }
 
     /// Mutably borrows the syntax tree node from this punctuated pair.
     pub fn value_mut(&mut self) -> &mut T {
         match self {
-            Pair::Punctuated(t, _) | Pair::End(t) => t,
+            Self::Punctuated(t, _) | Self::End(t) => t,
         }
     }
 
@@ -1432,8 +1433,8 @@ impl<T, P> Pair<T, P> {
     /// the final one and there is no trailing punctuation.
     pub const fn punct(&self) -> Option<&P> {
         match self {
-            Pair::Punctuated(_, p) => Some(p),
-            Pair::End(_) => None,
+            Self::Punctuated(_, p) => Some(p),
+            Self::End(_) => None,
         }
     }
 
@@ -1441,8 +1442,8 @@ impl<T, P> Pair<T, P> {
     /// following punctuation.
     pub fn new(t: T, p: Option<P>) -> Self {
         match p {
-            Some(p) => Pair::Punctuated(t, p),
-            None => Pair::End(t),
+            Some(p) => Self::Punctuated(t, p),
+            None => Self::End(t),
         }
     }
 
@@ -1450,8 +1451,8 @@ impl<T, P> Pair<T, P> {
     /// optional following punctuation.
     pub fn into_tuple(self) -> (T, Option<P>) {
         match self {
-            Pair::Punctuated(t, p) => (t, Some(p)),
-            Pair::End(t) => (t, None),
+            Self::Punctuated(t, p) => (t, Some(p)),
+            Self::End(t) => (t, None),
         }
     }
 }
@@ -1463,8 +1464,8 @@ where
 {
     fn clone(&self) -> Self {
         match self {
-            Pair::Punctuated(t, p) => Pair::Punctuated(t.clone(), p.clone()),
-            Pair::End(t) => Pair::End(t.clone()),
+            Self::Punctuated(t, p) => Self::Punctuated(t.clone(), p.clone()),
+            Self::End(t) => Self::End(t.clone()),
         }
     }
 }

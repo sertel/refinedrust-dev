@@ -33,7 +33,7 @@ pub struct VerboseModuleAttrParser {}
 
 impl VerboseModuleAttrParser {
     pub const fn new() -> Self {
-        VerboseModuleAttrParser {}
+        Self {}
     }
 }
 

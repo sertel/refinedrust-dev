@@ -96,7 +96,7 @@ impl FlatType {
     /// Try to convert a flat type to a type.
     pub fn to_type<'tcx>(&self, tcx: ty::TyCtxt<'tcx>) -> Option<ty::Ty<'tcx>> {
         match self {
-            FlatType::Adt(path_with_args) => {
+            Self::Adt(path_with_args) => {
                 let (did, flat_args) = path_with_args.to_item(tcx)?;
                 let ty: ty::EarlyBinder<ty::Ty<'tcx>> = tcx.type_of(did);
 
