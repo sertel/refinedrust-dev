@@ -58,9 +58,6 @@ rustflags = [
     "-Aclippy::unnecessary_wraps",
     "-Aclippy::unused_self",
 
-    # clippy::perf
-    "-Aclippy::to_string_in_format_args",
-
     # clippy::restriction
     "-Aclippy::create_dir",
     "-Aclippy::empty_structs_with_brackets",

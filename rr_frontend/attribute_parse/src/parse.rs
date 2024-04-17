@@ -521,16 +521,17 @@ where
         match lit.0.kind {
             LitKind::Integer => {
                 let sym = lit.0.symbol;
-                if let Some((digits, suffix)) = value::parse_lit_int(&sym.to_string()) {
-                    Ok(Self {
-                        span: lit.1,
-                        sym: lit.0.symbol,
-                        digits: digits,
-                        suffix: suffix,
-                    })
-                } else {
-                    panic!("Not an integer literal: {}", sym.to_string());
-                }
+
+                let Some((digits, suffix)) = value::parse_lit_int(&sym.to_string()) else {
+                    panic!("Not an integer literal: {}", sym);
+                };
+
+                Ok(Self {
+                    span: lit.1,
+                    sym: lit.0.symbol,
+                    digits,
+                    suffix,
+                })
             },
             _ => Err(ParseError::UnexpectedLitKind(LitKind::Integer, lit.0.kind)),
         }

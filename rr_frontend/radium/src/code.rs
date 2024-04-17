@@ -213,7 +213,7 @@ impl Display for Literal {
             Self::LitU32(i) => format_int(i.to_string(), IntType::U32),
             Self::LitU64(i) => format_int(i.to_string(), IntType::U64),
             Self::LitU128(i) => format_int(i.to_string(), IntType::U128),
-            Self::LitBool(b) => write!(f, "val_of_bool {}", b.to_string()),
+            Self::LitBool(b) => write!(f, "val_of_bool {b}"),
             Self::LitZST => write!(f, "zst_val"),
             Self::LitLoc(name) => write!(f, "{name}"),
         }
@@ -1062,9 +1062,10 @@ impl<'def> Function<'def> {
                 for p in param_insts.iter() {
                     // use an empty env, these should be closed in the current environment
                     let rfn = p.get_rfn_type(&[]);
-                    gen_rfn_type_inst.push(format!("({})", rfn.to_string()));
+                    gen_rfn_type_inst.push(format!("({})", rfn));
+
                     let st = p.get_syn_type();
-                    gen_rfn_type_inst.push(format!("({})", st.to_string()));
+                    gen_rfn_type_inst.push(format!("({})", st));
                 }
                 let arg_syntys: Vec<String> = sts.iter().map(|st| st.to_string()).collect();
 
