@@ -5,8 +5,7 @@ fn main() {
     x = input();
     if x > 2 {
         y = 5;
-    }
-    else {
+    } else {
         y = 7;
     }
     y = 25;

@@ -131,15 +131,6 @@ Result for function main():
           "_6"
         ],
         "statement: _5 = Gt(move _6, const 2_i32)"
-      ],
-      [
-        "state:",
-        [
-          "_1",
-          "_2",
-          "_5"
-        ],
-        "statement: StorageDead(_6)"
       ]
     ],
     "state before terminator:",
@@ -148,7 +139,7 @@ Result for function main():
       "_2",
       "_5"
     ],
-    "terminator: switchInt(move _5) -> [false: bb3, otherwise: bb2]",
+    "terminator: switchInt(move _5) -> [0: bb3, otherwise: bb2]",
     {
       "bb2": [
         "state:",
@@ -168,6 +159,14 @@ Result for function main():
   ],
   "bb2": [
     [
+      [
+        "state:",
+        [
+          "_1",
+          "_2"
+        ],
+        "statement: StorageDead(_6)"
+      ],
       [
         "state:",
         [
@@ -205,6 +204,14 @@ Result for function main():
   ],
   "bb3": [
     [
+      [
+        "state:",
+        [
+          "_1",
+          "_2"
+        ],
+        "statement: StorageDead(_6)"
+      ],
       [
         "state:",
         [

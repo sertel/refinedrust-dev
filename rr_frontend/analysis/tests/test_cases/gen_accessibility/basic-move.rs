@@ -3,9 +3,7 @@ pub struct S2 {
 }
 
 pub fn test4() -> S2 {
-    let x = S2 {
-        f: 8,
-    };
+    let x = S2 { f: 8 };
     let y = x;
     assert!(y.f == 9);
     y

@@ -3,7 +3,6 @@
 ///
 /// which was created by Matsakis to show-case NLL in his blog:
 /// http://smallcultfollowing.com/babysteps/blog/2018/10/31/mir-based-borrowck-is-almost-here/
-
 use std::sync::mpsc::{Receiver, Sender};
 
 enum Message {
@@ -19,7 +18,7 @@ fn router(me: &str, rx: Receiver<Message>, tx: Sender<Message>) {
                 } else {
                     process(data);
                 }
-            }
+            },
         }
     }
 }

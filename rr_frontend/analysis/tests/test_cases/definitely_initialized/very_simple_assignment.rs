@@ -4,4 +4,3 @@ fn main() {
     let y: u32;
     y = x;
 }
-

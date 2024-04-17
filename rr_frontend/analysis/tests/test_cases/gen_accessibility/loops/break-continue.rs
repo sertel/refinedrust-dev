@@ -1,4 +1,3 @@
-
 fn random(i: u32) -> bool {
     unimplemented!()
 }

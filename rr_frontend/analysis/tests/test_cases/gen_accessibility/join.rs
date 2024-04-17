@@ -1,6 +1,6 @@
 struct MyStruct {
     a: i32,
-    b: (i32, i32)
+    b: (i32, i32),
 }
 
 fn foo(mut x: MyStruct, switch: bool) -> MyStruct {

@@ -1,6 +1,6 @@
 struct InfiniteList {
     val: u32,
-    next: Box<InfiniteList>
+    next: Box<InfiniteList>,
 }
 
 #[analyzer::run]

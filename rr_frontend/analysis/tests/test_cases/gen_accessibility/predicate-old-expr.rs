@@ -1,5 +1,4 @@
 #![feature(box_patterns)]
-#![feature(box_syntax)]
 
 use std::borrow::BorrowMut;
 
@@ -16,10 +15,10 @@ fn lookup(head: &List, index: usize) -> u32 {
         match head.next {
             Some(box ref tail) => {
                 result = lookup(tail, index - 1);
-            }
+            },
             None => {
                 unreachable!();
-            }
+            },
         }
     }
     result

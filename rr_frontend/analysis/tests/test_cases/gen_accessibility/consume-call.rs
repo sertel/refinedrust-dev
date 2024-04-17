@@ -1,13 +1,13 @@
 struct A;
 struct B {
     a1: A,
-    a2: A
+    a2: A,
 }
 struct C {
-    b: B
+    b: B,
 }
 struct D {
-    c: C
+    c: C,
 }
 
 fn consume(a: A) {}

@@ -1,11 +1,10 @@
 //! Example of reassignment
 
 #![feature(box_patterns)]
-#![feature(box_syntax)]
 
 struct InfiniteList {
     val: i32,
-    next: Box<InfiniteList>
+    next: Box<InfiniteList>,
 }
 
 fn consume(x: InfiniteList) {}
@@ -16,5 +15,5 @@ fn reassignment(a: InfiniteList) {
     // Reassignment
     x = *(*(*(*(*x.next).next).next).next).next;
 
-	consume(x);
+    consume(x);
 }

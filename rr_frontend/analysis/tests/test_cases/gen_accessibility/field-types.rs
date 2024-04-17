@@ -1,19 +1,21 @@
 struct A {
-    val: i32
+    val: i32,
 }
 
 struct B {
-    val: bool
+    val: bool,
 }
 
 struct C {
-    val: A
+    val: A,
 }
 
 fn main() {
     let mut a = A { val: 111 };
     let mut b = B { val: true };
-    let mut c = C { val: A { val: 222 } };
+    let mut c = C {
+        val: A { val: 222 },
+    };
     a.val = 333;
     b.val = false;
     c.val.val = 444;

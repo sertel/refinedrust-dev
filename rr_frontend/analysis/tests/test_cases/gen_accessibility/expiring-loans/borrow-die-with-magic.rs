@@ -11,7 +11,9 @@ fn consume_F(_f: F) {}
 
 fn use_both(_f: &mut G, _g: &mut G) {}
 
-fn either<'a>(f: &'a mut G, _g: &'a mut G) -> &'a mut G { f }
+fn either<'a>(f: &'a mut G, _g: &'a mut G) -> &'a mut G {
+    f
+}
 
 fn test3(y: &mut F) {
     let x = &mut *y;

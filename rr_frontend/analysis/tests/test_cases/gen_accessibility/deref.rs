@@ -1,8 +1,7 @@
 #![feature(box_patterns)]
-#![feature(box_syntax)]
 
 struct InfiniteList1 {
-    next: Box<InfiniteList1>
+    next: Box<InfiniteList1>,
 }
 
 fn consume1(x: InfiniteList1) {}
@@ -15,7 +14,7 @@ fn reassignment1(mut x: InfiniteList1) {
 
 struct InfiniteList2 {
     val: u32,
-    next: Box<InfiniteList2>
+    next: Box<InfiniteList2>,
 }
 
 fn consume2(x: InfiniteList2) {}
