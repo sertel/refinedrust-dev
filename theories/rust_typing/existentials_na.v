@@ -558,12 +558,12 @@ Section generated_code.
       unfold introduce_with_hooks, typed_place.
 
       (* Nothing has changed *)
-      iIntros "HT". iIntros (F ???) "#CTX #HE HL Hna Hincl Hb Hcont".
+      iIntros "HT". iIntros (F ???) "#CTX #HE HL Hincl Hb Hcont".
       iApply fupd_place_to_wp.
       iMod (na_ex_plain_t_open_owned with "Hb") as "(%r & HP & Hb & Hcl)"; first done.
       iPoseProof ("Hcl" with "Hb []") as "Hb"; first done.
       iMod ("HT" with "[] HE HL HP") as "(%L2 & HL & HT)"; first done.
-      iApply ("HT" with "[//] [//] CTX HE HL Hna Hincl Hb").
+      iApply ("HT" with "[//] [//] CTX HE HL Hincl Hb").
       iModIntro. iIntros (L' κs l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl Hc".
       iApply ("Hcont" with "Hincl Hl").
       iSplit; last done.
@@ -603,9 +603,9 @@ Section generated_code.
       unfold introduce_with_hooks, typed_place.
 
       (* Nothing has changed *)
-      iIntros "HT". iIntros (Φ F ??) "#CTX #HE HL Hna #Hincl0 Hl HR".
+      iIntros "HT". iIntros (Φ F ??) "#CTX #HE HL #Hincl0 Hl HR".
       iPoseProof (magic_ltype_acc_owned with "Hl") as "(Hl & Hcl)".
-      iApply ("HT" with "[//] [//] CTX HE HL Hna [] Hl").
+      iApply ("HT" with "[//] [//] CTX HE HL [] Hl").
       { destruct bmin0; done. }
       iIntros (L' ??????? strong weak) "? Hl Hv".
       iApply ("HR" with "[$] Hl").
@@ -683,28 +683,31 @@ Section generated_code.
      *)
 
     Lemma na_typed_place_ex_plain_t_shared_2 π E L l (ty : type rt) x κ bmin K T :
-      prove_with_subtype E L false ProveDirect (£ 1) (λ L1 _ R, R -∗
-        li_tactic (lctx_lft_alive_count_goal E L1 κ) (λ '(κs, L2),
-          ∀ r, introduce_with_hooks E L2
-            (P.(na_inv_P) π r x ∗
-             l ◁ₗ[π, Owned false] (#r) @
-               (MagicLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
-                  (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
-                  (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l) ∗ |={lftE ∪ shrE}=> llft_elt_toks κs)))
-            (λ L3,
-              typed_place π E L3 l
-                (ShadowedLtype (AliasLtype _ (ty_syn_type ty) l) #tt (◁ (∃na; P, ty)))
-                (#x) (bmin (* ⊓ₖ Shared κ *)(* NOTE: How to ⊑ₖ Shared κ? *)) (Shared κ) K
-                (λ L4 κs li b2 bmin' rti ltyi ri strong weak,
-                  T L4 κs li b2 bmin' rti ltyi ri strong None))))
+      find_in_context (FindNaOwn π) (λ (mask: coPset),
+        ⌜↑shrN.@l ⊆ mask⌝ ∗
+        prove_with_subtype E L false ProveDirect (£ 1) (λ L1 _ R, R -∗
+          li_tactic (lctx_lft_alive_count_goal E L1 κ) (λ '(κs, L2),
+            ∀ r, introduce_with_hooks E L2
+              (P.(na_inv_P) π r x ∗
+              l ◁ₗ[π, Owned false] (#r) @
+                (MagicLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
+                    (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
+                    (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l) ∗ |={lftE ∪ shrE}=> llft_elt_toks κs)))
+              (λ L3,
+                typed_place π E L3 l
+                  (ShadowedLtype (AliasLtype _ (ty_syn_type ty) l) #tt (◁ (∃na; P, ty)))
+                  (#x) (bmin ⊓ₖ Shared κ) (Shared κ) K
+                  (λ L4 κs li b2 bmin' rti ltyi ri strong weak,
+                    T L4 κs li b2 bmin' rti ltyi ri strong None)))))
       ⊢ typed_place π E L l (◁ (∃na; P, ty))%I (#x) bmin (Shared κ) K T.
     Proof.
-      rewrite /prove_with_subtype.
-      iIntros "HT".
+      rewrite /find_in_context.
+      iDestruct 1 as (?) "(Hna & % & HT) /=".
 
       rewrite /typed_place /introduce_with_hooks.
-      iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL Hna Hincl Hl Hcont".
+      iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL ? Hl Hcont". (* NOTE: Hincl is not used. *)
 
+      rewrite /prove_with_subtype.
       iApply fupd_place_to_wp.
 
       iMod ("HT" with "[] [] [$LFT $TIME $LLCTX] HE HL")
@@ -714,9 +717,9 @@ Section generated_code.
       rewrite /li_tactic /lctx_lft_alive_count_goal.
       iDestruct "HT" as (???) "HT".
 
-      iMod (fupd_mask_subseteq (lftE ∪ shrE)) as "Hmask"; first done.
+      iMod (fupd_mask_subseteq (lftE ∪ shrE)); first done.
       iMod (lctx_lft_alive_count_tok with "HE HL") as (q) "(Htok & Htokcl & HL)"; [ solve_ndisj.. |].
-      iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & #Hbor & Hvs)"; [ solve_ndisj.. |].
+      iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & #Hbor & Hvs)"; [ try solve_ndisj.. |].
 
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
       iDestruct "Hl" as (ly Halg Hly) "(#Hsc & #Hlb & _ & (% & <- & Hl))".
@@ -750,8 +753,8 @@ Section generated_code.
 
       iDestruct "HT" as (?) "(HL & HT)".
 
-      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hincl []").
-      { admit. (* TODO: na_token *) }
+      iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] []").
+      { iApply bor_kind_min_incl_r. }
       { rewrite ltype_own_shadowed_unfold /shadowed_ltype_own.
 
         iR; iSplitL.
@@ -766,7 +769,8 @@ Section generated_code.
         repeat iR.
         by iExists ly; repeat iR. }
 
-      iApply fupd_mask_intro; first admit.
+      iApply fupd_mask_intro.
+      { admit. }
       iIntros "_".
 
       iIntros (? ? ? ? ? ? ? ? strong ?) "Hincl Hl [ Hstrong _ ]".
@@ -789,12 +793,12 @@ Section generated_code.
       unfold find_in_context, typed_place.
 
       iDestruct 1 as ((rt2 & (r''' & b2))) "(Hl2 & HP)". simpl.
-      iIntros (????) "#CTX #HE HL Hna #Hincl Hl Hcont".
+      iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
       rewrite ltype_own_alias_unfold /alias_lty_own.
       iDestruct "Hl" as "(%ly & % & -> & #? & #?)".
 
       destruct r''' as (lt & r''').
-      iApply ("HP" with "[//] [//] CTX HE HL Hna [] Hl2").
+      iApply ("HP" with "[//] [//] CTX HE HL [] Hl2").
       { iApply bor_kind_incl_refl. }
       iIntros (L' κs l2 b0 bmin rti ltyi ri strong weak) "#Hincl1 Hl2 Hcl HT HL".
       iApply ("Hcont" with "[//] Hl2 [Hcl] HT HL").
@@ -836,6 +840,8 @@ Section generated_code.
       UnsafeCell_new_lemma π.
     Proof.
       UnsafeCell_new_prelude.
+
+      liRStep; liShow.
 
       rep <- 1 liRStep; liShow.
 
@@ -911,13 +917,13 @@ Section generated_code.
     Proof.
       UnsafeCell_get_old_prelude.
 
+      iAssert (na_own π ⊤)%I as "?"; first admit.
+
       repeat liRStep; liShow.
 
       unfold Cell_inv_t; simpl.
-
       unfold bor_kind_min.
       iApply na_typed_place_ex_plain_t_shared_2.
-      liSimpl; liShow.
 
       repeat liRStep; liShow.
 

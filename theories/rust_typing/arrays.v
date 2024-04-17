@@ -1764,7 +1764,7 @@ Section rules.
     ⊢ typed_place π E L l (ArrayLtype def len lts) (#rs) bmin (Owned wl) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) v rtv tyv i :: P) T.
   Proof.
     iIntros "(%i' & %Hst & HT)".
-    iIntros (????) "#CTX #HE HL Hna #Hincl Hl Hcont".
+    iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
     simpl. iIntros "Hv".
     iApply fupd_wp.
     iMod ("HT" with "[] [] CTX HE HL Hv") as "(%L' & %R2 & >(Hi & R2) & HL & HT)"; [done.. | ].
@@ -1801,7 +1801,7 @@ Section rules.
     iPoseProof ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL") as "Hc".
     rewrite /OffsetLocSt/use_layout_alg' Hst/=.
     rewrite /offset_loc.
-    iApply ("Hc" with "Hna [] [Hb]").
+    iApply ("Hc" with "[] [Hb]").
     { destruct bmin; done. }
     { subst i. rewrite Z2Nat.id//. }
     iIntros (L2 κs l2 b2 bmin0 rti ltyi ri' strong weak) "#Hincl1 Hi Hc".
@@ -1852,7 +1852,7 @@ Section rules.
   Proof.
     rewrite /lctx_lft_alive_count_goal.
     iIntros "(%i' & %Hst & HT)".
-    iIntros (????) "#CTX #HE HL Hna #Hincl Hl Hcont".
+    iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
     simpl. iIntros "Hv".
     iApply fupd_wp.
     iMod ("HT" with "[] [] CTX HE HL Hv") as "(%L' & %R2 & >(Hi & R2) & HL & HT)"; [done.. | ].
@@ -1892,7 +1892,7 @@ Section rules.
     iPoseProof ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL") as "Hc".
     rewrite /OffsetLocSt/use_layout_alg' Hst/=.
     rewrite /offset_loc.
-    iApply ("Hc" with "Hna [] [Hb]").
+    iApply ("Hc" with "[] [Hb]").
     { destruct bmin; done. }
     { subst i. rewrite Z2Nat.id//. }
     iIntros (L2 κs' l2 b2 bmin0 rti ltyi ri' strong weak) "#Hincl1 Hi Hc".
@@ -1944,7 +1944,7 @@ Section rules.
     ⊢ typed_place π E L l (ArrayLtype def len lts) (#rs) bmin (Shared κ) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) v rtv tyv i :: P) T.
   Proof.
     iIntros "(%i' & %Hst & HT)".
-    iIntros (????) "#CTX #HE HL Hna #Hincl Hl Hcont".
+    iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
     simpl. iIntros "Hv".
     iApply fupd_wp.
     iMod ("HT" with "[] [] CTX HE HL Hv") as "(%L' & %R2 & >(Hi & R2) & HL & HT)"; [done.. | ].
@@ -1981,7 +1981,7 @@ Section rules.
     iPoseProof ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL") as "Hc".
     rewrite /OffsetLocSt/use_layout_alg' Hst/=.
     rewrite /offset_loc.
-    iApply ("Hc" with "Hna [] [Hb]").
+    iApply ("Hc" with "[] [Hb]").
     { destruct bmin; done. }
     { subst i. rewrite Z2Nat.id//. }
     iIntros (L2 κs l2 b2 bmin0 rti ltyi ri' strong weak) "#Hincl1 Hi Hc".
@@ -3401,10 +3401,10 @@ Section offset_rules.
   Proof.
     rewrite /FindLoc.
     iDestruct 1 as ([rt [[lt r] b]]) "(Hbase & HT)". simpl.
-    iIntros (????) "#CTX #HE HL Hna Hincl Hl Hcont".
+    iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
     iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
-    iApply (typed_place_ofty_access_val_owned with "[Hbase Hoff HT] [//] [//] CTX HE HL Hna Hincl Hl Hcont").
+    iApply (typed_place_ofty_access_val_owned with "[Hbase Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
     { rewrite ty_has_op_type_unfold. done. }
     iIntros (F' v ?) "Hoffset".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "->".
@@ -3431,11 +3431,11 @@ Section offset_rules.
   Proof.
     rewrite /FindLoc.
     iDestruct 1 as ([rt [[lt r] b]]) "(Hbase & HT)". simpl.
-    iIntros (????) "#CTX #HE HL Hna Hincl Hl Hcont".
+    iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
     iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iPoseProof ("HT" with "Hbase") as "(%Hal & HT)".
-    iApply (typed_place_ofty_access_val_uniq  _ _ _ _ (offset_ptr_t st) with "[Hoff HT] [//] [//] CTX HE HL Hna Hincl Hl Hcont").
+    iApply (typed_place_ofty_access_val_uniq  _ _ _ _ (offset_ptr_t st) with "[Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
     { rewrite ty_has_op_type_unfold. done. }
     iR. iIntros (F' v ?) "Hoffset".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "->".
@@ -3461,11 +3461,11 @@ Section offset_rules.
   Proof.
     rewrite /FindLoc.
     iDestruct 1 as ([rt [[lt r] b]]) "(Hbase & HT)". simpl.
-    iIntros (????) "#CTX #HE HL Hna Hincl Hl Hcont".
+    iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
     iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iPoseProof ("HT" with "Hbase") as "(%Hal & HT)".
-    iApply (typed_place_ofty_access_val_shared with "[Hoff HT] [//] [//] CTX HE HL Hna Hincl Hl Hcont").
+    iApply (typed_place_ofty_access_val_shared with "[Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
     { rewrite ty_has_op_type_unfold. done. }
     iR. iIntros (F' v ?) "Hoffset".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "->".

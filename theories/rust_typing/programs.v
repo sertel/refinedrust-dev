@@ -297,6 +297,11 @@ Definition FindCreditStore `{!typeGS Σ} :=
   {| fic_A := nat * nat; fic_Prop '(n, m) := credit_store n m; |}.
 Global Typeclasses Opaque FindCreditStore.
 
+(** find the mask token *)
+Definition FindNaOwn `{!typeGS Σ} (π: na_inv_pool_name) :=
+  {| fic_A := coPset; fic_Prop '(E) := na_own π E; |}.
+Global Typeclasses Opaque FindNaOwn.
+
 (** find a lft dead token *)
 Definition FindOptLftDead `{!typeGS Σ} (κ : lft) :=
   {| fic_A := bool; fic_Prop b := (if b then [† κ] else True)%I; |}.
@@ -1337,7 +1342,7 @@ Section judgments.
   Definition place_cont_t rto : Type := llctx → list lft → loc → bor_kind → bor_kind → ∀ rti, ltype rti → place_rfn rti → option (strong_ctx rti) → option (weak_ctx rto rti) → iProp Σ.
   Definition typed_place π (E : elctx) (L : llctx) (l1 : loc) {rto} (ltyo : ltype rto) (r1 : place_rfn rto) (bmin0 : bor_kind) (b1 : bor_kind) (P : list place_ectx_item) (T : place_cont_t rto) : iProp Σ :=
     (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π ⊤ -∗
+      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (* [bmin0] is the intersection of all bor_kinds to this place, including [b1] *)
       bmin0 ⊑ₖ b1 -∗
       (* assume ownership of l1 *)
@@ -1406,7 +1411,7 @@ Section judgments.
     ⌜lctx_bor_kind_incl E L bmin0 b⌝ ∗ T L [] l b bmin0 rt lt r (Some $ mk_strong id (λ _ lti2 _, lti2) (λ _ , id) (λ _ _ _, True)) (Some $ mk_weak (λ lti2 _, lti2) id (λ _ _, True))
     ⊢ typed_place π E L l lt r bmin0 b [] T.
   Proof.
-    iIntros "(%Hincl & Hs)" (Φ F ??). iIntros "#LFT #HE HL _ Hincl0 HP HΦ /=".
+    iIntros "(%Hincl & Hs)" (Φ F ??). iIntros "#LFT #HE HL Hincl0 HP HΦ /=".
     iPoseProof (lctx_bor_kind_incl_use with "HE HL") as "#Hincl"; first apply Hincl.
     iSpecialize ("HΦ" $! _ _ _ _ _ _ _ _ _ _ with "[] HP").
     { iApply "Hincl". }
@@ -1426,14 +1431,14 @@ Section judgments.
     typed_place π E L l lt2 r bmin0 b P T -∗
     typed_place π E L l lt1 r bmin0 b P T.
   Proof.
-    iIntros (Heq) "Hp". iIntros (????) "#CTX #HE HL Hna Hincl0 Hl HΦ".
+    iIntros (Heq) "Hp". iIntros (????) "#CTX #HE HL Hincl0 Hl HΦ".
     iPoseProof (full_eqltype_acc with "CTX HE HL") as "#Heq"; [apply Heq | ].
     iDestruct ("Heq" $! b r) as "[Hi1 _]".
     iApply fupd_place_to_wp.
     iMod (ltype_incl_use with "Hi1 Hl") as "Hl"; first done. iModIntro.
     iDestruct "CTX" as "(LFT & TIME & LLCTX)".
 
-    iApply ("Hp" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna Hincl0 Hl").
+    iApply ("Hp" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hincl0 Hl").
     iIntros (L' κs l2 b2 bmin rti tyli ri strong weak) "#Hincl1 Hl2 Hs HT HL".
     iApply ("HΦ" $! _ _ _ _ _ _ _ _  with "Hincl1 Hl2 [Hs] HT HL").
     iSplit.
@@ -1477,7 +1482,7 @@ Section judgments.
     ⊢ typed_place π E L l (◁ ty) (PlaceIn r) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     iIntros (Hot) "HT".
-    iIntros (????) "#CTX #HE HL Hna #Hincl Hl Hcont". iApply fupd_place_to_wp.
+    iIntros (????) "#CTX #HE HL #Hincl Hl Hcont". iApply fupd_place_to_wp.
     iPoseProof (ofty_ltype_acc_owned ⊤ with "Hl") as "(%ly & %Halg & %Hly & Hsc & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
     simpl. iModIntro.
     iDestruct "CTX" as "(LFT & TIME & LLCTX)".
@@ -1492,7 +1497,7 @@ Section judgments.
     iMod ("Ha" with "Hl [//] Hsc Hv") as "Hl".
     iModIntro.
     iExists l2. rewrite mem_cast_id_loc. iSplitR; first done.
-    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna [] Hl2").
+    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hl2").
     { iApply bor_kind_incl_refl. }
     iIntros (L2 κs l3 b3 bmin rti ltyi ri strong weak) "#Hincl1 Hl3 Hcl HT HL".
     iApply ("Hcont" with "[//] Hl3 [Hcl Hl] HT HL").
@@ -1539,7 +1544,7 @@ Section judgments.
     ⊢ typed_place π E L l (◁ ty) (PlaceIn r) bmin0 (Uniq κ γ) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     iIntros (Hot) "(%Hal & HT)".
-    iIntros (????) "#CTX #HE HL Hna #Hincl Hl Hcont". iApply fupd_place_to_wp.
+    iIntros (????) "#CTX #HE HL #Hincl Hl Hcont". iApply fupd_place_to_wp.
     iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
     iMod (fupd_mask_subseteq lftE) as "HF_cl"; first done.
     iMod (Hal with "HE HL") as "(%q' & Htok & HL_cl2)"; first done.
@@ -1559,7 +1564,7 @@ Section judgments.
     iPoseProof ("HL_cl" with "HL") as "HL".
     iModIntro.
     iExists l2. rewrite mem_cast_id_loc. iSplitR; first done.
-    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna [] Hl2").
+    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hl2").
     { iApply bor_kind_incl_refl. }
     iIntros (L2 κs l3 b3 bmin rti ltyi ri strong weak) "#Hincl1 Hl3 Hcl HT HL".
     iApply ("Hcont" with "[//] Hl3 [Hcl Hl] HT HL").
@@ -1596,7 +1601,7 @@ Section judgments.
     ⊢ typed_place π E L l (◁ ty) (PlaceIn r) bmin0 (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     iIntros (Hot) "(%Hal & HT)".
-    iIntros (????) "#CTX #HE HL Hna #Hincl #Hl Hcont". iApply fupd_place_to_wp.
+    iIntros (????) "#CTX #HE HL #Hincl #Hl Hcont". iApply fupd_place_to_wp.
     iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
     iMod (Hal with "HE HL") as "(%q' & Htok & HL_cl2)"; first done.
     iPoseProof (ofty_ltype_acc_shared ⊤ with "Hl") as "(%ly & %Halg & %Hly & Hlb & >Hb)"; first done.
@@ -1618,7 +1623,7 @@ Section judgments.
     iMod ("HL_cl2" with "Htok") as "HL". iPoseProof ("HL_cl" with "HL") as "HL".
     iModIntro.
     iExists l2. rewrite mem_cast_id_loc. iSplitR; first done.
-    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna [] Hl2").
+    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hl2").
     { iApply bor_kind_incl_refl. }
     iIntros (L2 κs l3 b3 bmin rti ltyi ri strong weak) "#Hincl1 Hl3 Hcl HT HL".
     iApply ("Hcont" with "[//] Hl3 [Hcl Hv] HT HL").

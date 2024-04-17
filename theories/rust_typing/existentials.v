@@ -481,12 +481,12 @@ Section stratify.
         T L2 κs li b2 bmin' rti ltyi ri strong None)))
     ⊢ typed_place π E L l (◁ (∃; P, ty))%I (#x) bmin (Owned wl) K T.
   Proof.
-    iIntros "HT". iIntros (F ???) "#CTX #HE HL Hna Hincl Hb Hcont".
+    iIntros "HT". iIntros (F ???) "#CTX #HE HL Hincl Hb Hcont".
     iApply fupd_place_to_wp.
     iMod (ex_plain_t_open_owned with "Hb") as "(%r & HP & Hb & Hcl)"; first done.
     iPoseProof ("Hcl" with "Hb []") as "Hb"; first done.
     iMod ("HT" with "[] HE HL HP") as "(%L2 & HL & HT)"; first done.
-    iApply ("HT" with "[//] [//] CTX HE HL Hna Hincl Hb").
+    iApply ("HT" with "[//] [//] CTX HE HL Hincl Hb").
     iModIntro. iIntros (L' κs l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl Hc".
     iApply ("Hcont" with "Hincl Hl").
     iSplit; last done.
@@ -507,7 +507,7 @@ Section stratify.
         T L4 κs li b2 bmin' rti ltyi ri strong None))))
     ⊢ typed_place π E L l (◁ (∃; P, ty))%I (#x) bmin (Uniq κ γ) K T.
   Proof.
-    iIntros "HT". iIntros (F ???) "#CTX #HE HL Hna Hincl Hb Hcont".
+    iIntros "HT". iIntros (F ???) "#CTX #HE HL Hincl Hb Hcont".
     rewrite /lctx_lft_alive_count_goal.
     iDestruct "HT" as "(%κs & %L' & %Hal & HT)".
     iApply fupd_place_to_wp.
@@ -517,7 +517,7 @@ Section stratify.
     iMod (ex_plain_t_open_uniq with "CTX Htok Hcl_tok Hb") as "(%r & HP & Hb & Hcl)"; first done.
     iPoseProof ("Hcl" with "Hb []") as "Hb"; first done.
     iMod ("HT" with "[] HE HL HP") as "(%L2 & HL & HT)"; first done.
-    iApply ("HT" with "[//] [//] CTX HE HL Hna Hincl Hb").
+    iApply ("HT" with "[//] [//] CTX HE HL Hincl Hb").
     iModIntro. iIntros (L'' κs' l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl Hc".
     iApply ("Hcont" with "Hincl Hl").
     iSplit; last done.
@@ -548,11 +548,11 @@ Section stratify.
         T L3 κs li b2 bmin' rti ltyi ri strong weak)))
     ⊢ typed_place π E L l (◁ (∃; P, ty))%I (#x) bmin (Shared κ) K T.
   Proof.
-    iIntros "HT". iIntros (F ???) "#CTX #HE HL Hna Hincl Hb Hcont".
+    iIntros "HT". iIntros (F ???) "#CTX #HE HL Hincl Hb Hcont".
     iApply fupd_place_to_wp.
     iMod (ex_plain_t_open_shared with "Hb") as "(%r & HP & Hb)"; first done.
     iMod ("HT" with "[] HE HL HP") as "(%L2 & HL & HT)"; first done.
-    iApply ("HT" with "[//] [//] CTX HE HL Hna Hincl Hb").
+    iApply ("HT" with "[//] [//] CTX HE HL Hincl Hb").
     iModIntro. iIntros (L'' κs' l2 b2 bmin0 rti ltyi ri strong weak) "Hincl Hl Hc".
     iApply ("Hcont" with "Hincl Hl").
     iSplit.

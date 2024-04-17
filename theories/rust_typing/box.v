@@ -855,7 +855,7 @@ Section rules.
             weak.(weak_R)) weak)))
     ⊢ typed_place π E L l (BoxLtype lt2) (PlaceIn r) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
-    iIntros "HR" (Φ F ??). iIntros "#(LFT & TIME & LLCTX) #HE HL Hna Hincl0 HP HΦ/=".
+    iIntros "HR" (Φ F ??). iIntros "#(LFT & TIME & LLCTX) #HE HL Hincl0 HP HΦ/=".
     iPoseProof (box_ltype_acc_owned F with "HP") as "(%Hly & Hlb & Hb)"; [done.. | ].
     iApply fupd_wp. iMod (fupd_mask_subseteq F) as "HclF"; first done.
     iMod "Hb" as "(%l' & Hl & Hb & Hcl)". iMod "HclF" as "_".
@@ -864,7 +864,7 @@ Section rules.
     iNext. iIntros (st) "Hl Hcred Hc". iMod (fupd_mask_subseteq F) as "HclF"; first done.
     iMod "HclF" as "_". iExists l'.
     iSplitR. { iPureIntro. unfold mem_cast. rewrite val_to_of_loc. done. }
-    iApply ("HR" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna [] Hb"). { destruct bmin0; done. }
+    iApply ("HR" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hb"). { destruct bmin0; done. }
     iModIntro. iIntros (L' κs l2 b2 bmin rti tyli ri strong weak) "#Hincl1 Hb Hs".
     iApply ("HΦ" $! _ _ _ _ bmin _ _ _ _ _ with "Hincl1 Hb") => /=.
     iSplit.
@@ -911,7 +911,7 @@ Section rules.
   Proof.
     rewrite /lctx_lft_alive_count_goal.
     iIntros "(%κs & %L2 & %Hal & HT)".
-    iIntros (Φ F ??). iIntros "#(LFT & TIME & LLCTX) #HE HL Hna #Hincl0 HP HΦ/=".
+    iIntros (Φ F ??). iIntros "#(LFT & TIME & LLCTX) #HE HL #Hincl0 HP HΦ/=".
     (* get a token *)
     iApply fupd_wp. iMod (fupd_mask_subseteq lftE) as "HclF"; first done.
     iMod (lctx_lft_alive_count_tok lftE with "HE HL") as (q) "(Hκ' & Hclκ' & HL)"; [done.. | ].
@@ -924,7 +924,7 @@ Section rules.
     iIntros (st) "Hl Hcred Hcl".
     iExists l'.
     iSplitR. { iPureIntro. unfold mem_cast. rewrite val_to_of_loc. done. }
-    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna [] Hb"). { destruct bmin0; done. }
+    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hb"). { destruct bmin0; done. }
     iModIntro. iIntros (L'' κs' l2 b2 bmin rti tyli ri strong weak) "#Hincl1 Hb Hs".
     iApply ("HΦ" $! _ _ _ _ (Uniq κ' γ' ⊓ₖ bmin) _ _ _ _ _ with "[Hincl1] Hb").
     { iApply bor_kind_incl_trans; last iApply "Hincl1". iApply bor_kind_min_incl_r. }
@@ -965,7 +965,7 @@ Section rules.
   Proof.
     rewrite /lctx_lft_alive_count_goal.
     iIntros "(%κs & %L2 & %Hal & HT)".
-    iIntros (Φ F ??). iIntros "#(LFT & TIME & LLCTX) #HE HL Hna #Hincl0 HP HΦ/=".
+    iIntros (Φ F ??). iIntros "#(LFT & TIME & LLCTX) #HE HL #Hincl0 HP HΦ/=".
     (* get a token *)
     iApply fupd_wp. iMod (fupd_mask_subseteq lftE) as "HclF"; first done.
     iMod (lctx_lft_alive_count_tok lftE with "HE HL") as (q) "(Hκ' & Hclκ' & HL)"; [done.. | ].
@@ -980,7 +980,7 @@ Section rules.
     iIntros (st) "Hl Hcred".
     iExists l'. iMod (fupd_mask_mono with "Hb") as "Hb"; first done.
     iSplitR. { iPureIntro. unfold mem_cast. rewrite val_to_of_loc. done. }
-    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hna [] Hb"). { destruct bmin0; done. }
+    iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hb"). { destruct bmin0; done. }
     iModIntro. iIntros (L'' κs' l2 b2 bmin rti tyli ri strong weak) "#Hincl1 Hb Hs".
     iApply ("HΦ" $! _ _ _ _ (Shared κ' ⊓ₖ bmin) _ _ _ _ _ with "[Hincl1] Hb").
     { iApply bor_kind_incl_trans; last iApply "Hincl1". iApply bor_kind_min_incl_r. }
