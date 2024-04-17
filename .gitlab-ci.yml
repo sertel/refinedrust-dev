@@ -64,24 +64,28 @@ nix-cache:
 
 clippy:
   stage: lint
+  needs: [ "nix-cache" ]
   script:
    - cd rr_frontend
    - nix develop -c cargo clippy --all-targets --all-features --no-deps
 
 fmt:
   stage: lint
+  needs: [ "nix-cache" ]
   script:
    - cd rr_frontend
    - nix develop -c cargo fmt --check
 
 theories:
   stage: build
+  needs: [ "nix-cache" ]
   variables:
     NIX_DERIVATION: .#theories
   extends: .build_to_artifacts
 
 frontend:
   stage: build
+  needs: [ "nix-cache" ]
   variables:
     NIX_DERIVATION: .#frontend
   extends: .build_to_artifacts
@@ -93,8 +97,16 @@ stdlib:
     NIX_DERIVATION: .#stdlib
   extends: .build_to_artifacts
 
-tests:
+frontend-tests:
   stage: tests
+  needs: [ "frontend" ]
+  script:
+   - cd rr_frontend
+   - nix develop -c cargo test
+
+case_studies:
+  stage: tests
+  needs: [ "stdlib" ]
   script:
    - nix shell -c nix run nixpkgs#gnumake -- setup-nix
    - nix shell -c nix run nixpkgs#gnumake -- generate_stdlib
