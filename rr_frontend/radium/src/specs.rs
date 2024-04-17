@@ -2643,7 +2643,7 @@ pub struct CoqParam {
 
 impl CoqParam {
     pub fn new(name: CoqName, ty: CoqType, implicit: bool) -> Self {
-        let depends_on_sigma = if let CoqType::Literal(ref lit) = ty { lit.contains("Σ") } else { false };
+        let depends_on_sigma = if let CoqType::Literal(ref lit) = ty { lit.contains('Σ') } else { false };
         Self {
             name,
             ty,

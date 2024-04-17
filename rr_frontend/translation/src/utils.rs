@@ -150,7 +150,7 @@ pub fn get_cleaned_def_path(tcx: TyCtxt<'_>, did: DefId) -> Vec<String> {
     // we clean this up a bit and segment it
     let mut components = Vec::new();
     for i in def_path.split("::") {
-        if i.starts_with("<") && i.ends_with(">") {
+        if i.starts_with('<') && i.ends_with('>') {
             // this is a generic specialization, skip
             continue;
         }
