@@ -8,17 +8,21 @@ use std::path::PathBuf;
 
 /// Source: https://github.com/rust-lang/miri/blob/master/tests/compiletest.rs
 use compiletest_rs as compiletest;
+use test_binary::build_test_binary_once;
 use utils::*;
 
 fn run_tests(mode: &str, path: &str, custom_args: Vec<String>) {
     let mut config = compiletest::Config::default();
+
+    build_test_binary_once!(analysis_driver, "testbins");
+
     let mut flags = Vec::new();
     flags.push("--edition 2018".to_owned());
     flags.push(format!("--sysroot {}", find_sysroot()));
     flags.extend(custom_args);
     config.target_rustcflags = Some(flags.join(" "));
     config.mode = mode.parse().expect("Invalid mode");
-    config.rustc_path = find_compiled_executable("analysis-driver");
+    config.rustc_path = path_to_analysis_driver().into();
     config.src_base = PathBuf::from(path);
     assert!(config.src_base.is_dir());
 

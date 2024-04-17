@@ -76,6 +76,7 @@ impl fmt::Debug for DefinitelyAccessibleState<'_> {
 }
 
 impl<'mir, 'tcx: 'mir> PointwiseState<'mir, 'tcx, DefinitelyAccessibleState<'tcx>> {
+    #[cfg(feature = "test-utils")]
     /// Make a best-effort at injecting statements to check the analysis state.
     pub fn generate_test_program(&self, tcx: TyCtxt<'tcx>, source_map: &SourceMap) -> String {
         let mir_span = self.mir.span;

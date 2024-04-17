@@ -6,6 +6,7 @@ use std::process::{Command, Stdio};
 use std::{env, fmt, fs};
 
 use glob::glob;
+use test_binary::build_test_binary_once;
 use utils::*;
 
 /// Prepend paths to an environment variable
@@ -38,7 +39,9 @@ fn generate_program_testing_accessible_paths(program_path: impl AsRef<OsStr> + f
     let compiler_sysroot = PathBuf::from(find_sysroot());
     let compiler_bin = compiler_sysroot.join("bin");
     let compiler_lib = compiler_sysroot.join("lib");
-    let executable_path = find_compiled_executable("gen-accessibility-driver");
+
+    build_test_binary_once!(gen_accessibility_driver, "testbins");
+    let executable_path = path_to_gen_accessibility_driver();
 
     let mut cmd = Command::new(executable_path);
     cmd.args(["--edition=2018", "--crate-type=lib", "--sysroot"])

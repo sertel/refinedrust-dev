@@ -14,11 +14,15 @@ env_logger.workspace = true
 log.workspace = true
 serde.workspace = true
 serde_json.workspace = true
-syn.workspace = true
+syn = { optional = true, workspace = true }
 
 [dev-dependencies]
 compiletest_rs.workspace = true
 glob.workspace = true
+test-binary.workspace = true
+
+[features]
+test-utils = ["dep:syn"]
 
 [package.metadata.rust-analyzer]
 rustc_private = true
