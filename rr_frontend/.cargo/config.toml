@@ -2,14 +2,14 @@
 rustflags = [
     # === ENABLE ALL LINTS ===
 
-    "-Wclippy::complexity",
-    "-Wclippy::correctness",
-    "-Wclippy::nursery",
-    "-Wclippy::pedantic",
-    "-Wclippy::perf",
-    "-Wclippy::restriction",
-    "-Wclippy::style",
-    "-Wclippy::suspicious",
+    "-Dclippy::complexity",
+    "-Dclippy::correctness",
+    "-Dclippy::nursery",
+    "-Dclippy::pedantic",
+    "-Dclippy::perf",
+    "-Dclippy::restriction",
+    "-Dclippy::style",
+    "-Dclippy::suspicious",
 
     # === REASONABLE LINTS ===
 
