@@ -802,9 +802,8 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             let mut new_map: BTreeMap<facts::Region, BTreeSet<facts::Region>> = BTreeMap::new();
             for (&r1, set) in map.iter() {
                 for &r2 in set.iter() {
-                    if !new_map.contains_key(&r2) {
-                        new_map.insert(r2, BTreeSet::new());
-                    }
+                    new_map.entry(r2).or_insert_with(|| BTreeSet::new());
+
                     let new_set = new_map.get_mut(&r2).unwrap();
                     new_set.insert(r1);
                 }

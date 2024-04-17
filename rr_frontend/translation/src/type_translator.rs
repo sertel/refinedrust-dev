@@ -481,10 +481,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         // track this enum use for the current function
         if let TranslationStateInner::InFunction(state) = state {
             let lit_uses = &mut state.shim_uses;
-            if !lit_uses.contains_key(&key) {
-                let lit_use = radium::LiteralTypeUse::new(lit_ref.unwrap(), params.clone());
-                lit_uses.insert(key, lit_use);
-            }
+
+            lit_uses
+                .entry(key)
+                .or_insert_with(|| radium::LiteralTypeUse::new(lit_ref.unwrap(), params.clone()));
         }
 
         let enum_use = radium::AbstractEnumUse::new(enum_ref, params);
@@ -571,10 +571,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         if let TranslationStateInner::InFunction(ref mut scope) = state {
             let lit_uses = &mut scope.shim_uses;
-            if !lit_uses.contains_key(&key) {
-                let lit_use = radium::LiteralTypeUse::new(lit_ref.unwrap(), params.clone());
-                lit_uses.insert(key, lit_use);
-            }
+
+            lit_uses
+                .entry(key)
+                .or_insert_with(|| radium::LiteralTypeUse::new(lit_ref.unwrap(), params.clone()));
         }
 
         let struct_use = radium::AbstractStructUse::new(struct_ref, params, radium::TypeIsRaw::No);
@@ -1260,9 +1260,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             if let TranslationStateInner::InFunction(ref mut scope) = state {
                 // track this shim use for the current function
-                if !scope.shim_uses.contains_key(&key) {
-                    scope.shim_uses.insert(key, shim_use.clone());
-                }
+                scope.shim_uses.entry(key).or_insert_with(|| shim_use.clone());
             }
 
             Ok(radium::Type::Literal(shim_use))
@@ -1674,9 +1672,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
 
         // track this enum use for the current function
         let enum_uses = &mut state.shim_uses;
-        if !enum_uses.contains_key(&key) {
-            enum_uses.insert(key, enum_use.clone());
-        }
+        enum_uses.entry(key).or_insert_with(|| enum_use.clone());
 
         Ok(enum_use)
     }
@@ -1708,9 +1704,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         let struct_ref: radium::LiteralTypeRef<'def> = self.lookup_adt_variant_literal(variant_id)?;
         let struct_use = radium::LiteralTypeUse::new(struct_ref, params);
 
-        if !scope.shim_uses.contains_key(&key) {
-            scope.shim_uses.insert(key, struct_use.clone());
-        }
+        scope.shim_uses.entry(key).or_insert_with(|| struct_use.clone());
 
         Ok(Some(struct_use))
     }
