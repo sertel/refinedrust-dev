@@ -17,7 +17,7 @@ use rr_rustc_interface::middle::ty::{self, TyCtxt};
 use rr_rustc_interface::trait_selection::infer::InferCtxtExt;
 
 #[repr(transparent)]
-#[derive(Clone, Copy, Eq, PartialEq, derive_more::From, Hash)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash)]
 /// A wrapper for `mir::Place` that implements `Ord`.
 pub struct Place<'tcx>(mir::Place<'tcx>);
 
@@ -25,6 +25,12 @@ pub struct Place<'tcx>(mir::Place<'tcx>);
 pub trait PlaceImpl<'tcx> {
     fn from_mir_place(_: mir::Place<'tcx>) -> Self;
     fn to_mir_place(self) -> mir::Place<'tcx>;
+}
+
+impl<'tcx> From<mir::Place<'tcx>> for Place<'tcx> {
+    fn from(place: mir::Place<'tcx>) -> Self {
+        Self(place)
+    }
 }
 
 impl<'tcx> From<mir::Local> for Place<'tcx> {

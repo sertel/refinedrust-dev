@@ -10,7 +10,6 @@ version.workspace = true
 [dependencies]
 rr_rustc_interface.workspace = true
 
-derive_more.workspace = true
 env_logger.workspace = true
 log.workspace = true
 serde.workspace = true
