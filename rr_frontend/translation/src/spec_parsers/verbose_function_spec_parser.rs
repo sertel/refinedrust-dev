@@ -627,13 +627,10 @@ where
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&args.inner_tokens());
-                let name = seg.ident.name.as_str();
-                match name {
-                    "capture" => {
-                        let spec: ClosureCaptureSpec = buffer.parse(&meta).map_err(str_err)?;
-                        capture_specs.push(spec);
-                    },
-                    _ => {},
+
+                if seg.ident.name.as_str() == "capture" {
+                    let spec: ClosureCaptureSpec = buffer.parse(&meta).map_err(str_err)?;
+                    capture_specs.push(spec);
                 }
             }
         }
@@ -650,15 +647,12 @@ where
 
                 match self.handle_common_attributes(name, &buffer, builder, &lfts) {
                     Ok(b) => {
-                        if !b {
-                            if name != "capture" {
-                                info!("ignoring function attribute: {:?}", args);
-                            }
+                        if !b && name != "capture" {
+                            info!("ignoring function attribute: {:?}", args);
                         }
                     },
-                    Err(e) => {
-                        return Err(e);
-                    },
+
+                    Err(e) => return Err(e),
                 }
             }
         }
