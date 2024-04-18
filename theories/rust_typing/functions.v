@@ -131,6 +131,8 @@ Section function.
           let Qinit :=
             (* initial credits from the beta step *)
             credit_store 0 0 ∗
+            (* initial mask *)
+            na_own π ⊤ ∗
             (* arg ownership *)
             ([∗list] l;t∈lsa;(fp κs x).(fp_atys), let '(existT rt (ty, r)) := t in l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
             (* local vars ownership *)
@@ -147,7 +149,8 @@ Section function.
             introduce_with_hooks E L3 R3 (λ L4,
             (* we don't really kill it here, but just need to find it in the context *)
             li_tactic (llctx_find_llft_goal L4 ϝ LlctxFindLftFull) (λ _,
-            find_in_context FindCreditStore (λ _, True)
+            find_in_context FindCreditStore (λ _,
+              find_in_context (FindNaOwn π) (λ (mask: coPset), ⌜mask = ⊤⌝ ∗ True))
           )))))
     )%I.
 
@@ -193,7 +196,9 @@ Section call.
 
   Lemma type_call_fnptr π E L {A : Type} (lfts : nat) eκs l v vl tys T (fp : prod_vec lft lfts → A → fn_params) sta :
     let eκs' := list_to_tup eκs in
-    (([∗ list] v;t ∈ vl; tys, let '(existT rt (ty, r)) := t in v ◁ᵥ{π} r @ ty) -∗
+    find_in_context (FindNaOwn π) (λ (mask: coPset),
+      ⌜mask = ⊤⌝ ∗
+      (([∗ list] v;t ∈ vl; tys, let '(existT rt (ty, r)) := t in v ◁ᵥ{π} r @ ty) -∗
       ∃ (Heq : lfts = length eκs),
       ∃ x,
       let κs := (rew <- Heq in eκs') in
@@ -214,11 +219,12 @@ Section call.
       (* postcondition *)
       ∀ v x', (* v = retval, x' = post existential *)
       (* also donate some credits we are generating here *)
-      introduce_with_hooks E L2 (£ (S num_cred) ∗ atime 2 ∗ R3 ∗ ((fp κs x).(fp_fr) x').(fr_R) π) (λ L3,
-      T L3 v ((fp κs x).(fp_fr) x').(fr_rt) ((fp κs x).(fp_fr) x').(fr_ty) ((fp κs x).(fp_fr) x').(fr_ref))))
-    ) ⊢ typed_call π E L eκs v (v ◁ᵥ{π} l @ function_ptr sta fp) vl tys T.
+      introduce_with_hooks E L2 (£ (S num_cred) ∗ atime 2 ∗ na_own π mask ∗ R3 ∗ ((fp κs x).(fp_fr) x').(fr_R) π) (λ L3,
+      T L3 v ((fp κs x).(fp_fr) x').(fr_rt) ((fp κs x).(fp_fr) x').(fr_ty) ((fp κs x).(fp_fr) x').(fr_ref))))))
+    ⊢ typed_call π E L eκs v (v ◁ᵥ{π} l @ function_ptr sta fp) vl tys T.
   Proof.
-    simpl. iIntros "HT (%fn & %local_sts & -> & He & %Halg & %Halgl & Hfn) Htys" (Φ) "#CTX #HE HL Hna HΦ".
+    simpl. iIntros "HT (%fn & %local_sts & -> & He & %Halg & %Halgl & Hfn) Htys" (Φ) "#CTX #HE HL HΦ".
+    iDestruct "HT" as (?) "(Hna & -> & HT) /=".
     iDestruct ("HT" with "Htys") as "(%Heq & %x & HP)". subst lfts.
     set (aκs := list_to_tup eκs).
     iApply fupd_wp. iMod ("HP" with "[] [] CTX HE HL") as "(%L1 & % & %R2 & >(Hvl & R2) & HL & HT)"; [done.. | ].
@@ -254,7 +260,7 @@ Section call.
       apply map_eq_cons in Ha as (xa & ? & -> & <- & <-).
       destruct vl => //=. iDestruct "Hvl" as "[Hv Hvl]".
       destruct xa as (rt & (ty & r)).
-      iDestruct ("IH" with "[//] He Hna HΦ Hvl") as %?.
+      iDestruct ("IH" with "[//] Hna He HΦ Hvl") as %?.
       iDestruct (ty_has_layout with "Hv") as "(%ly' & % & %)".
       assert (ly = ly') as ->. { by eapply syn_type_has_layout_inj. }
       iPureIntro. constructor => //.
@@ -293,14 +299,15 @@ Section call.
 
     iDestruct ("Hfn" $! lsa' lsv') as "Hm". unfold introduce_typed_stmt.
     set (RET_PROP v := (∃ κs',
-        llctx_elt_interp (ϝ ⊑ₗ{ 0} κs') ∗ na_own π shrE ∗
+        llctx_elt_interp (ϝ ⊑ₗ{ 0} κs') ∗
         credit_store 0 0 ∗
+        na_own π ⊤ ∗
         ([∗ list] l0 ∈ (zip lsa' (f_args fn).*2 ++ zip lsv' (f_local_vars fn).*2), l0.1 ↦|l0.2|) ∗
         fn_ret_prop π (fp_fr (fp aκs x)) v)%I).
     iExists RET_PROP. iSplitR "Hr HR HΦ HL HL_cl HL_cl' Hkill" => /=.
     - iMod (persistent_time_receipt_0) as "#Htime".
       iApply wps_fupd.
-      iApply ("Hm" with "[-Hϝ Hna] [$LFT $TIME $LCTX] HE' [$Hϝ//] Hna []").
+      iApply ("Hm" with "[-Hϝ] [$LFT $TIME $LCTX] HE' [$Hϝ//] []").
       { iFrame.
         (* we use the certificate + other credit to initialize the new functions credit store *)
         iSplitL "Hcred Hc". { rewrite credit_store_eq /credit_store_def. iFrame. }
@@ -351,7 +358,7 @@ Section call.
           iExists _. iSplitR; first done. iNext. eauto with iFrame. }
         iApply ("IH" with "[//] [//] [//] [//] [$] [$] [$]").
       }
-      iIntros (L5 v) "HL Hna Hloc HT".
+      iIntros (L5 v) "HL Hloc HT".
       iMod ("HT" with "[] [] [] HE' HL") as "(%L3 & %κs1 & %R4 & Hp & HL & HT)"; [done.. |  | ].
       { rewrite /rrust_ctx. iFrame "#". }
       iMod "Hp" as "(Hret & HR)".
@@ -361,14 +368,15 @@ Section call.
       destruct Hfind as (L9 & L10 & ? & -> & -> & Hoc).
       unfold llctx_find_lft_key_interp in Hoc. subst.
       iDestruct "HL" as "(_ & Hϝ & _)".
-      iDestruct "HT" as ([n' m']) "(Hstore & _)"; simpl.
+      iDestruct "HT" as ([n' m']) "(Hstore & HT)"; simpl.
+      iDestruct "HT" as (b) "(Hna & (-> & _))"; simpl.
 
       subst RET_PROP; simpl.
       iExists _. iFrame.
       iApply (credit_store_mono with "Hstore"); lia.
     - (* handle the postcondition at return *)
       iMod (persistent_time_receipt_0) as "Hpt".
-      iIntros "!>" (v). iDestruct 1 as (κs') "(Hϝ & Hna & Hstore & Hls & HPr)".
+      iIntros "!>" (v). iDestruct 1 as (κs') "(Hϝ & Hstore & Hna & Hls & HPr)".
       iPoseProof (credit_store_borrow with "Hstore") as "(Hcred1 & Hat & _)".
       iExists 1, 0. iFrame.
       simpl. rewrite !big_sepL2_alt. iDestruct (big_sepL_app with "Hls") as "[? ?]".
@@ -383,9 +391,9 @@ Section call.
       iPoseProof ("HL_cl" with "HL") as "HL".
        (*we currently don't actually kill the lifetime, as we don't conceptually need that. *)
       iDestruct ("HPr") as (?) "(Hty & HR2 & _)".
-      iMod ("Hr" with "[] HE HL [Hat Hcred HR2 HR]") as "(%L3 & HL & Hr)"; first done.
+      iMod ("Hr" with "[] HE HL [Hat Hcred Hna HR2 HR]") as "(%L3 & HL & Hr)"; first done.
       { iFrame. }
-      iApply ("HΦ" with "HL Hna Hty").
+      iApply ("HΦ" with "HL Hty").
       by iApply ("Hr").
   Qed.
   Global Instance type_call_fnptr_inst π E L {A} (lfts : nat) eκs l v vl fp lya tys :

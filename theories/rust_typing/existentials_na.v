@@ -849,6 +849,7 @@ Section generated_code.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
+      done.
 
       all: print_remaining_goal.
       Unshelve. all: sidecond_solver.
@@ -867,6 +868,7 @@ Section generated_code.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
+      done.
 
       all: print_remaining_goal.
       Unshelve. all: sidecond_solver.
@@ -917,8 +919,6 @@ Section generated_code.
     Proof.
       UnsafeCell_get_old_prelude.
 
-      iAssert (na_own π ⊤)%I as "?"; first admit.
-
       repeat liRStep; liShow.
 
       unfold Cell_inv_t; simpl.
@@ -936,9 +936,11 @@ Section generated_code.
 
       rep <-1 liRStep; liShow.
 
-      iApply stratify_ltype_alias_shared.
+      (* TODO: Get back the na token *)
 
-      repeat liRStep; liShow.
+      (* iApply stratify_ltype_alias_shared. *)
+
+      (* repeat liRStep; liShow. *)
 
       (* TODO: Stratify the context *)
 

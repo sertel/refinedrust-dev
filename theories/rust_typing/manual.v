@@ -10,9 +10,8 @@ Section updateable.
   Definition updateable (π : thread_id) (E : elctx) (L : llctx) (T : llctx → iProp Σ) : iProp Σ :=
     rrust_ctx -∗
     elctx_interp E -∗
-    llctx_interp L -∗
-    na_own π shrE ={⊤}=∗
-    ∃ L2, llctx_interp L2 ∗ na_own π shrE ∗ T L2.
+    llctx_interp L ={⊤}=∗
+    ∃ L2, llctx_interp L2 ∗ T L2.
   Class Updateable (P : iProp Σ) := {
     updateable_E : elctx;
     updateable_L : llctx;
@@ -28,15 +27,15 @@ Section updateable.
     updateable π E L T2.
   Proof.
     iIntros "HT Hw".
-    iIntros "#CTX #HE HL Hna".
-    iMod ("HT" with "CTX HE HL Hna") as "(%L2 & HL & Hna & HT)".
+    iIntros "#CTX #HE HL".
+    iMod ("HT" with "CTX HE HL") as "(%L2 & HL & HT)".
     iSpecialize ("Hw" with "HT").
     iExists L2. by iFrame.
   Qed.
   Lemma updateable_intro π E L T :
     T L ⊢ updateable π E L T.
   Proof.
-    iIntros "HT #CTX HE HL Hna".
+    iIntros "HT #CTX HE HL".
     iExists L. by iFrame.
   Qed.
 
@@ -60,9 +59,9 @@ Section updateable.
   Next Obligation.
     iIntros (_ _ _ e T π E L).
     rewrite /typed_val_expr.
-    iIntros "HT" (?) "#CTX #HE HL Hna Hc".
-    iApply fupd_wp. iMod ("HT" with "CTX HE HL Hna") as "(%L2 & HL & Hna & HT)".
-    iApply ("HT" with "CTX HE HL Hna Hc").
+    iIntros "HT" (?) "#CTX #HE HL Hc".
+    iApply fupd_wp. iMod ("HT" with "CTX HE HL") as "(%L2 & HL & HT)".
+    iApply ("HT" with "CTX HE HL Hc").
   Qed.
   Next Obligation.
     simpl. eauto.
@@ -99,9 +98,9 @@ Section updateable.
   Next Obligation.
     iIntros (_ _ _ ? ? ? ? π E L).
     iIntros "HT". rewrite /typed_stmt.
-    iIntros (?) "#CTX #HE HL Hna Hcont".
-    iMod ("HT" with "CTX HE HL Hna") as "(%L2 & HL & Hna & HT)".
-    iApply ("HT" with "CTX HE HL Hna Hcont").
+    iIntros (?) "#CTX #HE HL Hcont".
+    iMod ("HT" with "CTX HE HL") as "(%L2 & HL & HT)".
+    iApply ("HT" with "CTX HE HL Hcont").
   Qed.
   Next Obligation.
     simpl. eauto.
@@ -117,9 +116,9 @@ Section updateable.
   Next Obligation.
     iIntros (_ _ _ ? ? ? ?) "HT".
     rewrite /updateable.
-    iIntros "#CTX #HE HL Hna".
-    iMod ("HT" with "CTX HE HL Hna") as "(%L2 & HL & Hna & HT)".
-    iApply ("HT" with "CTX HE HL Hna").
+    iIntros "#CTX #HE HL".
+    iMod ("HT" with "CTX HE HL") as "(%L2 & HL & HT)".
+    iApply ("HT" with "CTX HE HL").
   Qed.
   Next Obligation.
     eauto.
@@ -129,8 +128,8 @@ Section updateable.
     (|={⊤}=> typed_val_expr π E L e T) -∗ typed_val_expr π E L e T.
   Proof.
     rewrite /typed_val_expr.
-    iIntros "HT" (?) "CTX HE HL Hna Hc".
-    iApply fupd_wp. iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hna Hc").
+    iIntros "HT" (?) "CTX HE HL Hc".
+    iApply fupd_wp. iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hc").
   Qed.
   Lemma fupd_typed_call `{!typeGS Σ} π E L κs v (P : iProp Σ) vl tys T :
     (|={⊤}=> typed_call π E L κs v P vl tys T) -∗ typed_call π E L κs v P vl tys T.
@@ -143,8 +142,8 @@ Section updateable.
   Lemma fupd_typed_stmt `{!typeGS Σ} π E L s rf R ϝ :
     ⊢ (|={⊤}=> typed_stmt π E L s rf R ϝ) -∗ typed_stmt π E L s rf R ϝ.
   Proof.
-    iIntros "HT". rewrite /typed_stmt. iIntros (?) "CTX HE HL Hna Hcont".
-    iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hna Hcont").
+    iIntros "HT". rewrite /typed_stmt. iIntros (?) "CTX HE HL Hcont".
+    iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hcont").
   Qed.
 End updateable.
 
@@ -161,7 +160,7 @@ Section updateable_rules.
   Proof.
     iIntros "HT".
     unshelve iApply add_updateable; first apply _.
-    iIntros "#CTX #HE HL Hna".
+    iIntros "#CTX #HE HL".
     rewrite /FindLoc /find_in_context/=.
     iDestruct "HT" as ([rt [[lt r] k]]) "(Ha & Hb)".
     rewrite /typed_array_access.
@@ -183,7 +182,7 @@ Section updateable_rules.
   Proof.
     iIntros "HT".
     unshelve iApply add_updateable; first apply _.
-    iIntros "#CTX #HE HL Hna".
+    iIntros "#CTX #HE HL".
     rewrite /FindLoc /find_in_context.
     iDestruct "HT" as ([rt [[lt r] bk]]) "(Ha & Hb)"; simpl.
     iDestruct "Hb" as "(%wl & %ty & %r' & -> & -> & -> & HT)".
@@ -239,11 +238,11 @@ Lemma tac_typed_val_expr_bind' `{!typeGS Σ} π E L K e T :
 Proof.
   iIntros "He".
   rewrite /typed_val_expr.
-  iIntros (Φ) "#CTX #HE HL Hna Hcont".
+  iIntros (Φ) "#CTX #HE HL Hcont".
   iApply tac_wp_bind'.
-  iApply ("He" with "CTX HE HL Hna").
-  iIntros (L' v rt ty r) "HL Hna Hv Hcont'".
-  iApply ("Hcont'" with "Hv CTX HE HL Hna"). done.
+  iApply ("He" with "CTX HE HL").
+  iIntros (L' v rt ty r) "HL Hv Hcont'".
+  iApply ("Hcont'" with "Hv CTX HE HL"). done.
 Qed.
 Lemma tac_typed_val_expr_bind `{!typeGS Σ} π E L e Ks e' T :
   W.find_expr_fill e false = Some (Ks, e') →
@@ -275,14 +274,14 @@ Lemma tac_typed_stmt_bind `{!typeGS Σ} π E L s e Ks fn ϝ T :
 Proof.
   move => /W.find_stmt_fill_correct ->. iIntros "He".
   rewrite /typed_stmt.
-  iIntros (?) "#CTX #HE HL Hna Hcont".
+  iIntros (?) "#CTX #HE HL Hcont".
   rewrite stmt_wp_eq. iIntros (? rf ?) "?".
   have [Ks' HKs']:= W.stmt_fill_correct Ks rf. rewrite HKs'.
   iApply wp_bind.
-  iApply (wp_wand with "[Hna He HL]").
-  { rewrite /typed_val_expr. iApply ("He" with "CTX HE HL Hna").
-    iIntros (L' v rt ty r) "HL Hna Hv Hcont".
-    iApply ("Hcont" with "Hv CTX HE HL Hna"). }
+  iApply (wp_wand with "[He HL]").
+  { rewrite /typed_val_expr. iApply ("He" with "CTX HE HL").
+    iIntros (L' v rt ty r) "HL Hv Hcont".
+    iApply ("Hcont" with "Hv CTX HE HL"). }
   iIntros (v) "HWP".
   rewrite -(HKs' (W.Val _)) /W.to_expr.
   iSpecialize ("HWP" with "Hcont").
@@ -304,14 +303,13 @@ Lemma intro_typed_stmt `{!typeGS Σ} fn R ϝ π E L s Φ :
   rrust_ctx -∗
   elctx_interp E -∗
   llctx_interp L -∗
-  na_own π shrE -∗
-  (∀ (L' : llctx) (v : val), llctx_interp L' -∗ na_own π shrE -∗ ([∗ list] l ∈ rf_locs fn, l.1 ↦|l.2|) -∗ R v L' -∗ Φ v) -∗
+  (∀ (L' : llctx) (v : val), llctx_interp L' -∗ ([∗ list] l ∈ rf_locs fn, l.1 ↦|l.2|) -∗ R v L' -∗ Φ v) -∗
   typed_stmt π E L s fn R ϝ -∗
   WPs s {{ f_code (rf_fn fn), Φ }}.
 Proof.
-  iIntros "#CTX #HE HL Hna Hcont Hs".
+  iIntros "#CTX #HE HL Hcont Hs".
   rewrite /typed_stmt.
-  iApply ("Hs" with "CTX HE HL Hna Hcont").
+  iApply ("Hs" with "CTX HE HL Hcont").
 Qed.
 
 Ltac to_typed_stmt SPEC :=

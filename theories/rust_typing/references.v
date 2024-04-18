@@ -1301,9 +1301,9 @@ Section rules.
   Proof.
     rewrite /compute_map_lookup_nofail_goal.
     iIntros "HT".
-    iDestruct "HT" as "(%M & Hnamed & %κ & _ & HT)". iIntros (Φ) "#(LFT & TIME & LLCTX) #HE HL Hna HΦ".
+    iDestruct "HT" as "(%M & Hnamed & %κ & _ & HT)". iIntros (Φ) "#(LFT & TIME & LLCTX) #HE HL HΦ".
     wp_bind. iSpecialize ("HT" with "Hnamed").
-    iApply ("HT" $! _ ⊤ with "[//] [//] [//] [$LFT $TIME $LLCTX] HE HL Hna").
+    iApply ("HT" $! _ ⊤ with "[//] [//] [//] [$LFT $TIME $LLCTX] HE HL").
     iIntros (l) "Hat HT".
     unfold Ref.
     wp_bind.
@@ -1316,14 +1316,14 @@ Section rules.
     iMod (persistent_time_receipt_0) as "Hp".
     iApply (wp_skip_credits with "TIME Hc Hp"); first done.
     iIntros "!> Hcred1 Hc HT" => /=.
-    iMod ("HT") as "(%L' & %rt' & %ty & %r & %γ & %ly & Hobs & Hbor & %Hst & %Hly & #Hlb & #Hsc & HL & Hna & HT)".
+    iMod ("HT") as "(%L' & %rt' & %ty & %r & %γ & %ly & Hobs & Hbor & %Hst & %Hly & #Hlb & #Hsc & HL & HT)".
     iModIntro.
     (* generate the credits for the new reference *)
     iMod (persistent_time_receipt_0) as "Hp".
     iApply (wp_skip_credits with "TIME Hc Hp"); first done.
     rewrite (additive_time_receipt_sep 1). iNext. iIntros "[Hcred2 Hcred] [Hat1 Hat]".
     (* We use [Hcred1] for folding the pinned borrow, and [Hcred] as a deposit in the reference *)
-    iApply ("HΦ" with "HL Hna [Hcred Hcred1 Hat Hat1 Hbor Hobs] HT").
+    iApply ("HΦ" with "HL [Hcred Hcred1 Hat Hat1 Hbor Hobs] HT").
     iExists l, ly. iSplitR; first done. iFrame "# ∗".
     iSplitR; first done. iSplitR; first done.
     by iApply (pinned_bor_unfold with "LFT Hcred1 Hbor").
@@ -2837,16 +2837,16 @@ Section rules.
     ⊢ typed_val_expr π E L (&ref{Shr, ty_annot, κ_name} e)%E T.
   Proof.
     rewrite /compute_map_lookup_nofail_goal.
-    iIntros "(%M & Hnamed & %κ & _ & HT)". iIntros (Φ) "#(LFT & TIME & LLCTX) #HE HL Hna HΦ".
-    wp_bind. iSpecialize ("HT" with "Hnamed"). iApply ("HT" $! _ ⊤ with "[//] [//] [//] [$LFT $TIME $LLCTX] HE HL Hna").
+    iIntros "(%M & Hnamed & %κ & _ & HT)". iIntros (Φ) "#(LFT & TIME & LLCTX) #HE HL HΦ".
+    wp_bind. iSpecialize ("HT" with "Hnamed"). iApply ("HT" $! _ ⊤ with "[//] [//] [//] [$LFT $TIME $LLCTX] HE HL").
     iIntros (l) "HT".
     unfold Ref. wp_bind. iApply ewp_fupd.
     iApply (wp_logical_step with "TIME HT"); [solve_ndisj.. | ].
     iApply wp_skip. iNext. iIntros "Hcred HT !> !>".
     iApply (wp_logical_step with "TIME HT"); [solve_ndisj.. | ].
     iApply wp_skip. iNext. iIntros "Hcred' HT".
-    iMod ("HT" with "Hcred'") as (L' rt ty r r' ly) "(#Hrfn & #Hshr & %Halg & %Hly & #Hlb & #Hsc & HL & Hna & HT)".
-    iModIntro. iApply ("HΦ" with "HL Hna [Hshr] HT").
+    iMod ("HT" with "Hcred'") as (L' rt ty r r' ly) "(#Hrfn & #Hshr & %Halg & %Hly & #Hlb & #Hsc & HL & HT)".
+    iModIntro. iApply ("HΦ" with "HL [Hshr] HT").
     iExists l, ly, r'. iSplitR; first done. iFrame "Hlb Hrfn Hsc %".
     iModIntro. iModIntro. done.
   Qed.

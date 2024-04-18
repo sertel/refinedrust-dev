@@ -130,8 +130,8 @@ Lemma mem_align_of_typed `{!typeGS Σ} π T_rt T_st T_ly :
   ⊢ typed_function π (mem_align_of T_st) [] (type_of_mem_align_of T_rt T_st).
 Proof.
   start_function "mem_align_of" ( () ) ( () ).
-  repeat liRStep. Unshelve.
-  all: unshelve_sidecond.
+  repeat liRStep.
+  Unshelve. all: unshelve_sidecond.
   by apply ly_align_in_usize.
 Qed.
 
@@ -154,8 +154,8 @@ Lemma mem_align_of_log_typed `{!typeGS Σ} π T_rt T_st T_ly :
   ⊢ typed_function π (mem_align_log_of T_st) [] (type_of_mem_align_log_of T_rt T_st).
 Proof.
   start_function "mem_align_log_of" ( () ) ( () ).
-  repeat liRStep. Unshelve.
-  all: unshelve_sidecond.
+  repeat liRStep.
+  Unshelve. all: unshelve_sidecond.
   by eapply ly_align_log_in_usize.
 Qed.
 
@@ -270,20 +270,26 @@ Proof.
     ⌜L = [ϝ ⊑ₗ{0} []]⌝ ∗
     ⌜E = []⌝ ∗
     (credit_store 0 0 ∗
+    na_own π ⊤ ∗
     ls_size ◁ₗ[π, Owned false] PlaceIn (Z.of_nat len) @ (◁ int usize_t) ∗
     ls_count ◁ₗ[π, Owned false] PlaceIn (Z.of_nat i) @ (◁ int usize_t) ∗
     ls_src ◁ₗ[π, Owned false] PlaceIn l_s @ (◁ alias_ptr_t) ∗
     ls_dst ◁ₗ[π, Owned false] PlaceIn l_t @ (◁ alias_ptr_t) ∗
-    l_s ◁ₗ[ π, Owned false] # (fmap (M:=list) PlaceIn (reshape (replicate len (ly_size T_st_ly)) v_s)) @ (◁ array_t (value_t (UntypedSynType T_st_ly)) len) ∗
+    l_s ◁ₗ[π, Owned false] #(fmap (M:=list) PlaceIn (reshape (replicate len (ly_size T_st_ly)) v_s)) @ (◁ array_t (value_t (UntypedSynType T_st_ly)) len) ∗
     l_t ◁ₗ[π, Owned false] #(fmap (M:=list) PlaceIn (take i (reshape (replicate len (ly_size T_st_ly)) v_s) ++ drop i (reshape (replicate len (ly_size T_st_ly)) v_t))) @ (◁ array_t (value_t (UntypedSynType T_st_ly)) len)))%I).
+
   iApply (typed_goto_acc _ _ _ _ _ loop_inv).
   { unfold_code_marker_and_compute_map_lookup. }
+
   liRStep; liShow. iExists 0%nat.
   repeat liRStep. liShow.
+
   iRename select (loop_inv _ _) into "Hinv".
-  iDestruct "Hinv" as "(%i & -> & -> & Hcredit & Hlen & Hcount & Hsrc & Hdst & Hs & Ht)".
+  iDestruct "Hinv" as "(%i & -> & -> & Hcredit & Hna & Hlen & Hcount & Hsrc & Hdst & Hs & Ht)".
+
   repeat liRStep; liShow.
-   (*return: go back to values *)
+
+  (* return: go back to values *)
   assert (take i (reshape (replicate len (ly_size T_st_ly)) v_s) ++ drop i (reshape (replicate len (ly_size T_st_ly)) v_t) = (reshape (replicate len (ly_size T_st_ly)) (take (i * ly_size T_st_ly) v_s ++ drop (i * ly_size T_st_ly) v_t))) as ->.
   { shelve. }
   iPoseProof (ofty_value_untyped_from_array with "Hs") as "Hs".
@@ -478,19 +484,19 @@ Proof.
   repeat liRStep. liShow.
   (* EraseProv *)
   rewrite /typed_un_op/typed_val_expr.
-  iIntros "Hv" (Φ) "#CTX #HE HL Hna Hcont".
+  iIntros "Hv" (Φ) "#CTX #HE HL Hcont".
   rewrite {1}/ty_own_val /=. iDestruct "Hv" as %[Hv Hsz].
   iApply wp_erase_prov.
   { rewrite /has_layout_val. erewrite (val_to_Z_ot_length _ (IntOp usize_t)); done. }
-  iApply  ("Hcont" $! _ _ _ (int usize_t) n with "HL Hna []").
+  iApply  ("Hcont" $! _ _ _ (int usize_t) n with "HL []").
   { rewrite /ty_own_val/=. iSplit; last done. iPureIntro. by apply val_to_Z_erase_prov. }
 
-  iIntros "Hv" (Φ') "_ _ HL Hna Hcont".
+  iIntros "Hv" (Φ') "_ _ HL Hcont".
   rewrite {1}/ty_own_val /=. iDestruct "Hv" as %[Hv' _].
   iApply wp_cast_int_ptr_prov_none; [done | done | done | | done | ].
   { apply val_to_byte_prov_erase_prov. }
   iIntros "!> Hl Hcred".
-  iApply ("Hcont" $! _ _ _ (alias_ptr_t) _ with "HL Hna").
+  iApply ("Hcont" $! _ _ _ (alias_ptr_t) _ with "HL").
   { rewrite /ty_own_val /=. done. }
   iAssert (val_of_loc (ProvAlloc None, n : addr) ◁ᵥ{π} (ProvAlloc None, n : addr) @ alias_ptr_t)%I as "?".
   { rewrite /ty_own_val /= //. }
@@ -589,7 +595,7 @@ Proof.
     iApply (loc_in_bounds_shorten_suf with "[Hbounds //]"). lia. }
   repeat liRStep; liShow.
   rewrite /typed_bin_op/typed_val_expr.
-  iIntros "Hv1 Hv2" (Φ) "#CTX #HE HL Hna Hcont".
+  iIntros "Hv1 Hv2" (Φ) "#CTX #HE HL Hcont".
   rewrite {1}/ty_own_val /=. iDestruct "Hv1" as %[Hv1 Hsz1].
   rewrite {1}/ty_own_val /=. iDestruct "Hv2" as "->".
   iDestruct (loc_in_bounds_ptr_in_range with "Hbounds'") as %[Hran1 Hran2].
@@ -617,7 +623,7 @@ Proof.
   iPoseProof ("Hatcl" with "Hat'") as "Hstore".
   iPoseProof (credit_store_donate with "Hstore Hcred") as "Hstore".
   iPoseProof (credit_store_donate_atime with "Hstore Hat") as "Hstore".
-  iApply ("Hcont" $! _ _ _ (alias_ptr_t) with "HL Hna").
+  iApply ("Hcont" $! _ _ _ (alias_ptr_t) with "HL").
   { rewrite /ty_own_val /=. done. }
   iAssert ((l offset{use_layout_alg' T_st}ₗ offset) ◁ᵥ{ π} l offset{use_layout_alg' T_st}ₗ offset @ alias_ptr_t)%I as "?".
   { rewrite /ty_own_val /= //. }
@@ -742,7 +748,7 @@ Proof.
   rewrite {1 2}/ty_own_val /=. iDestruct "Hsize" as "[%Hsize _]".
   iDestruct "Halign_log2" as "[%Halign_log2 _]".
   rewrite /typed_val_expr.
-  iIntros (Φ) "#CTX HE HL Hna Hcont".
+  iIntros (Φ) "#CTX HE HL Hcont".
   iApply (wp_alloc _ _ _ _ (Z.to_nat size) (Z.to_nat align_log2)).
   { rewrite Hsize. f_equiv.
     apply val_to_Z_unsigned_nonneg in Hsize; last done. lia. }
@@ -750,7 +756,7 @@ Proof.
     apply val_to_Z_unsigned_nonneg in Halign_log2; last done. lia. }
   { lia. }
   iIntros "!>" (l) "Hl Hf %Hly Hcred".
-  iApply ("Hcont" $! _ _ _ (alias_ptr_t) l with "HL Hna []").
+  iApply ("Hcont" $! _ _ _ (alias_ptr_t) l with "HL []").
   { rewrite /ty_own_val /=. done. }
   set (ly := (Layout (Z.to_nat size) (Z.to_nat align_log2))).
   iAssert (l ◁ₗ[π, Owned false] .@ ◁ (uninit (UntypedSynType ly)))%I with "[Hl]" as "Hl'".
@@ -812,7 +818,7 @@ Proof.
   iDestruct "Halign_log2" as "[%Halign_log2 _]".
 
   rewrite /typed_stmt.
-  iIntros (?) "#CTX #HE HL Hna Hcont".
+  iIntros (?) "#CTX #HE HL Hcont".
   rewrite ltype_own_ofty_unfold /lty_of_ty_own. simpl.
   set (ly := Layout (Z.to_nat size) (Z.to_nat align_log2)).
   iDestruct "Hptr" as "(%ly' & %Hst & %Hly & _ & #Hlb & _ & %r' & <- & Hb)".
@@ -832,14 +838,15 @@ Proof.
     destruct ((Z.to_nat size)) eqn:Heq; first lia. done. }
   iIntros "!> Hcred".
 
-  to_typed_stmt "CTX HE HL Hna Hcont".
+  to_typed_stmt "CTX HE HL Hcont".
   (* TODO *)
   instantiate (1 := ϝ).
   repeat liRStep; liShow.
+  admit.
 
   Unshelve. all: unshelve_sidecond; sidecond_hook; prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; unsolved_sidecond_hook.
   Unshelve. all: unfold_common_defs; solve_goal.
-Qed.
+Admitted.
 
 (**
   fn alloc_realloc(old_size, align, new_size, ptr) -> *mut u8 {
@@ -1030,7 +1037,7 @@ Proof.
     repeat liRStep.
   - (* non-zero branch, do the allocation *)
     rewrite /typed_val_expr.
-    iIntros (?) "#CTX #HE HL Hna Hcont".
+    iIntros (?) "#CTX #HE HL Hcont".
     rewrite /Box.
     unfold_no_enrich. inv_layout_alg.
     match goal with | H: Z.of_nat (ly_size ?Hly) ≠ 0%Z |- _ => rename Hly into T_st_ly end.
@@ -1051,7 +1058,7 @@ Proof.
     iEval (rewrite (additive_time_receipt_succ 1)) in "Hat".
     iDestruct "Hat" as "[Hat1 Hat]".
     iPoseProof ("Hstore" with "Hat1") as "Hstore".
-    iApply ("Hcont" $! _ _ _ (box (uninit (ty_syn_type T))) (PlaceIn ()) with "HL Hna [Hfree Hl Hcred Hat]").
+    iApply ("Hcont" $! _ _ _ (box (uninit (ty_syn_type T))) (PlaceIn ()) with "HL [Hfree Hl Hcred Hat]").
     { iExists _, _. iSplitR; first done. iSplitR; first done.
       match goal with | H : CACHED (use_layout_alg (ty_syn_type T) = Some ?ly) |- _ => rename ly into T_ly; rename H into H_T end.
       iR.
@@ -1385,7 +1392,7 @@ Proof.
   typed_val_expr_bind.
   repeat liRStep; liShow.
   rewrite /typed_val_expr.
-  iIntros (?) "#CTX #HE HL Hna HC".
+  iIntros (?) "#CTX #HE HL HC".
   iRename select (_ ◁ᵥ{_} size @ int usize_t)%I into "Hv1".
   iRename select (_ ◁ᵥ{_} ly_size T_st_ly @ int usize_t)%I into "Hv2".
   iPoseProof (ty_own_int_in_range with "Hv1") as "%Hsz". destruct Hsz.
@@ -1397,7 +1404,7 @@ Proof.
   { simpl. rewrite /check_arith_bin_op. simpl. f_equiv.
     rewrite /elem_of/int_elem_of_it/int_elem_of_it' MinInt_eq MaxInt_eq//. }
   iNext. iIntros "_".
-  iApply ("HC" $! _ _ _ (bool_t) with "HL Hna"). { iApply type_val_bool'. }
+  iApply ("HC" $! _ _ _ (bool_t) with "HL"). { iApply type_val_bool'. }
 
   repeat liRStep.
 

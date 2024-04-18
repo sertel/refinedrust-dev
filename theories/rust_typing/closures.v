@@ -63,7 +63,7 @@ Section function_subsume.
     rewrite /typed_function.
     iIntros (κs b ϝ) "!>".
     iIntros (Hargly Hlocally lsa lsv).
-    iIntros "(Hcred & Hargs & Hlocals & Hpre)".
+    iIntros "(Hcred & Hna & Hargs & Hlocals & Hpre)".
     iSpecialize ("Ha" $! κs).
     iDestruct "Ha" as "(%Helctx & Ha)".
     iSpecialize ("Ha" $! b with "Hpre").

@@ -434,8 +434,8 @@ Section judgments.
   (** Typing of value expressions (unfolding [typed_value] for easier usage) *)
   Definition typed_val_expr_cont_t := llctx → val → ∀ (rt : Type), type rt → rt → iProp Σ.
   Definition typed_val_expr π (E : elctx) (L : llctx) (e : expr) (T : typed_val_expr_cont_t) : iProp Σ :=
-    (∀ Φ, rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
-      (∀ L' v rt (ty : type rt) r, llctx_interp L' -∗ na_own π shrE -∗ v ◁ᵥ{π} r @ ty -∗ T L' v rt ty r -∗ Φ v) -∗
+    (∀ Φ, rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
+      (∀ L' v rt (ty : type rt) r, llctx_interp L' -∗ v ◁ᵥ{π} r @ ty -∗ T L' v rt ty r -∗ Φ v) -∗
     WP e {{ Φ }}).
 
   (** Typing of binary op expressions *)
@@ -652,8 +652,6 @@ Section judgments.
   Definition typed_stmt_post_cond (π : thread_id) (L : llctx) (fn : runtime_function) (R : typed_stmt_R_t) (v : val) : iProp Σ :=
     ((* return ownership of the stack *)
      ([∗ list] l ∈ (fn.(rf_locs)), l.1 ↦|l.2|) ∗
-     (* return the non-atomic token *)
-     na_own π shrE ∗
      (* continuation *)
      R v L)%I.
 
@@ -665,10 +663,9 @@ Section judgments.
   *)
   Definition typed_stmt (π : thread_id) (E : elctx) (L : llctx) (s : stmt) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
     (∀ (Φ : val → iProp Σ),
-      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (∀ L' (v : val),
         llctx_interp L' -∗
-        na_own π shrE -∗
         ([∗ list] l ∈ (fn.(rf_locs)), l.1 ↦|l.2|) -∗
         R v L' -∗
         Φ v) -∗
@@ -679,11 +676,10 @@ Section judgments.
   (* [P] is an invariant on the context. *)
   Definition typed_block (π : thread_id) (P : elctx → llctx → iProp Σ) (b : label) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
     (∀ Φ E L,
-      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       P E L -∗
       (∀ L' (v : val),
         llctx_interp L' -∗
-        na_own π shrE -∗
         ([∗ list] l ∈ (fn.(rf_locs)), l.1 ↦|l.2|) -∗
         R v L' -∗
         Φ v) -∗
@@ -691,7 +687,7 @@ Section judgments.
 
   (** for all succeeding statements [s], assuming that [v] has type [ty], it can be converted to a non-zero integer *)
   Definition typed_assert (π : thread_id) (E : elctx) (L : llctx) (v : val) {rt} (ty : type rt) (r : rt) (s : stmt) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
-    (rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗ v ◁ᵥ{π} r @ ty -∗ ⌜val_to_bool v = Some true⌝ ∗ llctx_interp L ∗ na_own π shrE ∗ typed_stmt π E L s fn R ϝ)%I.
+    (rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ v ◁ᵥ{π} r @ ty -∗ ⌜val_to_bool v = Some true⌝ ∗ llctx_interp L ∗ typed_stmt π E L s fn R ϝ)%I.
   Class TypedAssert (π : thread_id) (E : elctx) (L : llctx) (v : val) {rt} (ty : type rt) (r : rt) : Type :=
     typed_assert_proof s fn R ϝ : iProp_to_Prop (typed_assert π E L v ty r s fn R ϝ).
 
@@ -843,8 +839,8 @@ Section judgments.
 
   Class IntoPlaceCtx π E (e : expr) (T : llctx → (llctx → list place_ectx_item → loc → iProp Σ) → iProp Σ) :=
     into_place_ctx Φ Φ':
-    (⊢ ∀ L, rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗ T L Φ' -∗
-      (∀ L' K l, llctx_interp L' -∗ na_own π shrE -∗ Φ' L' K l -∗ place_to_wp π K (Φ ∘ val_of_loc) l) -∗
+    (⊢ ∀ L, rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ T L Φ' -∗
+      (∀ L' K l, llctx_interp L' -∗ Φ' L' K l -∗ place_to_wp π K (Φ ∘ val_of_loc) l) -∗
         WP e {{ Φ }}).
 
   Section find_place_ctx_correct.
@@ -854,7 +850,7 @@ Section judgments.
     IntoPlaceCtx π E (W.to_expr e) T.
   Proof.
     elim: e T => //= *.
-    all: iIntros (Φ Φ' L) "#LFT #HE HL Hna HT HΦ'".
+    all: iIntros (Φ Φ' L) "#LFT #HE HL HT HΦ'".
     all: iApply ewp_fupd.
     2,3: case_match.
     all: try match goal with
@@ -863,25 +859,25 @@ Section judgments.
     all: try match goal with
     |  H : context [IntoPlaceCtx _ _ _ _ ] |- _ => rename H into IH
     end.
-    1: iApply @wp_value; by iApply ("HΦ'" with "HL Hna HT").
+    1: iApply @wp_value; by iApply ("HΦ'" with "HL HT").
     1: {
-      iApply ("HT" with "LFT HE HL Hna"). iIntros (L' rt ty v r) "HL Hna Hv HT".
+      iApply ("HT" with "LFT HE HL"). iIntros (L' rt ty v r) "HL Hv HT".
       iDestruct ("HT" with "Hv") as (l ?) "HT". subst.
-        by iApply ("HΦ'" $! _ [] with "HL Hna HT").
+        by iApply ("HΦ'" $! _ [] with "HL HT").
     }
     4: {
-      rewrite /LValue. iApply ("HT" with "LFT HE HL Hna"). iIntros (L' rt ty v r) "HL Hna Hv HT".
+      rewrite /LValue. iApply ("HT" with "LFT HE HL"). iIntros (L' rt ty v r) "HL Hv HT".
       iDestruct ("HT" with "Hv") as (l ?) "HT". subst.
-      by iApply ("HΦ'" $! _ [] with "HL Hna").
+      by iApply ("HΦ'" $! _ [] with "HL").
     }
     2: wp_bind. 1: rewrite -!/(W.to_expr _).
-    2: iApply ("HT" with "LFT HE HL Hna"); iIntros (L' v rt ty r) "HL Hna Hv HT".
-    2: iDestruct (IH with "LFT HE HL Hna HT") as "HT" => //.
+    2: iApply ("HT" with "LFT HE HL"); iIntros (L' v rt ty r) "HL Hv HT".
+    2: iDestruct (IH with "LFT HE HL HT") as "HT" => //.
     2: fold W.to_expr.
-    1, 3-8: iDestruct (IH with "LFT HE HL Hna HT") as " HT" => //.
+    1, 3-8: iDestruct (IH with "LFT HE HL HT") as " HT" => //.
     all: wp_bind; iApply "HT".
-    all: iIntros (L'' K l) "HL Hna HT" => /=.
-    all: iDestruct ("HΦ'" with "HL Hna HT") as "HΦ"; rewrite place_to_wp_app /=.
+    all: iIntros (L'' K l) "HL HT" => /=.
+    all: iDestruct ("HΦ'" with "HL HT") as "HΦ"; rewrite place_to_wp_app /=.
     all: iApply (place_to_wp_mono with "HΦ"); iIntros (l') "HWP" => /=.
     8: iApply (@wp_wand with "[Hv HWP]"); first by iApply "HWP".
     1-7: iApply (@wp_wand with "HWP").
@@ -2531,7 +2527,7 @@ Section judgments.
   Definition typed_read_cont_t : Type := llctx → val → ∀ rt : Type, type rt → rt → iProp Σ.
   Definition typed_read (π : thread_id) (E : elctx) (L : llctx) (e : expr) (ot : op_type) (T : typed_read_cont_t) : iProp Σ :=
     (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (∀ (l : loc),
         (* the client gets ownership of the read value and fractional ownership of the location *)
         (* this is below a logical step in order to execute stratification here.
@@ -2543,7 +2539,7 @@ Section judgments.
               l ↦{q} v -∗
               v ◁ᵥ{π} r @ ty ={F}=∗
               ∃ L' rt' (ty' : type rt') r',
-                llctx_interp L' ∗ na_own π shrE ∗
+                llctx_interp L' ∗
                 mem_cast v ot st ◁ᵥ{π} r' @ ty' ∗
                 T L' (mem_cast v ot st) rt' ty' r')) -∗
         (* under this knowledge, the client has to prove the postcondition *)
@@ -2563,7 +2559,7 @@ Section judgments.
     llctx → val → ∀ rt3, type rt3 → rt3 → ∀ rt', ltype rt' → place_rfn rt' → access_result rt rt' → iProp Σ.
   Definition typed_read_end (π : thread_id) (E : elctx) (L : llctx) (l : loc) {rt} (lt : ltype rt) (r : place_rfn rt) (b2 bmin : bor_kind) (ac : access_allowed) (ot : op_type) (T : typed_read_end_cont_t rt) : iProp Σ :=
     (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       bmin ⊑ₖ b2 -∗
       (* given ownership of the read location *)
       l ◁ₗ[π, b2] r @ lt ={F}=∗
@@ -2583,7 +2579,7 @@ Section judgments.
           ∃ (L' : llctx) (rt3 : Type) (ty3 : type rt3) r3,
             (mem_cast v ot st) ◁ᵥ{π} r3 @ ty3 ∗
             (* and the lifetime context *)
-            llctx_interp L' ∗ na_own π shrE ∗
+            llctx_interp L' ∗
             (∃ rt' (lt' : ltype rt') (r' : place_rfn rt') res,
               (* and the remaining ownership for the location *)
               l ◁ₗ[π, b2] r' @ lt' ∗
@@ -2606,7 +2602,7 @@ Section judgments.
   Definition typed_write_cont_t : Type := llctx → iProp Σ.
   Definition typed_write (π : thread_id) (E : elctx) (L : llctx) (e : expr) (ot : op_type) (v : val) {rt} (ty : type rt) (r : rt) (T : typed_write_cont_t) : iProp Σ :=
     (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (* provided by the client: for any location l... *)
       (∀ (l : loc),
         (* we can hand out ownership to [l], and when the client has written [v] to it,
@@ -2620,7 +2616,7 @@ Section judgments.
           (* then it gets access to l *)
           l ↦|ot_layout ot| ∗
           (* and after having written v to it, it gets access to T *)
-          logical_step F (l ↦ v ={F}=∗ ∃ L', llctx_interp L' ∗ na_own π shrE ∗ T L'))) -∗
+          logical_step F (l ↦ v ={F}=∗ ∃ L', llctx_interp L' ∗ T L'))) -∗
         Φ (val_of_loc l)) -∗
       (* TODO: maybe different mask F *)
       WP e {{ Φ }})%I.
@@ -2633,7 +2629,7 @@ Section judgments.
   Definition typed_write_end_cont_t rt2 := llctx → ∀ rt3 : Type, type rt3 → rt3 → access_result rt2 rt3 → iProp Σ.
   Definition typed_write_end (π : thread_id) (E : elctx) (L : llctx) (ot : op_type) (v1 : val) {rt1} (ty1 : type rt1) (r1 : rt1) (b2 bmin : bor_kind) (ac : access_allowed) (l2 : loc) {rt2} (lt2 : ltype rt2) (r2 : place_rfn rt2) (T : typed_write_end_cont_t rt2) : iProp Σ :=
     (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       bmin ⊑ₖ b2 -∗
       (* given ownership of the written-to location *)
       l2 ◁ₗ[π, b2] r2 @ lt2 -∗
@@ -2648,7 +2644,6 @@ Section judgments.
       logical_step F (l2 ↦ v1 ={F}=∗
         ((∃ L' (rt3 : Type) (ty3 : type rt3) (r3 : rt3) res,
         llctx_interp L' ∗
-        na_own π shrE ∗
         (* [l2] is typed at a new type [ty3] satisfying the postcondition *)
         l2 ◁ₗ[π, b2] PlaceIn r3 @ (◁ ty3) ∗
         ⌜ltype_st lt2 = ty_syn_type ty3⌝ ∗
@@ -2673,7 +2668,7 @@ Section judgments.
   Definition typed_borrow_mut_cont_t := llctx → val → gname → ∀ (rt : Type), type rt → rt → iProp Σ.
   Definition typed_borrow_mut (π : thread_id) (E : elctx) (L : llctx) (e : expr) (κ : lft) (ty_annot : option rust_type) (T : typed_borrow_mut_cont_t) : iProp Σ :=
     (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+      rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (* for any location provided to the client *)
       (∀ (l : loc),
         (* and a time receipt we provide for generating our credits *)
@@ -2695,7 +2690,6 @@ Section judgments.
           loc_in_bounds l 0 (ly.(ly_size)) ∗ ty_sidecond ty ∗
           (* + the condition T *)
           llctx_interp L' ∗
-          na_own π shrE ∗
           T L' (val_of_loc l) γ rt ty r) -∗
           Φ (val_of_loc l)) -∗
       WP e {{ Φ }})%I.
@@ -2703,7 +2697,7 @@ Section judgments.
   Definition typed_borrow_mut_end_cont_t rt := gname → ltype rt → place_rfn rt → iProp Σ.
   Definition typed_borrow_mut_end (π : thread_id) (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : place_rfn rt) (b2 bmin : bor_kind) (T : typed_borrow_mut_end_cont_t rt) : iProp Σ :=
     (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
     bmin ⊑ₖ b2 -∗
     (* given ownership of the location we borrow from *)
     (* TODO should we require a PlaceIn refinement here? *)
@@ -2718,7 +2712,7 @@ Section judgments.
     (* and a proof that we can unblock again *)
     typed_place_cond bmin (◁ ty) (BlockedLtype ty κ) r (PlaceGhost γ) ∗
     (* and the context and postco *)
-    llctx_interp L ∗ na_own π shrE ∗
+    llctx_interp L ∗
     T γ (BlockedLtype ty κ) (PlaceGhost γ)).
   Class TypedBorrowMutEnd π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : place_rfn rt) (b2 bmin : bor_kind) : Type :=
     typed_borrow_mut_end_proof T : iProp_to_Prop (typed_borrow_mut_end π E L κ l ty r b2 bmin T).
@@ -2734,7 +2728,7 @@ Section judgments.
   Definition typed_borrow_shr_cont_t := llctx → val → ∀ (rt : Type), type rt → place_rfn rt → iProp Σ.
   Definition typed_borrow_shr π (E : elctx) (L : llctx) (e : expr) (κ : lft) (ty_annot : option rust_type) (T : typed_borrow_shr_cont_t) : iProp Σ :=
     (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (* for any location provided to the client... *)
       (∀ (l : loc),
       (* the client needs to prove the postcondition, assuming shared ownership after an update *)
@@ -2748,7 +2742,7 @@ Section judgments.
           ⌜l `has_layout_loc` ly⌝ ∗
           loc_in_bounds l 0 (ly.(ly_size)) ∗ ty.(ty_sidecond) ∗
           (* as well as the condition T *)
-          llctx_interp L' ∗ na_own π shrE ∗
+          llctx_interp L' ∗
           T L' (val_of_loc l) rt ty r)) -∗
         Φ (val_of_loc l)) -∗
       WP e {{ Φ }})%I.
@@ -2756,7 +2750,7 @@ Section judgments.
   Definition typed_borrow_shr_end_cont_t rt := ltype rt → place_rfn rt → iProp Σ.
   Definition typed_borrow_shr_end π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : place_rfn rt) (b2 bmin : bor_kind) (T : typed_borrow_shr_end_cont_t rt) : iProp Σ :=
     (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
     bmin ⊑ₖ b2 -∗
     (* given ownership of the location we borrow from
 
@@ -2779,7 +2773,6 @@ Section judgments.
     typed_place_cond bmin (◁ ty) lt (r) (r)  ∗
     (* and the context and postco *)
     llctx_interp L ∗
-    na_own π shrE ∗
     T lt (r))).
   Class TypedBorrowShrEnd π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : place_rfn rt) (b2 bmin : bor_kind) : Type :=
     typed_borrow_shr_end_proof T : iProp_to_Prop (typed_borrow_shr_end π E L κ l ty r b2 bmin T).
@@ -2789,14 +2782,13 @@ Section judgments.
   Definition typed_addr_of_mut_cont_t := llctx → val → ∀ (rt : Type), type rt → rt → iProp Σ.
   Definition typed_addr_of_mut π (E : elctx) (L : llctx) (e : expr) (T : typed_addr_of_mut_cont_t) : iProp Σ :=
     (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
     (* for any location provided to the client *)
     (∀ (l : loc),
       logical_step F (
         ∃ L' (rt : Type) (ty : type rt) (r : rt),
         l ◁ᵥ{π} r @ ty ∗
         llctx_interp L' ∗
-        na_own π shrE ∗
         T L' (val_of_loc l) rt ty r) -∗
         Φ (val_of_loc l)) -∗
     WP e {{ Φ }})%I.
@@ -2807,7 +2799,7 @@ Section judgments.
   Definition typed_addr_of_mut_end_cont_t := llctx → ∀ rt0, type rt0 → rt0 → ∀ rt', ltype rt' → place_rfn rt' → iProp Σ.
   Definition typed_addr_of_mut_end (π : thread_id) (E : elctx) (L : llctx) (l : loc) {rt} (lt : ltype rt) (r : place_rfn rt) (b2 bmin : bor_kind) (T : typed_addr_of_mut_end_cont_t) : iProp Σ :=
     (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
-    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ na_own π shrE -∗
+    rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
     bmin ⊑ₖ b2 -∗
     (* given ownership of the location we borrow from *)
     l ◁ₗ[π, b2] r @ lt -∗
@@ -2826,7 +2818,6 @@ Section judgments.
     ⌜ltype_st lt' = ltype_st lt⌝ ∗
     (* and the context and postco *)
     llctx_interp L' ∗
-    na_own π shrE ∗
     T L' rt0 ty0 r0 rt' lt' r')).
   Class TypedAddrOfMutEnd (π : thread_id) (E : elctx) (L : llctx) (l : loc) {rt} (lt : ltype rt) (r : place_rfn rt) (b2 bmin : bor_kind) : Type :=
     typed_addr_of_mut_end_proof T : iProp_to_Prop (typed_addr_of_mut_end π E L l lt r b2 bmin T).

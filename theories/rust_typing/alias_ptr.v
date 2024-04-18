@@ -260,7 +260,7 @@ Section alias_ltype.
     (⌜l2 = l⌝ -∗ T L _ (alias_ptr_t) l2 _ (AliasLtype rt st l2) r)
     ⊢ typed_addr_of_mut_end π E L l (AliasLtype rt st l2) r b2 bmin T.
   Proof.
-    iIntros "HT". iIntros (????) "#CTX #HE HL Hna Hincl Hl".
+    iIntros "HT". iIntros (????) "#CTX #HE HL Hincl Hl".
     rewrite ltype_own_alias_unfold /alias_lty_own. destruct b2 as [wl | | ]; [| | done].
     - iDestruct "Hl" as "(%ly & %Hst & -> & %Hly & #Hlb & Hcred)".
       iSpecialize ("HT" with "[//]").
@@ -294,7 +294,7 @@ Section alias_ltype.
     ⊢ typed_addr_of_mut_end π E L l lt #r (Owned wl) bmin T.
   Proof.
     iIntros (Hopen) "Hvs".
-    iIntros (????) "#CTX #HE HL Hna Hincl Hl".
+    iIntros (????) "#CTX #HE HL Hincl Hl".
     iApply fupd_logical_step.
     iMod (ltype_owned_openable_elim_logstep with "Hl") as "(Hl & Hs)"; first done.
     iApply logical_step_fupd.
@@ -318,7 +318,7 @@ Section alias_ltype.
   Proof.
     iIntros (Hopen). rewrite /lctx_lft_alive_count_goal.
     iDestruct 1 as (κs L2) "(%Hcount & HT)".
-    iIntros (????) "#CTX #HE HL Hna Hincl Hl".
+    iIntros (????) "#CTX #HE HL Hincl Hl".
     iPoseProof (ltype_own_has_layout with "Hl") as "(%ly & %Halg & %Hly)".
     iPoseProof (ltype_own_loc_in_bounds with "Hl") as "#Hlb"; first done.
     iApply fupd_logical_step.
