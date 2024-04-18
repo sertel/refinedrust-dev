@@ -1119,22 +1119,25 @@ pub fn get_filtered_functions(env: &Environment<'_>) -> Vec<LocalDefId> {
     let functions_with_spec: Vec<_> = functions
         .into_iter()
         .filter(|id| {
-            let mut prove = false;
-            if env.has_any_tool_attribute(id.to_def_id()) {
-                prove = true;
-                if env.has_tool_attribute(id.to_def_id(), "skip") {
-                    warn!("Function {:?} will be skipped due to a rr::skip annotation", id);
-                    prove = false;
-                } else {
-                    if let Some(impl_did) = env.tcx().impl_of_method(id.to_def_id()) {
-                        if env.has_tool_attribute(impl_did, "skip") {
-                            warn!("Function {:?} will be skipped due to a rr::skip annotation on impl", id);
-                            prove = false;
-                        }
-                    }
-                }
+            if !env.has_any_tool_attribute(id.to_def_id()) {
+                return false;
             }
-            prove
+
+            if env.has_tool_attribute(id.to_def_id(), "skip") {
+                warn!("Function {:?} will be skipped due to a rr::skip annotation", id);
+                return false;
+            }
+
+            let Some(impl_did) = env.tcx().impl_of_method(id.to_def_id()) else {
+                return true;
+            };
+
+            if env.has_tool_attribute(impl_did, "skip") {
+                warn!("Function {:?} will be skipped due to a rr::skip annotation on impl", id);
+                return false;
+            }
+
+            return true;
         })
         .collect();
 

@@ -2656,23 +2656,24 @@ impl CoqParam {
         Self::new(CoqName::Named(name), self.ty.clone(), self.implicit)
     }
 
+    #[allow(clippy::collapsible_else_if)]
     pub fn format(&self, f: &mut Formatter, make_implicits: bool) -> fmt::Result {
-        if self.implicit {
-            if make_implicits {
-                if let CoqName::Named(ref name) = self.name {
-                    write!(f, "`{{{} : !{}}}", name, self.ty)
-                } else {
-                    write!(f, "`{{!{}}}", self.ty)
-                }
+        if !self.implicit {
+            return write!(f, "({} : {})", self.name, self.ty);
+        }
+
+        if make_implicits {
+            if let CoqName::Named(ref name) = self.name {
+                write!(f, "`{{{} : !{}}}", name, self.ty)
             } else {
-                if let CoqName::Named(ref name) = self.name {
-                    write!(f, "`({} : !{})", name, self.ty)
-                } else {
-                    write!(f, "`(!{})", self.ty)
-                }
+                write!(f, "`{{!{}}}", self.ty)
             }
         } else {
-            write!(f, "({} : {})", self.name, self.ty)
+            if let CoqName::Named(ref name) = self.name {
+                write!(f, "`({} : !{})", name, self.ty)
+            } else {
+                write!(f, "`(!{})", self.ty)
+            }
         }
     }
 }
