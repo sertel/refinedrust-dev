@@ -50,70 +50,64 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
 
     /// Get all successors of the basic block (ignoring unwinding).
     fn successors_of_bb(&self, bb: &BasicBlockData<'tcx>) -> Vec<BasicBlock> {
-        let mut res = Vec::new();
-        if let Some(ref term) = bb.terminator {
-            match &term.kind {
-                TerminatorKind::Call {
-                    func: _,
-                    args: _,
-                    destination: _,
-                    target,
-                    ..
-                } => {
-                    if let Some(target) = target {
-                        res.push(*target);
-                    }
-                },
-                TerminatorKind::Drop {
-                    place: _,
-                    target,
-                    unwind: _,
-                    replace: _,
-                } => {
-                    res.push(*target);
-                },
-                TerminatorKind::SwitchInt { discr: _, targets } => {
-                    for target in targets.all_targets() {
-                        res.push(*target);
-                    }
-                },
-                TerminatorKind::Goto { target } => {
-                    res.push(*target);
-                },
-                TerminatorKind::Assert {
-                    cond: _,
-                    expected: _,
-                    msg: _,
-                    target,
-                    unwind: _,
-                } => {
-                    res.push(*target);
-                },
-                TerminatorKind::Yield {
-                    value: _,
-                    resume,
-                    resume_arg: _,
-                    drop: _,
-                } => {
-                    res.push(*resume);
-                },
-                TerminatorKind::InlineAsm {
-                    template: _,
-                    operands: _,
-                    options: _,
-                    line_spans: _,
-                    destination,
-                    unwind: _,
-                } => {
-                    if let Some(dest) = destination {
-                        res.push(*dest);
-                    }
-                },
-                _ => (),
-            }
+        let mut v = Vec::new();
+
+        let Some(ref term) = bb.terminator else {
+            return v;
+        };
+
+        match &term.kind {
+            TerminatorKind::Call {
+                func: _,
+                args: _,
+                destination: _,
+                target: Some(target),
+                ..
+            } => v.push(*target),
+
+            TerminatorKind::Drop {
+                place: _,
+                target,
+                unwind: _,
+                replace: _,
+            } => v.push(*target),
+
+            TerminatorKind::SwitchInt { discr: _, targets } => {
+                for target in targets.all_targets() {
+                    v.push(*target);
+                }
+            },
+
+            TerminatorKind::Goto { target } => v.push(*target),
+
+            TerminatorKind::Assert {
+                cond: _,
+                expected: _,
+                msg: _,
+                target,
+                unwind: _,
+            } => v.push(*target),
+
+            TerminatorKind::Yield {
+                value: _,
+                resume,
+                resume_arg: _,
+                drop: _,
+            } => v.push(*resume),
+
+            TerminatorKind::InlineAsm {
+                template: _,
+                operands: _,
+                options: _,
+                line_spans: _,
+                destination: Some(destination),
+                unwind: _,
+            } => v.push(*destination),
+
+            _ => (),
         }
 
-        res
+        v
     }
 
     pub fn analyze(&mut self) {
