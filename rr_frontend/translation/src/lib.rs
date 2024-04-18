@@ -48,6 +48,7 @@ mod function_body;
 mod inclusion_tracker;
 mod shim_registry;
 mod spec_parsers;
+mod trait_registry;
 mod traits;
 mod type_translator;
 mod tyvars;
@@ -66,6 +67,7 @@ use spec_parsers::{
     module_attr_parser as mod_parser,
 };
 use topological_sort::TopologicalSort;
+use trait_registry::TraitRegistry;
 use type_translator::{normalize_in_function, TypeTranslator};
 
 /// Order ADT definitions topologically.
@@ -102,6 +104,7 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
     procedure_registry: ProcedureScope<'rcx>,
     const_registry: ConstScope<'rcx>,
     type_translator: &'rcx TypeTranslator<'rcx, 'tcx>,
+    trait_registry: &'rcx TraitRegistry<'tcx, 'rcx>,
     functions: &'rcx [LocalDefId],
     /// the second component determines whether to include it in the code file as well
     extra_imports: HashSet<(radium::CoqPath, bool)>,
@@ -1032,6 +1035,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                     proc,
                     &filtered_attrs,
                     &vcx.type_translator,
+                    &vcx.trait_registry,
                     &vcx.procedure_registry,
                     &vcx.const_registry,
                 )
@@ -1043,6 +1047,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                     proc,
                     &filtered_attrs,
                     &vcx.type_translator,
+                    &vcx.trait_registry,
                     &vcx.procedure_registry,
                     &vcx.const_registry,
                 )
@@ -1284,7 +1289,9 @@ where
     let struct_arena = Arena::new();
     let enum_arena = Arena::new();
     let shim_arena = Arena::new();
+    let trait_arena = Arena::new();
     let type_translator = TypeTranslator::new(env, &struct_arena, &enum_arena, &shim_arena);
+    let trait_registry = TraitRegistry::new(env, &trait_arena);
     let procedure_registry = ProcedureScope::new();
     let shim_string_arena = Arena::new();
     let mut shim_registry = shim_registry::ShimRegistry::empty(&shim_string_arena);
@@ -1317,6 +1324,7 @@ where
         env,
         functions: functions.as_slice(),
         type_translator: &type_translator,
+        trait_registry: &trait_registry,
         procedure_registry,
         extra_imports: imports.into_iter().map(|x| (x, false)).collect(),
         extra_dependencies: HashSet::new(),

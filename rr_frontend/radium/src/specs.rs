@@ -9,6 +9,7 @@ use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::{Display, Formatter, Write};
+use std::ops::Range;
 
 use indent_write::fmt::IndentWriter;
 
@@ -2683,6 +2684,8 @@ impl Display for CoqParam {
     }
 }
 
+// TODO: separate this into defining and using occurrence.
+// extra_link_assum should not be part of a using occurrence.
 /**
  * A Caesium function specification.
  */
@@ -2768,6 +2771,33 @@ impl<'def> FunctionSpec<'def> {
 
     pub const fn has_spec(&self) -> bool {
         self.has_spec
+    }
+
+    /// Uncurry the arguments of the function in the given range and make them into a single argument.
+    pub fn uncurry_args(mut self, r: Range<usize>) -> Self {
+        let end = r.end.min(self.args.len());
+        let start = r.start.min(self.args.len());
+        let r = start..end;
+
+        let mut new_args = Vec::new();
+        let mut collected = Vec::new();
+        for (i, ty) in self.args.into_iter().enumerate() {
+            if r.contains(&i) {
+                collected.push(ty);
+            } else {
+                if i > end {
+                    let take_these = std::mem::take(&mut collected);
+                    // make these into a tuple
+                    // TODO: wire up with typetranslator. maybe this should be moved somewhere there?
+
+                    new_args.extend(take_these.into_iter());
+                }
+                new_args.push(ty);
+            }
+        }
+
+        self.args = new_args;
+        self
     }
 
     fn uncurry_typed_binders<'a, F>(v: F) -> (CoqPattern, CoqType)

@@ -17,7 +17,7 @@ pub type Path = <RustcFacts as FactTypes>::Path;
 /// Error type used for the MIR to Caesium translation.
 //TODO: add location info based on Span
 #[derive(Clone, Debug)]
-pub enum TranslationError {
+pub enum TranslationError<'tcx> {
     UnsupportedFeature { description: String },
     UnsupportedType { description: String },
     Unimplemented { description: String },
@@ -30,4 +30,11 @@ pub enum TranslationError {
     UnknownAttributeParser(String),
     UnknownProcedure(String),
     TraitResolution(String),
+    TraitTranslation(crate::trait_registry::TraitRegistryError<'tcx>),
+}
+
+impl<'tcx> From<crate::trait_registry::TraitRegistryError<'tcx>> for TranslationError<'tcx> {
+    fn from(x: crate::trait_registry::TraitRegistryError<'tcx>) -> Self {
+        Self::TraitTranslation(x)
+    }
 }
