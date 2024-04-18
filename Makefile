@@ -2,7 +2,7 @@ COQ_PATH =	_build/lib/coq/user-contrib
 RUST_TARGET = $(shell rustc -vV | sed -n 's|host: ||p')
 RUST_PATH =	target/$(RUST_TARGET)/release
 
-CASE_STUDIES = case_studies/paper-examples case_studies/tests case_studies/minivec
+CASE_STUDIES = case_studies/paper_examples case_studies/tests case_studies/minivec
 
 ### Project setup
 setup-nix:
