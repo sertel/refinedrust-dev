@@ -156,7 +156,7 @@ impl<'tcx> Environment<'tcx> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
         // TODO: cache results
-        let (functions, _, _, _) = visitor.get_results();
+        let (functions, _, _, _, _) = visitor.get_results();
         functions
     }
 
@@ -165,7 +165,7 @@ impl<'tcx> Environment<'tcx> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
         // TODO: cache results
-        let (_, _, statics, _) = visitor.get_results();
+        let (_, _, statics, _, _) = visitor.get_results();
         statics
     }
 
@@ -174,7 +174,7 @@ impl<'tcx> Environment<'tcx> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
         // TODO: cache results
-        let (_, _, _, consts) = visitor.get_results();
+        let (_, _, _, consts, _) = visitor.get_results();
         consts
     }
 
@@ -183,8 +183,16 @@ impl<'tcx> Environment<'tcx> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
         // TODO: cache results
-        let (_, modules, _, _) = visitor.get_results();
+        let (_, modules, _, _, _) = visitor.get_results();
         modules
+    }
+
+    pub fn get_traits(&self) -> Vec<LocalDefId> {
+        let mut visitor = CollectPrustiSpecVisitor::new(self);
+        visitor.run();
+        // TODO: cache results
+        let (_, _, _, _, traits) = visitor.get_results();
+        traits
     }
 
     /// Get ids of Rust closures.
@@ -213,6 +221,21 @@ impl<'tcx> Environment<'tcx> {
     pub fn get_attributes(&self, def_id: DefId) -> &[Attribute] {
         // TODO: migrate to get_attrs
         self.tcx().get_attrs_unchecked(def_id)
+    }
+
+    /// Get tool attributes of this function, including selected attributes from the surrounding impl.
+    pub fn get_attributes_of_function<F>(&self, did: DefId, propagate_from_impl: F) -> Vec<&rustc_ast::ast::AttrItem> 
+        where F: for<'a> Fn(&'a rustc_ast::ast::AttrItem) -> bool
+    {
+        let attrs = self.get_attributes(did);
+        let mut filtered_attrs = crate::utils::filter_tool_attrs(attrs);
+        // also add selected attributes from the surrounding impl
+        if let Some(impl_did) = self.tcx().impl_of_method(did) {
+            let impl_attrs = self.get_attributes(impl_did);
+            let filtered_impl_attrs = crate::utils::filter_tool_attrs(impl_attrs);
+            filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_from_impl(x)));
+        }
+        filtered_attrs
     }
 
     /*

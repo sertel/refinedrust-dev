@@ -33,6 +33,24 @@ struct ShimFunctionEntry {
     spec: String,
 }
 
+/// A file entry for a trait shim.
+#[derive(Serialize, Deserialize)]
+struct ShimTraitEntry {
+    /// The rustc path for this symbol
+    path: Vec<String>,
+    /// a kind: always "trait"
+    kind: String,
+    /// name of the trait
+    name: String,
+    /// the Coq def name of the spec record
+    spec_record: String,
+    /// the Coq def name of the base spec
+    base_spec: String,
+    /// the Coq def name of spec subsumption relation
+    spec_subsumption: String,
+}
+
+/// A file entry for a trait method implementation.
 #[derive(Serialize, Deserialize)]
 struct ShimTraitMethodImplEntry {
     /// The rustc path for the trait
@@ -70,6 +88,7 @@ pub enum ShimKind {
     Function,
     TraitMethod,
     Adt,
+    Trait,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -114,6 +133,28 @@ impl Into<ShimTraitMethodImplEntry> for TraitMethodImplShim {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
+pub struct TraitShim<'a> {
+    pub path: Path<'a>,
+    pub name: String,
+    pub spec_record: String,
+    pub base_spec: String,
+    pub spec_subsumption: String,
+}
+
+impl<'a> Into<ShimTraitEntry> for TraitShim<'a> {
+    fn into(self) -> ShimTraitEntry {
+        ShimTraitEntry {
+            path: self.path.iter().map(|x| x.to_string()).collect(),
+            kind: "trait".to_string(),
+            name: self.name,
+            spec_record: self.spec_record,
+            base_spec: self.base_spec,
+            spec_subsumption: self.spec_subsumption,
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct AdtShim<'a> {
     pub path: Path<'a>,
     pub refinement_type: String,
@@ -150,6 +191,8 @@ pub struct ShimRegistry<'a> {
     trait_method_shims: Vec<TraitMethodImplShim>,
     /// adt shims
     adt_shims: Vec<AdtShim<'a>>,
+    /// trait shims
+    trait_shims: Vec<TraitShim<'a>>,
     /// extra imports
     imports: Vec<radium::specs::CoqPath>,
     /// extra module dependencies
@@ -165,6 +208,7 @@ impl<'a> ShimRegistry<'a> {
             "function" => Ok(ShimKind::Function),
             "method" => Ok(ShimKind::Method),
             "adt" => Ok(ShimKind::Adt),
+            "trait" => Ok(ShimKind::Trait),
             "trait_method" => Ok(ShimKind::TraitMethod),
             k => Err(format!("unknown kind {:?}", k)),
         }
@@ -185,6 +229,7 @@ impl<'a> ShimRegistry<'a> {
             function_shims: Vec::new(),
             trait_method_shims: Vec::new(),
             adt_shims: Vec::new(),
+            trait_shims: Vec::new(),
             imports: Vec::new(),
             depends: Vec::new(),
         }
@@ -294,6 +339,18 @@ impl<'a> ShimRegistry<'a> {
 
                 self.trait_method_shims.push(entry);
             }
+            else if kind == ShimKind::Trait {
+                let b: ShimTraitEntry = serde_json::value::from_value(i).map_err(|e| e.to_string())?;
+                let entry = TraitShim {
+                    path: self.intern_path(b.path),
+                    name: b.name,
+                    spec_record: b.spec_record,
+                    base_spec: b.base_spec,
+                    spec_subsumption: b.spec_subsumption,
+                };
+
+                self.trait_shims.push(entry);
+            }
         }
 
         Ok(())
@@ -309,6 +366,10 @@ impl<'a> ShimRegistry<'a> {
 
     pub fn get_adt_shims(&self) -> &[AdtShim] {
         &self.adt_shims
+    }
+
+    pub fn get_trait_shims(&self) -> &[TraitShim] {
+        &self.trait_shims
     }
 
     pub fn get_extra_imports(&self) -> &[radium::specs::CoqPath] {
@@ -330,6 +391,7 @@ pub fn write_shims<'a>(
     adt_shims: Vec<AdtShim<'a>>,
     function_shims: Vec<FunctionShim<'a>>,
     trait_method_shims: Vec<TraitMethodImplShim>,
+    trait_shims: Vec<TraitShim>,
 ) {
     let writer = BufWriter::new(f);
 
@@ -344,6 +406,10 @@ pub fn write_shims<'a>(
     }
     for x in trait_method_shims.into_iter() {
         let x: ShimTraitMethodImplEntry = x.into();
+        values.push(serde_json::to_value(x).unwrap());
+    }
+    for x in trait_shims.into_iter() {
+        let x: ShimTraitEntry = x.into();
         values.push(serde_json::to_value(x).unwrap());
     }
 

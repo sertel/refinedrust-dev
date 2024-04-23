@@ -976,7 +976,7 @@ pub struct Function<'def> {
     generic_types: Vec<LiteralTyParam>,
 
     /// Other functions that are used by this one.
-    other_functions: Vec<(String, String, Vec<Type<'def>>, Vec<SynType>)>,
+    other_functions: Vec<UsedProcedure<'def>>,
     /// Syntypes that we assume to be layoutable in the typing proof
     layoutable_syntys: Vec<SynType>,
     /// Custom tactics for the generated proof
@@ -1021,8 +1021,8 @@ impl<'def> Function<'def> {
             }
 
             // assume locations for other functions
-            for (loc_name, _, _, _) in self.other_functions.iter() {
-                write!(f, "({} : loc) ", loc_name)?;
+            for proc_use in self.other_functions.iter() {
+                write!(f, "({} : loc) ", proc_use.loc_name)?;
             }
 
             // assume locations for statics
@@ -1054,12 +1054,12 @@ impl<'def> Function<'def> {
         if self.other_functions.len() == 0 {
             write!(f, "⊢ ")?;
         } else {
-            for (loc_name, spec_name, param_insts, sts) in self.other_functions.iter() {
-                info!("Using other function: {:?} with insts: {:?}", spec_name, param_insts);
+            for proc_use in self.other_functions.iter() {
+                info!("Using other function: {:?} with insts: {:?}", proc_use.spec_name, proc_use.type_params);
                 // generate an instantiation for the generic type arguments, by getting the refinement types
                 // which need to be passed at the Coq level
                 let mut gen_rfn_type_inst = Vec::new();
-                for p in param_insts.iter() {
+                for p in proc_use.type_params.iter() {
                     // use an empty env, these should be closed in the current environment
                     let rfn = p.get_rfn_type(&[]);
                     gen_rfn_type_inst.push(format!("({})", rfn));
@@ -1067,15 +1067,15 @@ impl<'def> Function<'def> {
                     let st = p.get_syn_type();
                     gen_rfn_type_inst.push(format!("({})", st));
                 }
-                let arg_syntys: Vec<String> = sts.iter().map(|st| st.to_string()).collect();
+                let arg_syntys: Vec<String> = proc_use.syntype_of_all_args.iter().map(|st| st.to_string()).collect();
 
                 write!(
                     f,
                     "{} ◁ᵥ{{π}} {} @ function_ptr [{}] ({} {}) -∗\n",
-                    loc_name,
-                    loc_name,
+                    proc_use.loc_name,
+                    proc_use.loc_name,
                     arg_syntys.join("; "),
-                    spec_name,
+                    proc_use.spec_name,
                     gen_rfn_type_inst.join(" ")
                 )?;
             }
@@ -1085,7 +1085,7 @@ impl<'def> Function<'def> {
 
         // add arguments for the code definition
         let mut code_params: Vec<_> =
-            self.other_functions.iter().map(|(loc_name, _, _, _)| loc_name.clone()).collect();
+            self.other_functions.iter().map(|proc_use| proc_use.loc_name.clone()).collect();
         for names in self.generic_types.iter() {
             code_params.push(names.syn_type.clone());
         }
@@ -1293,6 +1293,29 @@ pub struct StaticMeta<'def> {
     pub ty: Type<'def>,
 }
 
+/// Information about another procedure this function uses
+#[derive(Clone, Debug)]
+pub struct UsedProcedure<'def> {
+    /// The name to use for the location parameter
+    pub loc_name: String,
+    /// The name of the specification definition
+    pub spec_name: String,
+    /// The type parameters to instantiate the spec with
+    pub type_params: Vec<Type<'def>>,
+    /// The syntactic types of all arguments
+    pub syntype_of_all_args: Vec<SynType>,
+}
+impl<'def> UsedProcedure<'def> {
+    pub fn new(loc_name: String, spec_name: String, type_params: Vec<Type<'def>>, syntypes_of_args: Vec<SynType>) -> Self {
+        Self {
+            loc_name,
+            spec_name,
+            type_params,
+            syntype_of_all_args: syntypes_of_args,
+        }
+    }
+}
+
 /// A CaesiumFunctionBuilder allows to incrementally construct the functions's code and the spec
 /// at the same time. It ensures that both definitions line up in the right way (for instance, by
 /// ensuring that other functions are linked up in a consistent way).
@@ -1301,15 +1324,14 @@ pub struct FunctionBuilder<'def> {
     pub spec: FunctionSpecBuilder<'def>,
     spec_name: String,
 
-    /// a sequence of other function names used by this function
-    /// (code_loc_name, spec_name, type parameter instantiation)
+    /// a sequence of other functions used by this function
     /// (Note that there may be multiple assumptions here with the same spec, if they are
     /// monomorphizations of the same function!)
-    other_functions: Vec<(String, String, Vec<Type<'def>>, Vec<SynType>)>,
+    other_functions: Vec<UsedProcedure<'def>>,
     /// name of this function
     function_name: String,
     /// generic types in scope for this function
-    generic_types: Vec<LiteralTyParam>,
+    pub generic_types: Vec<LiteralTyParam>,
     /// generic lifetimes
     generic_lifetimes: Vec<(Option<String>, Lft)>,
     /// Syntypes we assume to be layoutable in the typing proof
@@ -1346,12 +1368,9 @@ impl<'def> FunctionBuilder<'def> {
     /// Require another function to be available.
     pub fn require_function(
         &mut self,
-        loc_name: String,
-        spec_name: String,
-        params: Vec<Type<'def>>,
-        syntypes: Vec<SynType>,
+        proc_use: UsedProcedure<'def>,
     ) {
-        self.other_functions.push((loc_name, spec_name, params, syntypes));
+        self.other_functions.push(proc_use);
     }
 
     /// Require a static variable to be in scope.
@@ -1455,7 +1474,7 @@ impl<'def> FunctionBuilder<'def> {
 impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
     fn into(mut self) -> Function<'def> {
         // sort parameters for code
-        self.other_functions.sort_by(|a, b| a.0.cmp(&b.0));
+        self.other_functions.sort_by(|a, b| a.loc_name.cmp(&b.loc_name));
         //self.generic_types.sort_by(|a, b| a.rust_name.cmp(&b.rust_name));
         self.used_statics.sort_by(|a, b| a.ident.cmp(&b.ident));
 
@@ -1463,7 +1482,7 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
         let mut parameters: Vec<(CoqName, CoqType)> = self
             .other_functions
             .iter()
-            .map(|f_inst| (CoqName::Named(f_inst.0.to_string()), CoqType::Loc))
+            .map(|f_inst| (CoqName::Named(f_inst.loc_name.to_string()), CoqType::Loc))
             .collect();
 
         // generate location parameters for statics used by this function

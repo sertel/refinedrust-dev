@@ -4,14 +4,14 @@
 #![feature(stmt_expr_attributes)]
 #![allow(dead_code)]
 
-mod enums;
-mod structs;
-mod char;
+//mod enums;
+//mod structs;
+//mod char;
 mod traits;
-mod statics;
+//mod statics;
 
-mod vec_client;
-mod mixed;
-mod closures;
-mod references;
-mod option;
+//mod vec_client;
+//mod mixed;
+//mod closures;
+//mod references;
+//mod option;

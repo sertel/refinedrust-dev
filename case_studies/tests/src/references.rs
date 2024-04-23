@@ -69,7 +69,7 @@ fn call_generic_id1() {
 #[rr::params("x")]
 #[rr::args("#x")]
 #[rr::returns("#x")]
-fn shr_ref_id<T>(x : &T) -> &T {
+fn shr_ref_id<'a, T: 'a>(x : &'a T) -> &'a T {
     x
 }
 

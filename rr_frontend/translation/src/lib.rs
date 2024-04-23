@@ -65,6 +65,7 @@ use rrconfig;
 use spec_parsers::{
     const_attr_parser as const_parser, crate_attr_parser as crate_parser, get_shim_attrs,
     module_attr_parser as mod_parser,
+    propagate_method_attr_from_impl,
 };
 use topological_sort::TopologicalSort;
 use trait_registry::TraitRegistry;
@@ -238,28 +239,40 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         None
     }
 
+    /// Make a shim entry for a trait.
+    fn make_trait_shim_entry(&self, did: LocalDefId, decl: trait_registry::LiteralTraitSpecRef<'rcx>) -> Option<shim_registry::TraitShim> {
+        info!("making shim entry for {did:?}");
+        if let ty::Visibility::Public = self.env.tcx().visibility(did.to_def_id()) {
+            let interned_path = self.get_path_for_shim(did.into());
+            let a = shim_registry::TraitShim {
+                path: interned_path,
+                name: decl.name.clone(),
+                spec_record: decl.spec_record.clone(),
+                base_spec: decl.base_spec.clone(),
+                spec_subsumption: decl.spec_subsumption.clone(),
+            };
+            return Some(a);
+        }
+        None
+    }
+
     fn make_adt_shim_entry(&self, did: DefId, lit: radium::LiteralType) -> Option<shim_registry::AdtShim> {
-        info!("making shim entry for {:?}", did);
+        info!("making shim entry for {did:?}");
         if did.is_local() {
-            match self.env.tcx().visibility(did) {
+            if let ty::Visibility::Public = self.env.tcx().visibility(did) {
                 // only export public items
-                ty::Visibility::Public => {
-                    let interned_path = self.get_path_for_shim(did);
-                    let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
+                let interned_path = self.get_path_for_shim(did);
+                let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
 
-                    info!("Found adt path {:?} for did {:?} with name {:?}", interned_path, did, name);
+                info!("Found adt path {:?} for did {:?} with name {:?}", interned_path, did, name);
 
-                    let a = shim_registry::AdtShim {
-                        path: interned_path,
-                        refinement_type: lit.refinement_type.to_string(),
-                        syn_type: lit.syn_type.to_string(),
-                        sem_type: lit.type_term,
-                    };
-                    return Some(a);
-                },
-                ty::Visibility::Restricted(_) => {
-                    // don't  export
-                },
+                let a = shim_registry::AdtShim {
+                    path: interned_path,
+                    refinement_type: lit.refinement_type.to_string(),
+                    syn_type: lit.syn_type.to_string(),
+                    sem_type: lit.type_term,
+                };
+                return Some(a);
             }
         }
 
@@ -270,7 +283,17 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let mut function_shims = Vec::new();
         let mut adt_shims = Vec::new();
         let mut trait_method_shims = Vec::new();
+        let mut trait_shims = Vec::new();
 
+        // traits
+        let decls = self.trait_registry.get_trait_decls();
+        for (did, decl) in decls.iter() {
+            if let Some(entry) = self.make_trait_shim_entry(*did, decl.lit) {
+                trait_shims.push(entry);
+            }
+        }
+
+        // ADTs
         let variant_defs = self.type_translator.get_variant_defs();
         let enum_defs = self.type_translator.get_enum_defs();
 
@@ -291,9 +314,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
-        // trait method implementations are handled differently
+        // trait method implementations are handled differently, so we keep track of them here
         let mut trait_methods = Vec::new();
 
+        // functions and methods
         for (did, fun) in self.procedure_registry.iter_code() {
             if let Some(impl_did) = self.env.tcx().impl_of_method(*did) {
                 info!("found impl method: {:?}", did);
@@ -322,6 +346,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
+        // trait methods
         for (did, fun) in trait_methods.into_iter() {
             if let Some(shim) = self.make_shim_trait_method_entry(*did, &fun.spec_name) {
                 trait_method_shims.push(shim);
@@ -345,6 +370,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             adt_shims,
             function_shims,
             trait_method_shims,
+            trait_shims,
         );
     }
 
@@ -855,6 +881,19 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
         }
     }
 
+    for shim in vcx.shim_registry.get_trait_shims().iter() {
+        if let Some(did) = utils::try_resolve_did(vcx.env.tcx(), &shim.path) {
+            let spec = trait_registry::LiteralTraitSpec {
+                name: shim.name.clone(),
+                spec_record: shim.spec_record.clone(),
+                base_spec: shim.base_spec.clone(),
+                spec_subsumption: shim.spec_subsumption.clone(),
+            };
+        } else {
+            println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
+        }
+    }
+
     for shim in vcx.shim_registry.get_trait_method_shims() {
         // resolve the trait
         if let Some((trait_did, args)) = shim.trait_path.to_item(vcx.env.tcx()) {
@@ -916,7 +955,7 @@ fn get_most_restrictive_function_mode(
 ) -> function_body::ProcedureMode {
     let mut mode = function_body::ProcedureMode::Prove;
 
-    let attrs = get_attributes_of_function(&vcx.env, did);
+    let attrs = vcx.env.get_attributes_of_function(did, |x| propagate_method_attr_from_impl(x));
 
     // check if this is a purely spec function; if so, skip.
     if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
@@ -981,29 +1020,6 @@ fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> 
     Ok(())
 }
 
-fn propagate_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
-    if let Some(ident) = it.path.segments.get(1) {
-        match ident.ident.as_str() {
-            "context" => true,
-            _ => false,
-        }
-    } else {
-        false
-    }
-}
-
-fn get_attributes_of_function<'a>(env: &'a Environment, did: DefId) -> Vec<&'a rustc_ast::ast::AttrItem> {
-    let attrs = env.get_attributes(did);
-    let mut filtered_attrs = crate::utils::filter_tool_attrs(attrs);
-    // also add selected attributes from the surrounding impl
-    if let Some(impl_did) = env.tcx().impl_of_method(did) {
-        let impl_attrs = env.get_attributes(impl_did);
-        let filtered_impl_attrs = crate::utils::filter_tool_attrs(impl_attrs);
-        filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
-    }
-    filtered_attrs
-}
-
 /// Translate functions of the crate, assuming they were previously registered.
 fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     for &f in vcx.functions {
@@ -1011,7 +1027,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         let fname = vcx.env.get_item_name(f.to_def_id());
         let meta = vcx.procedure_registry.lookup_function(&f.to_def_id()).unwrap();
 
-        let filtered_attrs = get_attributes_of_function(&vcx.env, f.to_def_id());
+        let filtered_attrs = vcx.env.get_attributes_of_function(f.to_def_id(), |x| propagate_method_attr_from_impl(x));
 
         let mode = meta.get_mode();
         if mode.is_shim() {
@@ -1187,6 +1203,39 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
     Ok(())
 }
 
+/// Register traits.
+fn register_traits<'tcx, 'rcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<(), String> {
+    let mut traits = vcx.env.get_traits();
+
+    for t in traits.iter() {
+        info!("found trait {:?}", t);
+        let mut all_have_annots = true;
+        let mut some_has_annot = false;
+        // check that all children have a specification
+        let children = vcx.env.tcx().module_children_local(*t);
+        for c in children.iter() {
+            if let rustc_hir::def::Res::Def(def_kind, def_id) = c.res {
+                if def_kind == rustc_hir::def::DefKind::AssocFn {
+                    if !vcx.env.has_any_tool_attribute(def_id) {
+                        all_have_annots = false;
+                    }
+                    else {
+                        some_has_annot = true;
+                    }
+                }
+
+            }
+        }
+        if !all_have_annots && some_has_annot {
+            println!("Warning: not all of trait {t:?}'s items are annotated, skipping");
+            continue;
+        }
+
+        vcx.trait_registry.register_trait(*t).map_err(|x| format!("{x:?}"));
+    }
+    Ok(())
+}
+
 /// Get and parse all module attributes.
 pub fn get_module_attributes(
     env: &Environment<'_>,
@@ -1291,7 +1340,7 @@ where
     let shim_arena = Arena::new();
     let trait_arena = Arena::new();
     let type_translator = TypeTranslator::new(env, &struct_arena, &enum_arena, &shim_arena);
-    let trait_registry = TraitRegistry::new(env, &trait_arena);
+    let trait_registry = TraitRegistry::new(env, &type_translator, &trait_arena);
     let procedure_registry = ProcedureScope::new();
     let shim_string_arena = Arena::new();
     let mut shim_registry = shim_registry::ShimRegistry::empty(&shim_string_arena);
@@ -1337,6 +1386,8 @@ where
     };
 
     register_functions(&mut vcx)?;
+
+    register_traits(&mut vcx)?;
 
     register_shims(&mut vcx)?;
 

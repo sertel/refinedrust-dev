@@ -50,6 +50,13 @@ pub trait FunctionSpecParser<'def> {
     ) -> Result<(), String>
     where
         F: Fn(Vec<specs::Type<'def>>) -> specs::Type<'def>;
+
+    //fn parse_trait_method_spec<'a, F>(
+        //&'a mut self,
+        //attrs: &'a [&'a AttrItem],
+        //ty_params: 
+        //spec: &'a mut radium::FunctionSpecBuilder<'def>,
+    //) -> Result<(), String>;
 }
 
 /// A sequence of refinements with optional types, e.g.
@@ -291,22 +298,22 @@ where
         &mut self,
         name: &str,
         buffer: &parse::ParseBuffer,
-        builder: &mut radium::FunctionBuilder<'def>,
+        ty_params: &[specs::LiteralTyParam],
+        builder: &mut radium::FunctionSpecBuilder<'def>,
         lfts: &[(Option<String>, String)],
     ) -> Result<bool, String> {
-        let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
-        let meta: ParseMeta = (&meta, lfts);
+        let meta: ParseMeta = (&ty_params, lfts);
 
         match name {
             "params" => {
                 let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
                 for p in params.params {
-                    builder.spec.add_param(p.name, p.ty)?;
+                    builder.add_param(p.name, p.ty)?;
                 }
             },
             "param" => {
                 let param = RRParam::parse(&buffer, &meta).map_err(str_err)?;
-                builder.spec.add_param(param.name, param.ty)?;
+                builder.add_param(param.name, param.ty)?;
             },
             "args" => {
                 let args = RRArgs::parse(&buffer, &meta).map_err(str_err)?;
@@ -318,23 +325,23 @@ where
                 }
                 for (arg, ty) in args.args.into_iter().zip(self.arg_types) {
                     let (ty, hint) = self.make_type_with_ref(&arg, ty);
-                    builder.spec.add_arg(ty)?;
+                    builder.add_arg(ty)?;
                     if let Some(cty) = hint {
                         // potentially add a typing hint to the refinement
                         if let IdentOrTerm::Ident(ref i) = arg.rfn {
                             info!("Trying to add a typing hint for {}", i);
-                            builder.spec.add_param_type_annot(&specs::CoqName::Named(i.clone()), cty)?;
+                            builder.add_param_type_annot(&specs::CoqName::Named(i.clone()), cty)?;
                         }
                     }
                 }
             },
             "requires" => {
                 let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
-                builder.spec.add_precondition(iprop.into())?;
+                builder.add_precondition(iprop.into())?;
             },
             "ensures" => {
                 let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
-                builder.spec.add_postcondition(iprop.into())?;
+                builder.add_postcondition(iprop.into())?;
             },
             "observe" => {
                 let m = || {
@@ -346,35 +353,30 @@ where
                     Ok(MetaIProp::Observe(gname.value(), term))
                 };
                 let m = m().map_err(str_err)?;
-                builder.spec.add_postcondition(m.into())?;
+                builder.add_postcondition(m.into())?;
             },
             "returns" => {
                 let tr = LiteralTypeWithRef::parse(&buffer, &meta).map_err(str_err)?;
                 // convert to type
                 let (ty, _) = self.make_type_with_ref(&tr, self.ret_type);
-                builder.spec.set_ret_type(ty)?;
+                builder.set_ret_type(ty)?;
             },
             "exists" => {
                 let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
                 for param in params.params.into_iter() {
-                    builder.spec.add_existential(param.name, param.ty)?;
+                    builder.add_existential(param.name, param.ty)?;
                 }
-            },
-            "tactics" => {
-                let tacs = parse::LitStr::parse(&buffer, &meta).map_err(str_err)?;
-                let tacs = tacs.value();
-                builder.add_manual_tactic(&tacs);
             },
             "context" => {
                 let context_item = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
                 if context_item.at_end {
-                    builder.spec.add_late_coq_param(
+                    builder.add_late_coq_param(
                         specs::CoqName::Unnamed,
                         specs::CoqType::Literal(context_item.item),
                         true,
                     )?;
                 } else {
-                    builder.spec.add_coq_param(
+                    builder.add_coq_param(
                         specs::CoqName::Unnamed,
                         specs::CoqType::Literal(context_item.item),
                         true,
@@ -648,11 +650,23 @@ where
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
                 let name = seg.ident.name.as_str();
 
-                match self.handle_common_attributes(name, &buffer, builder, &lfts) {
+                match self.handle_common_attributes(name, &buffer, &builder.generic_types, &mut builder.spec, &lfts) {
                     Ok(b) => {
                         if !b {
-                            if name != "capture" {
-                                info!("ignoring function attribute: {:?}", args);
+                            let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
+                            let _meta: ParseMeta = (&meta, &lfts);
+                            match name {
+                                "tactics" => {
+                                    let tacs = parse::LitStr::parse(&buffer, &meta).map_err(str_err)?;
+                                    let tacs = tacs.value();
+                                    builder.add_manual_tactic(&tacs);
+                                },
+                                "capture" => {
+
+                                },
+                                _ => {
+                                    info!("ignoring function attribute: {:?}", args);
+                                },
                             }
                         }
                     },
@@ -690,13 +704,22 @@ where
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
 
-                match self.handle_common_attributes(seg.ident.name.as_str(), &buffer, builder, &lfts) {
+                let name = seg.ident.name.as_str();
+                match self.handle_common_attributes(name, &buffer, &builder.generic_types, &mut builder.spec, &lfts) {
                     Ok(b) => {
                         if !b {
                             let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
                             let _meta: ParseMeta = (&meta, &lfts);
-
-                            info!("ignoring function attribute: {:?}", args);
+                            match name {
+                                "tactics" => {
+                                    let tacs = parse::LitStr::parse(&buffer, &meta).map_err(str_err)?;
+                                    let tacs = tacs.value();
+                                    builder.add_manual_tactic(&tacs);
+                                },
+                                _ => {
+                                    info!("ignoring function attribute: {:?}", args);
+                                },
+                            }
                         }
                     },
                     Err(e) => {

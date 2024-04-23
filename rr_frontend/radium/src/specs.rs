@@ -2689,7 +2689,7 @@ impl Display for CoqParam {
 /**
  * A Caesium function specification.
  */
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct FunctionSpec<'def> {
     /// Coq-level parameters the typing statement needs (bool is for implicit or not)
     pub coq_params: Vec<CoqParam>,

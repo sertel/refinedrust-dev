@@ -93,3 +93,15 @@ pub fn get_shim_attrs(attrs: &[&AttrItem]) -> Result<ShimAnnot, String> {
     }
     Err("Did not find shim annotation".to_string())
 }
+
+/// Check whether we should propagate this attribute of a method from a surrounding impl.
+pub fn propagate_method_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
+    if let Some(ident) = it.path.segments.get(1) {
+        match ident.ident.as_str() {
+            "context" => true,
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
