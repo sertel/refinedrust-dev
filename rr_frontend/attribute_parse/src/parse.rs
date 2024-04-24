@@ -660,7 +660,15 @@ impl BigInt {
         Self { digits: Vec::new() }
     }
 
-    pub fn to_string(&self) -> String {
+    fn reserve_two_digits(&mut self) {
+        let len = self.digits.len();
+        let desired = len + !self.digits.ends_with(&[0, 0]) as usize + !self.digits.ends_with(&[0]) as usize;
+        self.digits.resize(desired, 0);
+    }
+}
+
+impl Display for BigInt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         let mut repr = String::with_capacity(self.digits.len());
 
         let mut has_nonzero = false;
@@ -675,13 +683,7 @@ impl BigInt {
             repr.push('0');
         }
 
-        repr
-    }
-
-    fn reserve_two_digits(&mut self) {
-        let len = self.digits.len();
-        let desired = len + !self.digits.ends_with(&[0, 0]) as usize + !self.digits.ends_with(&[0]) as usize;
-        self.digits.resize(desired, 0);
+        write!(f, "{}", repr)
     }
 }
 
