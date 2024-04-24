@@ -20,20 +20,48 @@ fn make_indent(i: usize) -> String {
     " ".repeat(i)
 }
 
-fn fmt_list<H>(f: &mut Formatter<'_>, elems: H, sep: &str, wrap: &str) -> fmt::Result
-where
-    H: IntoIterator,
-    H::Item: Display,
-{
-    let mut needs_sep = false;
-    for e in elems.into_iter() {
-        if needs_sep {
-            write!(f, "{}", sep)?;
-        }
-        needs_sep = true;
-        write!(f, "{}{}{}", wrap, e, wrap)?;
+/// Extend the `write!` macro to write a collection separated by a separator with an automatically added
+/// space.
+///
+/// The macro can take an optional fourth argument to customise the format string (default: `"{}"`).
+/// This fourth argument can also be a closure that takes an element from the collection and returns the
+/// formatted string.
+macro_rules! write_list {
+    ($f:expr, $collection:expr, $separator:literal) => {
+        write_list!($f, $collection, $separator, "{}")
+    };
+    ($f:expr, $collection:expr, $separator:literal, $pattern:literal) => {
+        write_list!($f, $collection, $separator, |e| format!($pattern, e))
+    };
+    ($f:expr, $collection:expr, $separator:literal, $fmt:expr) => {
+        write!($f, "{}", $collection.into_iter().map($fmt).collect::<Vec<_>>().join(concat!($separator, " ")))
+    };
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fmt::Write;
+
+    #[test]
+    fn write_list_default() {
+        let mut out = String::new();
+        write_list!(out, vec!["10", "20"], ";").unwrap();
+        assert_eq!(out, "10; 20");
     }
-    Ok(())
+
+    #[test]
+    fn write_list_pattern() {
+        let mut out = String::new();
+        write_list!(out, vec!["10", "20"], ";", "'{}'").unwrap();
+        assert_eq!(out, "'10'; '20'");
+    }
+
+    #[test]
+    fn write_list_format() {
+        let mut out = String::new();
+        write_list!(out, vec![("x", "10"), ("y", "20")], ";", |(l, v)| format!("{l}: {v}")).unwrap();
+        assert_eq!(out, "x: 10; y: 20");
+    }
 }
 
 fn fmt_option<H>(f: &mut Formatter<'_>, o: &Option<H>) -> fmt::Result
@@ -68,9 +96,9 @@ impl Display for RustType {
         match self {
             Self::Lit(path, rhs) => {
                 write!(f, "RSTLitType [")?;
-                fmt_list(f, path, "; ", "\"")?;
+                write_list!(f, path, ";", "\"{}\"")?;
                 write!(f, "] [")?;
-                fmt_list(f, rhs, "; ", "")?;
+                write_list!(f, rhs, ";")?;
                 write!(f, "]")
             },
             Self::TyVar(var) => {
@@ -99,7 +127,7 @@ impl Display for RustType {
             },
             Self::Struct(sls, tys) => {
                 write!(f, "RSTStruct ({}) [", sls)?;
-                fmt_list(f, tys, "; ", "")?;
+                write_list!(f, tys, ";")?;
                 write!(f, "]")
             },
             Self::Array(len, ty) => {
@@ -335,9 +363,9 @@ impl Display for Expr {
             },
             Self::Call { f: fe, lfts, args } => {
                 write!(f, "CallE {} [", fe.as_ref())?;
-                fmt_list(f, lfts, "; ", "\"")?;
+                write_list!(f, lfts, ";", "\"{}\"")?;
                 write!(f, "] [@{{expr}} ")?;
-                fmt_list(f, args, "; ", "")?;
+                write_list!(f, args, ";")?;
                 write!(f, "]")
             },
             Self::Deref { ot, e } => {
@@ -382,14 +410,7 @@ impl Display for Expr {
             },
             Self::StructInitE { sls, components } => {
                 write!(f, "StructInit {} [", sls)?;
-                let mut needs_sep = false;
-                for (name, e) in components.into_iter() {
-                    if needs_sep {
-                        write!(f, "; ")?;
-                    }
-                    needs_sep = true;
-                    write!(f, "(\"{}\", {} : expr)", name, e)?;
-                }
+                write_list!(f, components, ";", |(name, e)| format!("(\"{}\", {} : expr)", name, e))?;
                 write!(f, "]")
             },
             Self::EnumInitE {
@@ -494,7 +515,7 @@ impl fmt::Display for Annotation {
         match self {
             Self::StartLft(l, sup) => {
                 write!(f, "StartLftAnnot \"{}\" [", l)?;
-                fmt_list(f, sup, "; ", "\"")?;
+                write_list!(f, sup, ";", "\"{}\"")?;
                 write!(f, "]")
             },
             Self::EndLft(l) => {
@@ -517,7 +538,7 @@ impl fmt::Display for Annotation {
             },
             Self::AliasLftIntersection(lft, lfts) => {
                 write!(f, "AliasLftAnnot \"{}\" [", lft)?;
-                fmt_list(f, lfts, "; ", "\"")?;
+                write_list!(f, lfts, ";", "\"{}\"")?;
                 write!(f, "]")
             },
             Self::EnterLoop => {
@@ -635,14 +656,7 @@ impl Stmt {
 
                 let mut fmt_targets = String::with_capacity(100);
                 write!(fmt_targets, "[").unwrap();
-                let mut need_sep = false;
-                for tgt in bs {
-                    if need_sep {
-                        write!(fmt_targets, "; ").unwrap();
-                    }
-                    need_sep = true;
-                    write!(fmt_targets, "{}", tgt.caesium_fmt(0)).unwrap();
-                }
+                write_list!(fmt_targets, bs, ";", |tgt| tgt.caesium_fmt(0)).unwrap();
                 write!(fmt_targets, "]").unwrap();
 
                 let fmt_default = def.caesium_fmt(0);
@@ -656,7 +670,7 @@ impl Stmt {
 
     /// Annotate a statement with a list of annotations
     pub fn with_annotations(mut s: Self, a: Vec<Annotation>, why: Option<String>) -> Self {
-        for annot in a.into_iter() {
+        for annot in a {
             s = Self::Annot {
                 a: annot,
                 s: Box::new(s),

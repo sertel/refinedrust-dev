@@ -88,7 +88,7 @@ impl<'tcx> PlaceSet<'tcx> {
         let old_places = std::mem::take(&mut self.places);
         // If needed, split the place whose part got uninitialized into
         // multiple places.
-        for other in old_places.into_iter() {
+        for other in old_places {
             if is_prefix(&place, &other) {
                 // We are uninitializing a field of the place `other`.
                 places.extend(utils::expand(mir, tcx, &other, &place));

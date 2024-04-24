@@ -319,7 +319,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
-        for (did, fun) in trait_methods.into_iter() {
+        for (did, fun) in trait_methods {
             if let Some(shim) = self.make_shim_trait_method_entry(*did, &fun.spec_name) {
                 trait_method_shims.push(shim);
             }

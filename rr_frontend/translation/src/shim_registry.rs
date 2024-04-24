@@ -172,7 +172,7 @@ impl<'a> ShimRegistry<'a> {
 
     pub fn intern_path(&self, p: Vec<String>) -> Path<'a> {
         let mut path = Vec::new();
-        for pc in p.into_iter() {
+        for pc in p {
             let pc = self.arena.alloc(pc);
             path.push(pc.as_str());
         }
@@ -257,42 +257,47 @@ impl<'a> ShimRegistry<'a> {
             _ => return Err("invalid Json format".to_string()),
         }
 
-        for i in v.into_iter() {
+        for i in v {
             let kind = Self::get_shim_kind(&i)?;
-            if kind == ShimKind::Adt {
-                let b: ShimAdtEntry = serde_json::value::from_value(i).map_err(|e| e.to_string())?;
-                let path = self.intern_path(b.path);
-                let entry = AdtShim {
-                    path,
-                    syn_type: b.syntype,
-                    sem_type: b.semtype,
-                    refinement_type: b.rtype,
-                };
 
-                self.adt_shims.push(entry);
-            } else if kind == ShimKind::Function || kind == ShimKind::Method {
-                let b: ShimFunctionEntry = serde_json::value::from_value(i).map_err(|e| e.to_string())?;
-                let path = self.intern_path(b.path);
-                let entry = FunctionShim {
-                    path,
-                    is_method: kind == ShimKind::Method,
-                    name: b.name,
-                    spec_name: b.spec,
-                };
+            match kind {
+                ShimKind::Adt => {
+                    let b: ShimAdtEntry = serde_json::value::from_value(i).map_err(|e| e.to_string())?;
+                    let path = self.intern_path(b.path);
+                    let entry = AdtShim {
+                        path,
+                        syn_type: b.syntype,
+                        sem_type: b.semtype,
+                        refinement_type: b.rtype,
+                    };
 
-                self.function_shims.push(entry);
-            } else if kind == ShimKind::TraitMethod {
-                let b: ShimTraitMethodImplEntry =
-                    serde_json::value::from_value(i).map_err(|e| e.to_string())?;
-                let entry = TraitMethodImplShim {
-                    trait_path: b.trait_path,
-                    method_ident: b.method_ident,
-                    for_type: b.for_type,
-                    name: b.name,
-                    spec_name: b.spec,
-                };
+                    self.adt_shims.push(entry);
+                },
+                ShimKind::Function | ShimKind::Method => {
+                    let b: ShimFunctionEntry = serde_json::value::from_value(i).map_err(|e| e.to_string())?;
+                    let path = self.intern_path(b.path);
+                    let entry = FunctionShim {
+                        path,
+                        is_method: kind == ShimKind::Method,
+                        name: b.name,
+                        spec_name: b.spec,
+                    };
 
-                self.trait_method_shims.push(entry);
+                    self.function_shims.push(entry);
+                },
+                ShimKind::TraitMethod => {
+                    let b: ShimTraitMethodImplEntry =
+                        serde_json::value::from_value(i).map_err(|e| e.to_string())?;
+                    let entry = TraitMethodImplShim {
+                        trait_path: b.trait_path,
+                        method_ident: b.method_ident,
+                        for_type: b.for_type,
+                        name: b.name,
+                        spec_name: b.spec,
+                    };
+
+                    self.trait_method_shims.push(entry);
+                },
             }
         }
 
@@ -334,15 +339,15 @@ pub fn write_shims<'a>(
     let writer = BufWriter::new(f);
 
     let mut values = Vec::new();
-    for x in adt_shims.into_iter() {
+    for x in adt_shims {
         let x: ShimAdtEntry = x.into();
         values.push(serde_json::to_value(x).unwrap());
     }
-    for x in function_shims.into_iter() {
+    for x in function_shims {
         let x: ShimFunctionEntry = x.into();
         values.push(serde_json::to_value(x).unwrap());
     }
-    for x in trait_method_shims.into_iter() {
+    for x in trait_method_shims {
         let x: ShimTraitMethodImplEntry = x.into();
         values.push(serde_json::to_value(x).unwrap());
     }

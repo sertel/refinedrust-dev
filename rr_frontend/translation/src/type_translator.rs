@@ -516,32 +516,29 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     {
         let mut params = Vec::new();
 
-        for arg in args.into_iter() {
-            if let Some(arg_ty) = arg.as_type() {
-                let mut translated_ty;
-                match state {
-                    TranslationStateInner::TranslateAdt(ref mut deps) => {
-                        translated_ty = self.translate_type_with_deps(
-                            &arg_ty,
-                            &mut TranslationStateInner::TranslateAdt(deps),
-                        )?;
-                    },
-                    TranslationStateInner::InFunction(ref mut scope) => {
-                        translated_ty = self.translate_type_with_deps(
-                            &arg_ty,
-                            &mut TranslationStateInner::InFunction(scope),
-                        )?;
-                        // we need to substitute in the variables according to the function scope
-                        translated_ty.subst_params(scope.generic_scope.as_slice());
-                    },
-                }
-
-                params.push(translated_ty);
-            } else {
+        for arg in args {
+            let Some(arg_ty) = arg.as_type() else {
                 return Err(TranslationError::UnsupportedFeature {
                     description: "ADTs with lifetime parameters are not supported".to_string(),
                 });
-            }
+            };
+
+            let translated_ty = match state {
+                TranslationStateInner::TranslateAdt(ref mut deps) => {
+                    self.translate_type_with_deps(&arg_ty, &mut TranslationStateInner::TranslateAdt(deps))?
+                },
+                TranslationStateInner::InFunction(ref mut scope) => {
+                    let mut translated_ty = self
+                        .translate_type_with_deps(&arg_ty, &mut TranslationStateInner::InFunction(scope))?;
+
+                    // we need to substitute in the variables according to the function scope
+                    translated_ty.subst_params(scope.generic_scope.as_slice());
+
+                    translated_ty
+                },
+            };
+
+            params.push(translated_ty);
         }
 
         Ok(params)

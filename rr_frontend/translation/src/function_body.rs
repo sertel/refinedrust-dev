@@ -558,7 +558,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // add universal constraints
                 let universal_constraints = t.get_relevant_universal_constraints();
                 info!("univeral constraints: {:?}", universal_constraints);
-                for (lft1, lft2) in universal_constraints.into_iter() {
+                for (lft1, lft2) in universal_constraints {
                     t.translated_fn
                         .add_universal_lifetime_constraint(lft1, lft2)
                         .map_err(|e| TranslationError::UnknownError(e))?;
@@ -689,7 +689,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // add universal constraints
                 let universal_constraints = t.get_relevant_universal_constraints();
                 info!("univeral constraints: {:?}", universal_constraints);
-                for (lft1, lft2) in universal_constraints.into_iter() {
+                for (lft1, lft2) in universal_constraints {
                     t.translated_fn
                         .add_universal_lifetime_constraint(lft1, lft2)
                         .map_err(|e| TranslationError::UnknownError(e))?;

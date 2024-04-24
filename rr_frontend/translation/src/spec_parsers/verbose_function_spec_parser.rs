@@ -356,7 +356,7 @@ where
             },
             "exists" => {
                 let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
-                for param in params.params.into_iter() {
+                for param in params.params {
                     builder.spec.add_existential(param.name, param.ty)?;
                 }
             },
@@ -417,7 +417,7 @@ where
         let mut post_patterns: Vec<CapturePostRfn> = Vec::new();
 
         let mut capture_spec_map = HashMap::new();
-        for x in capture_specs.into_iter() {
+        for x in capture_specs {
             capture_spec_map.insert(x.variable, (x.pre, x.post));
         }
 
@@ -492,7 +492,7 @@ where
         }
 
         // push everything to the builder
-        for x in new_ghost_vars.into_iter() {
+        for x in new_ghost_vars {
             builder.spec.add_param(radium::CoqName::Named(x), radium::CoqType::Gname).unwrap();
         }
 
@@ -505,7 +505,7 @@ where
         } else {
             write!(pre_rfn, "-[").unwrap();
             let mut needs_sep = false;
-            for x in pre_types.into_iter() {
+            for x in pre_types {
                 if needs_sep {
                     write!(pre_rfn, "; ").unwrap();
                 }
@@ -522,7 +522,7 @@ where
                 builder.spec.add_arg(specs::TypeWithRef::new(tuple, pre_rfn))?;
 
                 // generate observations on all the mut-ref captures
-                for p in post_patterns.into_iter() {
+                for p in post_patterns {
                     match p {
                         CapturePostRfn::ImmutOrConsume(_) => {
                             // nothing mutated
@@ -565,7 +565,7 @@ where
 
                 write!(post_term, "-[").unwrap();
                 let mut needs_sep = false;
-                for p in post_patterns.into_iter() {
+                for p in post_patterns {
                     if needs_sep {
                         write!(post_term, "; ").unwrap();
                     }

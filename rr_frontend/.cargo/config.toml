@@ -80,7 +80,6 @@ rustflags = [
     "-Aclippy::unwrap_in_result",
 
     # clippy::style
-    "-Aclippy::explicit_into_iter_loop",
     "-Aclippy::explicit_iter_loop",
     "-Aclippy::from_over_into",
     "-Aclippy::if_same_then_else",

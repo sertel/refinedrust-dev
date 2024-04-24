@@ -553,7 +553,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         let mut return_regions = vec![];
         let return_span = mir.local_decls[mir::RETURN_PLACE].source_info.span;
         // find regions for all subplaces (e.g. fields of tuples)
-        for place in mir::RETURN_PLACE.all_places(tcx, mir).into_iter() {
+        for place in mir::RETURN_PLACE.all_places(tcx, mir) {
             if let Some(region) = place_regions.for_place(place).map_err(|err| (err, return_span))? {
                 return_regions.push(region);
             }
@@ -1174,7 +1174,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         // region of the left-hand side with the borrow region of the loan. This is hacky, and a
         // solution that does not rely on such subtleties would be much better.
         let mut retained_assignments = vec![];
-        for stmt in assignments.into_iter() {
+        for stmt in assignments {
             let (lhs, _) =
                 stmt.as_assign().unwrap_or_else(|| unreachable!("Borrow starts at statement {:?}", stmt));
             if self.place_regions.for_place(lhs)? == Some(region) {
