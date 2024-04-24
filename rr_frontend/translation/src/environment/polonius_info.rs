@@ -667,12 +667,13 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             if r.index() == 0 {
                 //static
                 continue;
-            } else if r.index() + 1 == self.borrowck_in_facts.placeholder.len() {
+            }
+            if r.index() + 1 == self.borrowck_in_facts.placeholder.len() {
                 // function lft
                 continue;
-            } else {
-                universals.push(*r);
             }
+
+            universals.push(*r);
         }
         universals
     }

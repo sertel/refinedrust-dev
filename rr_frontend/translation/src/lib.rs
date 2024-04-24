@@ -766,17 +766,18 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             for file in read.flatten() {
                 // check if the file name is okay
                 let filename = file.file_name();
-                if let Some(filename) = filename.to_str() {
-                    if filename == "dune" {
-                        continue;
-                    } else if proof_files_to_generate.contains(filename) {
-                        continue;
-                    } else {
-                        println!(
-                            "Warning: Proof file {filename} does not have a matching Rust function to verify."
-                        );
-                    }
+                let Some(filename) = filename.to_str() else {
+                    continue;
+                };
+
+                if filename == "dune" {
+                    continue;
                 }
+                if proof_files_to_generate.contains(filename) {
+                    continue;
+                }
+
+                println!("Warning: Proof file {filename} does not have a matching Rust function to verify.");
             }
         } else {
             warn!("Output directory {:?} does not exist, creating directory", proof_dir_path);
