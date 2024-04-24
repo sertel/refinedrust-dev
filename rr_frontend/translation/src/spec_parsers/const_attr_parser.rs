@@ -43,7 +43,7 @@ impl ConstAttrParser for VerboseConstAttrParser {
         let meta = ();
         let mut name: Option<String> = None;
 
-        for &it in attrs.iter() {
+        for &it in attrs {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 

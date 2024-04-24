@@ -649,7 +649,7 @@ impl Stmt {
                 def,
             } => {
                 let mut fmt_index_map = String::with_capacity(100);
-                for (k, v) in index_map.iter() {
+                for (k, v) in index_map {
                     write!(fmt_index_map, "<[ {k}%Z := {v}%nat ]> $ ").unwrap();
                 }
                 write!(fmt_index_map, "∅").unwrap();
@@ -776,7 +776,7 @@ pub struct FunctionCode {
 
 fn make_map_string(sep0: &str, sep: &str, els: Vec<(String, String)>) -> String {
     let mut out = String::with_capacity(100);
-    for (key, value) in els.iter() {
+    for (key, value) in &els {
         out.push_str(sep);
 
         out.push_str(format!("<[{sep}\"{}\" :={}{}{}]>%E $", key, sep0, value, sep).as_str());
@@ -788,7 +788,7 @@ fn make_map_string(sep0: &str, sep: &str, els: Vec<(String, String)>) -> String 
 
 fn make_lft_map_string(els: Vec<(String, String)>) -> String {
     let mut out = String::with_capacity(100);
-    for (key, value) in els.iter() {
+    for (key, value) in &els {
         out.push_str(format!("named_lft_update \"{}\" {} $ ", key, value).as_str());
     }
     out.push_str("∅");
@@ -856,7 +856,7 @@ impl FunctionCode {
 
         // format Coq parameters
         let mut formatted_params = String::with_capacity(20);
-        for (ref name, ref ty) in self.required_parameters.iter() {
+        for (ref name, ref ty) in &self.required_parameters {
             formatted_params.push_str(format!(" ({} : {})", name, ty).as_str());
         }
 
@@ -974,7 +974,7 @@ impl Display for InvariantMap {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         // PolyCons (bb, wrap_inv inv) $ ... $ PolyNil
         write!(f, "(")?;
-        for (bb, spec) in self.0.iter() {
+        for (bb, spec) in &self.0 {
             write!(f, "PolyCons  ({}, wrap_inv ({})) $ ", bb, spec.func_predicate)?;
         }
         write!(f, "PolyNil)")
@@ -1024,7 +1024,7 @@ impl<'def> Function<'def> {
             || !self.used_statics.is_empty();
         if has_params {
             write!(f, "∀ ")?;
-            for param in self.spec.coq_params.iter() {
+            for param in &self.spec.coq_params {
                 // TODO use CoqParam::format instead
                 if param.implicit {
                     write!(f, "`({})", param.ty)?;
@@ -1035,12 +1035,12 @@ impl<'def> Function<'def> {
             }
 
             // assume locations for other functions
-            for (loc_name, _, _, _) in self.other_functions.iter() {
+            for (loc_name, _, _, _) in &self.other_functions {
                 write!(f, "({} : loc) ", loc_name)?;
             }
 
             // assume locations for statics
-            for s in self.used_statics.iter() {
+            for s in &self.used_statics {
                 write!(f, "({} : loc) ", s.loc_name)?;
             }
             writeln!(f, ", ")?;
@@ -1048,18 +1048,18 @@ impl<'def> Function<'def> {
 
         // assume link-time Coq assumptions
         // layoutable
-        for st in self.layoutable_syntys.iter() {
+        for st in &self.layoutable_syntys {
             write!(f, "syn_type_is_layoutable ({}) →\n", st)?;
         }
         // statics are registered
-        for s in self.used_statics.iter() {
+        for s in &self.used_statics {
             write!(f, "static_is_registered \"{}\" {} (existT _ {}) →\n", s.ident, s.loc_name, s.ty)?;
         }
 
         // write extra link-time assumptions
         if !self.spec.extra_link_assum.is_empty() {
             write!(f, "(* extra link-time assumptions *)\n")?;
-            for s in self.spec.extra_link_assum.iter() {
+            for s in &self.spec.extra_link_assum {
                 write!(f, "{s} →\n")?;
             }
         }
@@ -1068,12 +1068,12 @@ impl<'def> Function<'def> {
         if self.other_functions.len() == 0 {
             write!(f, "⊢ ")?;
         } else {
-            for (loc_name, spec_name, param_insts, sts) in self.other_functions.iter() {
+            for (loc_name, spec_name, param_insts, sts) in &self.other_functions {
                 info!("Using other function: {:?} with insts: {:?}", spec_name, param_insts);
                 // generate an instantiation for the generic type arguments, by getting the refinement types
                 // which need to be passed at the Coq level
                 let mut gen_rfn_type_inst = Vec::new();
-                for p in param_insts.iter() {
+                for p in param_insts {
                     // use an empty env, these should be closed in the current environment
                     let rfn = p.get_rfn_type(&[]);
                     gen_rfn_type_inst.push(format!("({})", rfn));
@@ -1100,20 +1100,20 @@ impl<'def> Function<'def> {
         // add arguments for the code definition
         let mut code_params: Vec<_> =
             self.other_functions.iter().map(|(loc_name, _, _, _)| loc_name.clone()).collect();
-        for names in self.generic_types.iter() {
+        for names in &self.generic_types {
             code_params.push(names.syn_type.clone());
         }
-        for s in self.used_statics.iter() {
+        for s in &self.used_statics {
             code_params.push(s.loc_name.clone());
         }
-        for x in code_params.iter() {
+        for x in &code_params {
             write!(f, "{}  ", x)?;
         }
 
         // write local syntypes
         write!(f, ") [")?;
         let mut needs_sep = false;
-        for (_, st) in self.code.stack_layout.local_map.iter() {
+        for (_, st) in &self.code.stack_layout.local_map {
             if needs_sep {
                 write!(f, "; ")?;
             }
@@ -1124,7 +1124,7 @@ impl<'def> Function<'def> {
         write!(f, "] (type_of_{} ", self.name())?;
 
         // write type args (passed to the type definition)
-        for param in self.spec.coq_params.iter() {
+        for param in &self.spec.coq_params {
             if !param.implicit {
                 write!(f, "{} ", param.name)?;
             }
@@ -1149,7 +1149,7 @@ impl<'def> Function<'def> {
         // intros spec params
         if !self.spec.coq_params.is_empty() {
             write!(f, "intros")?;
-            for param in self.spec.coq_params.iter() {
+            for param in &self.spec.coq_params {
                 if !param.implicit {
                     write!(f, " {}", param.name)?;
                 } else {
@@ -1181,7 +1181,7 @@ impl<'def> Function<'def> {
                 p_count += 1;
                 ip_params.push_str(format!("{}", n).as_str());
             }
-            for (n, _) in ty_params.iter() {
+            for (n, _) in ty_params {
                 write!(f, "let {} := fresh \"{}\" in\n", n, n)?;
             }
 
@@ -1201,7 +1201,7 @@ impl<'def> Function<'def> {
             write!(lft_pattern, "[ ").unwrap();
         }
         write!(lft_pattern, "[]").unwrap();
-        for lft in self.spec.lifetimes.iter() {
+        for lft in &self.spec.lifetimes {
             write!(lft_pattern, " {}]", lft).unwrap();
             write!(f, "let {} := fresh \"{}\" in\n", lft, lft)?;
         }
@@ -1218,10 +1218,10 @@ impl<'def> Function<'def> {
 
         // intro stack locations
         write!(f, "intros")?;
-        for (arg, _) in self.code.stack_layout.arg_map.iter() {
+        for (arg, _) in &self.code.stack_layout.arg_map {
             write!(f, " arg_{}", arg)?;
         }
-        for (local, _) in self.code.stack_layout.local_map.iter() {
+        for (local, _) in &self.code.stack_layout.local_map {
             write!(f, " local_{}", local)?;
         }
         write!(f, ";\n")?;
@@ -1279,7 +1279,7 @@ impl<'def> Function<'def> {
             write!(f, "Unshelve. all: sidecond_hammer.\n")?;
 
             // add custom tactics specified in annotations
-            for tac in self.manual_tactics.iter() {
+            for tac in &self.manual_tactics {
                 if tac.starts_with("all:") {
                     write!(f, "{}\n", tac)?;
                 } else {
@@ -1425,7 +1425,7 @@ impl<'def> FunctionBuilder<'def> {
 
     fn add_generics_to_spec(&mut self) {
         // push generic type parameters to the spec builder
-        for names in self.generic_types.iter() {
+        for names in &self.generic_types {
             // TODO(cleanup): this currently regenerates the names for ty + rt, instead of using
             // the existing names
             self.spec

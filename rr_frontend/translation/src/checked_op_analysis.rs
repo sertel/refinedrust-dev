@@ -132,7 +132,7 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
         let bb = self.body.basic_blocks.get(bb_idx).unwrap();
         // check if a statement is an assignment of a checked op result
 
-        for stmt in bb.statements.iter() {
+        for stmt in &bb.statements {
             match &stmt.kind {
                 StatementKind::Assign(b) => {
                     let (plc, val) = b.as_ref();

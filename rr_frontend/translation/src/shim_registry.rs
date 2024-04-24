@@ -80,13 +80,13 @@ pub struct FunctionShim<'a> {
     pub spec_name: String,
 }
 
-impl<'a> Into<ShimFunctionEntry> for FunctionShim<'a> {
-    fn into(self) -> ShimFunctionEntry {
-        ShimFunctionEntry {
-            path: self.path.iter().map(|x| x.to_string()).collect(),
-            kind: if self.is_method { "method".to_string() } else { "function".to_string() },
-            name: self.name,
-            spec: self.spec_name,
+impl<'a> From<FunctionShim<'a>> for ShimFunctionEntry {
+    fn from(shim: FunctionShim<'a>) -> Self {
+        Self {
+            path: shim.path.iter().map(|x| x.to_string()).collect(),
+            kind: if shim.is_method { "method".to_string() } else { "function".to_string() },
+            name: shim.name,
+            spec: shim.spec_name,
         }
     }
 }
@@ -100,15 +100,15 @@ pub struct TraitMethodImplShim {
     pub spec_name: String,
 }
 
-impl Into<ShimTraitMethodImplEntry> for TraitMethodImplShim {
-    fn into(self) -> ShimTraitMethodImplEntry {
-        ShimTraitMethodImplEntry {
-            trait_path: self.trait_path,
-            method_ident: self.method_ident,
-            for_type: self.for_type,
+impl From<TraitMethodImplShim> for ShimTraitMethodImplEntry {
+    fn from(shim: TraitMethodImplShim) -> Self {
+        Self {
+            trait_path: shim.trait_path,
+            method_ident: shim.method_ident,
+            for_type: shim.for_type,
             kind: "trait_method".to_string(),
-            name: self.name,
-            spec: self.spec_name,
+            name: shim.name,
+            spec: shim.spec_name,
         }
     }
 }
@@ -121,14 +121,14 @@ pub struct AdtShim<'a> {
     pub sem_type: String,
 }
 
-impl<'a> Into<ShimAdtEntry> for AdtShim<'a> {
-    fn into(self) -> ShimAdtEntry {
-        ShimAdtEntry {
-            path: self.path.iter().map(|x| x.to_string()).collect(),
+impl<'a> From<AdtShim<'a>> for ShimAdtEntry {
+    fn from(shim: AdtShim<'a>) -> Self {
+        Self {
+            path: shim.path.iter().map(|x| x.to_string()).collect(),
             kind: "adt".to_string(),
-            syntype: self.syn_type,
-            semtype: self.sem_type,
-            rtype: self.refinement_type,
+            syntype: shim.syn_type,
+            semtype: shim.sem_type,
+            rtype: shim.refinement_type,
         }
     }
 }
@@ -240,7 +240,7 @@ impl<'a> ShimRegistry<'a> {
                 let depends = depends
                     .as_array()
                     .ok_or(format!("Expected array for \"module_dependencies\" attribute"))?;
-                for el in depends.iter() {
+                for el in depends {
                     let module = el
                         .as_str()
                         .ok_or(format!("Expected string for element of \"module_dependencies\" array"))?;

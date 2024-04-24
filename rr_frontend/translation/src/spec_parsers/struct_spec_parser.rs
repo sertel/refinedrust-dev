@@ -146,9 +146,9 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
 
 pub struct InvariantSpecFlags(specs::InvariantSpecFlags);
 
-impl Into<specs::InvariantSpecFlags> for InvariantSpecFlags {
-    fn into(self) -> specs::InvariantSpecFlags {
-        self.0
+impl From<InvariantSpecFlags> for specs::InvariantSpecFlags {
+    fn from(spec: InvariantSpecFlags) -> Self {
+        spec.0
     }
 }
 
@@ -203,7 +203,7 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
 
         let mut params: Vec<specs::CoqParam> = Vec::new();
 
-        for &it in attrs.iter() {
+        for &it in attrs {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 
@@ -395,7 +395,7 @@ where
         let mut field_type = None;
         let mut parsed_rfn = None;
 
-        for &it in attrs.iter() {
+        for &it in attrs {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 

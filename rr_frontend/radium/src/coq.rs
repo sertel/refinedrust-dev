@@ -58,7 +58,7 @@ where
             write!(f, "{}", self.lhs)
         } else {
             write!(f, "({}", self.lhs)?;
-            for r in self.rhs.iter() {
+            for r in &self.rhs {
                 write!(f, " ({})", r)?;
             }
             write!(f, ")")
@@ -146,7 +146,7 @@ impl Display for CoqType {
                 } else {
                     write!(f, "(")?;
                     let mut need_sep = false;
-                    for t in v.iter() {
+                    for t in v {
                         if need_sep {
                             write!(f, " * ")?;
                         }
@@ -165,7 +165,7 @@ impl Display for CoqType {
             Self::PList(cons, tys) => {
                 write!(f, "plist {} [", cons)?;
                 let mut needs_sep = false;
-                for ty in tys.iter() {
+                for ty in tys {
                     if needs_sep {
                         write!(f, "; ")?;
                     }
@@ -184,7 +184,7 @@ impl CoqType {
         match self {
             Self::Var(_) => false,
             Self::Prod(v) => {
-                for t in v.iter() {
+                for t in v {
                     if !t.is_closed() {
                         return false;
                     }
@@ -192,7 +192,7 @@ impl CoqType {
                 return true;
             },
             Self::PList(_, tys) => {
-                for t in tys.iter() {
+                for t in tys {
                     if !t.is_closed() {
                         return false;
                     }
@@ -272,7 +272,7 @@ impl CoqParamList {
 impl Display for CoqParamList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut needs_sep = false;
-        for (name, ty) in self.0.iter() {
+        for (name, ty) in &self.0 {
             if needs_sep {
                 write!(f, " ")?;
             }
@@ -304,9 +304,9 @@ pub struct CoqInductive {
 
 impl Display for CoqInductive {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Inductive {} {} :=\n", self.name, self.parameters)?;
-        for v in self.variants.iter() {
-            write!(f, "| {}\n", v)?;
+        writeln!(f, "Inductive {} {} :=", self.name, self.parameters)?;
+        for v in &self.variants {
+            writeln!(f, "| {}", v)?;
         }
         write!(f, ".")
     }
@@ -332,8 +332,8 @@ pub struct CoqProofScript(pub Vec<CoqProofItem>);
 
 impl Display for CoqProofScript {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for it in self.0.iter() {
-            write!(f, "{}\n", it)?;
+        for it in &self.0 {
+            writeln!(f, "{}", it)?;
         }
         Ok(())
     }
@@ -431,7 +431,7 @@ impl Display for CoqAttributes {
         if !self.attrs.is_empty() {
             write!(f, "#[ ")?;
             let mut needs_sep = false;
-            for attr in self.attrs.iter() {
+            for attr in &self.attrs {
                 if needs_sep {
                     write!(f, ", ")?;
                 }
@@ -501,8 +501,8 @@ impl CoqTopLevelAssertions {
 
 impl Display for CoqTopLevelAssertions {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for a in self.0.iter() {
-            write!(f, "{a}\n")?;
+        for a in &self.0 {
+            writeln!(f, "{a}")?;
         }
         Ok(())
     }

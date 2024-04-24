@@ -28,7 +28,7 @@ fn collect_loop_body(
     body.insert(back_edge_source);
     while !work_queue.is_empty() {
         let current = work_queue.pop().unwrap();
-        for &predecessor in real_edges.predecessors(current).iter() {
+        for &predecessor in real_edges.predecessors(current) {
             if body.contains(&predecessor) {
                 continue;
             }
@@ -166,7 +166,7 @@ fn order_basic_blocks(
                 .collect(),
         ];
         for group in &successors_groups {
-            for &successor in group.iter() {
+            for &successor in group {
                 if back_edges.contains(&(current, successor)) {
                     continue;
                 }
@@ -241,14 +241,14 @@ impl ProcedureLoops {
         }
 
         let mut loop_bodies = HashMap::new();
-        for &(source, target) in back_edges.iter() {
+        for &(source, target) in &back_edges {
             let body = loop_bodies.entry(target).or_insert_with(HashSet::new);
             collect_loop_body(target, source, real_edges, body);
         }
 
         let mut enclosing_loop_heads_set: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>> = HashMap::new();
-        for (&loop_head, loop_body) in loop_bodies.iter() {
-            for &block in loop_body.iter() {
+        for (&loop_head, loop_body) in &loop_bodies {
+            for &block in loop_body {
                 let heads_set = enclosing_loop_heads_set.entry(block).or_insert_with(HashSet::new);
                 heads_set.insert(loop_head);
             }
@@ -256,12 +256,12 @@ impl ProcedureLoops {
 
         let loop_heads: HashSet<_> = loop_bodies.keys().copied().collect();
         let mut loop_head_depths = HashMap::new();
-        for &loop_head in loop_heads.iter() {
+        for &loop_head in &loop_heads {
             loop_head_depths.insert(loop_head, enclosing_loop_heads_set[&loop_head].len());
         }
 
         let mut enclosing_loop_heads = HashMap::new();
-        for (&block, loop_heads) in enclosing_loop_heads_set.iter() {
+        for (&block, loop_heads) in &enclosing_loop_heads_set {
             let mut heads: Vec<BasicBlockIndex> = loop_heads.iter().cloned().collect();
             heads.sort_by_key(|bbi| loop_head_depths[bbi]);
             enclosing_loop_heads.insert(block, heads);
@@ -281,7 +281,7 @@ impl ProcedureLoops {
         debug!("ordered_blocks: {:?}", ordered_blocks);
 
         let mut ordered_loop_bodies = HashMap::new();
-        for (&loop_head, loop_body) in loop_bodies.iter() {
+        for (&loop_head, loop_body) in &loop_bodies {
             let mut ordered_body: Vec<_> = loop_body.iter().cloned().collect();
             ordered_body.sort_by_key(|bb| block_order[bb]);
             debug_assert_eq!(loop_head, ordered_body[0]);
@@ -294,7 +294,7 @@ impl ProcedureLoops {
         // 1. have a SwitchInt terminator (TODO: can we remove this condition?)
         // 2. have an out-edge that exits from the loop
         let mut loop_exit_blocks = HashMap::new();
-        for &loop_head in loop_heads.iter() {
+        for &loop_head in &loop_heads {
             let loop_head_depth = loop_head_depths[&loop_head];
             let loop_body = &loop_bodies[&loop_head];
             let ordered_loop_body = &ordered_loop_bodies[&loop_head];
@@ -334,10 +334,10 @@ impl ProcedureLoops {
         // The nonconditional blocks of a loop are those blocks of the loop body that dominate all
         // the blocks from which a back-edge starts.
         let mut nonconditional_loop_blocks = HashMap::new();
-        for (&loop_head, loop_body) in loop_bodies.iter() {
+        for (&loop_head, loop_body) in &loop_bodies {
             nonconditional_loop_blocks.insert(loop_head, loop_body.clone());
         }
-        for &(back_edge_source, loop_head) in back_edges.iter() {
+        for &(back_edge_source, loop_head) in &back_edges {
             let blocks = nonconditional_loop_blocks.get_mut(&loop_head).unwrap();
             *blocks =
                 blocks.intersection(&dominators.dominators(back_edge_source).collect()).copied().collect();
@@ -492,7 +492,7 @@ impl ProcedureLoops {
         debug!("accesses_pairs = {:?}", accesses_pairs);
         // Paths to whose leaves we need write permissions.
         let mut write_leaves: Vec<mir::Place> = Vec::new();
-        for (place, kind) in accesses_pairs.iter() {
+        for (place, kind) in &accesses_pairs {
             if kind.is_write_access() {
                 let has_prefix = accesses_pairs.iter().any(|(potential_prefix, kind)| {
                     kind.is_write_access()
@@ -508,7 +508,7 @@ impl ProcedureLoops {
 
         // Paths to whose leaves are roots of trees to which we need write permissions.
         let mut mut_borrow_leaves: Vec<mir::Place> = Vec::new();
-        for (place, kind) in accesses_pairs.iter() {
+        for (place, kind) in &accesses_pairs {
             if *kind == PlaceAccessKind::MutableBorrow {
                 let has_prefix = accesses_pairs.iter().any(|(potential_prefix, kind)| {
                     (kind.is_write_access() || *kind == PlaceAccessKind::MutableBorrow)
@@ -524,7 +524,7 @@ impl ProcedureLoops {
 
         // Paths to whose leaves we need read permissions.
         let mut read_leaves: Vec<mir::Place> = Vec::new();
-        for (place, kind) in accesses_pairs.iter() {
+        for (place, kind) in &accesses_pairs {
             if !kind.is_write_access() {
                 let has_prefix = accesses_pairs.iter().any(|(potential_prefix, _kind)| {
                     place != potential_prefix && utils::is_prefix(place, potential_prefix)

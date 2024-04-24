@@ -246,7 +246,7 @@ fn _blocks_definitely_leading_to<'a>(
     target: BasicBlock,
     blocks: &'a mut HashSet<BasicBlock>,
 ) -> &'a mut HashSet<BasicBlock> {
-    for pred in bb_graph[&target].predecessors.iter() {
+    for pred in &bb_graph[&target].predecessors {
         debug!("target: {:#?}, pred: {:#?}", target, pred);
         if bb_graph[pred].successors.len() == 1 {
             debug!("pred {:#?} has 1 successor", pred);

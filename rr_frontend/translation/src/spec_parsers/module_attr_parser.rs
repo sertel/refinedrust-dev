@@ -48,7 +48,7 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
         let mut includes: Vec<String> = Vec::new();
         let mut context_params = Vec::new();
 
-        for &it in attrs.iter() {
+        for &it in attrs {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 

@@ -147,7 +147,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         let mut sorted_origin_contains: Vec<_> = output_facts.origin_contains_loan_at.iter().collect();
         sorted_origin_contains.sort_by(|(&l1, _), (&l2, _)| l1.cmp(&l2));
 
-        for (&loc, region_map) in sorted_origin_contains.iter() {
+        for (&loc, region_map) in &sorted_origin_contains {
             write!(writer, "\t {:?} -> {:?}\n", interner.get_point(loc), *region_map)?;
         }
         write!(writer, "\n\n")?;
@@ -372,7 +372,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         write_graph!(self, "subgraph cluster_restricts {{");
         let mut interesting_restricts = Vec::new();
         let mut loans = Vec::new();
-        for &(region, loan, point) in self.polonius_info.borrowck_in_facts.loan_issued_at.iter() {
+        for &(region, loan, point) in &self.polonius_info.borrowck_in_facts.loan_issued_at {
             write_graph!(self, "\"region_live_at_{:?}_{:?}_{:?}\" [ ", region, loan, point);
             write_graph!(self, "label=\"region_live_at({:?}, {:?}, {:?})\" ];", region, loan, point);
             write_graph!(
@@ -390,7 +390,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         }
         loans.sort();
         loans.dedup();
-        for &loan in loans.iter() {
+        for &loan in &loans {
             let position = self.polonius_info.additional_facts.reborrows.iter().position(|&(_, l)| loan == l);
             if position.is_some() {
                 write_graph!(self, "_{:?} [shape=box color=green]", loan);
@@ -398,12 +398,12 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                 write_graph!(self, "_{:?} [shape=box]", loan);
             }
         }
-        for (region, point) in interesting_restricts.iter() {
+        for (region, point) in &interesting_restricts {
             if let Some(restricts_map) =
                 self.polonius_info.borrowck_out_facts.origin_contains_loan_at.get(point)
             {
                 if let Some(loans) = restricts_map.get(region) {
-                    for loan in loans.iter() {
+                    for loan in loans {
                         write_graph!(self, "\"restricts_{:?}_{:?}_{:?}\" [ ", point, region, loan);
                         write_graph!(
                             self,
@@ -426,7 +426,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                 }
             }
         }
-        for &(loan1, loan2) in self.polonius_info.additional_facts.reborrows.iter() {
+        for &(loan1, loan2) in &self.polonius_info.additional_facts.reborrows {
             write_graph!(self, "_{:?} -> _{:?} [color=green]", loan1, loan2);
             // TODO: Compute strongly connected components.
         }
@@ -444,9 +444,9 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         write_graph!(self, "cluster_title_{:?}_{:?} [label=\"subset at {:?}\"]", bb, stmt, location);
         let mut used_regions = HashSet::new();
         if let Some(subset) = subset_map.get(&start_point).as_ref() {
-            for (source_region, regions) in subset.iter() {
+            for (source_region, regions) in *subset {
                 used_regions.insert(source_region);
-                for target_region in regions.iter() {
+                for target_region in regions {
                     write_graph!(
                         self,
                         "{:?}_{:?}_{:?} -> {:?}_{:?}_{:?}",
@@ -485,16 +485,18 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         if !self.show_borrow_regions() {
             return Ok(());
         }
+
         write_graph!(self, "subgraph cluster_Loans {{");
-        for (region, loan, point) in self.polonius_info.borrowck_in_facts.loan_issued_at.iter() {
+        for (region, loan, point) in &self.polonius_info.borrowck_in_facts.loan_issued_at {
             write_graph!(self, "subgraph cluster_{:?} {{", loan);
+
             let subset_map = &self.polonius_info.borrowck_out_facts.subset;
             if let Some(subset) = subset_map.get(point).as_ref() {
-                for (source_region, regions) in subset.iter() {
+                for (source_region, regions) in *subset {
                     if let Some(local) = self.polonius_info.find_variable(*source_region) {
                         write_graph!(self, "{:?}_{:?} -> {:?}_{:?}", loan, local, loan, source_region);
                     }
-                    for target_region in regions.iter() {
+                    for target_region in regions {
                         write_graph!(
                             self,
                             "{:?}_{:?} -> {:?}_{:?}",
@@ -572,127 +574,127 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             self.visit_terminator(bb, terminator)?;
         }
 
-        if self.loops.loop_heads.contains(&bb) {
-            let start_location = mir::Location {
-                block: bb,
-                statement_index: 0,
-            };
-            let start_point = self.get_point(start_location, facts::PointType::Start);
-            let restricts_map = &self.polonius_info.borrowck_out_facts.origin_contains_loan_at;
-            if let Some(restricts_relation) = restricts_map.get(&start_point).as_ref() {
-                for (region, all_loans) in restricts_relation.iter() {
-                    // Filter out reborrows.
-                    let loans: Vec<_> = all_loans
-                        .iter()
-                        .filter(|l2| {
-                            !all_loans
-                                .iter()
-                                .map(move |&l1| (**l2, l1))
-                                .any(|r| self.polonius_info.additional_facts.reborrows.contains(&r))
-                        })
-                        .cloned()
-                        .collect();
-
-                    // This assertion would fail if instead of reborrow we happen to have a move
-                    // like `let mut current = head;`. See issue #18.
-                    // TODO: display if we reborrowing an argument.
-                    // assert!(all_loans.is_empty() || !loans.is_empty());
-                    write_graph!(self, "{:?}_{:?} [shape=box color=green]", bb, region);
-                    write_graph!(self, "{:?}_0_{:?} -> {:?}_{:?} [dir=none]", bb, region, bb, region);
-                    for loan in loans.iter() {
-                        // The set of regions used in edges. We need to
-                        // create nodes for these regions.
-                        let mut used_regions = HashSet::new();
-
-                        // Write out all loans that are kept alive by ``region``.
-                        write_graph!(self, "{:?}_{:?} -> {:?}_{:?}", bb, region, bb, loan);
-
-                        write_graph!(self, "subgraph cluster_{:?}_{:?} {{", bb, loan);
-                        let loan_issued_at = &self.polonius_info.borrowck_in_facts.loan_issued_at;
-                        for (region, l, point) in loan_issued_at.iter() {
-                            if loan == l {
-                                // Write the original loan's region.
-                                write_graph!(self, "{:?}_{:?} -> {:?}_{:?}_{:?}", bb, loan, bb, loan, region);
-                                used_regions.insert(region);
-
-                                // Write out the subset relation at ``point``.
-                                let subset_map = &self.polonius_info.borrowck_out_facts.subset;
-                                if let Some(subset) = subset_map.get(point).as_ref() {
-                                    for (source_region, regions) in subset.iter() {
-                                        used_regions.insert(source_region);
-                                        for target_region in regions.iter() {
-                                            if source_region == target_region {
-                                                continue;
-                                            }
-                                            used_regions.insert(target_region);
-                                            write_graph!(
-                                                self,
-                                                "{:?}_{:?}_{:?} -> {:?}_{:?}_{:?}",
-                                                bb,
-                                                loan,
-                                                source_region,
-                                                bb,
-                                                loan,
-                                                target_region
-                                            );
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        for region in used_regions {
-                            write_graph!(
-                                self,
-                                "{:?}_{:?}_{:?} [shape=box label=\"{:?}\n(region)\"]",
-                                bb,
-                                loan,
-                                region,
-                                region
-                            );
-                            if let Some(local) = self.polonius_info.find_variable(*region) {
-                                write_graph!(
-                                    self,
-                                    "{:?}_{:?}_{:?} [label=\"{:?}\n(var)\"]",
-                                    bb,
-                                    loan,
-                                    local,
-                                    local
-                                );
-                                write_graph!(
-                                    self,
-                                    "{:?}_{:?}_{:?} -> {:?}_{:?}_{:?}",
-                                    bb,
-                                    loan,
-                                    local,
-                                    bb,
-                                    loan,
-                                    region
-                                );
-                            }
-                        }
-                        write_graph!(self, "}}");
-                    }
-                }
-            }
-
-            // FIXME
-            // for (region, point) in self.polonius_info.borrowck_in_facts.region_live_at.iter() {
-            //     if *point == start_point {
-            //         // TODO: the unwrap_or is a temporary workaround
-            //         // See issue prusti-internal/issues/14
-            //         let variable = self
-            //             .polonius_info
-            //             .find_variable(*region)
-            //             .unwrap_or(mir::Local::new(1000));
-            //         self.print_blocked(variable, start_location)?;
-            //     }
-            // }
-
-            self.print_subsets(start_location)?;
+        if !self.loops.loop_heads.contains(&bb) {
+            return Ok(());
         }
 
-        Ok(())
+        let start_location = mir::Location {
+            block: bb,
+            statement_index: 0,
+        };
+
+        let start_point = self.get_point(start_location, facts::PointType::Start);
+        let restricts_map = &self.polonius_info.borrowck_out_facts.origin_contains_loan_at;
+
+        let restricts_relation = restricts_map.get(&start_point);
+        let Some(restricts_relation) = restricts_relation.as_ref() else {
+            return self.print_subsets(start_location);
+        };
+
+        for (region, all_loans) in *restricts_relation {
+            // Filter out reborrows.
+            let loans: Vec<_> = all_loans
+                .iter()
+                .filter(|l2| {
+                    !all_loans
+                        .iter()
+                        .map(move |&l1| (**l2, l1))
+                        .any(|r| self.polonius_info.additional_facts.reborrows.contains(&r))
+                })
+                .cloned()
+                .collect();
+
+            // This assertion would fail if instead of reborrow we happen to have a move
+            // like `let mut current = head;`. See issue #18.
+            // TODO: display if we reborrowing an argument.
+            // assert!(all_loans.is_empty() || !loans.is_empty());
+            write_graph!(self, "{:?}_{:?} [shape=box color=green]", bb, region);
+            write_graph!(self, "{:?}_0_{:?} -> {:?}_{:?} [dir=none]", bb, region, bb, region);
+
+            for loan in &loans {
+                // The set of regions used in edges. We need to
+                // create nodes for these regions.
+                let mut used_regions = HashSet::new();
+
+                // Write out all loans that are kept alive by ``region``.
+                write_graph!(self, "{:?}_{:?} -> {:?}_{:?}", bb, region, bb, loan);
+
+                write_graph!(self, "subgraph cluster_{:?}_{:?} {{", bb, loan);
+                let loan_issued_at = &self.polonius_info.borrowck_in_facts.loan_issued_at;
+                for (region, l, point) in loan_issued_at {
+                    if loan != l {
+                        continue;
+                    }
+
+                    // Write the original loan's region.
+                    write_graph!(self, "{:?}_{:?} -> {:?}_{:?}_{:?}", bb, loan, bb, loan, region);
+                    used_regions.insert(region);
+
+                    // Write out the subset relation at ``point``.
+                    let subset_map = &self.polonius_info.borrowck_out_facts.subset;
+                    let subset = subset_map.get(point);
+                    let Some(subset) = subset.as_ref() else {
+                        continue;
+                    };
+
+                    for (source_region, regions) in *subset {
+                        used_regions.insert(source_region);
+
+                        for target_region in regions {
+                            if source_region == target_region {
+                                continue;
+                            }
+
+                            used_regions.insert(target_region);
+                            write_graph!(
+                                self,
+                                "{:?}_{:?}_{:?} -> {:?}_{:?}_{:?}",
+                                bb,
+                                loan,
+                                source_region,
+                                bb,
+                                loan,
+                                target_region
+                            );
+                        }
+                    }
+                }
+
+                for region in used_regions {
+                    write_graph!(
+                        self,
+                        "{:?}_{:?}_{:?} [shape=box label=\"{:?}\n(region)\"]",
+                        bb,
+                        loan,
+                        region,
+                        region
+                    );
+
+                    let Some(local) = self.polonius_info.find_variable(*region) else {
+                        continue;
+                    };
+
+                    write_graph!(self, "{:?}_{:?}_{:?} [label=\"{:?}\n(var)\"]", bb, loan, local, local);
+                    write_graph!(self, "{:?}_{:?}_{:?} -> {:?}_{:?}_{:?}", bb, loan, local, bb, loan, region);
+                }
+                write_graph!(self, "}}");
+            }
+        }
+
+        // FIXME
+        // for (region, point) in self.polonius_info.borrowck_in_facts.region_live_at.iter() {
+        //     if *point == start_point {
+        //         // TODO: the unwrap_or is a temporary workaround
+        //         // See issue prusti-internal/issues/14
+        //         let variable = self
+        //             .polonius_info
+        //             .find_variable(*region)
+        //             .unwrap_or(mir::Local::new(1000));
+        //         self.print_blocked(variable, start_location)?;
+        //     }
+        // }
+
+        self.print_subsets(start_location)
     }
 
     fn visit_statement(&self, location: mir::Location, statement: &mir::Statement) -> Result<(), io::Error> {
@@ -953,7 +955,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             let subset_map = &self.polonius_info.borrowck_out_facts.subset;
             if let Some(subset) = subset_map.get(&start_point).as_ref() {
                 if let Some(blocked_regions) = subset.get(&region) {
-                    for blocked_region in blocked_regions.iter() {
+                    for blocked_region in blocked_regions {
                         if *blocked_region == region {
                             continue;
                         }
@@ -992,9 +994,9 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         file.push_str(".csv");
 
         let mut writer = WriterBuilder::new().from_path(file).unwrap();
-        for (point_index, map) in requires.iter() {
-            for (region, loans) in map.iter() {
-                for loan in loans.iter() {
+        for (point_index, map) in requires {
+            for (region, loans) in map {
+                for loan in loans {
                     let point = self.polonius_info.interner.get_point(*point_index);
                     writer
                         .write_record(&[

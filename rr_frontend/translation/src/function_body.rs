@@ -235,7 +235,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         // region variables
         let mut subst_early_bounds: Vec<ty::GenericArg<'tcx>> = Vec::new();
         let mut num_early_bounds = 0;
-        for a in params.iter() {
+        for a in params {
             match a.unpack() {
                 ty::GenericArgKind::Lifetime(r) => {
                     // skip over 0 = static
@@ -263,7 +263,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
         // add names for late bound region variables
         let mut num_late_bounds = 0;
-        for b in sig.bound_vars().iter() {
+        for b in sig.bound_vars() {
             let next_id = ty::RegionVid::from_u32(num_early_bounds + num_late_bounds + 1);
             match b {
                 ty::BoundVariableKind::Region(r) => {
@@ -326,7 +326,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             typ: facts::PointType::Start,
         });
 
-        for (ref r1, ref r2, ref p) in info.borrowck_in_facts.subset_base.iter() {
+        for (ref r1, ref r2, ref p) in &info.borrowck_in_facts.subset_base {
             if *p == root_point && *r2 == r {
                 info!("find placeholder region for: {:?} ⊑ {:?} = r = {:?}", r1, r2, r);
                 return Some(*r1);
@@ -506,7 +506,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 info!("Have lifetime parameters: {:?}", universal_lifetimes);
 
                 // add universal lifetimes to the spec
-                for (_, (lft, name)) in universal_lifetimes.iter() {
+                for (lft, name) in universal_lifetimes.values() {
                     //let lft = info::AtomicRegion::Universal(info::UniversalRegionKind::Local,
                     // ty::RegionVid::from_u32(1+r));
                     translated_fn
@@ -520,7 +520,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     location: BasicBlock::from_u32(0).start_location(),
                     typ: facts::PointType::Start,
                 };
-                for (r1, r2) in info.borrowck_in_facts.known_placeholder_subset.iter() {
+                for (r1, r2) in &info.borrowck_in_facts.known_placeholder_subset {
                     inclusion_tracker.add_static_inclusion(
                         *r1,
                         *r2,
@@ -644,7 +644,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 info!("inputs: {:?}, output: {:?}", inputs, output);
 
                 // add universal lifetimes to the spec
-                for (_, (lft, name)) in universal_lifetimes.iter() {
+                for (lft, name) in universal_lifetimes.values() {
                     translated_fn
                         .add_universal_lifetime(name.clone(), lft.to_string())
                         .map_err(|e| TranslationError::UnknownError(e))?;
@@ -656,7 +656,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     location: BasicBlock::from_u32(0).start_location(),
                     typ: facts::PointType::Start,
                 };
-                for (r1, r2) in info.borrowck_in_facts.known_placeholder_subset.iter() {
+                for (r1, r2) in &info.borrowck_in_facts.known_placeholder_subset {
                     inclusion_tracker.add_static_inclusion(
                         *r1,
                         *r2,
@@ -723,7 +723,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
         let mut universal_constraints = Vec::new();
 
-        for (r1, r2) in placeholder_subset.iter() {
+        for (r1, r2) in placeholder_subset {
             if let info::RegionKind::Universal(uk1) = info.get_region_kind(*r1) {
                 if let info::RegionKind::Universal(uk2) = info.get_region_kind(*r2) {
                     // if LHS is static, ignore.
@@ -764,7 +764,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
         info!("inputs: {:?}, output: {:?}", normalized_inputs, normalized_output);
         let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
-        for arg in normalized_inputs.iter() {
+        for arg in normalized_inputs {
             let translated: radium::Type<'def> = self.ty_translator.translate_type_no_normalize(arg)?;
             translated_arg_types.push(translated);
         }
@@ -804,7 +804,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
         info!("inputs: {:?}, output: {:?}", normalized_inputs, normalized_output);
         let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
-        for arg in normalized_inputs.iter() {
+        for arg in normalized_inputs {
             let translated: radium::Type<'def> = self.ty_translator.translate_type_no_normalize(arg)?;
             translated_arg_types.push(translated);
         }
@@ -1053,7 +1053,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         // Potentially, we should instead just equalize the types
 
         let mut initial_arg_mapping = Vec::new();
-        for (r1, r2, _) in subset_base.iter() {
+        for (r1, r2, _) in subset_base {
             let lft1 = self.info.mk_atomic_region(*r1);
             let lft2 = self.info.mk_atomic_region(*r2);
 
@@ -1161,7 +1161,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // add loop info
         let loop_info = self.proc.loop_info();
         info!("loop heads: {:?}", loop_info.loop_heads);
-        for (head, bodies) in loop_info.loop_bodies.iter() {
+        for (head, bodies) in &loop_info.loop_bodies {
             info!("loop {:?} -> {:?}", head, bodies);
         }
 
@@ -1173,7 +1173,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         if let Some(bb) = basic_blocks.get(initial_bb_idx) {
             let mut translated_bb = self.translate_basic_block(initial_bb_idx, bb)?;
             // push annotation for initial constraints that relate argument's place regions to universals
-            for (r1, r2) in initial_constraints.iter() {
+            for (r1, r2) in &initial_constraints {
                 translated_bb = radium::Stmt::Annot {
                     a: radium::Annotation::CopyLftName(
                         self.format_atomic_region(r1),
@@ -1202,11 +1202,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             }
         }
         // assume that all used literals are layoutable
-        for (_, g) in self.ty_translator.scope.borrow().shim_uses.iter() {
+        for g in self.ty_translator.scope.borrow().shim_uses.values() {
             self.translated_fn.assume_synty_layoutable(g.generate_syn_type_term());
         }
         // assume that all used tuples are layoutable
-        for g in self.ty_translator.scope.borrow().tuple_uses.iter() {
+        for g in &self.ty_translator.scope.borrow().tuple_uses {
             self.translated_fn.assume_synty_layoutable(g.generate_syn_type_term());
         }
 
@@ -1214,13 +1214,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // - collect the relevant bb -> def_id mappings for this function (so we can eventually generate the
         //   definition)
         // - have a function that takes the def_id and then parses the attributes into a loop invariant
-        for (head, did) in self.loop_specs.iter() {
+        for (head, did) in &self.loop_specs {
             let spec = self.parse_attributes_on_loop_spec_closure(head, did);
             self.translated_fn.register_loop_invariant(head.as_usize(), spec);
         }
 
         // generate dependencies on other procedures.
-        for (_, (loc_name, spec_name, params, sts)) in self.collected_procedures.iter() {
+        for (loc_name, spec_name, params, sts) in self.collected_procedures.values() {
             self.translated_fn.require_function(
                 loc_name.clone(),
                 spec_name.clone(),
@@ -1230,7 +1230,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
 
         // generate dependencies on statics
-        for did in self.collected_statics.iter() {
+        for did in &self.collected_statics {
             let s = self.const_registry.statics.get(did).unwrap();
             self.translated_fn.require_static(s.clone());
         }
@@ -1262,7 +1262,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // Potentially, we should instead just equalize the types
 
         let mut initial_arg_mapping = Vec::new();
-        for (r1, r2, _) in subset_base.iter() {
+        for (r1, r2, _) in subset_base {
             let lft1 = self.info.mk_atomic_region(*r1);
             let lft2 = self.info.mk_atomic_region(*r2);
 
@@ -1290,7 +1290,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // erase parameters to their syntactic types
         let mut key = Vec::new();
         let mut region_eraser = TyRegionEraseFolder::new(self.env.tcx());
-        for p in ty_params.iter() {
+        for p in ty_params {
             match p.unpack() {
                 ty::GenericArgKind::Lifetime(_) => {
                     // lifetimes are not relevant here
@@ -1342,7 +1342,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
             // TODO: maybe come up with some better way to generate names
             info!("register_use_procedure: translating args {:?}", tup.1);
-            for p in tup.1.iter() {
+            for p in &tup.1 {
                 mangled_name.push_str(format!("_{}", p).as_str());
 
                 let translated_ty = self.ty_translator.translate_type(p)?;
@@ -1361,7 +1361,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 ty::TyKind::FnDef(_, _) => {
                     let sig = full_ty.fn_sig(self.env.tcx());
                     let sig = normalize_in_function(*did, self.env.tcx(), sig)?;
-                    for ty in sig.inputs().skip_binder().iter() {
+                    for ty in sig.inputs().skip_binder() {
                         normalized_inputs.push(*ty);
                     }
                 },
@@ -1385,7 +1385,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             normalized_inputs.push(tuple_ty);
                         },
                     }
-                    for ty in pre_sig.inputs().iter() {
+                    for ty in pre_sig.inputs() {
                         normalized_inputs.push(*ty);
                     }
                 },
@@ -1393,7 +1393,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             }
 
             //info!("substs: {:?}, inputs {:?} ", ty_params, inputs);
-            for i in normalized_inputs.iter() {
+            for i in &normalized_inputs {
                 // need to wrap it, because there's no Subst instance for Ty
                 let i = ty::EarlyBinder::bind(*i);
                 let ty = i.instantiate(self.env.tcx(), ty_params);
@@ -1475,7 +1475,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         //
 
         // get locals
-        for (_l, name, ty) in self.fn_locals.iter() {
+        for (_l, name, ty) in &self.fn_locals {
             // get the refinement type
             let mut rfn_ty = ty.get_rfn_type(&[]);
             // wrap it in place_rfn, since we reason about places
@@ -1540,7 +1540,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         // for strong update: emit mutual equalities
         // TODO: alternative implementation: structurally compare regions in LHS type and RHS type
-        for (s1, s2, point) in subset_base.iter() {
+        for (s1, s2, point) in subset_base {
             if *point == midpoint {
                 let lft1 = self.info.mk_atomic_region(*s1);
                 let lft2 = self.info.mk_atomic_region(*s2);
@@ -1574,7 +1574,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         });
 
         // for weak updates: should mirror the constraints generated by Polonius
-        for (s1, s2, point) in subset_base.iter() {
+        for (s1, s2, point) in subset_base {
             if *point == midpoint {
                 // take this constraint
                 // TODO should there be exceptions to this?
@@ -1655,12 +1655,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         // we go in order through the bodies in order to not stumble upon an annotation for a
         // nested loop!
-        for body in bodies.iter() {
+        for body in bodies {
             // check that we did not go below a nested loop
             if self.proc.loop_info().get_loop_head(*body) == Some(head_bb) {
                 // check the statements for an assignment
                 let data = basic_blocks.get(*body).unwrap();
-                for stmt in data.statements.iter() {
+                for stmt in &data.statements {
                     if let StatementKind::Assign(box (ref pl, _)) = stmt.kind {
                         if let Some(did) = self.is_spec_closure_local(pl.local)? {
                             return Ok(Some(did));
@@ -1756,7 +1756,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         info!("calling function {:?}", target_did);
         let mut early_regions = Vec::new();
         info!("call substs: {:?} = {:?}, {:?}", func, sig, substs);
-        for a in substs.iter() {
+        for a in substs {
             match a.unpack() {
                 ty::GenericArgKind::Lifetime(r) => match r.kind() {
                     ty::RegionKind::ReVar(r) => early_regions.push(r),
@@ -1785,7 +1785,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             _ => r,
         };
 
-        for a in substs.iter() {
+        for a in substs {
             match a.unpack() {
                 ty::GenericArgKind::Type(c) => {
                     let mut folder = ty::fold::RegionFolder::new(self.env.tcx(), &mut clos);
@@ -1800,7 +1800,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let new_constraints = self.info.get_new_subset_constraints_at_point(midpoint);
         let mut new_regions = HashSet::new();
         let mut relevant_constraints = Vec::new();
-        for (r1, r2) in new_constraints.iter() {
+        for (r1, r2) in &new_constraints {
             if matches!(self.info.get_region_kind(*r1), info::RegionKind::Unknown) {
                 // this is probably a inference variable for the call
                 new_regions.insert(*r1);
@@ -1817,7 +1817,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         // identify the late-bound regions
         let mut late_regions = Vec::new();
-        for r in new_regions_sorted.iter() {
+        for r in &new_regions_sorted {
             // only take the ones which are not early bound and
             // which are not due to a generic (the callee doesn't care about generic regions)
             if !early_regions.contains(r) && !generic_regions.contains(r) {
@@ -1837,8 +1837,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let mut new_regions_classification = HashMap::new();
         // compute transitive closure of constraints
         let relevant_constraints = info::compute_transitive_closure(relevant_constraints);
-        for r in new_regions_sorted.iter() {
-            for (r1, r2) in relevant_constraints.iter() {
+        for r in &new_regions_sorted {
+            for (r1, r2) in &relevant_constraints {
                 if *r2 == *r {
                     // i.e. (flipping it around when we are talking about lifetimes),
                     // r needs to be a sublft of r1
@@ -1921,7 +1921,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // update the inclusion tracker with the new regions we have introduced
         // We just add the inclusions and ignore that we resolve it in a "tight" way.
         // the cases where we need the reverse inclusion should be really rare.
-        for (r, c) in classification.classification.iter() {
+        for (r, c) in &classification.classification {
             match c {
                 CallRegionKind::EqR(r2) => {
                     // put it at the start point, because the inclusions come into effect
@@ -1941,7 +1941,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let func_expr = self.translate_operand(func, false)?;
         // translate the arguments
         let mut translated_args = Vec::new();
-        for arg in args.iter() {
+        for arg in args {
             // to_ty is the type the function expects
 
             //let ty = arg.ty(&self.proc.get_mir().local_decls, self.env.tcx());
@@ -1951,11 +1951,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         // make the call lifetime instantiation list
         let mut lifetime_insts = Vec::new();
-        for early in classification.early_regions.iter() {
+        for early in &classification.early_regions {
             let lft = self.format_region(*early);
             lifetime_insts.push(lft);
         }
-        for late in classification.late_regions.iter() {
+        for late in &classification.late_regions {
             let lft = self.format_region(*late);
             lifetime_insts.push(lft);
         }
@@ -2035,7 +2035,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let mut stmt_annots = Vec::new();
 
         // add annotations to initialize the regions for the call (before the call)
-        for (r, class) in classification.classification.iter() {
+        for (r, class) in &classification.classification {
             let lft = self.format_region(*r);
             match class {
                 CallRegionKind::EqR(r2) => {
@@ -2375,7 +2375,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let mut outliving = Vec::new();
 
         let subset_base = &input_facts.subset_base;
-        for (r1, r2, p) in subset_base.iter() {
+        for (r1, r2, p) in subset_base {
             if *p == loan_point && *r2 == r {
                 self.inclusion_tracker.add_static_inclusion(*r1, *r2, *p);
                 outliving.push(*r1);
@@ -2449,7 +2449,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // before executing the assignment, first enforce dynamic inclusions
         info!("Generating dynamic inclusions {:?}", incls);
         let mut stmt_annots = Vec::new();
-        for (r1, r2, p) in incls.iter() {
+        for (r1, r2, p) in &incls {
             if !incls.contains(&(*r2, *r1, *p)) {
                 self.generate_dyn_inclusion(&mut stmt_annots, *r1, *r2, *p);
             } else {
@@ -2505,7 +2505,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 self.info.get_new_subset_constraints_at_point(loan_point);
             info!("Shared reborrow at {:?} with new constrs: {:?}", region, new_constrs);
             let mut included_region = None;
-            for (r1, r2) in new_constrs.iter() {
+            for (r1, r2) in &new_constrs {
                 if *r2 == region {
                     included_region = Some(r1);
                     break;
@@ -2567,13 +2567,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 location: loc,
                 typ: facts::PointType::Mid,
             });
-            for r in regions.iter() {
+            for r in &regions {
                 self.inclusion_tracker.add_barrier(*r, barrier_point_index);
             }
             // get new constraints that should be enforced
             let new_constraints = self.get_assignment_strong_update_constraints(loc);
             stmt_annot = Vec::new();
-            for (r1, r2, p) in new_constraints.iter() {
+            for (r1, r2, p) in &new_constraints {
                 self.inclusion_tracker.add_static_inclusion(*r1, *r2, *p);
                 self.inclusion_tracker.add_static_inclusion(*r2, *r1, *p);
 
@@ -2641,7 +2641,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             typ: facts::PointType::Mid,
         });
 
-        for (s1, s2, point) in subset_base.iter() {
+        for (s1, s2, point) in subset_base {
             if *point == midpoint {
                 let lft1 = self.info.mk_atomic_region(*s1);
                 let lft2 = self.info.mk_atomic_region(*s2);
@@ -3154,7 +3154,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // translate operands
                 let mut translated_ops: Vec<radium::Expr> = Vec::new();
                 let mut operand_types: Vec<Ty<'tcx>> = Vec::new();
-                for o in op.iter() {
+                for o in op {
                     let translated_o = self.translate_operand(o, true)?;
                     let type_of_o = self.get_type_of_operand(o)?;
                     translated_ops.push(translated_o);
@@ -3654,7 +3654,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let mut acc_expr: radium::Expr = radium::Expr::Var(local_name.to_string());
 
         // iterate in evaluation order
-        for ref it in pl.projection.iter() {
+        for ref it in pl.projection {
             match it {
                 ProjectionElem::Deref => {
                     // use the type of the dereferencee

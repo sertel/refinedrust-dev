@@ -34,8 +34,8 @@ impl<'tcx> PlaceSet<'tcx> {
     }
 
     pub fn check_invariant(&self) {
-        for place1 in self.places.iter() {
-            for place2 in self.places.iter() {
+        for place1 in &self.places {
+            for place2 in &self.places {
                 if place1 != place2 {
                     assert!(
                         !is_prefix(place1, place2),
@@ -103,14 +103,14 @@ impl<'tcx> PlaceSet<'tcx> {
             }
         }
         // Check the invariant.
-        for place1 in places.iter() {
+        for place1 in &places {
             assert!(
                 !is_prefix(place1, &place) && !is_prefix(&place, place1),
                 "Bug: failed to ensure that there are no prefixes: place={:?} place1={:?}",
                 place,
                 place1
             );
-            for place2 in places.iter() {
+            for place2 in &places {
                 if place1 != place2 {
                     assert!(
                         !is_prefix(place1, place2),

@@ -73,10 +73,10 @@ fn order_adt_defs(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
     let mut topo = TopologicalSort::new();
     let mut defs = HashSet::new();
 
-    for (did, referenced_dids) in deps.iter() {
+    for (did, referenced_dids) in &deps {
         defs.insert(did);
         topo.insert(*did);
-        for did2 in referenced_dids.iter() {
+        for did2 in referenced_dids {
             topo.add_dependency(*did2, *did);
         }
     }
@@ -271,7 +271,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let variant_defs = self.type_translator.get_variant_defs();
         let enum_defs = self.type_translator.get_enum_defs();
 
-        for (did, entry) in variant_defs.iter() {
+        for (did, entry) in &variant_defs {
             let entry = entry.borrow();
             if let Some(entry) = entry.as_ref() {
                 if let Some(shim) = self.make_adt_shim_entry(*did, entry.make_literal_type()) {
@@ -279,7 +279,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 }
             }
         }
-        for (did, entry) in enum_defs.iter() {
+        for (did, entry) in &enum_defs {
             let entry = entry.borrow();
             if let Some(entry) = entry.as_ref() {
                 if let Some(shim) = self.make_adt_shim_entry(*did, entry.make_literal_type()) {
@@ -395,7 +395,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let ordered = order_adt_defs(adt_deps);
         info!("ordered ADT defns: {:?}", ordered);
 
-        for did in ordered.iter() {
+        for did in &ordered {
             if let Some(su_ref) = struct_defs.get(did) {
                 let su_ref = su_ref.borrow();
                 info!("writing struct {:?}, {:?}", did, su_ref);
@@ -810,7 +810,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
 /// Register shims in the procedure registry.
 fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
-    for shim in vcx.shim_registry.get_function_shims().iter() {
+    for shim in vcx.shim_registry.get_function_shims() {
         let did;
         if shim.is_method {
             did = utils::try_resolve_method_did(vcx.env.tcx(), &shim.path);
@@ -835,7 +835,7 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
         }
     }
 
-    for shim in vcx.shim_registry.get_adt_shims().iter() {
+    for shim in vcx.shim_registry.get_adt_shims() {
         if let Some(did) = utils::try_resolve_did(vcx.env.tcx(), &shim.path) {
             let lit = radium::LiteralType {
                 rust_name: None,
@@ -1141,7 +1141,7 @@ pub fn get_filtered_functions(env: &Environment<'_>) -> Vec<LocalDefId> {
         })
         .collect();
 
-    for f in functions_with_spec.iter() {
+    for f in &functions_with_spec {
         info!("Function {:?} has a spec and will be processed", f);
     }
     functions_with_spec
@@ -1151,7 +1151,7 @@ pub fn get_filtered_functions(env: &Environment<'_>) -> Vec<LocalDefId> {
 pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<(), String> {
     let statics = vcx.env.get_statics();
 
-    for s in statics.iter() {
+    for s in &statics {
         let ty: ty::EarlyBinder<ty::Ty<'tcx>> = vcx.env.tcx().type_of(s.to_def_id());
 
         let const_attrs = utils::filter_tool_attrs(vcx.env.get_attributes(s.to_def_id()));
@@ -1193,7 +1193,7 @@ pub fn get_module_attributes(
     let mut attrs = HashMap::new();
     info!("collected modules: {:?}", modules);
 
-    for m in modules.iter() {
+    for m in &modules {
         let module_attrs = utils::filter_tool_attrs(env.get_attributes(m.to_def_id()));
         let mut module_parser = mod_parser::VerboseModuleAttrParser::new();
         let module_spec = module_parser.parse_module_attrs(*m, &module_attrs)?;
@@ -1232,7 +1232,7 @@ fn scan_loadpath(path: &Path, storage: &mut HashMap<String, std::path::PathBuf>)
 fn scan_loadpaths(paths: &[std::path::PathBuf]) -> io::Result<HashMap<String, std::path::PathBuf>> {
     let mut found_lib_files: HashMap<String, std::path::PathBuf> = HashMap::new();
 
-    for path in paths.iter() {
+    for path in paths {
         scan_loadpath(path, &mut found_lib_files)?;
     }
 
@@ -1297,13 +1297,15 @@ where
     info!("Loading libraries from {:?}", library_load_paths);
     let found_libs = scan_loadpaths(&library_load_paths).map_err(|e| e.to_string())?;
     info!("Found the following RefinedRust libraries in the loadpath: {:?}", found_libs);
-    for incl in includes.iter() {
-        if let Some(p) = found_libs.get(incl) {
-            let f = File::open(p).map_err(|e| e.to_string())?;
-            shim_registry.add_source(f)?;
-        } else {
+
+    for incl in &includes {
+        let Some(p) = found_libs.get(incl) else {
             println!("Warning: did not find library {} in loadpath", incl);
-        }
+            continue;
+        };
+
+        let f = File::open(p).map_err(|e| e.to_string())?;
+        shim_registry.add_source(f)?;
     }
 
     // register shims from the shim config

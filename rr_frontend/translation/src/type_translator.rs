@@ -104,7 +104,7 @@ impl<'def> TypeTranslationScope<'def> {
 
         let mut v: Vec<Option<radium::LiteralTyParam>> = Vec::new();
         let mut num_lifetimes = 0;
-        for gen_arg in ty_params.iter() {
+        for gen_arg in ty_params {
             match gen_arg.unpack() {
                 ty::GenericArgKind::Type(ty) => match ty.kind() {
                     TyKind::Param(p) => {
@@ -676,7 +676,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             self.register_enum(def)
         } else if def.is_struct() {
             // register all variants
-            for variant in def.variants().iter() {
+            for variant in def.variants() {
                 self.register_struct(variant, def)?;
             }
             Ok(())
@@ -697,7 +697,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         // first thing: figure out the generics we are using here.
         let mut folder = TyVarFolder::new(self.env.tcx());
-        for f in ty.fields.iter() {
+        for f in &ty.fields {
             let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
             f_ty.fold_with(&mut folder);
         }
@@ -835,7 +835,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         // assemble the field definition
         let mut field_refinements = Vec::new();
-        for f in ty.fields.iter() {
+        for f in &ty.fields {
             let f_name = f.ident(tcx).to_string();
 
             let attrs = self.env.get_attributes(f.did);
@@ -884,7 +884,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 let mut rfn = String::with_capacity(100);
                 write!(rfn, "-[").unwrap();
                 let mut need_sep = false;
-                for refinement in field_refinements.iter() {
+                for refinement in &field_refinements {
                     if need_sep {
                         write!(rfn, "; ").unwrap();
                     }
@@ -927,7 +927,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let variants = def.variants();
 
         let mut last_explicit_discr: i128 = 0;
-        for v in variants.iter() {
+        for v in variants {
             let v: &ty::VariantDef = v;
             let name = v.name.to_string();
             info!("Discriminant for {:?}: {:?}", v, v.discr);
@@ -1028,7 +1028,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let mut variants: Vec<radium::CoqVariant> = Vec::new();
         let mut variant_patterns = Vec::new();
 
-        for v in def.variants().iter() {
+        for v in def.variants() {
             let registry = self.variant_registry.borrow();
             let (variant_name, coq_def, variant_def, _, _) = registry.get(&v.def_id).unwrap();
             let coq_def = coq_def.borrow();
@@ -1090,8 +1090,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         // first thing: figure out the generics we are using here.
         // we need to search all of the variant types for that.
         let mut folder = TyVarFolder::new(self.env.tcx());
-        for v in def.variants().iter() {
-            for f in v.fields.iter() {
+        for v in def.variants() {
+            for f in &v.fields {
                 let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
                 f_ty.fold_with(&mut folder);
             }
@@ -1121,7 +1121,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         let translate_variants = || {
             let mut variant_attrs = Vec::new();
-            for v in def.variants().iter() {
+            for v in def.variants() {
                 // now generate the variant
                 let struct_def_init = self.struct_arena.alloc(RefCell::new(None));
 
@@ -1210,7 +1210,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let mut enum_builder =
                 radium::EnumBuilder::new(enum_name, ty_param_defs, translated_it, repr_opt);
             // now build the enum itself
-            for v in def.variants().iter() {
+            for v in def.variants() {
                 let (variant_ref, _) = self.lookup_adt_variant(v.def_id)?;
                 let variant_name = strip_coq_ident(&v.ident(tcx).to_string());
                 let discriminant = discrs.get(&variant_name).unwrap();

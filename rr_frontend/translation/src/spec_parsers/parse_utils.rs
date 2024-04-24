@@ -114,9 +114,9 @@ impl<'a> parse::Parse<ParseMeta<'a>> for LiteralType {
 
 pub struct IProp(specs::IProp);
 
-impl Into<specs::IProp> for IProp {
-    fn into(self) -> specs::IProp {
-        self.0
+impl From<IProp> for specs::IProp {
+    fn from(iprop: IProp) -> Self {
+        iprop.0
     }
 }
 
@@ -179,9 +179,9 @@ impl<'a> Parse<ParseMeta<'a>> for RRParams {
 
 pub struct CoqPath(specs::CoqPath);
 
-impl Into<specs::CoqPath> for CoqPath {
-    fn into(self) -> specs::CoqPath {
-        self.0
+impl From<CoqPath> for specs::CoqPath {
+    fn from(path: CoqPath) -> Self {
+        path.0
     }
 }
 
@@ -299,7 +299,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
     }
 
     let lookup_lft_name = |search: &str| {
-        for (name, lft) in lfts.iter() {
+        for (name, lft) in lfts {
             if let Some(name) = name {
                 if name == search {
                     return Some(lft.clone());

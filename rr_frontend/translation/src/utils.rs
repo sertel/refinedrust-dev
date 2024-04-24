@@ -40,7 +40,7 @@ impl PathWithArgs {
 
         let mut ty_args = Vec::new();
 
-        for arg in self.args.iter() {
+        for arg in &self.args {
             if let Some(arg) = arg {
                 let ty = arg.to_type(tcx)?;
                 ty_args.push(Some(ty::GenericArg::from(ty)));
@@ -63,7 +63,7 @@ impl PathWithArgs {
         // TODO: how to represent type variables in case the definition is open?
         let mut index = 0;
         info!("flattening args {:?}", args);
-        for arg in args.iter() {
+        for arg in args {
             if let Some(ty) = arg.as_type() {
                 // TODO not quite right yet (see above)
                 if !ty.is_param(index) {
@@ -165,7 +165,7 @@ pub fn get_cleaned_def_path(tcx: TyCtxt<'_>, did: DefId) -> Vec<String> {
 // path (but only a suffix of the full path)
 fn extract_def_path(path: rustc_hir::definitions::DefPath) -> Vec<String> {
     let mut components = Vec::new();
-    for p in path.data.iter() {
+    for p in &path.data {
         if let Some(name) = p.data.get_opt_name() {
             components.push(name.as_str().to_string());
         }
@@ -222,7 +222,7 @@ where
             let mut path_it = path.iter().skip(1).peekable();
 
             while let Some(segment) = path_it.next() {
-                for item in mem::take(&mut items).iter() {
+                for item in mem::take(&mut items) {
                     let item: &rustc_middle::metadata::ModChild = item;
                     if item.ident.name.as_str() == segment.as_ref() {
                         if path_it.peek().is_none() {
@@ -319,7 +319,7 @@ pub fn try_resolve_trait_method_did<'tcx>(
     info!("found implementations: {:?}", impls);
 
     let mut solution = None;
-    for did in defs.iter() {
+    for did in defs {
         let impl_self_ty: ty::Ty<'tcx> = tcx.type_of(did).instantiate_identity();
         let impl_self_ty = normalize_in_function(*did, tcx, impl_self_ty).unwrap();
 
@@ -390,7 +390,7 @@ where
 
             while let Some(segment) = path_it.next() {
                 //info!("items to look at: {:?}", items);
-                for item in mem::take(&mut items).iter() {
+                for item in mem::take(&mut items) {
                     let item: &rustc_middle::metadata::ModChild = item;
                     if item.ident.name.as_str() == segment.as_ref() {
                         info!("taking path: {:?}", segment.as_ref());

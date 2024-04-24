@@ -161,7 +161,7 @@ impl Display for OpType {
             Self::StructOp(sl, ops) => {
                 write!(f, "StructOp {} [", sl)?;
                 let mut need_sep = false;
-                for op in ops.iter() {
+                for op in ops {
                     if need_sep {
                         write!(f, "; ")?;
                     }
@@ -442,7 +442,7 @@ impl<'def> LiteralTypeUse<'def> {
     pub fn generate_raw_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
-        for p in self.params.iter() {
+        for p in &self.params {
             let st = p.get_syn_type();
             param_sts.push(format!("({})", st));
         }
@@ -453,7 +453,7 @@ impl<'def> LiteralTypeUse<'def> {
     pub fn generate_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
-        for p in self.params.iter() {
+        for p in &self.params {
             let st = p.get_syn_type();
             param_sts.push(format!("({})", st));
         }
@@ -464,7 +464,7 @@ impl<'def> LiteralTypeUse<'def> {
     /// Generate a string representation of this struct use.
     pub fn generate_type_term(&self) -> String {
         let mut param_tys = Vec::new();
-        for p in self.params.iter() {
+        for p in &self.params {
             param_tys.push(format!("({})", p));
         }
         let specialized_term = CoqAppTerm::new(self.def.type_term.clone(), param_tys);
@@ -880,7 +880,7 @@ impl InvariantSpec {
         if self.existentials.len() > 0 {
             write!(out, "∃ ").unwrap();
             let mut needs_sep = false;
-            for (name, ty) in self.existentials.iter() {
+            for (name, ty) in &self.existentials {
                 if needs_sep {
                     write!(out, " ").unwrap();
                 }
@@ -906,11 +906,11 @@ impl InvariantSpec {
             self.abstracted_refinement.as_ref().unwrap()
         )
         .unwrap();
-        for own in self.ty_own_invariants.iter() {
+        for own in &self.ty_own_invariants {
             write!(out, "{} ∗ ", IProp::Atom(own.fmt_owned("π"))).unwrap();
         }
 
-        for (inv, mode) in self.invariants.iter() {
+        for (inv, mode) in &self.invariants {
             match mode {
                 InvariantMode::All | InvariantMode::OnlyOwned => {
                     write!(out, "{} ∗ ", inv).unwrap();
@@ -937,10 +937,10 @@ impl InvariantSpec {
             self.abstracted_refinement.as_ref().unwrap()
         )
         .unwrap();
-        for own in self.ty_own_invariants.iter() {
+        for own in &self.ty_own_invariants {
             write!(out, "{} ∗ ", IProp::Atom(own.fmt_shared("π", &self.shr_lft_binder))).unwrap();
         }
-        for (inv, mode) in self.invariants.iter() {
+        for (inv, mode) in &self.invariants {
             match mode {
                 InvariantMode::All | InvariantMode::OnlyShared => {
                     write!(out, "{} ∗ ", inv).unwrap();
@@ -960,11 +960,11 @@ impl InvariantSpec {
         write!(out, "[]").unwrap();
 
         // go over all the types and concat their lfts
-        for spec in self.ty_own_invariants.iter() {
-            for ty in spec.annot_meta.escaped_tyvars.iter() {
+        for spec in &self.ty_own_invariants {
+            for ty in &spec.annot_meta.escaped_tyvars {
                 write!(out, " ++ (ty_lfts ({}))", ty.type_term).unwrap();
             }
-            for lft in spec.annot_meta.escaped_lfts.iter() {
+            for lft in &spec.annot_meta.escaped_lfts {
                 write!(out, " ++ [{}]", lft).unwrap();
             }
         }
@@ -978,8 +978,8 @@ impl InvariantSpec {
         write!(out, "[]").unwrap();
 
         // go over all the types and concat their lfts
-        for spec in self.ty_own_invariants.iter() {
-            for ty in spec.annot_meta.escaped_tyvars.iter() {
+        for spec in &self.ty_own_invariants {
+            for ty in &spec.annot_meta.escaped_tyvars {
                 write!(out, " ++ (ty_wf_E ({}))", ty.type_term).unwrap();
             }
         }
@@ -1002,7 +1002,7 @@ impl InvariantSpec {
             self.abstracted_refinement.as_ref().unwrap()
         )
         .unwrap();
-        for (inv, _) in self.invariants.iter() {
+        for (inv, _) in &self.invariants {
             write!(out, "{} ∗ ", inv).unwrap();
         }
         write!(out, "True").unwrap();
@@ -1115,13 +1115,13 @@ impl InvariantSpec {
         if generic_params.len() > 0 {
             // first push the (implicit) refinement type parameters
             write!(out, "{}Context", indent).unwrap();
-            for names in generic_params.iter() {
+            for names in generic_params {
                 write!(out, " {{{} : Type}}", names.refinement_type).unwrap();
             }
             out.push_str(".\n");
 
             write!(out, "{}Context", indent).unwrap();
-            for names in generic_params.iter() {
+            for names in generic_params {
                 write!(out, " ({} : type ({}))", names.type_term, names.refinement_type).unwrap();
             }
             out.push_str(".\n");
@@ -1279,7 +1279,7 @@ impl<'def> AbstractVariant<'def> {
         )
         .unwrap();
         let mut needs_sep = false;
-        for (name, ty) in self.subst_fields.iter() {
+        for (name, ty) in &self.subst_fields {
             if needs_sep {
                 out.push_str(";");
             }
@@ -1314,11 +1314,9 @@ impl<'def> AbstractVariant<'def> {
         // add syntype parameters
         let mut typarams = Vec::new();
         let mut typarams_use = Vec::new();
-        if ty_params.len() > 0 {
-            for names in ty_params.iter() {
-                typarams.push(format!("({} : syn_type)", names.syn_type));
-                typarams_use.push(format!("{}", names.syn_type));
-            }
+        for names in ty_params {
+            typarams.push(format!("({} : syn_type)", names.syn_type));
+            typarams_use.push(format!("{}", names.syn_type));
         }
         out.push_str("\n");
 
@@ -1335,7 +1333,7 @@ impl<'def> AbstractVariant<'def> {
         write!(out, "struct_t {} +[", CoqAppTerm::new(&self.sls_def_name, sls_app)).unwrap();
 
         let mut needs_sep = false;
-        for (_name, ty) in self.subst_fields.iter() {
+        for (_name, ty) in &self.subst_fields {
             if needs_sep {
                 out.push_str("; ");
             }
@@ -1357,7 +1355,7 @@ impl<'def> AbstractVariant<'def> {
 
         // generate terms to apply the sls app to
         let mut sls_app = Vec::new();
-        for names in ty_params.iter() {
+        for names in ty_params {
             // TODO this is duplicated with the same processing for Type::Literal...
             let term = format!("(ty_syn_type {})", names.type_term);
             sls_app.push(term);
@@ -1407,13 +1405,13 @@ impl<'def> AbstractVariant<'def> {
         if ty_params.len() > 0 {
             // first push the (implicit) refinement type parameters
             write!(out, "{}Context", indent).unwrap();
-            for names in ty_params.iter() {
+            for names in ty_params {
                 write!(out, " {{{} : Type}}", names.refinement_type).unwrap();
             }
             out.push_str(".\n");
 
             write!(out, "{}Context", indent).unwrap();
-            for names in ty_params.iter() {
+            for names in ty_params {
                 write!(out, " ({} : type ({}))", names.type_term, names.refinement_type).unwrap();
             }
             out.push_str(".\n");
@@ -1456,7 +1454,7 @@ where
         write!(f, "{} (* Additional parameters *)\n", BASE_INDENT)?;
         write!(f, "{}Context ", BASE_INDENT)?;
 
-        for it in items.iter() {
+        for it in items {
             let name = format!("_CTX{}", counter);
             counter += 1;
 
@@ -1742,106 +1740,105 @@ impl<'def> AbstractStructUse<'def> {
     /// Get the refinement type of a struct usage.
     /// This requires that all type parameters of the struct have been instantiated.
     pub fn get_rfn_type(&self) -> String {
-        if let Some(def) = self.def.as_ref() {
-            let rfn_instantiations: Vec<String> =
-                self.ty_params.iter().map(|ty| ty.get_rfn_type(&[]).to_string()).collect();
+        let Some(def) = self.def.as_ref() else {
+            return CoqType::Unit.to_string();
+        };
 
-            let def = def.borrow();
-            let def = def.as_ref();
-            let inv = &def.unwrap().invariant.as_ref();
+        let rfn_instantiations: Vec<String> =
+            self.ty_params.iter().map(|ty| ty.get_rfn_type(&[]).to_string()).collect();
 
-            if self.is_raw() || inv.is_none() {
-                let rfn_type = def.unwrap().plain_rt_def_name().to_string();
-                let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
-                applied.to_string()
-            } else {
-                let inv = inv.unwrap();
-                let rfn_type = inv.rt_def_name();
-                let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
-                applied.to_string()
-            }
+        let def = def.borrow();
+        let def = def.as_ref();
+        let inv = &def.unwrap().invariant.as_ref();
+
+        if self.is_raw() || inv.is_none() {
+            let rfn_type = def.unwrap().plain_rt_def_name().to_string();
+            let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
+            applied.to_string()
         } else {
-            CoqType::Unit.to_string()
+            let inv = inv.unwrap();
+            let rfn_type = inv.rt_def_name();
+            let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
+            applied.to_string()
         }
     }
 
     /// Generate a term for the struct_layout (of type struct_layout)
     pub fn generate_struct_layout_term(&self) -> String {
-        if let Some(def) = self.def.as_ref() {
-            // first get the syntys for the type params
-            let mut param_sts = Vec::new();
-            for p in self.ty_params.iter() {
-                let st = p.get_syn_type();
-                param_sts.push(format!("({})", st));
-            }
+        let Some(def) = self.def.as_ref() else {
+            return Layout::UnitLayout.to_string();
+        };
 
-            // use_struct_layout_alg' ([my_spec] [params])
-            let specialized_spec =
-                format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts));
-            CoqAppTerm::new("use_struct_layout_alg'".to_string(), vec![specialized_spec]).to_string()
-        } else {
-            Layout::UnitLayout.to_string()
+        // first get the syntys for the type params
+        let mut param_sts = Vec::new();
+        for p in &self.ty_params {
+            let st = p.get_syn_type();
+            param_sts.push(format!("({})", st));
         }
+
+        // use_struct_layout_alg' ([my_spec] [params])
+        let specialized_spec =
+            format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts));
+        CoqAppTerm::new("use_struct_layout_alg'".to_string(), vec![specialized_spec]).to_string()
     }
 
     pub fn generate_struct_layout_spec_term(&self) -> String {
-        if let Some(def) = self.def.as_ref() {
-            // first get the syntys for the type params
-            let mut param_sts = Vec::new();
-            for p in self.ty_params.iter() {
-                let st = p.get_syn_type();
-                param_sts.push(format!("({})", st));
-            }
-            // TODO generates too many apps
-
-            // use_struct_layout_alg' ([my_spec] [params])
-            format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts))
-        } else {
+        let Some(def) = self.def.as_ref() else {
             panic!("unit has no sls");
+        };
+
+        // first get the syntys for the type params
+        let mut param_sts = Vec::new();
+        for p in &self.ty_params {
+            let st = p.get_syn_type();
+            param_sts.push(format!("({})", st));
         }
+        // TODO generates too many apps
+
+        // use_struct_layout_alg' ([my_spec] [params])
+        format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts))
     }
 
     /// Get the syn_type term for this struct use.
     pub fn generate_syn_type_term(&self) -> SynType {
-        if let Some(def) = self.def.as_ref() {
-            // first get the syntys for the type params
-            let mut param_sts = Vec::new();
-            for p in self.ty_params.iter() {
-                let st = p.get_syn_type();
-                param_sts.push(format!("({})", st));
-            }
-            // TODO generates too many apps
+        let Some(def) = self.def.as_ref() else {
+            return SynType::Unit;
+        };
 
-            let specialized_spec =
-                CoqAppTerm::new(def.borrow().as_ref().unwrap().st_def_name().to_string(), param_sts);
-            SynType::Literal(format!("{}", specialized_spec))
-        } else {
-            SynType::Unit
+        // first get the syntys for the type params
+        let mut param_sts = Vec::new();
+        for p in &self.ty_params {
+            let st = p.get_syn_type();
+            param_sts.push(format!("({})", st));
         }
+        // TODO generates too many apps
+
+        let specialized_spec =
+            CoqAppTerm::new(def.borrow().as_ref().unwrap().st_def_name().to_string(), param_sts);
+        SynType::Literal(format!("{}", specialized_spec))
     }
 
     /// Generate a string representation of this struct use.
     pub fn generate_type_term(&self) -> String {
-        if let Some(def) = self.def.as_ref() {
-            let mut param_tys = Vec::new();
-            for p in self.ty_params.iter() {
-                param_tys.push(format!("({})", p));
-            }
-            let def = def.borrow();
-            let def = def.as_ref().unwrap();
-            if !self.is_raw() && def.invariant.is_some() {
-                if let Some(ref inv) = def.invariant {
-                    let term = CoqAppTerm::new(inv.type_name.clone(), param_tys);
-                    term.to_string()
-                } else {
-                    unreachable!();
-                }
-            } else {
-                let term = CoqAppTerm::new(def.plain_ty_name(), param_tys);
-                term.to_string()
-            }
+        let Some(def) = self.def.as_ref() else {
+            return Type::Unit.to_string();
+        };
+
+        let mut param_tys = Vec::new();
+        for p in &self.ty_params {
+            param_tys.push(format!("({})", p));
+        }
+        let def = def.borrow();
+        let def = def.as_ref().unwrap();
+
+        if !self.is_raw() && def.invariant.is_some() {
+            let Some(ref inv) = def.invariant else {
+                unreachable!();
+            };
+
+            CoqAppTerm::new(inv.type_name.clone(), param_tys).to_string()
         } else {
-            Type::Unit.to_string()
+            CoqAppTerm::new(def.plain_ty_name(), param_tys).to_string()
         }
     }
 }
@@ -1934,7 +1931,7 @@ impl<'def> AbstractEnum<'def> {
         let mut typarams = Vec::new();
         let mut typarams_use = Vec::new();
         if self.ty_params.len() > 0 {
-            for names in self.ty_params.iter() {
+            for names in &self.ty_params {
                 typarams.push(format!("({} : syn_type)", names.syn_type));
                 typarams_use.push(format!("{}", names.syn_type));
             }
@@ -1942,7 +1939,7 @@ impl<'def> AbstractEnum<'def> {
         out.push_str("\n");
 
         // generate all the component structs
-        for (_, v, _) in self.variants.iter() {
+        for (_, v, _) in &self.variants {
             let vbor = v.borrow();
             let vbor = vbor.as_ref().unwrap();
 
@@ -1962,7 +1959,7 @@ impl<'def> AbstractEnum<'def> {
         .unwrap();
         let mut needs_sep = false;
 
-        for (name, var, _) in self.variants.iter() {
+        for (name, var, _) in &self.variants {
             if needs_sep {
                 out.push_str(";");
             }
@@ -1986,7 +1983,7 @@ impl<'def> AbstractEnum<'def> {
         write!(out, "] {} [", self.repr).unwrap();
         // now write the tag-discriminant list
         needs_sep = false;
-        for (name, _, discr) in self.variants.iter() {
+        for (name, _, discr) in &self.variants {
             if needs_sep {
                 out.push_str("; ");
             }
@@ -2101,7 +2098,7 @@ impl<'def> AbstractEnum<'def> {
 
             // add st constraints on params
             let mut sls_app = Vec::new();
-            for ty in self.ty_params.iter() {
+            for ty in &self.ty_params {
                 write!(out, "{} `{{!TCDone ({} = ty_syn_type {})}} ", ty.syn_type, ty.syn_type, ty.type_term)
                     .unwrap();
                 sls_app.push(ty.syn_type.clone());
@@ -2138,13 +2135,13 @@ impl<'def> AbstractEnum<'def> {
         if self.ty_params.len() > 0 {
             // first push the (implicit) refinement type parameters
             write!(out, "{}Context", indent).unwrap();
-            for names in self.ty_params.iter() {
+            for names in &self.ty_params {
                 write!(out, " {{{} : Type}}", names.refinement_type).unwrap();
             }
             out.push_str(".\n");
 
             write!(out, "{}Context", indent).unwrap();
-            for names in self.ty_params.iter() {
+            for names in &self.ty_params {
                 write!(out, " ({} : type ({}))", names.type_term, names.refinement_type).unwrap();
             }
             out.push_str(".\n");
@@ -2155,7 +2152,7 @@ impl<'def> AbstractEnum<'def> {
 
         // define types and type abstractions for all the component types.
         // TODO: we should actually use the abstracted types here.
-        for (_name, variant, _) in self.variants.iter() {
+        for (_name, variant, _) in &self.variants {
             let v = variant.borrow();
             let v = v.as_ref().unwrap();
             // TODO: might also need to handle extra context items
@@ -2203,7 +2200,7 @@ impl<'def> AbstractEnum<'def> {
         // build the els term applied to generics
         // generate terms to apply the sls app to
         let mut els_app = Vec::new();
-        for names in self.ty_params.iter() {
+        for names in &self.ty_params {
             let term = format!("(ty_syn_type {})", names.type_term);
             els_app.push(term);
         }
@@ -2383,7 +2380,7 @@ impl<'def> AbstractEnumUse<'def> {
     pub fn generate_enum_layout_term(&self) -> String {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
-        for p in self.ty_params.iter() {
+        for p in &self.ty_params {
             let st = p.get_syn_type();
             param_sts.push(format!("({})", st));
         }
@@ -2400,7 +2397,7 @@ impl<'def> AbstractEnumUse<'def> {
     pub fn generate_enum_layout_spec_term(&self) -> String {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
-        for p in self.ty_params.iter() {
+        for p in &self.ty_params {
             let st = p.get_syn_type();
             param_sts.push(format!("({})", st));
         }
@@ -2413,7 +2410,7 @@ impl<'def> AbstractEnumUse<'def> {
     pub fn generate_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
-        for p in self.ty_params.iter() {
+        for p in &self.ty_params {
             let st = p.get_syn_type();
             param_sts.push(format!("({})", st));
         }
@@ -2427,7 +2424,7 @@ impl<'def> AbstractEnumUse<'def> {
     /// Generate a string representation of this enum use.
     pub fn generate_type_term(&self) -> String {
         let mut param_tys = Vec::new();
-        for p in self.ty_params.iter() {
+        for p in &self.ty_params {
             param_tys.push(format!("({})", p));
         }
         let def = self.def.borrow();
@@ -2552,17 +2549,17 @@ fn fmt_with_op<T>(v: &[T], op: &str, f: &mut Formatter<'_>) -> Result<(), fmt::E
 where
     T: Display,
 {
-    if v.len() > 0 {
+    if v.len() == 0 {
+        write!(f, "True")?;
+    } else {
         let mut needs_sep = false;
-        for s in v.iter() {
+        for s in v {
             if needs_sep {
                 write!(f, " {} ", op)?;
             }
             needs_sep = true;
             write!(f, "({})", s)?;
         }
-    } else {
-        write!(f, "True")?;
     }
     Ok(())
 }
@@ -2570,7 +2567,7 @@ where
 fn fmt_binders(b: &[CoqBinder], op: &str, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
     write!(f, "{}", op)?;
 
-    for CoqBinder(id, ty) in b.iter() {
+    for CoqBinder(id, ty) in b {
         write!(f, " ({} : {})", id, ty)?;
     }
     Ok(())
@@ -2724,7 +2721,7 @@ impl<'def> FunctionSpec<'def> {
         let mut out = String::with_capacity(100);
         out.push_str("λ ϝ, [");
         let mut need_sep = false;
-        for (ref lft1, ref lft2) in self.elctx.iter() {
+        for (ref lft1, ref lft2) in &self.elctx {
             if need_sep {
                 out.push_str(", ");
             }
@@ -2737,32 +2734,26 @@ impl<'def> FunctionSpec<'def> {
 
     pub(crate) fn format_coq_params(&self) -> String {
         let mut out = String::with_capacity(100);
-        if self.coq_params.len() == 0 {
-        } else {
-            let mut need_sep = false;
-            for param in self.coq_params.iter() {
-                if need_sep {
-                    out.push_str(" ");
-                }
-                out.push_str(format!("{}", param).as_str());
-                need_sep = true;
+        let mut need_sep = false;
+        for param in &self.coq_params {
+            if need_sep {
+                out.push_str(" ");
             }
+            out.push_str(format!("{}", param).as_str());
+            need_sep = true;
         }
         out
     }
 
     fn format_args(&self) -> String {
         let mut out = String::with_capacity(100);
-        if self.args.len() == 0 {
-        } else {
-            let mut need_sep = false;
-            for type_with_rfn in self.args.iter() {
-                if need_sep {
-                    out.push_str(", ");
-                }
-                out.push_str(format!("{}", type_with_rfn).as_str());
-                need_sep = true;
+        let mut need_sep = false;
+        for type_with_rfn in &self.args {
+            if need_sep {
+                out.push_str(", ");
             }
+            out.push_str(format!("{}", type_with_rfn).as_str());
+            need_sep = true;
         }
         out
     }
@@ -2810,7 +2801,7 @@ impl<'def> Display for FunctionSpec<'def> {
 
         let mut lft_pattern = String::with_capacity(100);
         write!(lft_pattern, "(()")?;
-        for name in self.lifetimes.iter() {
+        for name in &self.lifetimes {
             write!(lft_pattern, ", ")?;
             write!(lft_pattern, "{}", name)?;
         }
@@ -2926,7 +2917,7 @@ impl<'def> FunctionSpecBuilder<'def> {
     /// Add a Coq type annotation for a parameter when no type is currently known.
     /// This can e.g. be used to later on add knowledge about the type of a refinement.
     pub fn add_param_type_annot(&mut self, name: &CoqName, t: CoqType) -> Result<(), String> {
-        for (name0, t0) in self.params.iter_mut() {
+        for (name0, t0) in &mut self.params {
             if *name0 == *name {
                 match *t0 {
                     CoqType::Infer => {

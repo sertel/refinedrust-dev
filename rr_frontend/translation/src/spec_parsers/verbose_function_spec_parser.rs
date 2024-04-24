@@ -196,20 +196,20 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
     }
 }
 
-impl Into<specs::IProp> for MetaIProp {
-    fn into(self) -> specs::IProp {
-        match self {
-            Self::Pure(p, name) => match name {
-                None => specs::IProp::Pure(p),
-                Some(n) => specs::IProp::PureWithName(p, n),
+impl From<MetaIProp> for specs::IProp {
+    fn from(meta: MetaIProp) -> Self {
+        match meta {
+            MetaIProp::Pure(p, name) => match name {
+                None => Self::Pure(p),
+                Some(n) => Self::PureWithName(p, n),
             },
-            Self::Iris(p) => p,
-            Self::Type(spec) => {
+            MetaIProp::Iris(p) => p,
+            MetaIProp::Type(spec) => {
                 let lit = spec.fmt_owned("π");
-                specs::IProp::Atom(lit)
+                Self::Atom(lit)
             },
-            Self::Observe(name, term) => specs::IProp::Atom(format!("gvar_pobs {name} ({term})")),
-            Self::Linktime(p) => specs::IProp::Linktime(p),
+            MetaIProp::Observe(name, term) => Self::Atom(format!("gvar_pobs {name} ({term})")),
+            MetaIProp::Linktime(p) => Self::Linktime(p),
         }
     }
 }
@@ -618,7 +618,7 @@ where
 
         // parse captures -- we need to handle it before the other annotations because we will have
         // to add the first arg for the capture
-        for &it in attrs.iter() {
+        for &it in attrs {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 
@@ -637,7 +637,7 @@ where
 
         self.merge_capture_information(capture_specs, closure_meta, make_tuple, &mut *builder)?;
 
-        for &it in attrs.iter() {
+        for &it in attrs {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 
@@ -677,7 +677,7 @@ where
         let meta: ParseMeta = (&meta, &lfts);
         info!("ty params: {:?}", meta);
 
-        for &it in attrs.iter() {
+        for &it in attrs {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 

@@ -89,7 +89,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
         let mut variant_patterns: Vec<(String, Vec<String>, String)> = Vec::new();
         let mut rfn_type = None;
 
-        for &it in attrs.iter() {
+        for &it in attrs {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 
@@ -110,10 +110,10 @@ impl EnumSpecParser for VerboseEnumSpecParser {
         }
 
         // parse the variant patterns
-        for attrs in variant_attrs.iter() {
+        for attrs in variant_attrs {
             let mut pattern = None;
             let mut refinement = None;
-            for &it in attrs.iter() {
+            for &it in attrs {
                 let ref path_segs = it.path.segments;
 
                 if let Some(seg) = path_segs.get(1) {

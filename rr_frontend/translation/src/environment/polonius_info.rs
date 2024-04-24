@@ -643,7 +643,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             _ => r,
         };
         let mut folder = ty::fold::RegionFolder::new(self.tcx, &mut clos);
-        for local in self.mir.local_decls.iter() {
+        for local in &self.mir.local_decls {
             folder.fold_ty(local.ty);
         }
 
@@ -663,7 +663,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     /// Enumerate local universal regions (excluding the function lifetime).
     pub fn enumerate_local_universal_regions(&self) -> Vec<facts::Region> {
         let mut universals = Vec::new();
-        for (r, _) in self.borrowck_in_facts.placeholder.iter() {
+        for (r, _) in &self.borrowck_in_facts.placeholder {
             if r.index() == 0 {
                 //static
                 continue;
@@ -683,7 +683,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         point: facts::PointIndex,
     ) -> Vec<(facts::Region, facts::Region)> {
         let mut constraints = Vec::new();
-        for (r1, r2, p) in self.borrowck_in_facts.subset_base.iter() {
+        for (r1, r2, p) in &self.borrowck_in_facts.subset_base {
             if *p == point {
                 constraints.push((*r1, *r2));
             }
@@ -710,7 +710,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         let b: &BTreeSet<facts::Region> = b.unwrap();
 
         let mut v = Vec::new();
-        for &region in b.iter() {
+        for &region in b {
             let kind = self.get_region_kind(region);
             match kind {
                 RegionKind::Loan(l) => {
@@ -734,7 +734,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         // they are always live??)
         let contained_loans = self.borrowck_out_facts.origin_contains_loan_at(loc);
         let contained_loans: &BTreeSet<facts::Loan> = contained_loans.get(&r).unwrap();
-        for &loan in contained_loans.iter() {
+        for &loan in contained_loans {
             if loan == l {
                 continue;
             }
@@ -763,7 +763,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         let b: &BTreeSet<facts::Region> = b.unwrap();
 
         let mut v = Vec::new();
-        for &region in b.iter() {
+        for &region in b {
             let kind = self.get_region_kind(region);
             match kind {
                 RegionKind::Loan(l) => {
@@ -782,7 +782,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         // they are always live??)
         let contained_loans = self.borrowck_out_facts.origin_contains_loan_at(loc);
         let contained_loans: &BTreeSet<facts::Loan> = contained_loans.get(&r).unwrap();
-        for &loan in contained_loans.iter() {
+        for &loan in contained_loans {
             let r0 = self.get_loan_issued_at_for_loan(loan);
             v.push(AtomicRegion::Loan(loan, r0));
         }
@@ -798,10 +798,10 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         let mut superset: HashMap<facts::PointIndex, BTreeMap<facts::Region, BTreeSet<facts::Region>>> =
             HashMap::new();
 
-        for (&loc, map) in subset.iter() {
+        for (&loc, map) in subset {
             let mut new_map: BTreeMap<facts::Region, BTreeSet<facts::Region>> = BTreeMap::new();
-            for (&r1, set) in map.iter() {
-                for &r2 in set.iter() {
+            for (&r1, set) in map {
+                for &r2 in set {
                     new_map.entry(r2).or_insert_with(|| BTreeSet::new());
 
                     let new_set = new_map.get_mut(&r2).unwrap();
@@ -906,7 +906,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             vec![]
         };
         if !zombie {
-            for (_, loan, point) in self.borrowck_in_facts.loan_issued_at.iter() {
+            for (_, loan, point) in &self.borrowck_in_facts.loan_issued_at {
                 if point == &mid_point && !loans.contains(loan) {
                     loans.push(*loan);
                 }
@@ -1215,7 +1215,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     /// Find minimal elements that are the (reborrow) tree roots.
     fn find_loan_roots(&self, loans: &[facts::Loan]) -> Vec<facts::Loan> {
         let mut roots = Vec::new();
-        for &loan in loans.iter() {
+        for &loan in loans {
             let is_smallest = !loans
                 .iter()
                 .any(|&other_loan| self.additional_facts.reborrows.contains(&(other_loan, loan)));
@@ -1269,9 +1269,9 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
                 self.loops.get_loop_head(loan_location.block).map(|loop_head| (*loan, loop_head))
             })
             .collect();
-        for (loan1, loop1) in pairs.iter() {
+        for (loan1, loop1) in &pairs {
             let location1 = self.loan_position[loan1];
-            for (loan2, loop2) in pairs.iter() {
+            for (loan2, loop2) in &pairs {
                 let location2 = self.loan_position[loan2];
                 if loop1 != loop2 {
                     return Err(PoloniusInfoError::LoansInNestedLoops(location1, *loop1, location2, *loop2));

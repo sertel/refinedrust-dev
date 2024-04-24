@@ -43,7 +43,7 @@ impl CrateAttrParser for VerboseCrateAttrParser {
         let mut package: Option<String> = None;
         let mut context_params = Vec::new();
 
-        for &it in attrs.iter() {
+        for &it in attrs {
             let ref path_segs = it.path.segments;
             let ref args = it.args;
 
