@@ -1466,22 +1466,22 @@ impl<'def> FunctionBuilder<'def> {
     }
 }
 
-impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
-    fn into(mut self) -> Function<'def> {
+impl<'def> From<FunctionBuilder<'def>> for Function<'def> {
+    fn from(mut builder: FunctionBuilder<'def>) -> Self {
         // sort parameters for code
-        self.other_functions.sort_by(|a, b| a.0.cmp(&b.0));
-        //self.generic_types.sort_by(|a, b| a.rust_name.cmp(&b.rust_name));
-        self.used_statics.sort_by(|a, b| a.ident.cmp(&b.ident));
+        builder.other_functions.sort_by(|a, b| a.0.cmp(&b.0));
+        //builder.generic_types.sort_by(|a, b| a.rust_name.cmp(&b.rust_name));
+        builder.used_statics.sort_by(|a, b| a.ident.cmp(&b.ident));
 
         // generate location parameters for other functions used by this one.
-        let mut parameters: Vec<(CoqName, CoqType)> = self
+        let mut parameters: Vec<(CoqName, CoqType)> = builder
             .other_functions
             .iter()
             .map(|f_inst| (CoqName::Named(f_inst.0.to_string()), CoqType::Loc))
             .collect();
 
         // generate location parameters for statics used by this function
-        let mut statics_parameters = self
+        let mut statics_parameters = builder
             .used_statics
             .iter()
             .map(|s| (CoqName::Named(s.loc_name.to_string()), CoqType::Loc))
@@ -1489,39 +1489,39 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
         parameters.append(&mut statics_parameters);
 
         // add generic syntype parameters for generics that this function uses.
-        let mut gen_st_parameters = self
+        let mut gen_st_parameters = builder
             .generic_types
             .iter()
             .map(|names| (CoqName::Named(names.syn_type.to_string()), CoqType::SynType))
             .collect();
         parameters.append(&mut gen_st_parameters);
 
-        self.add_generics_to_spec();
-        let spec = self.spec.into_function_spec(&self.function_name, &self.spec_name);
+        builder.add_generics_to_spec();
+        let spec = builder.spec.into_function_spec(&builder.function_name, &builder.spec_name);
 
         let code = FunctionCode {
-            stack_layout: self.code.stack_layout,
-            name: self.function_name.clone(),
-            basic_blocks: self.code.basic_blocks,
+            stack_layout: builder.code.stack_layout,
+            name: builder.function_name.clone(),
+            basic_blocks: builder.code.basic_blocks,
             required_parameters: parameters,
         };
 
         Function {
             code,
             spec,
-            generic_types: self.generic_types,
-            other_functions: self.other_functions,
-            layoutable_syntys: self.layoutable_syntys,
-            loop_invariants: self.loop_invariants,
-            manual_tactics: self.tactics,
-            used_statics: self.used_statics,
+            generic_types: builder.generic_types,
+            other_functions: builder.other_functions,
+            layoutable_syntys: builder.layoutable_syntys,
+            loop_invariants: builder.loop_invariants,
+            manual_tactics: builder.tactics,
+            used_statics: builder.used_statics,
         }
     }
 }
 
-impl<'def> Into<FunctionSpec<'def>> for FunctionBuilder<'def> {
-    fn into(mut self) -> FunctionSpec<'def> {
-        self.add_generics_to_spec();
-        self.spec.into_function_spec(&self.function_name, &self.spec_name)
+impl<'def> From<FunctionBuilder<'def>> for FunctionSpec<'def> {
+    fn from(mut builder: FunctionBuilder<'def>) -> Self {
+        builder.add_generics_to_spec();
+        builder.spec.into_function_spec(&builder.function_name, &builder.spec_name)
     }
 }
