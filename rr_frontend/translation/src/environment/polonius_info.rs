@@ -1679,9 +1679,7 @@ impl AdditionalFacts {
             v_reborrows.from_join(&v_loan_issued_at, &v_restricts, |_, &l1, &l2| (l1, l2));
         }
 
-        let reborrows = v_reborrows.complete().elements;
-
-        reborrows
+        v_reborrows.complete().elements
     }
 
     fn transitive_closure(reborrows: Vec<(facts::Loan, facts::Loan)>) -> Vec<(facts::Loan, facts::Loan)> {

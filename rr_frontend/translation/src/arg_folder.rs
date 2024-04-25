@@ -198,9 +198,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
             return val;
         }
 
-        let result = ty::fold::shift_vars(TypeFolder::interner(self), val, self.binders_passed);
-
-        result
+        ty::fold::shift_vars(TypeFolder::interner(self), val, self.binders_passed)
     }
 
     fn shift_region_through_binders(&self, region: ty::Region<'tcx>) -> ty::Region<'tcx> {

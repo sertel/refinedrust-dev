@@ -1082,10 +1082,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         // We turn that into pregion = uregion, as we do strong updates at the top-level.
         assert!(sig_args.len() == local_args.len());
 
-        let initial_arg_mapping = Vec::new();
         // TODO: implement a bitypefolder to solve this issue.
-
-        initial_arg_mapping
+        Vec::new()
     }
 }
 

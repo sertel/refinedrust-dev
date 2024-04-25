@@ -254,10 +254,7 @@ pub type ParseMeta<'a> = (&'a [specs::LiteralTyParam], &'a [(Option<String>, spe
 
 /// Handle escape sequences in the given string.
 pub fn handle_escapes(s: &str) -> String {
-    let s = String::from(s);
-    let s = s.replace("\\\"", "\"");
-
-    s
+    String::from(s).replace("\\\"", "\"")
 }
 
 /// Processes a literal Coq term annotated via an attribute.
