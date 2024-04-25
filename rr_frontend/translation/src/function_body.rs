@@ -3176,7 +3176,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         }
 
                         let struct_use =
-                            self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r))?;
+                            self.ty_translator.generate_tuple_use(operand_types.iter().copied())?;
                         let sl = struct_use.generate_raw_syn_type_term();
                         let initializers: Vec<_> =
                             translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
@@ -3264,7 +3264,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         }
 
                         let struct_use =
-                            self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r))?;
+                            self.ty_translator.generate_tuple_use(operand_types.iter().copied())?;
                         let sl = struct_use.generate_raw_syn_type_term();
 
                         let initializers: Vec<_> =

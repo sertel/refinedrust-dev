@@ -1080,7 +1080,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
 
     /// Get the location at which a loan is created, if possible
     pub fn get_loan_location(&self, loan: &facts::Loan) -> Option<mir::Location> {
-        self.loan_position.get(loan).map(|r| *r)
+        self.loan_position.get(loan).copied()
     }
 
     /// Get the loan that gets created at a location.

@@ -284,8 +284,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
     /// Lookup a shim for an ADT.
     fn lookup_adt_shim(&self, did: DefId) -> Option<radium::LiteralTypeRef<'def>> {
-        let shims = self.adt_shims.borrow();
-        shims.get(&did).map(|x| *x)
+        self.adt_shims.borrow().get(&did).copied()
     }
 
     /// Get all the struct definitions that clients have used (excluding the variants of enums).

@@ -80,7 +80,6 @@ rustflags = [
     "-Aclippy::unwrap_in_result",
 
     # clippy::style
-    "-Aclippy::map_clone",
     "-Aclippy::match_like_matches_macro",
     "-Aclippy::needless_borrow",
     "-Aclippy::needless_late_init",

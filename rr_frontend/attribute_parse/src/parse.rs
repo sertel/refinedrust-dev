@@ -121,7 +121,7 @@ pub struct ParseBuffer {
 impl ParseBuffer {
     pub fn new(stream: &rustc_ast::tokenstream::TokenStream) -> Self {
         // TODO; maybe avoid the cloning
-        let trees: Vec<TokenTree> = stream.trees().map(|c| c.clone()).collect();
+        let trees: Vec<TokenTree> = stream.trees().cloned().collect();
 
         Self {
             trees,
