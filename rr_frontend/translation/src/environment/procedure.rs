@@ -215,9 +215,7 @@ fn build_reachable_basic_blocks(mir: &Mir, real_edges: &RealEdges) -> HashSet<Ba
     let mut visited: HashSet<BasicBlock> = HashSet::new();
     let mut to_visit: Vec<BasicBlock> = vec![mir.basic_blocks.indices().next().unwrap()];
 
-    while !to_visit.is_empty() {
-        let source = to_visit.pop().unwrap();
-
+    while let Some(source) = to_visit.pop() {
         if visited.contains(&source) {
             continue;
         }

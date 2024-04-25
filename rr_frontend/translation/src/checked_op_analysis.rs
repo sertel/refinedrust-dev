@@ -115,8 +115,7 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
             self.bb_queue.push(BasicBlock::from_u32(0));
         }
 
-        while !self.bb_queue.is_empty() {
-            let next_bb = self.bb_queue.pop().unwrap();
+        while let Some(next_bb) = self.bb_queue.pop() {
             if !self.visited_bbs.contains(&next_bb) {
                 self.visited_bbs.insert(next_bb);
                 self.visit_bb(next_bb);

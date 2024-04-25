@@ -26,8 +26,8 @@ fn collect_loop_body(
 ) {
     let mut work_queue = vec![back_edge_source];
     body.insert(back_edge_source);
-    while !work_queue.is_empty() {
-        let current = work_queue.pop().unwrap();
+
+    while let Some(current) = work_queue.pop() {
         for &predecessor in real_edges.predecessors(current) {
             if body.contains(&predecessor) {
                 continue;
@@ -38,6 +38,7 @@ fn collect_loop_body(
             }
         }
     }
+
     debug!("Loop body (head={:?}): {:?}", head, body);
 }
 
