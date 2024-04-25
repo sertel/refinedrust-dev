@@ -188,17 +188,11 @@ pub type TranslateAdtState<'a> = &'a mut HashSet<DefId>;
 
 impl<'a, 'def> TranslationStateInner<'a, 'def> {
     const fn in_function(&self) -> bool {
-        match *self {
-            Self::InFunction(_) => true,
-            _ => false,
-        }
+        matches!(*self, Self::InFunction(_))
     }
 
     const fn translate_adt(&self) -> bool {
-        match *self {
-            Self::TranslateAdt(_) => true,
-            _ => false,
-        }
+        matches!(*self, Self::TranslateAdt(_))
     }
 }
 

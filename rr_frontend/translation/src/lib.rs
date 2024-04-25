@@ -980,14 +980,11 @@ fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> 
 }
 
 fn propagate_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
-    if let Some(ident) = it.path.segments.get(1) {
-        match ident.ident.as_str() {
-            "context" => true,
-            _ => false,
-        }
-    } else {
-        false
-    }
+    let Some(ident) = it.path.segments.get(1) else {
+        return false;
+    };
+
+    matches!(ident.ident.as_str(), "context")
 }
 
 fn get_attributes_of_function<'a>(env: &'a Environment, did: DefId) -> Vec<&'a rustc_ast::ast::AttrItem> {

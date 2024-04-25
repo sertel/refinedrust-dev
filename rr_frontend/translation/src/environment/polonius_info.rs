@@ -55,31 +55,19 @@ pub enum AtomicRegion {
 
 impl AtomicRegion {
     pub const fn is_loan(&self) -> bool {
-        match *self {
-            Self::Loan(_, _) => true,
-            _ => false,
-        }
+        matches!(*self, Self::Loan(_, _))
     }
 
     pub const fn is_universal(&self) -> bool {
-        match *self {
-            Self::Universal(_, _) => true,
-            _ => false,
-        }
+        matches!(*self, Self::Universal(_, _))
     }
 
     pub const fn is_place(&self) -> bool {
-        match *self {
-            Self::PlaceRegion(_) => true,
-            _ => false,
-        }
+        matches!(*self, Self::PlaceRegion(_))
     }
 
     pub const fn is_value(&self) -> bool {
-        match *self {
-            Self::Unknown(_) => true,
-            _ => false,
-        }
+        matches!(*self, Self::Unknown(_))
     }
 
     pub const fn get_region(&self) -> facts::Region {
@@ -1061,21 +1049,20 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         loan: facts::Loan,
         location: mir::Location,
     ) -> Vec<facts::Loan> {
-        if let Some(all_conflicting_loans) = self.loan_conflict_sets.get(&loan) {
-            let point = self.get_point(location, facts::PointType::Mid);
-            if let Some(alive_loans) = self.borrowck_out_facts.loan_live_at.get(&point) {
-                let alive_conflicting_loans =
-                    all_conflicting_loans.iter().filter(|loan| alive_loans.contains(loan)).cloned().collect();
-                trace!(
-                    "get_alive_conflicting_loans({:?}, {:?}) = {:?}",
-                    loan,
-                    location,
-                    alive_conflicting_loans
-                );
-                return alive_conflicting_loans;
-            }
-        }
-        Vec::new()
+        let Some(all_conflicting_loans) = self.loan_conflict_sets.get(&loan) else {
+            return Vec::new();
+        };
+
+        let point = self.get_point(location, facts::PointType::Mid);
+        let Some(alive_loans) = self.borrowck_out_facts.loan_live_at.get(&point) else {
+            return Vec::new();
+        };
+
+        let alive_conflicting_loans =
+            all_conflicting_loans.iter().filter(|loan| alive_loans.contains(loan)).cloned().collect();
+        trace!("get_alive_conflicting_loans({:?}, {:?}) = {:?}", loan, location, alive_conflicting_loans);
+
+        alive_conflicting_loans
     }
 
     /// Get the location at which a loan is created, if possible

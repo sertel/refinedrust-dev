@@ -306,10 +306,7 @@ impl SynType {
 
     /// Check if the SynType contains a free variable `Var(i)`.
     pub const fn is_closed(&self) -> bool {
-        match self {
-            Self::Var(_) => false,
-            _ => true,
-        }
+        !matches!(self, Self::Var(_))
     }
 
     /// Substitute variables `Var` according to the given substitution (variable `i` is mapped to

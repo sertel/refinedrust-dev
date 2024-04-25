@@ -33,7 +33,7 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
     }
 
     const fn is_checked_op(&self, val: &Rvalue<'tcx>) -> bool {
-        if let Rvalue::CheckedBinaryOp(_, _) = *val { true } else { false }
+        matches!(*val, Rvalue::CheckedBinaryOp(_, _))
     }
 
     /// Get the type of a checked-op result.

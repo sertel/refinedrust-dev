@@ -193,6 +193,7 @@ enum CallRegionKind {
     // this is equal to a specific region
     EqR(Region),
 }
+
 struct CallRegions {
     pub early_regions: Vec<Region>,
     pub late_regions: Vec<Region>,
@@ -1057,18 +1058,21 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             let lft1 = self.info.mk_atomic_region(*r1);
             let lft2 = self.info.mk_atomic_region(*r2);
 
-            if let info::AtomicRegion::Universal(info::UniversalRegionKind::Local, _) = lft1 {
-                // this is a constraint we care about here, add it
-                if !self.inclusion_tracker.check_inclusion(*r1, *r2, root_point) {
-                    self.inclusion_tracker.add_static_inclusion(*r1, *r2, root_point);
-                    self.inclusion_tracker.add_static_inclusion(*r2, *r1, root_point);
-                    assert!(match lft2 {
-                        info::AtomicRegion::PlaceRegion(_) => true,
-                        _ => false,
-                    });
-                    initial_arg_mapping.push((lft1, lft2));
-                }
+            let info::AtomicRegion::Universal(info::UniversalRegionKind::Local, _) = lft1 else {
+                continue;
+            };
+
+            // this is a constraint we care about here, add it
+            if self.inclusion_tracker.check_inclusion(*r1, *r2, root_point) {
+                continue;
             }
+
+            self.inclusion_tracker.add_static_inclusion(*r1, *r2, root_point);
+            self.inclusion_tracker.add_static_inclusion(*r2, *r1, root_point);
+
+            assert!(matches!(lft2, info::AtomicRegion::PlaceRegion(_)));
+
+            initial_arg_mapping.push((lft1, lft2));
         }
         initial_arg_mapping
     }
@@ -1239,7 +1243,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Determine initial constraints between universal regions and local place regions.
     /// Returns an initial mapping for the name _map that initializes place regions of arguments
     /// with universals.
-    fn get_initial_universal_arg_constraints(&mut self) -> Vec<(info::AtomicRegion, info::AtomicRegion)> {
+    fn get_initial_universal_arg_constraints(
+        &mut self,
+        _sig_args: &[Ty<'tcx>],
+        _local_args: &[Ty<'tcx>],
+    ) -> Vec<(info::AtomicRegion, info::AtomicRegion)> {
         // Polonius generates a base subset constraint uregion ⊑ pregion.
         // We turn that into pregion = uregion, as we do strong updates at the top-level.
         let info = &self.info;
@@ -1264,18 +1272,21 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             let lft1 = self.info.mk_atomic_region(*r1);
             let lft2 = self.info.mk_atomic_region(*r2);
 
-            if let info::AtomicRegion::Universal(info::UniversalRegionKind::Local, _) = lft1 {
-                // this is a constraint we care about here, add it
-                if !self.inclusion_tracker.check_inclusion(*r1, *r2, root_point) {
-                    self.inclusion_tracker.add_static_inclusion(*r1, *r2, root_point);
-                    self.inclusion_tracker.add_static_inclusion(*r2, *r1, root_point);
-                    assert!(match lft2 {
-                        info::AtomicRegion::PlaceRegion(_) => true,
-                        _ => false,
-                    });
-                    initial_arg_mapping.push((lft1, lft2));
-                }
+            let info::AtomicRegion::Universal(info::UniversalRegionKind::Local, _) = lft1 else {
+                continue;
+            };
+
+            // this is a constraint we care about here, add it
+            if self.inclusion_tracker.check_inclusion(*r1, *r2, root_point) {
+                continue;
             }
+
+            self.inclusion_tracker.add_static_inclusion(*r1, *r2, root_point);
+            self.inclusion_tracker.add_static_inclusion(*r2, *r1, root_point);
+
+            assert!(matches!(lft2, info::AtomicRegion::PlaceRegion(_)));
+
+            initial_arg_mapping.push((lft1, lft2));
         }
         initial_arg_mapping
     }
