@@ -209,3 +209,10 @@ rustflags = [
     "-Aclippy::let_underscore_untyped",
     "-Aclippy::let_unit_value",
 ]
+
+[unstable.gitoxide]
+checkout = true
+fetch = true
+internal_use_git2 = false
+shallow_deps = true
+shallow_index = true

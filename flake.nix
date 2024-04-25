@@ -1,6 +1,6 @@
 {
   inputs = {
-    nixpkgs.url = "nixpkgs/nixos-unstable";
+    nixpkgs.url = "nixpkgs/nixos-23.11";
     flake-utils.url = "github:numtide/flake-utils";
 
     crane = {
@@ -22,12 +22,12 @@
     nixpkgs,
   }:
     flake-utils.lib.eachDefaultSystem (system: let
-      ocamlFlambda = self: super: rec {
-        ocamlPackages_4_14 = super.ocamlPackages.overrideScope' (self: super: {
-          ocaml = super.ocaml.override { flambdaSupport = true; };
+      ocamlFlambda = _: prev: rec {
+        ocamlPackages_4_14 = prev.ocamlPackages.overrideScope' (_: prev: {
+          ocaml = prev.ocaml.override {flambdaSupport = true;};
         });
-        coqPackages_8_17 = super.coqPackages_8_17.overrideScope' (self: super: {
-          coq = super.coq.override {
+        coqPackages_8_17 = prev.coqPackages_8_17.overrideScope' (_: prev: {
+          coq = prev.coq.override {
             ocamlPackages_4_14 = ocamlPackages_4_14;
           };
         });
@@ -70,7 +70,25 @@
           sha256 = "sha256-0NR5RJ4nNCMl9ZQDA6eGAyrDWS8fB28xIIS1QGLlOxw=";
         };
 
-        env = (crane.mkLib pkgs).overrideToolchain rust.toolchain;
+        env = let
+          cargo-bindeps = pkgs.symlinkJoin {
+            name = "cargo-bindeps";
+            paths = [pkgs.cargo];
+            nativeBuildInputs = [pkgs.makeWrapper];
+            postBuild = ''
+              wrapProgram $out/bin/cargo \
+                --add-flags "-Zbindeps"
+            '';
+          };
+
+          craneLib = (crane.mkLib pkgs).overrideScope (_: prev: {
+            downloadCargoPackageFromGit = prev.downloadCargoPackageFromGit.override (args: {
+              pkgsBuildBuild = args.pkgsBuildBuild // {cargo = cargo-bindeps;};
+            });
+          });
+        in
+          craneLib.overrideToolchain rust.toolchain;
+
         lib = "${rust.toolchain}/lib/rustlib/$(rustc -Vv | grep '^host:' | cut -d' ' -f2)/lib";
         src = "${rust.toolchain}/lib/rustlib/rustc-src/rust/compiler";
       };
@@ -130,12 +148,12 @@
           src = ./rr_frontend;
           pname = "cargo-${name}";
 
-          deps = rust.env.buildDepsOnly {
+          cargoArtifacts = rust.env.buildDepsOnly {
             inherit meta pname src version;
           };
         in
           rust.env.buildPackage rec {
-            inherit deps meta pname src version;
+            inherit cargoArtifacts meta pname src version;
 
             buildInputs = [rust.toolchain pkgs.gnupatch];
             nativeBuildInputs = with pkgs;

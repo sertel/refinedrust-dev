@@ -8,12 +8,12 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-analysis.workspace = true
 attribute_parse.workspace = true
 radium.workspace = true
 rr_rustc_interface.workspace = true
 rrconfig.workspace = true
 
+analysis.workspace = true
 csv.workspace = true
 datafrog.workspace = true
 lazy_static.workspace = true
