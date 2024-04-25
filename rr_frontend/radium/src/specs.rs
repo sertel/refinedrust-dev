@@ -875,20 +875,22 @@ impl InvariantSpec {
     }
 
     fn make_existential_binders(&self) -> String {
+        if self.existentials.is_empty() {
+            return String::new();
+        }
+
         let mut out = String::with_capacity(200);
 
-        if self.existentials.len() > 0 {
-            write!(out, "∃ ").unwrap();
-            let mut needs_sep = false;
-            for (name, ty) in &self.existentials {
-                if needs_sep {
-                    write!(out, " ").unwrap();
-                }
-                needs_sep = true;
-                write!(out, "({} : {})", name, ty).unwrap();
+        write!(out, "∃ ").unwrap();
+        let mut needs_sep = false;
+        for (name, ty) in &self.existentials {
+            if needs_sep {
+                write!(out, " ").unwrap();
             }
-            write!(out, ", ").unwrap();
+            needs_sep = true;
+            write!(out, "({} : {})", name, ty).unwrap();
         }
+        write!(out, ", ").unwrap();
 
         out
     }
@@ -1112,7 +1114,7 @@ impl InvariantSpec {
         write!(out, "{}Context `{{!refinedrustGS Σ}}.\n", indent).unwrap();
 
         // add type parameters
-        if generic_params.len() > 0 {
+        if !generic_params.is_empty() {
             // first push the (implicit) refinement type parameters
             write!(out, "{}Context", indent).unwrap();
             for names in generic_params {
@@ -1341,7 +1343,6 @@ impl<'def> AbstractVariant<'def> {
             write!(out, "{}", ty).unwrap();
         }
         out.push_str("]");
-
         out
     }
 
@@ -1402,7 +1403,7 @@ impl<'def> AbstractVariant<'def> {
         write!(out, "{}Context `{{!refinedrustGS Σ}}.\n", indent).unwrap();
 
         // add type parameters, and build a list of terms to apply the sls def to
-        if ty_params.len() > 0 {
+        if !ty_params.is_empty() {
             // first push the (implicit) refinement type parameters
             write!(out, "{}Context", indent).unwrap();
             for names in ty_params {
@@ -1499,7 +1500,7 @@ impl<'def> AbstractStruct<'def> {
 
     /// Check if the struct has type parameters.
     pub fn has_type_params(&self) -> bool {
-        self.ty_params.len() > 0
+        !self.ty_params.is_empty()
     }
 
     /// Get the name of this struct
@@ -1890,7 +1891,7 @@ pub struct AbstractEnum<'def> {
 impl<'def> AbstractEnum<'def> {
     /// Check whether this enum has any type parameters.
     pub fn has_type_params(&self) -> bool {
-        self.ty_params.len() > 0
+        !self.ty_params.is_empty()
     }
 
     /// Get the name of this enum.
@@ -1930,7 +1931,7 @@ impl<'def> AbstractEnum<'def> {
         // add syntype parameters
         let mut typarams = Vec::new();
         let mut typarams_use = Vec::new();
-        if self.ty_params.len() > 0 {
+        if !self.ty_params.is_empty() {
             for names in &self.ty_params {
                 typarams.push(format!("({} : syn_type)", names.syn_type));
                 typarams_use.push(format!("{}", names.syn_type));
@@ -2132,7 +2133,7 @@ impl<'def> AbstractEnum<'def> {
         write!(out, "{}Context `{{!refinedrustGS Σ}}.\n", indent).unwrap();
 
         // add type parameters, and build a list of terms to apply the els def to
-        if self.ty_params.len() > 0 {
+        if !self.ty_params.is_empty() {
             // first push the (implicit) refinement type parameters
             write!(out, "{}Context", indent).unwrap();
             for names in &self.ty_params {
@@ -2549,17 +2550,17 @@ fn fmt_with_op<T>(v: &[T], op: &str, f: &mut Formatter<'_>) -> Result<(), fmt::E
 where
     T: Display,
 {
-    if v.len() == 0 {
-        write!(f, "True")?;
-    } else {
-        let mut needs_sep = false;
-        for s in v {
-            if needs_sep {
-                write!(f, " {} ", op)?;
-            }
-            needs_sep = true;
-            write!(f, "({})", s)?;
+    if v.is_empty() {
+        return write!(f, "True");
+    }
+
+    let mut needs_sep = false;
+    for s in v {
+        if needs_sep {
+            write!(f, " {} ", op)?;
         }
+        needs_sep = true;
+        write!(f, "({})", s)?;
     }
     Ok(())
 }
@@ -2820,7 +2821,7 @@ impl<'def> Display for FunctionSpec<'def> {
             param.1,
             self.format_elctx().as_str()
         )?;
-        if self.args.len() == 0 {
+        if self.args.is_empty() {
             write!(f, "(λ π : thread_id, {}))\n", self.pre)?;
         } else {
             write!(f, "{}; (λ π : thread_id, {}))\n", self.format_args().as_str(), self.pre)?;

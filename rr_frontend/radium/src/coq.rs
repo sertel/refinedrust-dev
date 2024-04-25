@@ -54,15 +54,15 @@ where
     T: Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.rhs.len() == 0 {
-            write!(f, "{}", self.lhs)
-        } else {
-            write!(f, "({}", self.lhs)?;
-            for r in &self.rhs {
-                write!(f, " ({})", r)?;
-            }
-            write!(f, ")")
+        if self.rhs.is_empty() {
+            return write!(f, "{}", self.lhs);
         }
+
+        write!(f, "({}", self.lhs)?;
+        for r in &self.rhs {
+            write!(f, " ({})", r)?;
+        }
+        write!(f, ")")
     }
 }
 
@@ -138,12 +138,10 @@ impl Display for CoqType {
             Self::Unit => write!(f, "unit"),
             Self::Z => write!(f, "Z"),
             Self::Bool => write!(f, "bool"),
-            Self::Prod(v) => {
-                if v.len() == 0 {
-                    write!(f, "unit")
-                } else if v.len() == 1 {
-                    v[0].fmt(f)
-                } else {
+            Self::Prod(v) => match v.len() {
+                0 => write!(f, "unit"),
+                1 => v[0].fmt(f),
+                _ => {
                     write!(f, "(")?;
                     let mut need_sep = false;
                     for t in v {
@@ -155,7 +153,7 @@ impl Display for CoqType {
                         t.fmt(f)?;
                     }
                     write!(f, ")%type")
-                }
+                },
             },
             Self::PlaceRfn(box t) => {
                 write!(f, "(place_rfn {})", t)

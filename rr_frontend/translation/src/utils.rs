@@ -711,27 +711,17 @@ pub fn has_any_tool_attr(attrs: &[ast::Attribute]) -> bool {
 /// Get all tool attributes, i.e. attributes of the shape `<tool>::attr`, where `tool` is
 /// determined by the `spec_hotword` config.
 pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
-    let v: Vec<_> = attrs
+    attrs
         .iter()
-        .filter_map(|attr| {
-            match attr.kind {
-                ast::AttrKind::Normal(ref na) => {
-                    let it = &na.item;
-                    let ref path_segs = it.path.segments;
+        .filter_map(|attr| match attr.kind {
+            ast::AttrKind::Normal(ref na) => {
+                let item = &na.item;
 
-                    // parse path
-                    if path_segs.len() < 1 {
-                        return None;
-                    }
-                    if let Some(seg) = path_segs.get(0) {
-                        if seg.ident.name.as_str() == &config::spec_hotword() { Some(it) } else { None }
-                    } else {
-                        None
-                    }
-                },
-                _ => None,
-            }
+                let seg = item.path.segments.get(0)?;
+
+                if seg.ident.name.as_str() == &config::spec_hotword() { Some(item) } else { None }
+            },
+            _ => None,
         })
-        .collect();
-    v
+        .collect()
 }

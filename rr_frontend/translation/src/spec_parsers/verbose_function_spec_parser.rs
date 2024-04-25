@@ -602,7 +602,7 @@ where
     where
         H: Fn(Vec<specs::Type<'def>>) -> specs::Type<'def>,
     {
-        if attrs.len() > 0 {
+        if !attrs.is_empty() {
             spec.spec.have_spec();
         }
 
@@ -665,7 +665,7 @@ where
         attrs: &[&AttrItem],
         spec: &mut radium::FunctionBuilder<'def>,
     ) -> Result<(), String> {
-        if attrs.len() > 0 {
+        if !attrs.is_empty() {
             spec.spec.have_spec();
         }
 

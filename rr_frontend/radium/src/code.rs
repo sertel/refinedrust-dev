@@ -849,7 +849,7 @@ impl FunctionCode {
                 .collect(),
         );
 
-        if self.basic_blocks.len() < 1 {
+        if self.basic_blocks.is_empty() {
             panic!("Function has no basic block");
         }
         let formatted_init = format!("{}f_init := \"_bb{}\"", make_indent(1).as_str(), Self::INITIAL_BB);
@@ -1065,7 +1065,7 @@ impl<'def> Function<'def> {
         }
 
         // write iris assums
-        if self.other_functions.len() == 0 {
+        if self.other_functions.is_empty() {
             write!(f, "⊢ ")?;
         } else {
             for (loc_name, spec_name, param_insts, sts) in &self.other_functions {

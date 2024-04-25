@@ -183,7 +183,7 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
         params: &'a [specs::LiteralTyParam],
         lfts: &'a [(Option<String>, specs::Lft)],
     ) -> Result<(specs::InvariantSpec, bool), String> {
-        if attrs.len() == 0 {
+        if attrs.is_empty() {
             return Err(format!("no invariant specifications given"));
         }
 

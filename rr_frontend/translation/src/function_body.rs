@@ -2042,23 +2042,27 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     let lft2 = self.format_region(*r2);
                     stmt_annots.push(radium::Annotation::CopyLftName(lft2, lft));
                 },
+
                 CallRegionKind::Intersection(rs) => {
-                    if rs.len() == 0 {
-                        panic!("unconstrained lifetime");
-                    } else if rs.len() == 1 {
-                        // this is really just an equality constraint
-                        if let Some(r2) = rs.iter().next() {
-                            let lft2 = self.format_region(*r2);
-                            stmt_annots.push(radium::Annotation::CopyLftName(lft2, lft));
-                        }
-                    } else {
-                        // a proper intersection
-                        let lfts: Vec<_> = rs.iter().map(|r| self.format_region(*r)).collect();
-                        stmt_annots.push(radium::Annotation::AliasLftIntersection(lft, lfts));
-                    }
+                    match rs.len() {
+                        0 => panic!("unconstrained lifetime"),
+                        1 => {
+                            // this is really just an equality constraint
+                            if let Some(r2) = rs.iter().next() {
+                                let lft2 = self.format_region(*r2);
+                                stmt_annots.push(radium::Annotation::CopyLftName(lft2, lft));
+                            }
+                        },
+                        _ => {
+                            // a proper intersection
+                            let lfts: Vec<_> = rs.iter().map(|r| self.format_region(*r)).collect();
+                            stmt_annots.push(radium::Annotation::AliasLftIntersection(lft, lfts));
+                        },
+                    };
                 },
             }
         }
+
         let stmt = radium::Stmt::with_annotations(stmt, stmt_annots, Some("function_call".to_string()));
         Ok(stmt)
     }
@@ -3004,8 +3008,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         match rval {
             Rvalue::Use(op) => {
                 // converts an lvalue to an rvalue
-                let translated_op = self.translate_operand(op, true)?;
-                Ok(translated_op)
+                self.translate_operand(op, true)
             },
 
             Rvalue::Ref(region, bk, pl) => {
@@ -3038,6 +3041,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             Rvalue::AddressOf(mt, pl) => {
                 let translated_pl = self.translate_place(pl)?;
                 let translated_mt = self.translate_mutability(mt)?;
+
                 Ok(radium::Expr::AddressOf {
                     mt: translated_mt,
                     e: Box::new(translated_pl),
@@ -3098,6 +3102,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let e1_st = self.ty_translator.translate_type_to_syn_type(&e1_ty)?;
                 let e1_ot = self.ty_translator.translate_syn_type_to_op_type(&e1_st);
                 let translated_op = self.translate_unop(*op, &e1_ty)?;
+
                 Ok(radium::Expr::UnOp {
                     o: translated_op,
                     ot: e1_ot,
@@ -3117,43 +3122,47 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let translated_pl = self.translate_place(pl)?;
                 info!("getting discriminant of {:?} at type {:?}", pl, ty);
 
-                if let ty::TyKind::Adt(adt_def, args) = ty.ty.kind() {
-                    let enum_use = self.ty_translator.generate_enum_use(*adt_def, args.iter())?;
-                    let els = enum_use.generate_raw_syn_type_term();
-
-                    let discriminant_acc = radium::Expr::EnumDiscriminant {
-                        els: els.to_string(),
-                        e: Box::new(translated_pl),
-                    };
-                    // need to do a load from this place
-                    let it = ty.ty.discriminant_ty(self.env.tcx());
-                    let translated_it = self.ty_translator.translate_type(&it)?;
-                    if let radium::Type::Int(translated_it) = translated_it {
-                        let ot = radium::OpType::IntOp(translated_it);
-                        Ok(radium::Expr::Use {
-                            ot,
-                            e: Box::new(discriminant_acc),
-                        })
-                    } else {
-                        Err(TranslationError::UnknownError(format!(
-                            "type of discriminant is not an integer type {:?}",
-                            it
-                        )))
-                    }
-                } else {
-                    Err(TranslationError::UnsupportedFeature {
+                let ty::TyKind::Adt(adt_def, args) = ty.ty.kind() else {
+                    return Err(TranslationError::UnsupportedFeature {
                         description: format!(
                             "We do not support discriminant accesses on non-enum types: {:?}; got type {:?}",
                             rval, ty.ty
                         ),
-                    })
-                }
+                    });
+                };
+
+                let enum_use = self.ty_translator.generate_enum_use(*adt_def, args.iter())?;
+                let els = enum_use.generate_raw_syn_type_term();
+
+                let discriminant_acc = radium::Expr::EnumDiscriminant {
+                    els: els.to_string(),
+                    e: Box::new(translated_pl),
+                };
+
+                // need to do a load from this place
+                let it = ty.ty.discriminant_ty(self.env.tcx());
+                let translated_it = self.ty_translator.translate_type(&it)?;
+
+                let radium::Type::Int(translated_it) = translated_it else {
+                    return Err(TranslationError::UnknownError(format!(
+                        "type of discriminant is not an integer type {:?}",
+                        it
+                    )));
+                };
+
+                let ot = radium::OpType::IntOp(translated_it);
+
+                Ok(radium::Expr::Use {
+                    ot,
+                    e: Box::new(discriminant_acc),
+                })
             },
 
             Rvalue::Aggregate(kind, op) => {
                 // translate operands
                 let mut translated_ops: Vec<radium::Expr> = Vec::new();
                 let mut operand_types: Vec<Ty<'tcx>> = Vec::new();
+
                 for o in op {
                     let translated_o = self.translate_operand(o, true)?;
                     let type_of_o = self.get_type_of_operand(o)?;
@@ -3163,24 +3172,23 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 match *kind {
                     box mir::AggregateKind::Tuple => {
-                        if operand_types.len() == 0 {
+                        if operand_types.is_empty() {
                             // translate to unit literal
-                            Ok(radium::Expr::Literal(radium::Literal::LitZST))
-                        } else {
-                            let struct_use =
-                                self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r))?;
-                            let sl = struct_use.generate_raw_syn_type_term();
-                            let initializers: Vec<_> = translated_ops
-                                .into_iter()
-                                .enumerate()
-                                .map(|(i, o)| (i.to_string(), o))
-                                .collect();
-                            Ok(radium::Expr::StructInitE {
-                                sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
-                                components: initializers,
-                            })
+                            return Ok(radium::Expr::Literal(radium::Literal::LitZST));
                         }
+
+                        let struct_use =
+                            self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r))?;
+                        let sl = struct_use.generate_raw_syn_type_term();
+                        let initializers: Vec<_> =
+                            translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
+
+                        Ok(radium::Expr::StructInitE {
+                            sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
+                            components: initializers,
+                        })
                     },
+
                     box mir::AggregateKind::Adt(did, variant, args, ..) => {
                         // get the adt def
                         let adt_def: ty::AdtDef<'tcx> = self.env.tcx().adt_def(did);
@@ -3189,33 +3197,37 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             let variant = adt_def.variant(variant);
                             let struct_use = self.ty_translator.generate_struct_use(variant.def_id, args)?;
 
-                            if let Some(struct_use) = struct_use {
-                                let sl = struct_use.generate_raw_syn_type_term();
-                                let initializers: Vec<_> = translated_ops
-                                    .into_iter()
-                                    .zip(variant.fields.iter())
-                                    .map(|(o, field)| (field.name.to_string(), o))
-                                    .collect();
+                            let Some(struct_use) = struct_use else {
+                                // if not, it's replaced by unit
+                                return Ok(radium::Expr::Literal(radium::Literal::LitZST));
+                            };
 
-                                Ok(radium::Expr::StructInitE {
-                                    sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
-                                    components: initializers,
-                                })
-                            } else {
-                                // otherwise it's replaced by unit
-                                Ok(radium::Expr::Literal(radium::Literal::LitZST))
-                            }
-                        } else if adt_def.is_enum() {
+                            let sl = struct_use.generate_raw_syn_type_term();
+                            let initializers: Vec<_> = translated_ops
+                                .into_iter()
+                                .zip(variant.fields.iter())
+                                .map(|(o, field)| (field.name.to_string(), o))
+                                .collect();
+
+                            return Ok(radium::Expr::StructInitE {
+                                sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
+                                components: initializers,
+                            });
+                        }
+
+                        if adt_def.is_enum() {
                             let variant_def = adt_def.variant(variant);
 
                             let struct_use =
                                 self.ty_translator.generate_enum_variant_use(variant_def.def_id, args)?;
                             let sl = struct_use.generate_raw_syn_type_term();
+
                             let initializers: Vec<_> = translated_ops
                                 .into_iter()
                                 .zip(variant_def.fields.iter())
                                 .map(|(o, field)| (field.name.to_string(), o))
                                 .collect();
+
                             let variant_e = radium::Expr::StructInitE {
                                 sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
                                 components: initializers,
@@ -3227,43 +3239,45 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             info!("generating enum annotation for type {:?}", enum_use);
                             let ty = radium::RustType::of_type(&radium::Type::Literal(enum_use), &[]);
                             let variant_name = variant_def.name.to_string();
-                            Ok(radium::Expr::EnumInitE {
+
+                            return Ok(radium::Expr::EnumInitE {
                                 els: radium::CoqAppTerm::new_lhs(els.to_string()),
                                 variant: variant_name,
                                 ty,
                                 initializer: Box::new(variant_e),
-                            })
-                        } else {
-                            // TODO
-                            return Err(TranslationError::UnsupportedFeature {
-                                description: format!(
-                                    "TODO: implement Aggregate rvalue for other adts: {:?}",
-                                    rval
-                                ),
                             });
                         }
+
+                        // TODO
+                        Err(TranslationError::UnsupportedFeature {
+                            description: format!(
+                                "TODO: implement Aggregate rvalue for other adts: {:?}",
+                                rval
+                            ),
+                        })
                     },
                     box mir::AggregateKind::Closure(def, _args) => {
                         trace!("Translating Closure aggregate value for {:?}", def);
+
                         // We basically translate this to a tuple
-                        if operand_types.len() == 0 {
+                        if operand_types.is_empty() {
                             // translate to unit literal
-                            Ok(radium::Expr::Literal(radium::Literal::LitZST))
-                        } else {
-                            let struct_use =
-                                self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r))?;
-                            let sl = struct_use.generate_raw_syn_type_term();
-                            let initializers: Vec<_> = translated_ops
-                                .into_iter()
-                                .enumerate()
-                                .map(|(i, o)| (i.to_string(), o))
-                                .collect();
-                            Ok(radium::Expr::StructInitE {
-                                sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
-                                components: initializers,
-                            })
+                            return Ok(radium::Expr::Literal(radium::Literal::LitZST));
                         }
+
+                        let struct_use =
+                            self.ty_translator.generate_tuple_use(operand_types.iter().map(|r| *r))?;
+                        let sl = struct_use.generate_raw_syn_type_term();
+
+                        let initializers: Vec<_> =
+                            translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
+
+                        Ok(radium::Expr::StructInitE {
+                            sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
+                            components: initializers,
+                        })
                     },
+
                     _ => {
                         // TODO
                         Err(TranslationError::UnsupportedFeature {
@@ -3276,13 +3290,16 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             Rvalue::Cast(kind, op, ty) => {
                 let op_ty = self.get_type_of_operand(op)?;
                 let translated_op = self.translate_operand(op, true)?;
+
                 match kind {
                     mir::CastKind::PointerExposeAddress => Err(TranslationError::UnsupportedFeature {
                         description: format!("unsupported rvalue: {:?}", rval),
                     }),
+
                     mir::CastKind::PointerFromExposedAddress => Err(TranslationError::UnsupportedFeature {
                         description: format!("unsupported rvalue: {:?}", rval),
                     }),
+
                     mir::CastKind::PointerCoercion(x) => {
                         match x {
                             ty::adjustment::PointerCoercion::MutToConstPointer => {
@@ -3316,24 +3333,30 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             },
                         }
                     },
+
                     mir::CastKind::DynStar => Err(TranslationError::UnsupportedFeature {
                         description: format!("unsupported dyn* cast"),
                     }),
+
                     mir::CastKind::IntToInt => {
                         // TODO
                         Err(TranslationError::Unimplemented {
                             description: format!("unsupported int-to-int cast"),
                         })
                     },
+
                     mir::CastKind::IntToFloat => Err(TranslationError::UnsupportedFeature {
                         description: format!("unsupported int-to-float cast"),
                     }),
+
                     mir::CastKind::FloatToInt => Err(TranslationError::UnsupportedFeature {
                         description: format!("unsupported float-to-int cast"),
                     }),
+
                     mir::CastKind::FloatToFloat => Err(TranslationError::UnsupportedFeature {
                         description: format!("unsupported float-to-float cast"),
                     }),
+
                     mir::CastKind::PtrToPtr => {
                         match (op_ty.kind(), ty.kind()) {
                             (TyKind::RawPtr(_), TyKind::RawPtr(_)) => {
@@ -3348,9 +3371,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             },
                         }
                     },
+
                     mir::CastKind::FnPtrToPtr => Err(TranslationError::UnsupportedFeature {
                         description: format!("unsupported fnptr-to-ptr cast: {:?}", rval),
                     }),
+
                     mir::CastKind::Transmute => Err(TranslationError::UnsupportedFeature {
                         description: format!("unsupported transmute cast: {:?}", rval),
                     }),

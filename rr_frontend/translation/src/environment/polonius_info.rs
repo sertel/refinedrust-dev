@@ -613,9 +613,12 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             .iter()
             .filter_map(|(r, loan, _)| if r == &region { Some(*loan) } else { None })
             .collect();
-        if v.len() == 1 {
-            return RegionKind::Loan(v[0]);
-        } else if v.len() > 0 {
+
+        if !v.is_empty() {
+            if v.len() == 1 {
+                return RegionKind::Loan(v[0]);
+            }
+
             unreachable!("A region should not be induced by multiple loans");
         }
 
@@ -642,6 +645,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             },
             _ => r,
         };
+
         let mut folder = ty::fold::RegionFolder::new(self.tcx, &mut clos);
         for local in &self.mir.local_decls {
             folder.fold_ty(local.ty);
