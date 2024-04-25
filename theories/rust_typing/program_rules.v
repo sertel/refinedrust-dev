@@ -15,9 +15,9 @@ Section typing.
   (** Instances so that Lithium knows what to search for when needing to provide something *)
   (** For locations and values, we use the ones that also find a refinement type, since it may be desirable to change it (consider e.g. changing to uninit) *)
   Global Instance related_to_loc l π b {rt} (lt : ltype rt) (r : place_rfn rt) : RelatedTo (l ◁ₗ[π, b] r @ lt)  | 100 :=
-    {| rt_fic := FindLocP l π |}.
+    {| rt_fic := FindLocP l |}.
   Global Instance related_to_val v π {rt} (ty : type rt) (r : rt) : RelatedTo (v ◁ᵥ{π} r @ ty)  | 100 :=
-    {| rt_fic := FindValP v π|}.
+    {| rt_fic := FindValP v |}.
   (* TODO: need a relatedto for shared ownership? *)
 
   Global Instance related_to_named_lfts M : RelatedTo (named_lfts M) | 100 :=
@@ -51,18 +51,18 @@ Section typing.
 
   Lemma find_in_context_type_valp_id v π T :
     (∃ rt (ty : type rt) r, v ◁ᵥ{π} r @ ty ∗ T (v ◁ᵥ{π} r @ ty))
-    ⊢ find_in_context (FindValP v π) T.
+    ⊢ find_in_context (FindValP v) T.
   Proof. iDestruct 1 as (rt ty r) "(Hl & HT)". iExists (v ◁ᵥ{π} r @ ty)%I => /=. iFrame. Qed.
   Global Instance find_in_context_type_valp_id_inst π v :
-    FindInContext (FindValP v π) FICSyntactic | 1 :=
+    FindInContext (FindValP v) FICSyntactic | 1 :=
     λ T, i2p (find_in_context_type_valp_id v π T).
 
   Lemma find_in_context_type_valp_loc l π T :
     (∃ rt (lt : ltype rt) r, l ◁ₗ[π, Owned false] r @ lt ∗ T (l ◁ₗ[π, Owned false] r @ lt))
-    ⊢ find_in_context (FindValP (val_of_loc l) π) T.
+    ⊢ find_in_context (FindValP (val_of_loc l)) T.
   Proof. iDestruct 1 as (rt lt r) "(Hl & HT)". iExists (l ◁ₗ[π, Owned false] r @ lt)%I. iFrame. done. Qed.
   Global Instance find_in_context_type_valp_loc_inst π l :
-    FindInContext (FindValP (val_of_loc l) π) FICSyntactic | 5 :=
+    FindInContext (FindValP (val_of_loc l)) FICSyntactic | 5 :=
     λ T, i2p (find_in_context_type_valp_loc l π T).
 
   Lemma find_in_context_type_val_with_rt_id {rt} v π T :
@@ -110,18 +110,18 @@ Section typing.
 
   Lemma find_in_context_type_locp_loc l π T :
     (∃ rt (lt : ltype rt) r (b : bor_kind), l ◁ₗ[π, b] r @ lt ∗ T (l ◁ₗ[π, b] r @ lt))
-    ⊢ find_in_context (FindLocP l π) T.
+    ⊢ find_in_context (FindLocP l) T.
   Proof. iDestruct 1 as (rt lt r b) "[Hl HT]". iExists (l ◁ₗ[π, b] r @ lt)%I => /=. iFrame. Qed.
   Global Instance find_in_context_type_locp_loc_inst π l :
-    FindInContext (FindLocP l π) FICSyntactic | 1 :=
+    FindInContext (FindLocP l) FICSyntactic | 1 :=
     λ T, i2p (find_in_context_type_locp_loc l π T).
   Lemma find_in_context_type_locp_val (l : loc) π T :
     (∃ rt (ty : type rt) r , l ◁ᵥ{π} r @ ty ∗ T (l ◁ᵥ{π} r @ ty))
-    ⊢ find_in_context (FindLocP l π) T.
+    ⊢ find_in_context (FindLocP l) T.
   Proof. iDestruct 1 as (rt ty r) "[Hl HT]". iExists (l ◁ᵥ{π} r @ ty)%I => /=. iFrame. Qed.
   (* NOTE: important: has lower priority! If there's a location assignment available, should just use that. *)
   Global Instance find_in_context_type_locp_val_inst π l :
-    FindInContext (FindLocP l π) FICSyntactic | 2 :=
+    FindInContext (FindLocP l) FICSyntactic | 2 :=
     λ T, i2p (find_in_context_type_locp_val l π T).
 
   Lemma find_in_context_type_loc_with_rt_id {rt} l π T:
@@ -2080,8 +2080,8 @@ Section typing.
     typed_val_expr π E L e2 (λ L' v rt ty r, ⌜if o is Na2Ord then False else True⌝ ∗
       typed_write π E L' e1 ot v ty r (λ L2,
         introduce_with_hooks E L2 (atime 2 ∗ £ num_cred) (λ L3,
-        typed_stmt π E L3 s fn R ϝ)))
-    ⊢ typed_stmt π E L (e1 <-{ot, o} e2; s) fn R ϝ.
+        typed_stmt E L3 s fn R ϝ)))
+    ⊢ typed_stmt E L (e1 <-{ot, o} e2; s) fn R ϝ.
   Proof.
     iIntros "He". iIntros (?) "#(LFT & TIME & LLCTX) #HE HL Hcont".
     wps_bind. iApply ("He" with "[$TIME $LFT $LLCTX] HE HL"). iIntros (L' v rt ty r) "HL Hv [% He1]".
@@ -2249,10 +2249,10 @@ Section typing.
       iPoseProof (ofty_ltype_acc_shared with "Hl") as "(%ly & %Halg & %Hly & Hlb & >Hl')"; first done.
       iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
       iMod (lctx_lft_alive_tok_noend κ with "HE HL") as (q') "(Htok & HL & Hclose)"; [solve_ndisj | done | ].
-      iMod (copy_shr_acc _ _ _ _ with "CTX Hl' [Hna] Htok") as "(>%Hly' & (%q'' & %v & Hna & (>Hll & #Hv) & Hclose_l))";
+      iMod (copy_shr_acc _ _ _ b with "CTX Hl' [Hna] Htok") as "(>%Hly' & (%q'' & %v & Hna & (>Hll & #Hv) & Hclose_l))";
         [solve_ndisj | solve_ndisj | | | ].
-      { apply shr_locsE_incl. }
-      { by iDestruct (na_own_acc with "Hna") as "($ & _)". }
+      { etrans; last done. eapply shr_locsE_incl. }
+      { done. }
       iDestruct (ty_own_val_has_layout with "Hv") as "#>%Hlyv"; first done.
       iModIntro. iExists _, _, rt, _, _. iFrame "Hll Hv".
       assert (ly = ot_layout ot) as ->.
@@ -2271,7 +2271,7 @@ Section typing.
 
       iSplitL "".
       (* TODO: MagicType *)
-      2: { iSpecialize ("Hs" with "[Hna]"); admit. }
+      2: { iSpecialize ("Hs" with "[Hna]"); done. }
 
       iSplit.
       { iApply typed_place_cond_ty_refl_ofty. }
@@ -2306,7 +2306,7 @@ Section typing.
       iSplit.
       { iApply typed_place_cond_ty_refl_ofty. }
       { iApply typed_place_cond_rfn_refl. }
-  Admitted.
+  Qed.
   Global Instance type_read_ofty_copy_inst E L {rt} π b2 bmin br l (ty : type rt) r ot `{!Copyable ty} :
     TypedReadEnd π E L l (◁ ty)%I (PlaceIn r) b2 bmin br ot | 10 :=
     λ T, i2p (type_read_ofty_copy E L π T b2 bmin br l ty r ot).
@@ -3150,10 +3150,10 @@ Section typing.
     λ T, i2p (type_borrow_shr_end_shared E L π κ l ty r κ' bmin T).
 
   (** statements *)
-  Lemma type_goto E L π b fn R s ϝ :
+  Lemma type_goto E L b fn R s ϝ :
     fn.(rf_fn).(f_code) !! b = Some s →
-    typed_stmt π E L s fn R ϝ
-    ⊢ typed_stmt π E L (Goto b) fn R ϝ.
+    typed_stmt E L s fn R ϝ
+    ⊢ typed_stmt E L (Goto b) fn R ϝ.
   Proof.
     iIntros (HQ) "Hs". iIntros (?) "#LFT #HE HL Hcont". iApply wps_goto => //.
     iModIntro. iIntros "Hcred". by iApply ("Hs" with "LFT HE HL").
@@ -3161,10 +3161,10 @@ Section typing.
 
   (** Goto a block if we have already proved it with a particular precondition [P]. *)
   (* This is not in Lithium goal shape, but that's fine since it is only manually applied by automation. *)
-  Lemma type_goto_precond E L π P b fn R ϝ :
+  Lemma type_goto_precond E L P b fn R ϝ :
     (* TODO maybe we should also stratify? *)
-    typed_block π P b fn R ϝ ∗ prove_with_subtype E L false ProveDirect (P E L) (λ L' _ R, R -∗⌜L = L'⌝ ∗ True (* TODO maybe relax *))
-    ⊢ typed_stmt π E L (Goto b) fn R ϝ.
+    typed_block P b fn R ϝ ∗ prove_with_subtype E L false ProveDirect (P E L) (λ L' _ R, R -∗⌜L = L'⌝ ∗ True (* TODO maybe relax *))
+    ⊢ typed_stmt E L (Goto b) fn R ϝ.
   Proof.
     iIntros "(Hblock & Hsubt)". iIntros (?) "#CTX #HE HL Hcont".
     iMod ("Hsubt" with "[] [] CTX HE HL") as "(%L' & % & %R2 & >(HP & HR2) & HL & HT)"; [done.. | ].
@@ -3172,10 +3172,10 @@ Section typing.
     by iApply ("Hblock" with "CTX HE HL HP").
   Qed.
 
-  Lemma typed_block_rec π fn R P b ϝ s :
+  Lemma typed_block_rec fn R P b ϝ s :
     fn.(rf_fn).(f_code) !! b = Some s →
-    (□ (∀ E L, (□ typed_block π P b fn R ϝ) -∗ P E L -∗ typed_stmt π E L s fn R ϝ))
-    ⊢ typed_block π P b fn R ϝ.
+    (□ (∀ E L, (□ typed_block P b fn R ϝ) -∗ P E L -∗ typed_stmt E L s fn R ϝ))
+    ⊢ typed_block P b fn R ϝ.
   Proof.
     iIntros (Hs) "#Hb". iLöb as "IH".
     iIntros (? E L) "#CTX #HE HL HP Hcont".
@@ -3187,13 +3187,13 @@ Section typing.
      Instead of just jumping there, we can setup an invariant [P] on ownership and the lifetime contexts.
      Then instead prove: wp of the block, but in the context we can persistently assume the WP of the goto with the same invariant already. *)
   (* Note: these need to be manually applied. *)
-  Lemma typed_goto_acc E L π fn R P b ϝ s :
+  Lemma typed_goto_acc E L fn R P b ϝ s :
     fn.(rf_fn).(f_code) !! b = Some s →
     (* TODO maybe also stratify? *)
     prove_with_subtype E L false ProveDirect (P E L) (λ L' _ R2, R2 -∗
       ⌜L' = L⌝ ∗ (* TODO maybe relax if we have a separate condition on lifetime contexts *)
-      □ (∀ E L, (□ typed_block π P b fn R ϝ) -∗ P E L -∗ typed_stmt π E L s fn R ϝ))
-    ⊢ typed_stmt π E L (Goto b) fn R ϝ.
+      □ (∀ E L, (□ typed_block P b fn R ϝ) -∗ P E L -∗ typed_stmt E L s fn R ϝ))
+    ⊢ typed_stmt E L (Goto b) fn R ϝ.
   Proof.
     iIntros (Hlook) "Hsubt". iIntros (?) "#CTX #HE HL Hcont".
     iMod ("Hsubt" with "[] [] CTX HE HL") as "(%L' & % & %R2 & >(Hinv &HR2) & HL & HT)"; [done.. | ].
@@ -3203,7 +3203,7 @@ Section typing.
 
   Lemma type_assert E L e s fn π R ϝ :
     typed_val_expr π E L e (λ L' v rt ty r, typed_assert π E L' v ty r s fn R ϝ)
-    ⊢ typed_stmt π E L (assert{BoolOp}: e; s) fn R ϝ.
+    ⊢ typed_stmt E L (assert{BoolOp}: e; s) fn R ϝ.
   Proof.
     iIntros "He". iIntros (?) "#CTX #HE HL Hcont". wps_bind.
     iApply ("He" with "CTX HE HL"). iIntros (L' v rt ty r) "HL Hv Hs".
@@ -3213,8 +3213,8 @@ Section typing.
 
   Lemma type_if E L π e s1 s2 fn R join ϝ :
     typed_val_expr π E L e (λ L' v rt ty r, typed_if E L' v (v ◁ᵥ{π} r @ ty)
-          (typed_stmt π E L' s1 fn R ϝ) (typed_stmt π E L' s2 fn R ϝ))
-    ⊢ typed_stmt π E L (if{BoolOp, join}: e then s1 else s2) fn R ϝ.
+          (typed_stmt E L' s1 fn R ϝ) (typed_stmt E L' s2 fn R ϝ))
+    ⊢ typed_stmt E L (if{BoolOp, join}: e then s1 else s2) fn R ϝ.
   Proof.
     iIntros "He". iIntros (?) "#CTX #HE HL Hcont". wps_bind.
     iApply ("He" with "CTX HE HL"). iIntros (L' v rt ty r) "HL Hv Hs".
@@ -3224,7 +3224,7 @@ Section typing.
 
   Lemma type_switch E L π it e m ss def fn R ϝ:
     typed_val_expr π E L e (λ L' v rt ty r, typed_switch π E L' v rt ty r it m ss def fn R ϝ)
-    ⊢ typed_stmt π E L (Switch it e m ss def) fn R ϝ.
+    ⊢ typed_stmt E L (Switch it e m ss def) fn R ϝ.
   Proof.
     iIntros "He" (?) "#CTX #HE HL Hcont".
     have -> : (Switch it e m ss def) = (W.to_stmt (W.Switch it (W.Expr e) m (W.Stmt <$> ss) (W.Stmt def)))
@@ -3244,8 +3244,8 @@ Section typing.
   Qed.
 
   Lemma type_exprs E L s e fn R π ϝ :
-    (typed_val_expr π E L e (λ L' v rt ty r, v ◁ᵥ{π} r @ ty -∗ typed_stmt π E L' s fn R ϝ))
-    ⊢ typed_stmt π E L (ExprS e s) fn R ϝ.
+    (typed_val_expr π E L e (λ L' v rt ty r, v ◁ᵥ{π} r @ ty -∗ typed_stmt E L' s fn R ϝ))
+    ⊢ typed_stmt E L (ExprS e s) fn R ϝ.
   Proof.
     iIntros "Hs". iIntros (?) "#CTX #HE HL Hcont". wps_bind.
     iApply ("Hs" with "CTX HE HL"). iIntros (L' v rt ty r) "HL Hv Hs".
@@ -3253,32 +3253,32 @@ Section typing.
     by iApply ("Hs" with "Hv CTX HE HL").
   Qed.
 
-  Lemma type_skips E L s fn R π ϝ :
-    (|={⊤}[∅]▷=> (£1 -∗ typed_stmt π E L s fn R ϝ)) ⊢ typed_stmt π E L (SkipS s) fn R ϝ.
+  Lemma type_skips E L s fn R ϝ :
+    (|={⊤}[∅]▷=> (£1 -∗ typed_stmt E L s fn R ϝ)) ⊢ typed_stmt E L (SkipS s) fn R ϝ.
   Proof.
     iIntros "Hs". iIntros (?) "#CTX #HE HL Hcont".
     iApply wps_skip. iApply (step_fupd_wand with "Hs"). iIntros "Hs Hcred".
     by iApply ("Hs" with "Hcred CTX HE HL").
   Qed.
 
-  Lemma type_skips' E L s fn R π ϝ :
-    typed_stmt π E L s fn R ϝ ⊢ typed_stmt π E L (SkipS s) fn R ϝ.
+  Lemma type_skips' E L s fn R ϝ :
+    typed_stmt E L s fn R ϝ ⊢ typed_stmt E L (SkipS s) fn R ϝ.
   Proof.
     iIntros "Hs". iApply type_skips. iApply step_fupd_intro; first done.
     iIntros "!> Hcred". done.
   Qed.
 
-  Lemma typed_stmt_annot_skip {A} π E L (a : A) s fn R ϝ :
-    typed_stmt π E L s fn R ϝ ⊢ typed_stmt π E L (annot: a; s) fn R ϝ.
+  Lemma typed_stmt_annot_skip {A} E L (a : A) s fn R ϝ :
+    typed_stmt E L s fn R ϝ ⊢ typed_stmt E L (annot: a; s) fn R ϝ.
   Proof.
     iIntros "Hs". iIntros (?) "#CTX #HE HL Hcont".
     iApply wps_annot. iApply step_fupd_intro; first done.
     iIntros "!> _". by iApply ("Hs" with "CTX HE HL").
   Qed.
-  Lemma typed_stmt_annot_credits `{!typeGS Σ} π E L {A} (a : A) s rf R ϝ n :
+  Lemma typed_stmt_annot_credits `{!typeGS Σ} E L {A} (a : A) s rf R ϝ n :
     atime n -∗
-    (atime (S n) -∗ £ (S (num_laters_per_step n)) -∗ typed_stmt π E L s rf R ϝ) -∗
-    typed_stmt π E L (annot: a; s) rf R ϝ.
+    (atime (S n) -∗ £ (S (num_laters_per_step n)) -∗ typed_stmt E L s rf R ϝ) -∗
+    typed_stmt E L (annot: a; s) rf R ϝ.
   Proof.
     iIntros "Hat HT".
     iIntros (?) "#CTX #HE HL Hcont".
@@ -3401,13 +3401,13 @@ Section typing.
     IntroduceWithHooks E L (Inherit κ k P) := λ T, i2p (introduce_with_hooks_inherit E L k κ P T).
 
   (** StartLft *)
-  Lemma type_startlft E L (n : string) sup_lfts s fn R π ϝ :
+  Lemma type_startlft E L (n : string) sup_lfts s fn R ϝ :
     (∃ M, named_lfts M ∗ li_tactic (compute_map_lookups_nofail_goal M sup_lfts) (λ κs,
       ∀ κ, named_lfts (named_lft_update n κ M) -∗
       (* add a credit -- will be used by endlft *)
       introduce_with_hooks E ((κ ⊑ₗ{0%nat} κs) :: L) (£ 1) (λ L2,
-      typed_stmt π E L2 s fn R ϝ)))
-    ⊢ typed_stmt π E L (annot: (StartLftAnnot n sup_lfts); s) fn R ϝ.
+      typed_stmt E L2 s fn R ϝ)))
+    ⊢ typed_stmt E L (annot: (StartLftAnnot n sup_lfts); s) fn R ϝ.
   Proof.
     rewrite /compute_map_lookups_nofail_goal.
     iIntros "(%M & Hnamed & %κs & %Hlook & Hcont)".
@@ -3422,10 +3422,10 @@ Section typing.
   Qed.
 
   (** Alias lifetimes: like startlft but without the atomic part *)
-  Lemma type_alias_lft E L (n : string) sup_lfts s fn R π ϝ :
+  Lemma type_alias_lft E L (n : string) sup_lfts s fn R ϝ :
     (∃ M, named_lfts M ∗ li_tactic (compute_map_lookups_nofail_goal M sup_lfts) (λ κs,
-      ∀ κ, named_lfts (named_lft_update n κ M) -∗ typed_stmt π E ((κ ≡ₗ κs) :: L) s fn R ϝ))
-    ⊢ typed_stmt π E L (annot: (AliasLftAnnot n sup_lfts); s) fn R ϝ.
+      ∀ κ, named_lfts (named_lft_update n κ M) -∗ typed_stmt E ((κ ≡ₗ κs) :: L) s fn R ϝ))
+    ⊢ typed_stmt E L (annot: (AliasLftAnnot n sup_lfts); s) fn R ϝ.
   Proof.
     rewrite /compute_map_lookups_nofail_goal.
     iIntros "(%M & Hnamed & %κs & %Hlook & Hcont)".
@@ -3445,7 +3445,7 @@ Section typing.
   Inductive CtxFoldExtract : Type :=
     | CtxFoldExtractAllInit (κ : lft)
     | CtxFoldExtractAll (κ : lft).
-  Lemma type_endlft E L π (n : string) s fn R ϝ :
+  Lemma type_endlft E L (n : string) s fn R ϝ :
     (∃ M, named_lfts M ∗
       (* if this lifetime does not exist anymore, this is a nop *)
       li_tactic (compute_map_lookup_goal M n) (λ o,
@@ -3459,15 +3459,15 @@ Section typing.
         li_tactic (simplify_lft_map_goal (named_lft_delete n M)) (λ M',
         (named_lfts M' -∗ (□ [† κ]) -∗
         (* extract observations from now-dead mutable references *)
-        typed_pre_context_fold π E L2 (CtxFoldExtractAllInit κ) (λ L3,
+        typed_pre_context_fold E L2 (CtxFoldExtractAllInit κ) (λ L3,
         (* give back credits *)
         introduce_with_hooks E L3 (R2 ∗ £1 ∗ atime 1) (λ L4,
         (* run endlft triggers *)
-        typed_on_endlft_pre π E L4 κ (λ L5,
-        typed_stmt π E L5 s fn R ϝ)))))))
-      | None => named_lfts M -∗ typed_stmt π E L s fn R ϝ
+        typed_on_endlft_pre E L4 κ (λ L5,
+        typed_stmt E L5 s fn R ϝ)))))))
+      | None => named_lfts M -∗ typed_stmt E L s fn R ϝ
       end))
-    ⊢ typed_stmt π E L (annot: (EndLftAnnot n); s) fn R ϝ.
+    ⊢ typed_stmt E L (annot: (EndLftAnnot n); s) fn R ϝ.
   Proof.
     iIntros "(%M & Hnamed & Hlook)".
     unfold compute_map_lookup_goal.
@@ -3505,15 +3505,15 @@ Section typing.
   Qed.
 
   (** Dynamic inclusion *)
-  Lemma type_dyn_include_lft π E L n1 n2 s fn R ϝ :
+  Lemma type_dyn_include_lft E L n1 n2 s fn R ϝ :
     (∃ M, named_lfts M ∗
       li_tactic (compute_map_lookup_nofail_goal M n1) (λ κ1,
       li_tactic (compute_map_lookup_nofail_goal M n2) (λ κ2,
       li_tactic (lctx_lft_alive_count_goal E L κ2) (λ '(κs, L'),
       Inherit κ1 InheritDynIncl (llft_elt_toks κs) -∗
       named_lfts M -∗
-      typed_stmt π ((κ1 ⊑ₑ κ2) :: E) L' s fn R ϝ))))
-    ⊢ typed_stmt π E L (annot: DynIncludeLftAnnot n1 n2; s) fn R ϝ.
+      typed_stmt ((κ1 ⊑ₑ κ2) :: E) L' s fn R ϝ))))
+    ⊢ typed_stmt E L (annot: DynIncludeLftAnnot n1 n2; s) fn R ϝ.
   Proof.
     rewrite /compute_map_lookup_nofail_goal.
     iIntros "(%M & Hnamed & %κ1 & %Hlook1 & %κ2 & %Hlook2 & Hs)".
@@ -3530,12 +3530,12 @@ Section typing.
   Qed.
 
   (** ExtendLft *)
-  Lemma type_extendlft E L π (n : string) s fn R ϝ :
+  Lemma type_extendlft E L (n : string) s fn R ϝ :
     (∃ M, named_lfts M ∗
       li_tactic (compute_map_lookup_nofail_goal M n) (λ κ,
       li_tactic (llctx_find_llft_goal L κ LlctxFindLftOwned) (λ '(κs, L'),
-      (named_lfts M -∗ typed_stmt π E ((κ ≡ₗ κs) :: L') s fn R ϝ))))
-    ⊢ typed_stmt π E L (annot: (EndLftAnnot n); s) fn R ϝ.
+      (named_lfts M -∗ typed_stmt E ((κ ≡ₗ κs) :: L') s fn R ϝ))))
+    ⊢ typed_stmt E L (annot: (EndLftAnnot n); s) fn R ϝ.
   Proof.
     rewrite /compute_map_lookup_nofail_goal /llctx_find_llft_goal.
     iIntros "(%M & Hnamed & %κ & _ & %L' & %κs & %Hfind & Hs)".
@@ -3546,12 +3546,12 @@ Section typing.
   Qed.
 
   (** CopyLftNameAnnot *)
-  Lemma type_copy_lft_name π E L n1 n2 s fn R ϝ :
+  Lemma type_copy_lft_name E L n1 n2 s fn R ϝ :
     (∃ M, named_lfts M ∗
       li_tactic (compute_map_lookup_nofail_goal M n2) (λ κ2,
       li_tactic (simplify_lft_map_goal (named_lft_update n1 κ2 (named_lft_delete n1 M))) (λ M',
-        named_lfts M' -∗ typed_stmt π E L s fn R ϝ)))
-    ⊢ typed_stmt π E L (annot: CopyLftNameAnnot n1 n2; s) fn R ϝ.
+        named_lfts M' -∗ typed_stmt E L s fn R ϝ)))
+    ⊢ typed_stmt E L (annot: CopyLftNameAnnot n1 n2; s) fn R ϝ.
   Proof.
     rewrite /compute_map_lookup_nofail_goal.
     iIntros "(%M & Hnamed & %κ2 & _ & Hs)".
@@ -3573,7 +3573,7 @@ Section typing.
   Lemma typed_context_fold_step_stratify π E L l {rt} (lt : ltype rt) (r : place_rfn rt) (tctx : list loc) acc R T :
     (* TODO: this needs a different stratification strategy *)
     stratify_ltype_unblock π E L StratRefoldOpened l lt r (Owned false)
-      (λ L' R' rt' lt' r', typed_context_fold (typed_context_fold_stratify_interp π) π E L' (CtxFoldStratifyAll) tctx ((l, mk_bltype _ r' lt') :: acc, R' ∗ R) T)
+      (λ L' R' rt' lt' r', typed_context_fold (typed_context_fold_stratify_interp π) E L' (CtxFoldStratifyAll) tctx ((l, mk_bltype _ r' lt') :: acc, R' ∗ R) T)
     ⊢ typed_context_fold_step (typed_context_fold_stratify_interp π) π E L (CtxFoldStratifyAll) l lt r tctx (acc, R) T.
   Proof.
     iIntros "Hstrat". iIntros (? ??) "#CTX #HE HL Hdel Hl".
@@ -3588,17 +3588,17 @@ Section typing.
   Qed.
 
   Lemma typed_context_fold_stratify_init tctx π E L T :
-    typed_context_fold (typed_context_fold_stratify_interp π) π E L (CtxFoldStratifyAll) tctx ([], True%I) (λ L' m' acc, True ∗
-      typed_context_fold_end (typed_context_fold_stratify_interp π) π E L' acc T)
-    ⊢ typed_pre_context_fold π E L CtxFoldStratifyAllInit T.
+    typed_context_fold (typed_context_fold_stratify_interp π) E L (CtxFoldStratifyAll) tctx ([], True%I) (λ L' m' acc, True ∗
+      typed_context_fold_end (typed_context_fold_stratify_interp π) E L' acc T)
+    ⊢ typed_pre_context_fold E L CtxFoldStratifyAllInit T.
   Proof.
-    iIntros "Hf". iApply (typed_context_fold_init (typed_context_fold_stratify_interp π) ([], True%I) _ _ _ (CtxFoldStratifyAll)). iFrame.
+    iIntros "Hf". iApply (typed_context_fold_init (typed_context_fold_stratify_interp π) ([], True%I) _ _ (CtxFoldStratifyAll)). iFrame.
     rewrite /typed_context_fold_stratify_interp/type_ctx_interp; simpl; done.
   Qed.
 
-  Lemma type_stratify_context_annot E L π s fn R ϝ :
-    typed_pre_context_fold π E L CtxFoldStratifyAllInit (λ L', typed_stmt π E L' s fn R ϝ)
-    ⊢ typed_stmt π E L (annot: (StratifyContextAnnot); s) fn R ϝ.
+  Lemma type_stratify_context_annot E L s fn R ϝ :
+    typed_pre_context_fold E L CtxFoldStratifyAllInit (λ L', typed_stmt E L' s fn R ϝ)
+    ⊢ typed_stmt E L (annot: (StratifyContextAnnot); s) fn R ϝ.
   Proof.
     iIntros "HT".
     iIntros (?) "#CTX #HE HL Hcont".
@@ -3621,7 +3621,7 @@ Section typing.
     Definition typed_context_fold_extract_interp (π : thread_id) := λ '(ctx, R), (type_ctx_interp π ctx ∗ R)%I.
   Lemma typed_context_fold_step_extract π E L l {rt} (lt : ltype rt) (r : place_rfn rt) (tctx : list loc) acc R κ T :
     stratify_ltype_extract π E L StratRefoldOpened l lt r (Owned false) κ
-      (λ L' R' rt' lt' r', typed_context_fold (typed_context_fold_stratify_interp π) π E L' (CtxFoldExtractAll κ) tctx ((l, mk_bltype _ r' lt') :: acc, R' ∗ R) T)
+      (λ L' R' rt' lt' r', typed_context_fold (typed_context_fold_stratify_interp π) E L' (CtxFoldExtractAll κ) tctx ((l, mk_bltype _ r' lt') :: acc, R' ∗ R) T)
     ⊢ typed_context_fold_step (typed_context_fold_stratify_interp π) π E L (CtxFoldExtractAll κ) l lt r tctx (acc, R) T.
   Proof.
     iIntros "Hstrat". iIntros (? ??) "#CTX #HE HL Hdel Hl".
@@ -3636,11 +3636,11 @@ Section typing.
   Qed.
 
   Lemma typed_context_fold_extract_init tctx π E L κ T :
-    typed_context_fold (typed_context_fold_stratify_interp π) π E L (CtxFoldExtractAll κ) tctx ([], True%I) (λ L' m' acc, True ∗
-      typed_context_fold_end (typed_context_fold_stratify_interp π) π E L' acc T)
-    ⊢ typed_pre_context_fold π E L (CtxFoldExtractAllInit κ) T.
+    typed_context_fold (typed_context_fold_stratify_interp π) E L (CtxFoldExtractAll κ) tctx ([], True%I) (λ L' m' acc, True ∗
+      typed_context_fold_end (typed_context_fold_stratify_interp π) E L' acc T)
+    ⊢ typed_pre_context_fold E L (CtxFoldExtractAllInit κ) T.
   Proof.
-    iIntros "Hf". iApply (typed_context_fold_init (typed_context_fold_stratify_interp π) ([], True%I) _ _ _ (CtxFoldExtractAll κ)). iFrame.
+    iIntros "Hf". iApply (typed_context_fold_init (typed_context_fold_stratify_interp π) ([], True%I) _ _ (CtxFoldExtractAll κ)). iFrame.
     rewrite /typed_context_fold_stratify_interp/type_ctx_interp; simpl; done.
   Qed.
 
@@ -3667,7 +3667,7 @@ Section typing.
   Lemma type_return E L π e fn (R : typed_stmt_R_t) ϝ:
     typed_val_expr π E L e (λ L' v rt ty r,
       v ◁ᵥ{π} r @ ty -∗
-      typed_context_fold (typed_context_fold_stratify_interp π) π E L' CtxFoldStratifyAll fn.(rf_locs).*1 ([], True%I) (λ L2 m' acc,
+      typed_context_fold (typed_context_fold_stratify_interp π) E L' CtxFoldStratifyAll fn.(rf_locs).*1 ([], True%I) (λ L2 m' acc,
         introduce_with_hooks E L2 (type_ctx_interp π acc.1 ∗ acc.2) (λ L3,
           prove_with_subtype E L3 true ProveDirect (
             foldr (λ (e : (loc * layout)) T, e.1 ◁ₗ[π, Owned false] (#()) @ (◁ (uninit (UntypedSynType e.2))) ∗ T)
@@ -3678,7 +3678,7 @@ Section typing.
             *)
             R v L4
             )))))
-    ⊢ typed_stmt π E L (return e) fn R ϝ.
+    ⊢ typed_stmt E L (return e) fn R ϝ.
   Proof.
     iIntros "He". iIntros (?) "#CTX #HE HL Hcont". wps_bind.
     wp_bind.

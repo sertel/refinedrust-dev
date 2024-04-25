@@ -137,7 +137,7 @@ Global Instance find_in_context_type_loc_semantic_inst `{!typeGS Σ} π l :
   FindInContext (FindLoc l π) FICLocSemantic | 20 :=
   λ T, i2p (find_in_context_type_loc_id l π T).
 Global Instance find_in_context_type_locp_semantic_inst `{!typeGS Σ} π l :
-  FindInContext (FindLocP l π) FICLocSemantic | 20 :=
+  FindInContext (FindLocP l) FICLocSemantic | 20 :=
   λ T, i2p (find_in_context_type_locp_loc l π T).
 Global Instance find_in_context_type_loc_with_rt_semantic_inst `{!typeGS Σ} rt π l :
   FindInContext (FindLocWithRt rt l π) FICLocSemantic | 20 :=

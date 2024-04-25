@@ -1708,7 +1708,7 @@ Section ltype_def.
           (∃ (Heq_inner : rt_inner = lty_rt lt_inner) (Heq_full : rt_full = lty_rt lt_full),
             ∀ (r : rt_inner) (r' : rt_full),
               Cpre r r' -∗
-              lty_own_pre false lt_inner (Owned false) π (PlaceIn (rew [id] Heq_inner in r)) l ={lftE}=∗ Cpost r r')
+              lty_own_pre false lt_inner (Owned false) π (PlaceIn (rew [id] Heq_inner in r)) l ={lftE ∪ shrE}=∗ Cpost r r')
       | _ => False
       end
   .
@@ -3259,7 +3259,7 @@ Section ltype_def.
             logical_step lftE
             (∀ (r : rt_inner) (r' : rt_full),
               Cpre r r' -∗
-              ltype_own lt_inner (Owned false) π (PlaceIn r) l ={lftE}=∗ Cpost r r')
+              ltype_own lt_inner (Owned false) π (PlaceIn r) l ={lftE ∪ shrE}=∗ Cpost r r')
       | _ => False
     end.
 

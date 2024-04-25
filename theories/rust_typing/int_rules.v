@@ -206,9 +206,9 @@ Section typing.
   Lemma type_switch_int π E L n it m ss def fn R ϝ v:
     ([∧ map] i↦mi ∈ m,
       li_trace (DestructHintSwitchIntCase i) (
-             ⌜n = i⌝ -∗ ∃ s, ⌜ss !! mi = Some s⌝ ∗ typed_stmt π E L s fn R ϝ)) ∧
+             ⌜n = i⌝ -∗ ∃ s, ⌜ss !! mi = Some s⌝ ∗ typed_stmt E L s fn R ϝ)) ∧
     (li_trace (DestructHintSwitchIntDefault) (
-                     ⌜n ∉ (map_to_list m).*1⌝ -∗ typed_stmt π E L def fn R ϝ))
+                     ⌜n ∉ (map_to_list m).*1⌝ -∗ typed_stmt E L def fn R ϝ))
     ⊢ typed_switch π E L v _ (int it) n it m ss def fn R ϝ.
   Proof.
     unfold li_trace.
@@ -427,7 +427,7 @@ Section typing.
     λ T1 T2, i2p (type_if_bool E L π b v T1 T2).
 
   Lemma type_assert_bool E L π b s fn R v ϝ :
-    (⌜b = true⌝ ∗ typed_stmt π E L s fn R ϝ)
+    (⌜b = true⌝ ∗ typed_stmt E L s fn R ϝ)
     ⊢ typed_assert π E L v (bool_t) b s fn R ϝ.
   Proof.
     iIntros "[-> Hs] #CTX #HE HL Hb". by iFrame.

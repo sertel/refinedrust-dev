@@ -245,7 +245,7 @@ Global Typeclasses Opaque FindVal.
 
 (** find type of val in context -- also allows to find location assignments by accepting an arbitrary prop [P].
   Thus, this is used mostly for RelatedTo/Subsume *)
-Definition FindValP `{!typeGS Σ} (v : val) (π : thread_id) :=
+Definition FindValP `{!typeGS Σ} (v : val) :=
   {| fic_A := iProp Σ; fic_Prop P := P |}.
 Global Typeclasses Opaque FindValP.
 
@@ -271,7 +271,7 @@ Global Typeclasses Opaque FindFreeable.
 
 (** find type of location in context -- more flexible by accepting an arbitrary prop [P].
   Thus, this is used mostly for RelatedTo/Subsume *)
-Definition FindLocP `{!typeGS Σ} (l : loc) (π : thread_id) :=
+Definition FindLocP `{!typeGS Σ} (l : loc) :=
   {| fic_A := iProp Σ; fic_Prop P := P |}.
 Global Typeclasses Opaque FindLocP.
 
@@ -649,7 +649,7 @@ Section judgments.
      [ls]: stack (list of locations for args and local variables),
   *)
   Definition typed_stmt_R_t := val → llctx → iProp Σ.
-  Definition typed_stmt_post_cond (π : thread_id) (L : llctx) (fn : runtime_function) (R : typed_stmt_R_t) (v : val) : iProp Σ :=
+  Definition typed_stmt_post_cond (L : llctx) (fn : runtime_function) (R : typed_stmt_R_t) (v : val) : iProp Σ :=
     ((* return ownership of the stack *)
      ([∗ list] l ∈ (fn.(rf_locs)), l.1 ↦|l.2|) ∗
      (* continuation *)
@@ -661,7 +661,7 @@ Section judgments.
 
      [R] is a relation on the result value of this statement and its type: we require that the result value is a well-typed [R]-value at this type.
   *)
-  Definition typed_stmt (π : thread_id) (E : elctx) (L : llctx) (s : stmt) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
+  Definition typed_stmt (E : elctx) (L : llctx) (s : stmt) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
     (∀ (Φ : val → iProp Σ),
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (∀ L' (v : val),
@@ -671,10 +671,10 @@ Section judgments.
         Φ v) -∗
       (*typed_stmt_post_cond π ϝ fn R L')*)
       WPs s {{fn.(rf_fn).(f_code), Φ}})%I.
-  Global Arguments typed_stmt _ _ _ _%E _ _%I _.
+  Global Arguments typed_stmt _ _ _%E _ _%I _.
 
   (* [P] is an invariant on the context. *)
-  Definition typed_block (π : thread_id) (P : elctx → llctx → iProp Σ) (b : label) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
+  Definition typed_block (P : elctx → llctx → iProp Σ) (b : label) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
     (∀ Φ E L,
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       P E L -∗
@@ -687,7 +687,7 @@ Section judgments.
 
   (** for all succeeding statements [s], assuming that [v] has type [ty], it can be converted to a non-zero integer *)
   Definition typed_assert (π : thread_id) (E : elctx) (L : llctx) (v : val) {rt} (ty : type rt) (r : rt) (s : stmt) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
-    (rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ v ◁ᵥ{π} r @ ty -∗ ⌜val_to_bool v = Some true⌝ ∗ llctx_interp L ∗ typed_stmt π E L s fn R ϝ)%I.
+    (rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ v ◁ᵥ{π} r @ ty -∗ ⌜val_to_bool v = Some true⌝ ∗ llctx_interp L ∗ typed_stmt E L s fn R ϝ)%I.
   Class TypedAssert (π : thread_id) (E : elctx) (L : llctx) (v : val) {rt} (ty : type rt) (r : rt) : Type :=
     typed_assert_proof s fn R ϝ : iProp_to_Prop (typed_assert π E L v ty r s fn R ϝ).
 
@@ -702,8 +702,8 @@ Section judgments.
   Definition typed_switch (π : thread_id) (E : elctx) (L : llctx) (v : val) rt (ty : type rt) (r : rt) (it : int_type) (m : gmap Z nat) (ss : list stmt) (def : stmt) (fn : runtime_function) (R : typed_stmt_R_t) (ϝ : lft) : iProp Σ :=
     (v ◁ᵥ{π} r @ ty -∗ ∃ z, ⌜val_to_Z v it = Some z⌝ ∗
       match m !! z with
-      | Some i => ∃ s, ⌜ss !! i = Some s⌝ ∗ typed_stmt π E L s fn R ϝ
-      | None   => typed_stmt π E L def fn R ϝ
+      | Some i => ∃ s, ⌜ss !! i = Some s⌝ ∗ typed_stmt E L s fn R ϝ
+      | None   => typed_stmt E L def fn R ϝ
       end).
   Class TypedSwitch (π : thread_id) (E : elctx) (L : llctx) (v : val) rt (ty : type rt) (r : rt) (it : int_type) : Type :=
     typed_switch_proof m ss def fn R ϝ : iProp_to_Prop (typed_switch π E L v rt ty r it m ss def fn R ϝ).
@@ -3065,7 +3065,7 @@ Section folding.
       Clients that want to initiate context folding should generate a goal with this judgment,
         with a [m] that identifies the folding action.
    *)
-  Definition typed_pre_context_fold (π : thread_id) (E : elctx) (L : llctx) {M} (m : M) (T : llctx → iProp Σ) : iProp Σ :=
+  Definition typed_pre_context_fold (E : elctx) (L : llctx) {M} (m : M) (T : llctx → iProp Σ) : iProp Σ :=
     ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
     rrust_ctx -∗
     elctx_interp E -∗
@@ -3074,13 +3074,13 @@ Section folding.
   (* no TC for this -- typing rules for this will be directly applied by Ltac automation *)
 
   (** The main context folding judgment. [tctx] is the list of types to fold. *)
-  Definition typed_context_fold {M} (π : thread_id) (E : elctx) (L : llctx) (m : M) (tctx : list loc) (acc : Acc) (T : llctx → M → Acc → iProp Σ) : iProp Σ :=
+  Definition typed_context_fold {M} (E : elctx) (L : llctx) (m : M) (tctx : list loc) (acc : Acc) (T : llctx → M → Acc → iProp Σ) : iProp Σ :=
     (∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       logical_step F (Acc_interp acc) ={F}=∗
       ∃ L' acc' m', llctx_interp L' ∗ logical_step F (Acc_interp acc') ∗ T L' m' acc').
-  Class TypedContextFold (π : thread_id) (E : elctx) (L : llctx) {M} (m : M) (tctx : list loc) (acc : Acc) :=
-    typed_context_fold_proof T : iProp_to_Prop (typed_context_fold π E L m tctx acc T).
+  Class TypedContextFold (E : elctx) (L : llctx) {M} (m : M) (tctx : list loc) (acc : Acc) :=
+    typed_context_fold_proof T : iProp_to_Prop (typed_context_fold E L m tctx acc T).
 
   (**
     This does a context fold step, by transforming [tctx] and [acc].
@@ -3100,7 +3100,7 @@ Section folding.
   (** Terminator for the context folding typing process.
     It gathers up the folding result and takes a program step to strip the accumulated laters.
   *)
-  Definition typed_context_fold_end (π : thread_id) (E : elctx) (L : llctx) (acc : Acc) (T : llctx → iProp Σ) : iProp Σ :=
+  Definition typed_context_fold_end (E : elctx) (L : llctx) (acc : Acc) (T : llctx → iProp Σ) : iProp Σ :=
     ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
       rrust_ctx -∗
       elctx_interp E -∗
@@ -3110,28 +3110,28 @@ Section folding.
   (* no type class -- we should directly apply the typing rule for this. *)
 
   (** Finish context folding when the whole list has been processed. *)
-  Lemma typed_context_fold_nil {M} E L π (m : M) acc T  :
+  Lemma typed_context_fold_nil {M} E L (m : M) acc T  :
     T L m acc
-    ⊢ typed_context_fold π E L m [] acc T.
+    ⊢ typed_context_fold E L m [] acc T.
   Proof.
     iIntros "HT".
     iIntros (? ??) "#CTX #HE HL Hdel".
     iExists L, acc, m. by iFrame.
   Qed.
-  Global Instance typed_context_fold_nil_inst {M} E L π (m : M) acc :
-    TypedContextFold π E L m [] acc :=
-      λ T, i2p (typed_context_fold_nil E L π m acc T).
+  Global Instance typed_context_fold_nil_inst {M} E L (m : M) acc :
+    TypedContextFold E L m [] acc :=
+      λ T, i2p (typed_context_fold_nil E L m acc T).
 
   (** Take a context folding step. *)
   (* We make this optional, because some of the items may already have been used for stratifying other types (e.g. for invariant folding) *)
   Lemma typed_context_fold_cons {M} π E L (m : M) l (tctx : list loc) acc T :
     find_in_context (FindOptLoc l π) (λ res,
       match res with
-      | None => typed_context_fold π E L m tctx acc T
+      | None => typed_context_fold E L m tctx acc T
       | Some (existT rt' (lt', r', bk')) =>
           ⌜bk' = Owned false⌝ ∗ (typed_context_fold_step π E L m l lt' r' tctx acc T)
       end)
-    ⊢ typed_context_fold π E L m (l :: tctx) acc T.
+    ⊢ typed_context_fold E L m (l :: tctx) acc T.
   Proof.
     rewrite /FindOptLoc. iIntros "(%res & HT)".
     destruct res as [ [rt' [[lt' r'] bk']] | ]; simpl.
@@ -3142,15 +3142,15 @@ Section folding.
     - iDestruct "HT" as "(_ & HT)". iApply "HT".
   Qed.
   Global Instance typed_context_fold_cons_inst {M} E L π (m : M) l (tctx : list loc) acc :
-    TypedContextFold π E L m (l :: tctx) acc :=
+    TypedContextFold E L m (l :: tctx) acc :=
       λ T, i2p (typed_context_fold_cons π E L m l tctx acc T).
 
   (** Typing rule for ending context folding.
     Yields the accumulated result and continues with the next statement.
   *)
-  Lemma type_context_fold_end E L π acc T :
+  Lemma type_context_fold_end E L acc T :
     (introduce_with_hooks E L (Acc_interp acc) T)
-    ⊢ typed_context_fold_end π E L acc T.
+    ⊢ typed_context_fold_end E L acc T.
   Proof.
     iIntros "Hs". iIntros (? ??) "#(LFT & TIME & LLCTX) #HE HL Hstep".
     iApply logical_step_fupd.
@@ -3163,10 +3163,10 @@ Section folding.
     This rule should be directly applied by Ltac automation, after it has gathere Inherit κ1 InheritDynIncl (llft_elt_toks κs)d up the [tctx]
       from the Iris context.
   *)
-  Lemma typed_context_fold_init {M} (init_acc : Acc) E L π (m : M) (tctx : list loc) Φ T :
+  Lemma typed_context_fold_init {M} (init_acc : Acc) E L (m : M) (tctx : list loc) Φ T :
     Acc_interp init_acc ∗
-    typed_context_fold π E L m tctx init_acc (λ L' m' acc, Φ m' acc ∗ typed_context_fold_end π E L' acc T) -∗
-    typed_pre_context_fold π E L m T.
+    typed_context_fold E L m tctx init_acc (λ L' m' acc, Φ m' acc ∗ typed_context_fold_end E L' acc T) -∗
+    typed_pre_context_fold E L m T.
   Proof.
     iIntros "(Hinit & Hfold)".
     iIntros (???) "#CTX #HE HL".
@@ -3879,13 +3879,13 @@ End fold_list.
 Section endlft_triggers.
   Context `{!typeGS Σ}.
   (* no typeclass for this one, as rules are directly applied by Ltac automation *)
-  Definition typed_on_endlft_pre (π : thread_id) (E : elctx) (L : llctx) (κ : lft) (T : llctx → iProp Σ) : iProp Σ :=
+  Definition typed_on_endlft_pre (E : elctx) (L : llctx) (κ : lft) (T : llctx → iProp Σ) : iProp Σ :=
     ∀ F, ⌜lftE ⊆ F⌝ -∗ elctx_interp E -∗ llctx_interp L -∗ [† κ] ={F}=∗ ∃ L', llctx_interp L' ∗ T L'.
 
-  Definition typed_on_endlft (π : thread_id) (E : elctx) (L : llctx) (κ : lft) (worklist: list (sigT (@id Type) * iProp Σ)) (T : llctx → iProp Σ) : iProp Σ :=
+  Definition typed_on_endlft (E : elctx) (L : llctx) (κ : lft) (worklist: list (sigT (@id Type) * iProp Σ)) (T : llctx → iProp Σ) : iProp Σ :=
     ∀ F, ⌜lftE ⊆ F⌝ -∗ elctx_interp E -∗ llctx_interp L -∗ [† κ] ={F}=∗ ∃ L', llctx_interp L' ∗ T L'.
-  Class TypedOnEndlft (π : thread_id) (E : elctx) (L : llctx) (κ : lft) (worklist : list (sigT (@id Type) * iProp Σ)) :=
-    typed_on_endlft_proof T : iProp_to_Prop (typed_on_endlft π E L κ worklist T).
+  Class TypedOnEndlft (E : elctx) (L : llctx) (κ : lft) (worklist : list (sigT (@id Type) * iProp Σ)) :=
+    typed_on_endlft_proof T : iProp_to_Prop (typed_on_endlft E L κ worklist T).
 
   Definition typed_on_endlft_trigger {K} (E : elctx) (L : llctx) (key : K) (P : iProp Σ) (T : llctx → iProp Σ) : iProp Σ :=
     ∀ F, ⌜lftE ⊆ F⌝ -∗ elctx_interp E -∗ llctx_interp L -∗ P ={F}=∗ ∃ L', llctx_interp L' ∗ T L'.
@@ -3893,23 +3893,23 @@ Section endlft_triggers.
     typed_on_endlft_trigger_proof T : iProp_to_Prop (typed_on_endlft_trigger E L key P T).
 
   (* no instance, automation needs to manually instantiate the worklist *)
-  Lemma typed_on_endlft_pre_init worklist π E L κ T :
-    typed_on_endlft π E L κ worklist T
-    ⊢ typed_on_endlft_pre π E L κ T.
+  Lemma typed_on_endlft_pre_init worklist E L κ T :
+    typed_on_endlft E L κ worklist T
+    ⊢ typed_on_endlft_pre E L κ T.
   Proof. done. Qed.
 
-  Lemma typed_on_endlft_nil π E L κ T :
-    T L ⊢ typed_on_endlft π E L κ [] T.
+  Lemma typed_on_endlft_nil E L κ T :
+    T L ⊢ typed_on_endlft E L κ [] T.
   Proof.
     iIntros "Hs" (F ?) "HE HL ?". iModIntro. iExists L. iFrame.
   Qed.
-  Global Instance typed_on_endlft_nil_inst π E L κ : TypedOnEndlft π E L κ [] :=
-    λ T, i2p (typed_on_endlft_nil π E L κ T).
+  Global Instance typed_on_endlft_nil_inst E L κ : TypedOnEndlft E L κ [] :=
+    λ T, i2p (typed_on_endlft_nil E L κ T).
 
-  Lemma typed_on_endlft_cons {K} π E L κ key P worklist T :
+  Lemma typed_on_endlft_cons {K} E L κ key P worklist T :
     find_in_context (FindInherit κ key P) (λ _,
-      typed_on_endlft_trigger E L key P (λ L', typed_on_endlft π E L' κ worklist T))
-    ⊢ typed_on_endlft π E L κ ((existT K key, P) :: worklist) T.
+      typed_on_endlft_trigger E L key P (λ L', typed_on_endlft E L' κ worklist T))
+    ⊢ typed_on_endlft E L κ ((existT K key, P) :: worklist) T.
   Proof.
     iIntros "Hs" (F ?) "#HE HL #Hdead".
     iDestruct "Hs" as ([]) "(Hinh & Hc)". simpl.
@@ -3918,8 +3918,8 @@ Section endlft_triggers.
     iMod ("Hc" with "[//] HE HL HP") as "(%L' & HL & HT)".
     iApply ("HT" with "[//] HE HL Hdead").
   Qed.
-  Global Instance typed_on_endlft_cons_inst {K} π E L κ (key : K) P worklist : TypedOnEndlft π E L κ ((existT K key, P) :: worklist) :=
-    λ T, i2p (typed_on_endlft_cons π E L κ key P worklist T).
+  Global Instance typed_on_endlft_cons_inst {K} E L κ (key : K) P worklist : TypedOnEndlft E L κ ((existT K key, P) :: worklist) :=
+    λ T, i2p (typed_on_endlft_cons E L κ key P worklist T).
 End endlft_triggers.
 
 (** For implementation of [GetLftNamesAnnot].

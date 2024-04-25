@@ -8,9 +8,9 @@ Set Default Proof Using "Type".
 Definition to_runtime_function (fn : function) (lsa lsv : list loc) (lya lyv : list layout) : runtime_function :=
   let rf := subst_function (zip (fn.(f_args).*1 ++ fn.(f_local_vars).*1) (val_of_loc <$> (lsa ++ lsv))) fn in
   {| rf_fn := rf; rf_locs := zip lsa lya ++ zip lsv lyv |}.
-Definition introduce_typed_stmt {Σ} `{!typeGS Σ} (π : thread_id) (E : elctx) (L : llctx) (ϝ : lft) (fn : function) (lsa lsv : list loc) (lya lyv : list layout) (R : typed_stmt_R_t) : iProp Σ :=
+Definition introduce_typed_stmt {Σ} `{!typeGS Σ} (E : elctx) (L : llctx) (ϝ : lft) (fn : function) (lsa lsv : list loc) (lya lyv : list layout) (R : typed_stmt_R_t) : iProp Σ :=
   let rf := to_runtime_function fn lsa lsv lya lyv in
-  typed_stmt π E L (Goto fn.(f_init)) rf R ϝ.
+  typed_stmt E L (Goto fn.(f_init)) rf R ϝ.
 Global Typeclasses Opaque to_runtime_function.
 Global Typeclasses Opaque introduce_typed_stmt.
 Global Arguments introduce_typed_stmt : simpl never.
@@ -143,7 +143,7 @@ Section function.
           let E := ((fp κs x).(fp_elctx) ϝ) in
           (* local lifetime context: the function needs to be alive *)
           let L := [ϝ ⊑ₗ{0} []] in
-          Qinit -∗ introduce_typed_stmt π E L ϝ fn lsa lsv lya lyv (
+          Qinit -∗ introduce_typed_stmt E L ϝ fn lsa lsv lya lyv (
             λ v L2,
             prove_with_subtype E L2 false ProveDirect (fn_ret_prop π (fp κs x).(fp_fr) v) (λ L3 _ R3,
             introduce_with_hooks E L3 R3 (λ L4,
@@ -298,12 +298,15 @@ Section call.
       by rewrite -Hlen2; eexists (list_to_vec _); symmetry; apply vec_to_list_to_vec. subst.
 
     iDestruct ("Hfn" $! lsa' lsv') as "Hm". unfold introduce_typed_stmt.
+
+    (* TODO: MagicType - Change na_own π shrE into na_own π ⊤ *)
     set (RET_PROP v := (∃ κs',
         llctx_elt_interp (ϝ ⊑ₗ{ 0} κs') ∗
         credit_store 0 0 ∗
         na_own π ⊤ ∗
         ([∗ list] l0 ∈ (zip lsa' (f_args fn).*2 ++ zip lsv' (f_local_vars fn).*2), l0.1 ↦|l0.2|) ∗
         fn_ret_prop π (fp_fr (fp aκs x)) v)%I).
+
     iExists RET_PROP. iSplitR "Hr HR HΦ HL HL_cl HL_cl' Hkill" => /=.
     - iMod (persistent_time_receipt_0) as "#Htime".
       iApply wps_fupd.

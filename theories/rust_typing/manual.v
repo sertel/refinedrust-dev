@@ -7,7 +7,7 @@ From refinedrust Require Import programs arrays automation value.
 Section updateable.
   Context `{!typeGS Σ}.
 
-  Definition updateable (π : thread_id) (E : elctx) (L : llctx) (T : llctx → iProp Σ) : iProp Σ :=
+  Definition updateable (E : elctx) (L : llctx) (T : llctx → iProp Σ) : iProp Σ :=
     rrust_ctx -∗
     elctx_interp E -∗
     llctx_interp L ={⊤}=∗
@@ -15,16 +15,15 @@ Section updateable.
   Class Updateable (P : iProp Σ) := {
     updateable_E : elctx;
     updateable_L : llctx;
-    updateable_π : thread_id;
-    updateable_core : thread_id → elctx → llctx → iProp Σ;
-    updateable_prove π E L : updateable π E L (λ L2, updateable_core π E L2) -∗ updateable_core π E L;
-    updateable_eq : updateable_core updateable_π updateable_E updateable_L ⊣⊢ P
+    updateable_core : elctx → llctx → iProp Σ;
+    updateable_prove E L : updateable E L (λ L2, updateable_core E L2) -∗ updateable_core E L;
+    updateable_eq : updateable_core updateable_E updateable_L ⊣⊢ P
   }.
 
-  Lemma updateable_mono π E L T1 T2 :
-    updateable π E L T1 -∗
+  Lemma updateable_mono E L T1 T2 :
+    updateable E L T1 -∗
     (∀ L, T1 L -∗ T2 L) -∗
-    updateable π E L T2.
+    updateable E L T2.
   Proof.
     iIntros "HT Hw".
     iIntros "#CTX #HE HL".
@@ -32,15 +31,15 @@ Section updateable.
     iSpecialize ("Hw" with "HT").
     iExists L2. by iFrame.
   Qed.
-  Lemma updateable_intro π E L T :
-    T L ⊢ updateable π E L T.
+  Lemma updateable_intro E L T :
+    T L ⊢ updateable E L T.
   Proof.
     iIntros "HT #CTX HE HL".
     iExists L. by iFrame.
   Qed.
 
   Lemma add_updateable P `{!Updateable P} :
-    updateable updateable_π updateable_E updateable_L (λ L2, updateable_core updateable_π  updateable_E L2) ⊢ P.
+    updateable updateable_E updateable_L (λ L2, updateable_core updateable_E L2) ⊢ P.
   Proof.
     iIntros "HT".
     iApply updateable_eq.
@@ -53,11 +52,10 @@ Section updateable.
     Updateable (typed_val_expr π E L e T) := {|
       updateable_E := E;
       updateable_L := L;
-      updateable_π := π;
-      updateable_core π E L := typed_val_expr π E L e T;
+      updateable_core E L := typed_val_expr π E L e T;
   |}.
   Next Obligation.
-    iIntros (_ _ _ e T π E L).
+    iIntros (π _ _ e T E L).
     rewrite /typed_val_expr.
     iIntros "HT" (?) "#CTX #HE HL Hc".
     iApply fupd_wp. iMod ("HT" with "CTX HE HL") as "(%L2 & HL & HT)".
@@ -71,11 +69,10 @@ Section updateable.
     Updateable (typed_call π E L κs v P vl tys T) := {|
       updateable_E := E;
       updateable_L := L;
-      updateable_π := π;
-      updateable_core π E L := typed_call π E L κs v P vl tys T;
+      updateable_core E L := typed_call π E L κs v P vl tys T;
   |}.
   Next Obligation.
-    iIntros (_ _ _ ? ? ? ? ? ? π E L).
+    iIntros (π _ _ ? ? ? ? ? ? E L).
     rewrite /typed_call.
     iIntros "HT HP Ha".
     unshelve iApply add_updateable; first apply _.
@@ -88,15 +85,14 @@ Section updateable.
   Qed.
 
 
-  Global Program Instance updateable_typed_stmt π E L s rf R ϝ :
-    Updateable (typed_stmt π E L s rf R ϝ) := {|
+  Global Program Instance updateable_typed_stmt E L s rf R ϝ :
+    Updateable (typed_stmt E L s rf R ϝ) := {|
       updateable_E := E;
       updateable_L := L;
-      updateable_π := π;
-      updateable_core π E L := typed_stmt π E L s rf R ϝ;
+      updateable_core E L := typed_stmt E L s rf R ϝ;
   |}.
   Next Obligation.
-    iIntros (_ _ _ ? ? ? ? π E L).
+    iIntros (_ _ ? ? ? ? E L).
     iIntros "HT". rewrite /typed_stmt.
     iIntros (?) "#CTX #HE HL Hcont".
     iMod ("HT" with "CTX HE HL") as "(%L2 & HL & HT)".
@@ -106,15 +102,14 @@ Section updateable.
     simpl. eauto.
   Qed.
 
-  Global Program Instance updateable_updateable π E L T :
-    Updateable (updateable π E L T) := {|
+  Global Program Instance updateable_updateable E L T :
+    Updateable (updateable E L T) := {|
       updateable_E := E;
       updateable_L := L;
-      updateable_π := π;
-      updateable_core π E L := updateable π E L T;
+      updateable_core E L := updateable E L T;
     |}.
   Next Obligation.
-    iIntros (_ _ _ ? ? ? ?) "HT".
+    iIntros (_ _ ? ? ?) "HT".
     rewrite /updateable.
     iIntros "#CTX #HE HL".
     iMod ("HT" with "CTX HE HL") as "(%L2 & HL & HT)".
@@ -139,8 +134,8 @@ Section updateable.
     iApply fupd_typed_val_expr. iMod "HT" as "HT". iApply ("HT" with "HP Ha").
   Qed.
 
-  Lemma fupd_typed_stmt `{!typeGS Σ} π E L s rf R ϝ :
-    ⊢ (|={⊤}=> typed_stmt π E L s rf R ϝ) -∗ typed_stmt π E L s rf R ϝ.
+  Lemma fupd_typed_stmt `{!typeGS Σ} E L s rf R ϝ :
+    ⊢ (|={⊤}=> typed_stmt E L s rf R ϝ) -∗ typed_stmt E L s rf R ϝ.
   Proof.
     iIntros "HT". rewrite /typed_stmt. iIntros (?) "CTX HE HL Hcont".
     iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hcont").
@@ -150,12 +145,12 @@ End updateable.
 Section updateable_rules.
   Context `{!typeGS Σ} {P} `{!Updateable P}.
 
-  Lemma updateable_typed_array_access l off st :
-    find_in_context (FindLoc l updateable_π)  (λ '(existT _ (lt, r, k)),
-      typed_array_access updateable_π updateable_E updateable_L l off st lt r k (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
-        l ◁ₗ[updateable_π, k2] #rs2 @ ArrayLtype ty2 len2 iml2 -∗
-        (l offsetst{st}ₗ off) ◁ₗ[updateable_π, k2] re @ lte -∗
-        updateable_core updateable_π updateable_E L2))
+  Lemma updateable_typed_array_access π l off st :
+    find_in_context (FindLoc l π) (λ '(existT _ (lt, r, k)),
+      typed_array_access π updateable_E updateable_L l off st lt r k (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
+        l ◁ₗ[π, k2] #rs2 @ ArrayLtype ty2 len2 iml2 -∗
+        (l offsetst{st}ₗ off) ◁ₗ[π, k2] re @ lte -∗
+        updateable_core updateable_E L2))
     ⊢ P.
   Proof.
     iIntros "HT".
@@ -170,14 +165,14 @@ Section updateable_rules.
     iModIntro. iExists _. iFrame.
   Qed.
 
-  Lemma updateable_extract_value l : 
-    find_in_context (FindLoc l updateable_π) (λ '(existT rt (lt, r, bk)),
+  Lemma updateable_extract_value π l :
+    find_in_context (FindLoc l π) (λ '(existT rt (lt, r, bk)),
       ∃ wl ty r', ⌜bk = Owned wl⌝ ∗ ⌜lt = ◁ty⌝ ∗ ⌜r = #r'⌝ ∗
       prove_with_subtype updateable_E updateable_L false ProveDirect (£ (Nat.b2n wl)) (λ L2 κs R, R -∗
       li_tactic (compute_layout_goal ty.(ty_syn_type)) (λ ly,
-      (∀ v3, v3 ◁ᵥ{updateable_π} r' @ ty -∗ 
-        l ◁ₗ[updateable_π, Owned wl] #v3 @ (◁ value_t (UntypedSynType ly)) -∗
-        updateable_core updateable_π updateable_E L2))))
+      (∀ v3, v3 ◁ᵥ{π} r' @ ty -∗
+        l ◁ₗ[π, Owned wl] #v3 @ (◁ value_t (UntypedSynType ly)) -∗
+        updateable_core updateable_E L2))))
     ⊢ P.
   Proof.
     iIntros "HT".
@@ -212,21 +207,21 @@ Tactic Notation "apply_update" uconstr(H) :=
 Section test.
   Context `{!typeGS Σ}.
 
-  Lemma updateable_updateable_b π E L (l : loc) (off : Z) (st : syn_type) :
-    ⊢ updateable π E L (λ _, True).
+  Lemma updateable_updateable_b (π: thread_id) E L (l : loc) (off : Z) (st : syn_type) :
+    ⊢ updateable E L (λ _, True).
   Proof.
     iStartProof.
     add_updateable.
     add_updateable.
-    unshelve iApply (updateable_typed_array_access l off st).
+    unshelve iApply (updateable_typed_array_access π l off st).
     idtac.
   Abort.
 
-  Lemma typed_s_updateable π E L s rf R ϝ (l : loc) (off : Z) (st : syn_type) :
-    ⊢ typed_stmt π E L s rf R ϝ.
+  Lemma typed_s_updateable (π: thread_id) E L s rf R ϝ (l : loc) (off : Z) (st : syn_type) :
+    ⊢ typed_stmt E L s rf R ϝ.
   Proof.
     iStartProof.
-    unshelve apply_update (updateable_typed_array_access l off st).
+    unshelve apply_update (updateable_typed_array_access π l off st).
     idtac.
   Abort.
 End test.
@@ -269,8 +264,8 @@ Tactic Notation "typed_val_expr_bind" :=
 Lemma tac_typed_stmt_bind `{!typeGS Σ} π E L s e Ks fn ϝ T :
   W.find_stmt_fill s = Some (Ks, e) →
   typed_val_expr π E L (W.to_expr e) (λ L' v rt ty r,
-    v ◁ᵥ{π} r @ ty -∗ typed_stmt π E L' (W.to_stmt (W.stmt_fill Ks (W.Val v))) fn T ϝ) -∗
-  typed_stmt π E L (W.to_stmt s) fn T ϝ.
+    v ◁ᵥ{π} r @ ty -∗ typed_stmt E L' (W.to_stmt (W.stmt_fill Ks (W.Val v))) fn T ϝ) -∗
+  typed_stmt E L (W.to_stmt s) fn T ϝ.
 Proof.
   move => /W.find_stmt_fill_correct ->. iIntros "He".
   rewrite /typed_stmt.
@@ -292,19 +287,19 @@ Qed.
 Tactic Notation "typed_stmt_bind" :=
   iStartProof;
   lazymatch goal with
-  | |- envs_entails _ (typed_stmt ?π ?E ?L ?s ?fn ?R ?ϝ) =>
-    let s' := W.of_stmt s in change (typed_stmt π E L s fn R ϝ) with (typed_stmt π E L (W.to_stmt s') fn R ϝ);
+  | |- envs_entails _ (typed_stmt ?E ?L ?s ?fn ?R ?ϝ) =>
+    let s' := W.of_stmt s in change (typed_stmt E L s fn R ϝ) with (typed_stmt E L (W.to_stmt s') fn R ϝ);
     iApply tac_typed_stmt_bind; [done |];
     unfold W.to_expr, W.to_stmt; simpl; unfold W.to_expr; simpl
   | _ => fail "typed_stmt_bind: not a 'typed_stmt'"
   end.
 
-Lemma intro_typed_stmt `{!typeGS Σ} fn R ϝ π E L s Φ :
+Lemma intro_typed_stmt `{!typeGS Σ} fn R ϝ E L s Φ :
   rrust_ctx -∗
   elctx_interp E -∗
   llctx_interp L -∗
   (∀ (L' : llctx) (v : val), llctx_interp L' -∗ ([∗ list] l ∈ rf_locs fn, l.1 ↦|l.2|) -∗ R v L' -∗ Φ v) -∗
-  typed_stmt π E L s fn R ϝ -∗
+  typed_stmt E L s fn R ϝ -∗
   WPs s {{ f_code (rf_fn fn), Φ }}.
 Proof.
   iIntros "#CTX #HE HL Hcont Hs".

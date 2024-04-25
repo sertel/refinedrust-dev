@@ -716,10 +716,10 @@ Ltac simplify_elctx :=
 Section reorder_elctx.
   Context `{!typeGS Σ}.
 
-  Lemma reorder_elctx_tac π E E' L s fn R ϝ :
+  Lemma reorder_elctx_tac E E' L s fn R ϝ :
     E ≡ₚ E' →
-    typed_stmt π (E') L s fn R ϝ -∗
-    typed_stmt π E L s fn R ϝ.
+    typed_stmt (E') L s fn R ϝ -∗
+    typed_stmt E L s fn R ϝ.
   Proof.
     iIntros (HP) "Hs".
     rewrite /typed_stmt.
