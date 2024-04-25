@@ -1561,14 +1561,9 @@ impl<'def> AbstractStruct<'def> {
 
     /// Generate an optional definition for the invariant of this type, if one has been specified.
     pub fn generate_optional_invariant_def(&self) -> Option<String> {
-        match self.invariant {
-            None => None,
-            Some(ref spec) => Some(spec.generate_coq_type_def(
-                self.plain_ty_name(),
-                &self.plain_rt_def_name(),
-                &self.ty_params,
-            )),
-        }
+        self.invariant.as_ref().map(|spec| {
+            spec.generate_coq_type_def(self.plain_ty_name(), &self.plain_rt_def_name(), &self.ty_params)
+        })
     }
 
     /// Make a literal type.
