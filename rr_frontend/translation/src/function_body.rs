@@ -1977,7 +1977,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let mut cont_stmt = self.translate_goto_like(&loc, target)?;
                 // end loans before the goto, but after the call.
                 // TODO: may cause duplications?
-                cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.into_iter().cloned());
+                cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.iter().cloned());
 
                 // Get the type of the return value from the function
                 let (_, _, _, inst_sig) = self.call_expr_op_split_inst(func)?;
