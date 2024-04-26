@@ -5,11 +5,10 @@
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
 use std::collections::HashMap;
-use std::fmt::Write;
 
 use log::{info, warn};
 use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
-use radium::{specs, write_list};
+use radium::{push_str_list, specs};
 use rustc_ast::ast::AttrItem;
 use rustc_middle::ty;
 use {attribute_parse as parse, radium};
@@ -501,11 +500,11 @@ where
         let mut pre_tys = Vec::new();
 
         if pre_types.is_empty() {
-            write!(pre_rfn, "()").unwrap();
+            pre_rfn.push_str("()");
         } else {
-            write!(pre_rfn, "-[").unwrap();
-            write_list!(pre_rfn, pre_types.clone(), "; ", |x| format!("#({})", x.1)).unwrap();
-            write!(pre_rfn, "]").unwrap();
+            pre_rfn.push_str("-[");
+            push_str_list!(pre_rfn, pre_types.clone(), "; ", |x| format!("#({})", x.1));
+            pre_rfn.push_str("]");
 
             pre_tys = pre_types.iter().map(|x| x.0.clone()).collect();
         }
@@ -557,13 +556,12 @@ where
                 // references
                 let mut post_term = String::new();
 
-                write!(post_term, "-[").unwrap();
-                write_list!(post_term, post_patterns, "; ", |p| match p {
+                post_term.push_str("-[");
+                push_str_list!(post_term, post_patterns, "; ", |p| match p {
                     CapturePostRfn::ImmutOrConsume(pat) => format!("#({pat})"),
                     CapturePostRfn::Mut(pat, gvar) => format!("#(#({pat}), {gvar})"),
-                })
-                .unwrap();
-                write!(post_term, "]").unwrap();
+                });
+                post_term.push_str("]");
 
                 builder
                     .spec

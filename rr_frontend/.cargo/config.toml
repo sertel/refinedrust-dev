@@ -160,6 +160,7 @@ rustflags = [
     "-Aclippy::else_if_without_else",
     "-Aclippy::exhaustive_enums",
     "-Aclippy::exhaustive_structs",
+    "-Aclippy::format_push_string",
     "-Aclippy::implicit_return",
     "-Aclippy::integer_division",
     "-Aclippy::min_ident_chars",

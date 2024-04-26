@@ -254,7 +254,7 @@ impl CoqParamList {
 
 impl Display for CoqParamList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_list!(f, &self.0, " ", |(name, ty)| format!("({} : {})", name, ty))
+        write_list!(f, &self.0, " ", |(name, ty)| format!("({name} : {ty})"))
     }
 }
 

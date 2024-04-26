@@ -15,7 +15,7 @@ use indent_write::io::IndentWriter;
 use log::info;
 
 use crate::specs::*;
-use crate::write_list;
+use crate::{push_str_list, write_list};
 
 fn make_indent(i: usize) -> String {
     " ".repeat(i)
@@ -367,7 +367,7 @@ impl Display for Expr {
             },
             Self::StructInitE { sls, components } => {
                 write!(f, "StructInit {} [", sls)?;
-                write_list!(f, components, "; ", |(name, e)| format!("(\"{}\", {} : expr)", name, e))?;
+                write_list!(f, components, "; ", |(name, e)| format!("(\"{name}\", {e} : expr)"))?;
                 write!(f, "]")
             },
             Self::EnumInitE {
@@ -612,9 +612,10 @@ impl Stmt {
                 write!(fmt_index_map, "∅").unwrap();
 
                 let mut fmt_targets = String::with_capacity(100);
-                write!(fmt_targets, "[").unwrap();
-                write_list!(fmt_targets, bs, "; ", |tgt| tgt.caesium_fmt(0)).unwrap();
-                write!(fmt_targets, "]").unwrap();
+
+                fmt_targets.push_str("[");
+                push_str_list!(fmt_targets, bs, "; ", |tgt| tgt.caesium_fmt(0));
+                fmt_targets.push_str("]");
 
                 let fmt_default = def.caesium_fmt(0);
 
@@ -762,13 +763,12 @@ impl FunctionCode {
 
             formatted_args.push_str("[");
 
-            write_list!(formatted_args, layout, "; ", |(ref name, ref st)| {
+            push_str_list!(formatted_args, layout, "; ", |(ref name, ref st)| {
                 let ly = st.layout_term(&[]); //should be closed already
                 let indent = make_indent(2);
 
                 format!("\n{indent}(\"{name}\", {ly} : layout)")
-            })
-            .unwrap();
+            });
 
             formatted_args.push_str(format!("\n{}]", make_indent(1).as_str()).as_str());
             return formatted_args;
@@ -1066,7 +1066,7 @@ impl<'def> Function<'def> {
 
         // write local syntypes
         write!(f, ") [")?;
-        write_list!(f, &self.code.stack_layout.local_map, "; ", |(_, st)| format!("{}", st))?;
+        write_list!(f, &self.code.stack_layout.local_map, "; ", |(_, st)| st.to_string())?;
         write!(f, "] (type_of_{} ", self.name())?;
 
         // write type args (passed to the type definition)
