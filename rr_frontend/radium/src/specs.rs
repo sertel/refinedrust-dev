@@ -1477,7 +1477,7 @@ impl<'def> AbstractStruct<'def> {
 
     /// Get the name of this struct
     pub fn name(&self) -> &str {
-        &self.variant_def.name()
+        self.variant_def.name()
     }
 
     pub fn sls_def_name(&self) -> &str {
@@ -1534,7 +1534,7 @@ impl<'def> AbstractStruct<'def> {
     /// Generate an optional definition for the invariant of this type, if one has been specified.
     pub fn generate_optional_invariant_def(&self) -> Option<String> {
         self.invariant.as_ref().map(|spec| {
-            spec.generate_coq_type_def(self.plain_ty_name(), &self.plain_rt_def_name(), &self.ty_params)
+            spec.generate_coq_type_def(self.plain_ty_name(), self.plain_rt_def_name(), &self.ty_params)
         })
     }
 
@@ -2520,9 +2520,9 @@ impl Display for IProp {
             Self::Pure(a) => write!(f, "⌜{a}⌝"),
             Self::Linktime(a) => write!(f, "⌜{a}⌝"),
             Self::PureWithName(p, name) => write!(f, "⌜name_hint \"{name}\" ({p})⌝"),
-            Self::Sep(v) => fmt_with_op(&v, "∗", f),
-            Self::Disj(v) => fmt_with_op(&v, "∨", f),
-            Self::Conj(v) => fmt_with_op(&v, "∧", f),
+            Self::Sep(v) => fmt_with_op(v, "∗", f),
+            Self::Disj(v) => fmt_with_op(v, "∨", f),
+            Self::Conj(v) => fmt_with_op(v, "∧", f),
             Self::Wand(l, r) => {
                 write!(f, "({l}) -∗ {r}")
             },

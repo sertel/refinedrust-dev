@@ -264,7 +264,7 @@ where
                 refinement_type: specs::CoqType::Infer,
                 syn_type: st,
             };
-            let lit_ref = (&self.make_literal)(lit_ty);
+            let lit_ref = (self.make_literal)(lit_ty);
             let lit_ty_use = specs::LiteralTypeUse::new_with_annot(lit_ref, vec![], lit.meta.clone());
 
             (specs::TypeWithRef::new(specs::Type::Literal(lit_ty_use), lit.rfn.to_string()), None)
@@ -298,17 +298,17 @@ where
 
         match name {
             "params" => {
-                let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+                let params = RRParams::parse(buffer, &meta).map_err(str_err)?;
                 for p in params.params {
                     builder.spec.add_param(p.name, p.ty)?;
                 }
             },
             "param" => {
-                let param = RRParam::parse(&buffer, &meta).map_err(str_err)?;
+                let param = RRParam::parse(buffer, &meta).map_err(str_err)?;
                 builder.spec.add_param(param.name, param.ty)?;
             },
             "args" => {
-                let args = RRArgs::parse(&buffer, &meta).map_err(str_err)?;
+                let args = RRArgs::parse(buffer, &meta).map_err(str_err)?;
                 if self.arg_types.len() != args.args.len() {
                     return Err(format!(
                         "wrong number of function arguments given: expected {} args",
@@ -328,11 +328,11 @@ where
                 }
             },
             "requires" => {
-                let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+                let iprop = MetaIProp::parse(buffer, &meta).map_err(str_err)?;
                 builder.spec.add_precondition(iprop.into())?;
             },
             "ensures" => {
-                let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+                let iprop = MetaIProp::parse(buffer, &meta).map_err(str_err)?;
                 builder.spec.add_postcondition(iprop.into())?;
             },
             "observe" => {
@@ -348,24 +348,24 @@ where
                 builder.spec.add_postcondition(m.into())?;
             },
             "returns" => {
-                let tr = LiteralTypeWithRef::parse(&buffer, &meta).map_err(str_err)?;
+                let tr = LiteralTypeWithRef::parse(buffer, &meta).map_err(str_err)?;
                 // convert to type
                 let (ty, _) = self.make_type_with_ref(&tr, self.ret_type);
                 builder.spec.set_ret_type(ty)?;
             },
             "exists" => {
-                let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+                let params = RRParams::parse(buffer, &meta).map_err(str_err)?;
                 for param in params.params {
                     builder.spec.add_existential(param.name, param.ty)?;
                 }
             },
             "tactics" => {
-                let tacs = parse::LitStr::parse(&buffer, &meta).map_err(str_err)?;
+                let tacs = parse::LitStr::parse(buffer, &meta).map_err(str_err)?;
                 let tacs = tacs.value();
                 builder.add_manual_tactic(&tacs);
             },
             "context" => {
-                let context_item = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
+                let context_item = RRCoqContextItem::parse(buffer, &meta).map_err(str_err)?;
                 if context_item.at_end {
                     builder.spec.add_late_coq_param(
                         specs::CoqName::Unnamed,

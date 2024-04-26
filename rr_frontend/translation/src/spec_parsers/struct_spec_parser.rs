@@ -368,7 +368,7 @@ where
             refinement_type: specs::CoqType::Infer,
             syn_type: st,
         };
-        let lit_ref = (&self.make_literal)(lit_ty);
+        let lit_ref = (self.make_literal)(lit_ty);
         let lit_use = specs::LiteralTypeUse::new_with_annot(lit_ref, vec![], lit.meta);
 
         specs::Type::Literal(lit_use)

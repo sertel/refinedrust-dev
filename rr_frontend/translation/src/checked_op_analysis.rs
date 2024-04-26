@@ -150,7 +150,7 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
                 _ => (),
             }
         }
-        let mut successors = self.successors_of_bb(&bb);
-        self.bb_queue.append(&mut successors);
+
+        self.bb_queue.append(&mut self.successors_of_bb(bb));
     }
 }

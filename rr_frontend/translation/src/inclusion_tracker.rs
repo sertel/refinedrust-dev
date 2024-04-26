@@ -107,8 +107,8 @@ impl<'a, 'tcx: 'a> InclusionTracker<'a, 'tcx> {
         cfg_edge.extend(self.info.borrowck_in_facts.cfg_edge.iter());
 
         while iteration.changed() {
-            incl4.from_map(&base, |(r1, r2, p)| ((*r2, *p), *r1));
-            incl5.from_map(&base, |(r2, r3, p)| ((*r2, *p), *r3));
+            incl4.from_map(base, |(r1, r2, p)| ((*r2, *p), *r1));
+            incl5.from_map(base, |(r2, r3, p)| ((*r2, *p), *r3));
 
             // incl(r1, r2, p2) :- incl(r1, r2, p1), cfg_edge(p1, p2), !barrier(r1, p2), !barrier(r2, p2)
             // realized by:
@@ -116,7 +116,7 @@ impl<'a, 'tcx: 'a> InclusionTracker<'a, 'tcx> {
             // incl2((r1, p2), r2) :- incl1(p1, (r1, r2)), cfg_edge(p1, p2)
             // incl3((r2, p2), r1) :- incl2((r1, p2), r2), !barrier(r1, p2)
             // incl(r1, r2, p2) :- incl3((r2, p2), r1), !barrier(r2, p2)
-            incl1.from_map(&base, |(r1, r2, p)| (*p, (*r1, *r2)));
+            incl1.from_map(base, |(r1, r2, p)| (*p, (*r1, *r2)));
             incl2.from_join(&cfg_edge, &incl1, |_p1, p2, (r1, r2)| ((*r1, *p2), *r2));
             incl3.from_antijoin(&incl2, &barriers, |(r1, p2), r2| ((*r2, *p2), *r1));
             base.from_antijoin(&incl3, &barriers, |(r2, p2), r1| (*r1, *r2, *p2));

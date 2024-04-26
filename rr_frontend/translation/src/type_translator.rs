@@ -812,7 +812,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let mut spec_parser = struct_spec_parser::VerboseInvariantSpecParser::new();
             let ty_name = strip_coq_ident(format!("{}_inv_t", struct_name).as_str());
             let res = spec_parser
-                .parse_invariant_spec(&ty_name, &outer_attrs, &ty_param_defs, &lft_params)
+                .parse_invariant_spec(&ty_name, &outer_attrs, ty_param_defs, &lft_params)
                 .map_err(|err| TranslationError::FatalError(err))?;
             invariant_spec = Some(res.0);
             expect_refinement = !res.1;
@@ -843,7 +843,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             let mut parser = struct_spec_parser::VerboseStructFieldSpecParser::new(
                 &ty,
-                &ty_param_defs,
+                ty_param_defs,
                 &lft_params,
                 expect_refinement,
                 |lit| self.intern_literal(lit),
@@ -867,7 +867,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             }
         }
 
-        let struct_def = builder.finish(&ty_param_defs);
+        let struct_def = builder.finish(ty_param_defs);
         info!("finished variant def: {:?}", struct_def);
 
         // now add the invariant, if one was annotated
@@ -1578,7 +1578,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         ty: &Ty<'tcx>,
         scope: InFunctionState<'_, 'def>,
     ) -> Result<radium::Type<'def>, TranslationError> {
-        self.translate_type_with_deps(&ty, &mut TranslationStateInner::InFunction(&mut *scope))
+        self.translate_type_with_deps(ty, &mut TranslationStateInner::InFunction(&mut *scope))
     }
 
     /// Translate type in an empty scope.

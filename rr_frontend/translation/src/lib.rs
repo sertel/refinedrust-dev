@@ -164,75 +164,75 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         spec_name: &str,
     ) -> Option<shim_registry::TraitMethodImplShim> {
         trace!("enter make_shim_trait_method_entry; did={did:?}");
-        if let Some(mode) = self.procedure_registry.lookup_function_mode(&did) {
-            if mode == ProcedureMode::Prove
-                || mode == ProcedureMode::OnlySpec
-                || mode == ProcedureMode::TrustMe
-            {
-                match self.env.tcx().visibility(did) {
-                    // only export public items
-                    ty::Visibility::Public => {
-                        let impl_did = self.env.tcx().impl_of_method(did).unwrap();
 
-                        let impl_ref: Option<ty::EarlyBinder<ty::TraitRef<'_>>> =
-                            self.env.tcx().impl_trait_ref(impl_did);
-                        if let Some(impl_ref) = impl_ref {
-                            let impl_ref =
-                                normalize_in_function(impl_did, self.env.tcx(), impl_ref.skip_binder())
-                                    .unwrap();
+        let Some(mode) = self.procedure_registry.lookup_function_mode(&did) else {
+            trace!("leave make_shim_trait_method_entry (failed)");
+            return None;
+        };
 
-                            let args = impl_ref.args;
-                            let trait_did = impl_ref.def_id;
-                            // the first arg is self, skip that
-                            let trait_args = &args.as_slice()[1..];
-                            let impl_for = args[0].expect_ty();
-
-                            // flatten the trait reference
-                            let trait_path = utils::PathWithArgs::from_item(self.env, trait_did, trait_args)?;
-                            trace!("got trait path: {:?}", trait_path);
-
-                            // flatten the self type.
-                            let maybe_flattened_for_type =
-                                utils::convert_ty_to_flat_type(&self.env, impl_for);
-                            let flattened_for_type;
-                            if let Some(a) = maybe_flattened_for_type {
-                                flattened_for_type = a;
-                            } else {
-                                return None;
-                            }
-
-                            trace!("implementation for: {:?}", impl_for);
-
-                            // get name of this function
-                            let method_ident;
-                            if let Some(ident) = self.env.tcx().opt_item_ident(did) {
-                                method_ident = ident.as_str().to_string();
-                            } else {
-                                // can not find name of this function
-                                return None;
-                            }
-
-                            let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
-
-                            let a = shim_registry::TraitMethodImplShim {
-                                trait_path,
-                                method_ident,
-                                for_type: flattened_for_type,
-                                name,
-                                spec_name: spec_name.to_string(),
-                            };
-                            trace!("leave make_shim_trait_method_entry (success)");
-                            return Some(a);
-                        }
-                    },
-                    ty::Visibility::Restricted(_) => {
-                        // don't  export
-                    },
-                }
-            }
+        if mode != ProcedureMode::Prove && mode != ProcedureMode::OnlySpec && mode != ProcedureMode::TrustMe {
+            trace!("leave make_shim_trait_method_entry (failed)");
+            return None;
         }
-        trace!("leave make_shim_trait_method_entry (failed)");
-        None
+
+        match self.env.tcx().visibility(did) {
+            // only export public items
+            ty::Visibility::Public => {
+                let impl_did = self.env.tcx().impl_of_method(did).unwrap();
+
+                let impl_ref: Option<ty::EarlyBinder<ty::TraitRef<'_>>> =
+                    self.env.tcx().impl_trait_ref(impl_did);
+
+                let Some(impl_ref) = impl_ref else {
+                    trace!("leave make_shim_trait_method_entry (failed)");
+                    return None;
+                };
+
+                let impl_ref =
+                    normalize_in_function(impl_did, self.env.tcx(), impl_ref.skip_binder()).unwrap();
+
+                let args = impl_ref.args;
+                let trait_did = impl_ref.def_id;
+
+                // the first arg is self, skip that
+                let trait_args = &args.as_slice()[1..];
+                let impl_for = args[0].expect_ty();
+
+                // flatten the trait reference
+                let trait_path = utils::PathWithArgs::from_item(self.env, trait_did, trait_args)?;
+                trace!("got trait path: {:?}", trait_path);
+
+                // flatten the self type.
+                let Some(for_type) = utils::convert_ty_to_flat_type(self.env, impl_for) else {
+                    return None;
+                };
+
+                trace!("implementation for: {:?}", impl_for);
+
+                // get name of this function
+                let Some(ident) = self.env.tcx().opt_item_ident(did) else {
+                    // can not find name of this function
+                    return None;
+                };
+
+                let method_ident = ident.as_str().to_string();
+                let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
+
+                trace!("leave make_shim_trait_method_entry (success)");
+                Some(shim_registry::TraitMethodImplShim {
+                    trait_path,
+                    method_ident,
+                    for_type,
+                    name,
+                    spec_name: spec_name.to_string(),
+                })
+            },
+            ty::Visibility::Restricted(_) => {
+                // don't export
+                trace!("leave make_shim_trait_method_entry (failed)");
+                None
+            },
+        }
     }
 
     fn make_adt_shim_entry(&self, did: DefId, lit: radium::LiteralType) -> Option<shim_registry::AdtShim> {
@@ -510,7 +510,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // write templates
         // each function gets a separate file in order to parallelize
         for (did, fun) in self.procedure_registry.iter_code() {
-            let path = file_path(&fun.name());
+            let path = file_path(fun.name());
             let mut template_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
 
             let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
@@ -571,48 +571,52 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // write proofs
         // each function gets a separate file in order to parallelize
         for (did, fun) in self.procedure_registry.iter_code() {
-            let path = file_path(&fun.name());
+            let path = file_path(fun.name());
 
             if path.exists() {
                 info!("Proof file for function {} already exists, skipping creation", fun.name());
                 continue;
-            } else if self.check_function_needs_proof(*did, fun) {
-                info!("Proof file for function {} does not yet exist, creating", fun.name());
+            }
 
-                let mut proof_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
+            if !self.check_function_needs_proof(*did, fun) {
+                continue;
+            }
 
-                write!(
-                    proof_file,
+            info!("Proof file for function {} does not yet exist, creating", fun.name());
+
+            let mut proof_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
+
+            write!(
+                proof_file,
+                "\
+                    From caesium Require Import lang notation.\n\
+                From refinedrust Require Import typing shims.\n\
+                From {}.{stem}.generated Require Import generated_code_{stem} generated_specs_{stem}.\n\
+                From {}.{stem}.generated Require Import generated_template_{}.\n",
+                self.coq_path_prefix,
+                self.coq_path_prefix,
+                fun.name()
+            )
+            .unwrap();
+            // Note: we do not import the self.extra_imports explicitly, as we rely on them
+            // being re-exported from the template -- we want to be stable under changes of the
+            // extras
+            proof_file.write("\n".as_bytes()).unwrap();
+
+            proof_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
+
+            proof_file
+                .write(
                     "\
-                        From caesium Require Import lang notation.\n\
-                    From refinedrust Require Import typing shims.\n\
-                    From {}.{stem}.generated Require Import generated_code_{stem} generated_specs_{stem}.\n\
-                    From {}.{stem}.generated Require Import generated_template_{}.\n",
-                    self.coq_path_prefix,
-                    self.coq_path_prefix,
-                    fun.name()
+                Section proof.\n\
+                Context `{!refinedrustGS Σ}.\n"
+                        .as_bytes(),
                 )
                 .unwrap();
-                // Note: we do not import the self.extra_imports explicitly, as we rely on them
-                // being re-exported from the template -- we want to be stable under changes of the
-                // extras
-                proof_file.write("\n".as_bytes()).unwrap();
 
-                proof_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
+            fun.generate_proof(&mut proof_file).unwrap();
 
-                proof_file
-                    .write(
-                        "\
-                    Section proof.\n\
-                    Context `{!refinedrustGS Σ}.\n"
-                            .as_bytes(),
-                    )
-                    .unwrap();
-
-                fun.generate_proof(&mut proof_file).unwrap();
-
-                proof_file.write("End proof.".as_bytes()).unwrap();
-            }
+            proof_file.write("End proof.".as_bytes()).unwrap();
         }
     }
 
@@ -629,7 +633,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             return;
         };
 
-        base_dir_path.push(&stem);
+        base_dir_path.push(stem);
 
         if let Err(_) = fs::read_dir(base_dir_path.as_path()) {
             warn!("Output directory {:?} does not exist, creating directory", base_dir_path);
@@ -718,10 +722,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let generated_dune_path = generated_dir_path.join("dune");
 
         // write specs
-        self.write_specifications(spec_path.as_path(), code_path.as_path(), &stem);
+        self.write_specifications(spec_path.as_path(), code_path.as_path(), stem);
 
         // write templates
-        self.write_templates(|name| generated_dir_path.join(format!("generated_template_{}.v", name)), &stem);
+        self.write_templates(|name| generated_dir_path.join(format!("generated_template_{name}.v")), stem);
 
         // write dune meta file
         let mut dune_file = io::BufWriter::new(fs::File::create(generated_dune_path.as_path()).unwrap());
@@ -784,7 +788,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             fs::create_dir_all(proof_dir_path).unwrap();
         }
 
-        self.write_proofs(|name| proof_dir_path.join(format!("proof_{}.v", name)), &stem);
+        self.write_proofs(|name| proof_dir_path.join(format!("proof_{name}.v")), stem);
 
         // explicitly spell out the proof modules we want to compile so we don't choke on stale
         // proof files
@@ -914,7 +918,7 @@ fn get_most_restrictive_function_mode(
 ) -> function_body::ProcedureMode {
     let mut mode = function_body::ProcedureMode::Prove;
 
-    let attrs = get_attributes_of_function(&vcx.env, did);
+    let attrs = get_attributes_of_function(vcx.env, did);
 
     // check if this is a purely spec function; if so, skip.
     if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
@@ -1006,7 +1010,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         let fname = vcx.env.get_item_name(f.to_def_id());
         let meta = vcx.procedure_registry.lookup_function(&f.to_def_id()).unwrap();
 
-        let filtered_attrs = get_attributes_of_function(&vcx.env, f.to_def_id());
+        let filtered_attrs = get_attributes_of_function(vcx.env, f.to_def_id());
 
         let mode = meta.get_mode();
         if mode.is_shim() {
@@ -1025,22 +1029,22 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         match ty.kind() {
             ty::TyKind::FnDef(_def, _args) => {
                 translator = FunctionTranslator::new(
-                    &vcx.env,
+                    vcx.env,
                     meta,
                     proc,
                     &filtered_attrs,
-                    &vcx.type_translator,
+                    vcx.type_translator,
                     &vcx.procedure_registry,
                     &vcx.const_registry,
                 )
             },
             ty::TyKind::Closure(_, _) => {
                 translator = FunctionTranslator::new_closure(
-                    &vcx.env,
+                    vcx.env,
                     meta,
                     proc,
                     &filtered_attrs,
-                    &vcx.type_translator,
+                    vcx.type_translator,
                     &vcx.procedure_registry,
                     &vcx.const_registry,
                 )
@@ -1260,7 +1264,7 @@ where
     info!("Setting dune package: {:?}", package);
 
     // get module attributes
-    let module_attrs = get_module_attributes(&env)?;
+    let module_attrs = get_module_attributes(env)?;
 
     // process imports
     let mut imports: HashSet<radium::CoqPath> = HashSet::new();
@@ -1280,7 +1284,7 @@ where
         .count();
     info!("Including RefinedRust modules: {:?}", includes);
 
-    let functions = get_filtered_functions(&env);
+    let functions = get_filtered_functions(env);
 
     let struct_arena = Arena::new();
     let enum_arena = Arena::new();

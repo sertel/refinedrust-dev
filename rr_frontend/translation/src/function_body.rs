@@ -351,7 +351,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         // TODO can we avoid the leak
         let proc: &'def Procedure = &*Box::leak(Box::new(proc));
         let body = proc.get_mir();
-        Self::dump_body(&body);
+        Self::dump_body(body);
 
         let closure_kind;
 
@@ -443,11 +443,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // dump graphviz files
                 // color code: red: dying loan, pink: becoming a zombie; green: is zombie
                 if rrconfig::dump_borrowck_info() {
-                    crate::environment::dump_borrowck_info(env, &proc.get_id(), &info);
+                    crate::environment::dump_borrowck_info(env, &proc.get_id(), info);
                 }
 
                 let (tupled_inputs, output, mut universal_lifetimes) =
-                    Self::process_lifetimes_of_args(&env, params, sig, body);
+                    Self::process_lifetimes_of_args(env, params, sig, body);
 
                 // Process the lifetime parameters that come from the captures
                 for r in capture_regions {
@@ -607,7 +607,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let proc: &'def Procedure = &*Box::leak(Box::new(proc));
 
         let body = proc.get_mir();
-        Self::dump_body(&body);
+        Self::dump_body(body);
 
         let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
         let ty = ty.instantiate_identity();
@@ -636,11 +636,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // dump graphviz files
                 // color code: red: dying loan, pink: becoming a zombie; green: is zombie
                 if rrconfig::dump_borrowck_info() {
-                    crate::environment::dump_borrowck_info(env, &proc.get_id(), &info);
+                    crate::environment::dump_borrowck_info(env, &proc.get_id(), info);
                 }
 
                 let (inputs, output, universal_lifetimes) =
-                    Self::process_lifetimes_of_args(&env, params, sig, &body);
+                    Self::process_lifetimes_of_args(env, params, sig, body);
                 info!("Have lifetime parameters: {:?}", universal_lifetimes);
                 info!("inputs: {:?}, output: {:?}", inputs, output);
 
@@ -859,7 +859,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     /// Tries to find the Rust source code name of the local, otherwise simply enumerates.
     /// `used_names` keeps track of the Rust source code names that have already been used.
     fn make_local_name(mir_body: &Body<'tcx>, local: &Local, used_names: &mut HashSet<String>) -> String {
-        if let Some(mir_name) = Self::find_name_for_local(mir_body, local, &used_names) {
+        if let Some(mir_name) = Self::find_name_for_local(mir_body, local, used_names) {
             let name = strip_coq_ident(&mir_name);
             used_names.insert(mir_name);
             name
@@ -1996,7 +1996,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 // compute the resulting annotations
                 let (rhs_annots, pre_stmt_annots, post_stmt_annots) =
-                    self.get_assignment_annots(loc, &destination, output_ty)?;
+                    self.get_assignment_annots(loc, destination, output_ty)?;
                 info!(
                     "assignment annots after call: expr: {:?}, pre-stmt: {:?}, post-stmt: {:?}",
                     rhs_annots, pre_stmt_annots, post_stmt_annots
@@ -2157,7 +2157,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     // `true` branch
                     let true_target = all_targets.get(1).unwrap();
                     let false_target = all_targets[0];
-                    let true_branch = self.translate_goto_like(&loc, &true_target)?;
+                    let true_branch = self.translate_goto_like(&loc, true_target)?;
                     let false_branch = self.translate_goto_like(&loc, &false_target)?;
                     res_stmt = radium::Stmt::If {
                         e: operand,
@@ -2739,7 +2739,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         // if this is a checked op, be sure to remember it
                         info!("rewriting assignment to checked op: {:?}", plc);
 
-                        let synty = self.ty_translator.translate_type_to_syn_type(&rewritten_ty)?;
+                        let synty = self.ty_translator.translate_type_to_syn_type(rewritten_ty)?;
 
                         let translated_val = self.translate_rvalue(loc, val)?;
                         let translated_place = self.translate_place(plc)?;

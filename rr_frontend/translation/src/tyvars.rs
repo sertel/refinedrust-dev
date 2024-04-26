@@ -94,21 +94,21 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyVarRenameFolder<'tcx> {
     fn fold_ty(&mut self, t: Ty<'tcx>) -> Ty<'tcx> {
         match t.kind() {
             TyKind::Param(param) => {
-                if let Some(new_param) = self.name_map.get(&param) {
-                    Ty::new_param(self.interner(), new_param.index, new_param.name)
-                } else {
-                    // create another type param
-                    let new_index = self.new_subst.len() as u32;
-                    // reuse the name
-                    let name = param.name;
-                    let new_ty = Ty::new_param(self.interner(), new_index, name);
-                    let new_param = ty::ParamTy::new(new_index, name);
-
-                    self.name_map.insert(*param, new_param);
-                    self.new_subst.push(*param);
-
-                    new_ty
+                if let Some(new_param) = self.name_map.get(param) {
+                    return Ty::new_param(self.interner(), new_param.index, new_param.name);
                 }
+
+                // create another type param
+                let new_index = self.new_subst.len() as u32;
+                // reuse the name
+                let name = param.name;
+                let new_ty = Ty::new_param(self.interner(), new_index, name);
+                let new_param = ty::ParamTy::new(new_index, name);
+
+                self.name_map.insert(*param, new_param);
+                self.new_subst.push(*param);
+
+                new_ty
             },
             _ => t.super_fold_with(self),
         }
