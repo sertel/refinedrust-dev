@@ -621,7 +621,7 @@ Section generated_code.
     Lemma na_ex_plain_t_open_shared E F π (ty : type rt) q κ l (x : X) :
       lftE ⊆ E →
       ↑shrN.@l ⊆ E →
-      ↑shrN.@l ⊆ F →
+      (shr_locsE l 1 ⊆ F) →
 
       lft_ctx -∗
       na_own π F -∗
@@ -638,7 +638,6 @@ Section generated_code.
         ( ∀ r' : rt,
             l ◁ₗ[π, Owned false] #r' @ (◁ ty) ∗ P.(na_inv_P) π r' x ={E}=∗
             q.[κ] ∗ na_own π F ).
-    (* TODO: Closing view-shift here. *)
     Proof.
       iIntros (???) "#LFT Hna Hcred Hq #Hb".
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hb".
@@ -648,7 +647,7 @@ Section generated_code.
       iEval (unfold ty_shr, na_ex_plain_t) in "Hb'".
       iDestruct "Hb'" as "(Hscr & Hbor & %ly' & %Hly' & %Halg')".
 
-      iMod (na_bor_acc with "LFT Hbor Hq Hna") as "((%r & Hl & HP) & Hna & Hvs)"; [ solve_ndisj.. |].
+      iMod (na_bor_acc with "LFT Hbor Hq Hna") as "((%r & Hl & HP) & Hna & Hvs)"; [ set_solver.. |].
       iApply (lc_fupd_add_later with "Hcred").
 
       do 2 iModIntro; iExists r; iFrame.
@@ -669,20 +668,19 @@ Section generated_code.
       iExists r'; iFrame.
     Qed.
 
-    (*
-      How to deal with the ownership: We unfold, we want own ownership.
-      1- We change the ownership to Owned: Below a shared reference, this might not be possible.
-         > Not possible: Unless changing typed_place => Not planned.
+    Lemma na_own_split π E E' :
+      E' ⊆ E ->
+      na_own π E -∗ na_own π E' ∗ na_own π (E ∖ E').
+    Proof.
+      iIntros (?) "Hna".
+      iApply na_own_union.
+      { set_solver. }
 
-      2- We keep Shared: Shared ownership of this ∃na into shared ownership of OpenedLtype.
-         > When we go under the OpenedLtype -> Definition of Shared's OpenedLtype.
-         > Not persistent: But we can add an exception for the Shared's OpenedLtype case.
+      replace E with (E' ∪ (E ∖ E')) at 1; first done.
+      by apply union_difference_L in H.
+    Qed.
 
-      3- We move out ownership of ∃na: New context item.
-         > Put an owned context item. See alias_ptr.v (Mattermost)
-     *)
-
-    Lemma na_typed_place_ex_plain_t_shared_2 π E L l (ty : type rt) x κ bmin K T :
+    Lemma na_typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
       find_in_context (FindNaOwn) (λ '(π', mask),
         ⌜π = π'⌝ ∗
         ⌜↑shrN.@l ⊆ mask⌝ ∗
@@ -693,7 +691,8 @@ Section generated_code.
               l ◁ₗ[π, Owned false] (#r) @
                 (MagicLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty))
                     (λ rfn x', ⌜x = x'⌝ ∗ P.(na_inv_P) π rfn x)
-                    (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l) ∗ |={lftE ∪ shrE}=> llft_elt_toks κs)))
+                    (λ rfn x', ⌜x = x'⌝ ∗ na_own π (↑shrN.@l) ∗ llft_elt_toks κs)) ∗
+              na_own π (mask ∖ ↑shrN.@l))
               (λ L3,
                 typed_place π E L3 l
                   (ShadowedLtype (AliasLtype _ (ty_syn_type ty) l) #tt (◁ (∃na; P, ty)))
@@ -718,18 +717,17 @@ Section generated_code.
       rewrite /li_tactic /lctx_lft_alive_count_goal.
       iDestruct "HT" as (???) "HT".
 
-      iMod (fupd_mask_subseteq (lftE ∪ shrE)); first done.
+      iMod (fupd_mask_subseteq (lftE ∪ shrE)) as "Hf"; first done.
       iMod (lctx_lft_alive_count_tok with "HE HL") as (q) "(Htok & Htokcl & HL)"; [ solve_ndisj.. |].
+      iPoseProof (na_own_split with "Hna") as "(Hna & Hna')"; first done.
       iMod (na_ex_plain_t_open_shared with "LFT Hna Hcred Htok Hl") as (r) "(HP & Hl & #Hbor & Hvs)"; [ try solve_ndisj.. |].
 
       iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
       iDestruct "Hl" as (ly Halg Hly) "(#Hsc & #Hlb & _ & (% & <- & Hl))".
 
-      iMod ("HT" with "[] HE HL [$HP Hl Htokcl Hvs]") as "HT"; first solve_ndisj.
-      { iAssert (na_own π (↑shrN.@l)) as "?".
-        { admit. }
-
-        rewrite ltype_own_magic_unfold /magic_ltype_own.
+      iMod ("HT" with "[] HE HL [$HP Hl Htokcl Hvs Hna']") as "HT"; first solve_ndisj.
+      { rewrite ltype_own_magic_unfold /magic_ltype_own.
+        iFrame.
         iExists ly; repeat iR.
 
         iSplitL "Hl".
@@ -739,18 +737,18 @@ Section generated_code.
 
         iApply logical_step_intro.
 
-        iIntros (r' x') "(<- & Hinv) Hl !>".
+        iIntros (r' x') "(<- & Hinv) Hl".
         iEval (rewrite ltype_own_ofty_unfold /lty_of_ty_own) in "Hl".
         iDestruct "Hl" as (ly' Halg' Hly') "(_ & #Hlb' & _ & (% & <- & Hl))".
 
-        do 2 iR.
-        iMod ("Hvs" with "[Hl Hinv]") as "(Hq & _)".
-        2: { by iApply "Htokcl". }
+        iMod ("Hvs" with "[Hl Hinv]") as "(? & ?)".
+        { iFrame.
+          rewrite ltype_own_ofty_unfold /lty_of_ty_own.
+          iExists ly'; repeat iR.
+          by iExists r'; iR. }
 
-        iFrame.
-        rewrite ltype_own_ofty_unfold /lty_of_ty_own.
-        iExists ly'; repeat iR.
-        by iExists r'; iR. }
+        iFrame; iR.
+        by iApply "Htokcl". }
 
       iDestruct "HT" as (?) "(HL & HT)".
 
@@ -770,15 +768,13 @@ Section generated_code.
         repeat iR.
         by iExists ly; repeat iR. }
 
-      iApply fupd_mask_intro.
-      { admit. }
-      iIntros "_".
+      iMod "Hf" as "_".
+      iIntros "!>" (? ? ? ? ? ? ? ? strong ?) "Hincl Hl [ Hstrong _ ]".
 
-      iIntros (? ? ? ? ? ? ? ? strong ?) "Hincl Hl [ Hstrong _ ]".
       iApply ("Hcont" with "Hincl Hl").
       destruct strong; iSplit; [| done.. ].
       by simp_ltypes.
-    Admitted.
+    Qed.
 
     Lemma typed_place_alias_shared π E L l l2 rt''' (r : place_rfn rt''') st bmin0 κ P''' T :
       find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)),
@@ -920,14 +916,11 @@ Section generated_code.
 
       repeat liRStep; liShow.
 
-      unfold Cell_inv_t; simpl.
-      unfold bor_kind_min.
-      iApply na_typed_place_ex_plain_t_shared_2.
+      iApply na_typed_place_ex_plain_t_shared.
 
       repeat liRStep; liShow.
 
       iApply typed_place_alias_shared.
-      liSimpl; liShow.
 
       repeat liRStep; liShow.
 
@@ -935,11 +928,9 @@ Section generated_code.
 
       rep <-1 liRStep; liShow.
 
-      (* TODO: Get back the na token *)
+      iApply stratify_ltype_alias_shared.
 
-      (* iApply stratify_ltype_alias_shared. *)
-
-      (* repeat liRStep; liShow. *)
+      repeat liRStep; liShow.
 
       (* TODO: Stratify the context *)
 
