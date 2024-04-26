@@ -81,7 +81,6 @@ rustflags = [
 
     # clippy::style
     "-Aclippy::new_without_default",
-    "-Aclippy::op_ref",
     "-Aclippy::redundant_closure",
     "-Aclippy::redundant_field_names",
     "-Aclippy::redundant_pattern_matching",
