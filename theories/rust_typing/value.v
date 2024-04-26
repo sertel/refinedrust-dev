@@ -1093,13 +1093,14 @@ Section rules.
      Instead, should give stratify some syntactic guidance from OpenedLtype above it.
    *)
   Lemma stratify_ltype_ofty_value_owned π E L mu mdu ma {M} (m : M) l st v wl (T : stratify_ltype_cont_t) :
-    find_in_context (FindVal v π) (λ '(existT rt (ty', r')),
+    find_in_context (FindVal v) (λ '(existT rt (ty', r', π')),
+      ⌜π' = π⌝ ∗
       ⌜ty_has_op_type ty' (use_op_alg' ty'.(ty_syn_type)) MCCopy⌝ ∗
       ⌜ty'.(ty_syn_type) = st⌝ ∗
       stratify_ltype π E L mu mdu ma m l (◁ ty') (#r') (Owned wl) T)
     ⊢ stratify_ltype π E L mu mdu ma m l (◁ value_t st)%I (#v) (Owned wl) T.
   Proof.
-    iDestruct 1 as ([rt [ty' r']]) "(Hv & %Hot & %Heq & HT)" => /=.
+    iDestruct 1 as ([rt [[ty' r'] π']]) "(Hv & -> & %Hot & %Heq & HT)" => /=.
     iIntros (???) "#CTX #HE HL Hl".
     iPoseProof (ltype_own_has_layout with "Hl") as "#(%ly & %Hst &_)".
     iPoseProof (ofty_own_merge_value with "Hv Hl") as "Ha".

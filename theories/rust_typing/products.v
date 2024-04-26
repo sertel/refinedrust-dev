@@ -74,13 +74,13 @@ Section unit.
     Timeless (l ◁ᵥ{π} z @ unit_t)%I.
   Proof. apply _. Qed.
 
-  Lemma type_val_unit π (T : ∀ rt, type rt → rt → iProp Σ):
-    T _ (unit_t) () ⊢ typed_value (zst_val) π T.
+  Lemma type_val_unit π (T : typed_value_cont_t):
+    T _ (unit_t) () ⊢ typed_value π (zst_val) T.
   Proof.
     iIntros "HT #LFT".
     iExists _, unit_t, (). iFrame "HT". done.
   Qed.
-  Global Instance type_val_unit_inst π : TypedValue zst_val π :=
+  Global Instance type_val_unit_inst π : TypedValue π zst_val :=
     λ T, i2p (type_val_unit π T).
 End unit.
 
@@ -3719,7 +3719,8 @@ Section rules.
     | (name, st) :: sts =>
         (* TODO should have a faster way to do the lookup *)
         ∃ init, ⌜(list_to_map (M:=gmap _ _) fields) !! name = Some init⌝ ∗
-        typed_val_expr π E L init (λ L2 v rt ty r,
+        typed_val_expr E L init (λ L2 π2 v rt ty r,
+        ⌜π = π2⌝ ∗
         ⌜ty.(ty_syn_type) = st⌝ ∗
         struct_init_fold π E L2 fields sts (λ L3 rts vs tys rs,
             T L3 (rt :: rts) (v :: vs) (ty +:: tys) (r -:: rs)))%I
@@ -3756,7 +3757,7 @@ Section rules.
     rewrite Hlook/=.
     iApply (wp_wand with "(Ha [Hcont])").
     2: { eauto. }
-    iIntros (L2 v rt ty r) "HL Hv [<- Hr]".
+    iIntros (L2 π2 v rt ty r) "HL Hv (<- & <- & Hr)".
     iApply ("IH" with "HL Hr").
     iIntros (vs L3) "HL Hc".
     iApply ("Hcont" with "HL").
@@ -3767,13 +3768,16 @@ Section rules.
     iR. done.
   Qed.
 
-  Lemma type_struct_init π E L (sls : struct_layout_spec) (fields : list (string * expr)) (T : typed_val_expr_cont_t) :
+  Lemma type_struct_init E L (sls : struct_layout_spec) (fields : list (string * expr)) (T : typed_val_expr_cont_t) :
+    (* find out which thread_id we need *)
+    find_in_context FindNaOwn (λ '(π, mask), na_own π mask -∗
     ⌜struct_layout_spec_is_layoutable sls⌝ ∗
     struct_init_fold π E L fields sls.(sls_fields) (λ L2 rts vs tys rs,
-      ∀ v, T L2 v _ (struct_t sls tys) (pmap (λ _ a, #a) rs))
-    ⊢ typed_val_expr π E L (StructInit sls fields) T.
+      ∀ v, T L2 π v _ (struct_t sls tys) (pmap (λ _ a, #a) rs)))
+    ⊢ typed_val_expr E L (StructInit sls fields) T.
   Proof.
-    iIntros "(%Hly & HT)". destruct Hly as (sl & Hsl).
+    iIntros "HT". iDestruct "HT" as ([π mask]) "(Hna & HT)".
+    iDestruct ("HT" with "Hna") as ([sl Hsl]) "HT".
     iIntros (?) "#CTX #HE HL Hc".
     iApply wp_struct_init2; first done.
     iApply (struct_init_fold_elim with "CTX HE HL HT").

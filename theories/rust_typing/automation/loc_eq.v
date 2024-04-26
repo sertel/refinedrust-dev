@@ -133,12 +133,12 @@ Proof. by move => ->. Qed.
 Global Hint Extern 10 (FindHypEqual FICLocSemantic (loc_in_bounds _ _ _) (loc_in_bounds _ _ _) _) =>
   (notypeclasses refine (tac_loc_in_bounds_solve_loc_eq _ _ _ _ _ _ _); solve_loc_eq) : typeclass_instances.
 
-Global Instance find_in_context_type_loc_semantic_inst `{!typeGS Σ} π l :
-  FindInContext (FindLoc l π) FICLocSemantic | 20 :=
-  λ T, i2p (find_in_context_type_loc_id l π T).
-Global Instance find_in_context_type_locp_semantic_inst `{!typeGS Σ} π l :
+Global Instance find_in_context_type_loc_semantic_inst `{!typeGS Σ} l :
+  FindInContext (FindLoc l) FICLocSemantic | 20 :=
+  λ T, i2p (find_in_context_type_loc_id l T).
+Global Instance find_in_context_type_locp_semantic_inst `{!typeGS Σ} l :
   FindInContext (FindLocP l) FICLocSemantic | 20 :=
-  λ T, i2p (find_in_context_type_locp_loc l π T).
+  λ T, i2p (find_in_context_type_locp_loc l T).
 Global Instance find_in_context_type_loc_with_rt_semantic_inst `{!typeGS Σ} rt π l :
   FindInContext (FindLocWithRt rt l π) FICLocSemantic | 20 :=
   λ T, i2p (find_in_context_type_loc_with_rt_id l π T).

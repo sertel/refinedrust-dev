@@ -106,7 +106,7 @@ Lemma mem_size_of_typed `{!typeGS Σ} π T_rt T_st T_ly :
   ⊢ typed_function π (mem_size_of T_st) [] (type_of_mem_size_of T_rt T_st).
 Proof.
   start_function "mem_size_of" ( () ) ( () ).
-  repeat liRStep.
+  repeat liRStep; liShow.
   Unshelve.
   all: unshelve_sidecond; open_cache; solve_goal.
 Qed.
@@ -278,7 +278,7 @@ Proof.
     l_s ◁ₗ[π, Owned false] #(fmap (M:=list) PlaceIn (reshape (replicate len (ly_size T_st_ly)) v_s)) @ (◁ array_t (value_t (UntypedSynType T_st_ly)) len) ∗
     l_t ◁ₗ[π, Owned false] #(fmap (M:=list) PlaceIn (take i (reshape (replicate len (ly_size T_st_ly)) v_s) ++ drop i (reshape (replicate len (ly_size T_st_ly)) v_t))) @ (◁ array_t (value_t (UntypedSynType T_st_ly)) len)))%I).
 
-  iApply (typed_goto_acc _ _ _ _ _ loop_inv).
+  iApply (typed_goto_acc _ _ _ _ loop_inv).
   { unfold_code_marker_and_compute_map_lookup. }
 
   liRStep; liShow. iExists 0%nat.
@@ -488,7 +488,7 @@ Proof.
   rewrite {1}/ty_own_val /=. iDestruct "Hv" as %[Hv Hsz].
   iApply wp_erase_prov.
   { rewrite /has_layout_val. erewrite (val_to_Z_ot_length _ (IntOp usize_t)); done. }
-  iApply  ("Hcont" $! _ _ _ (int usize_t) n with "HL []").
+  iApply  ("Hcont" $! _ π _ _ (int usize_t) n with "HL []").
   { rewrite /ty_own_val/=. iSplit; last done. iPureIntro. by apply val_to_Z_erase_prov. }
 
   iIntros "Hv" (Φ') "_ _ HL Hcont".
@@ -496,7 +496,7 @@ Proof.
   iApply wp_cast_int_ptr_prov_none; [done | done | done | | done | ].
   { apply val_to_byte_prov_erase_prov. }
   iIntros "!> Hl Hcred".
-  iApply ("Hcont" $! _ _ _ (alias_ptr_t) _ with "HL").
+  iApply ("Hcont" $! _ π _ _ (alias_ptr_t) _ with "HL").
   { rewrite /ty_own_val /=. done. }
   iAssert (val_of_loc (ProvAlloc None, n : addr) ◁ᵥ{π} (ProvAlloc None, n : addr) @ alias_ptr_t)%I as "?".
   { rewrite /ty_own_val /= //. }
@@ -623,7 +623,7 @@ Proof.
   iPoseProof ("Hatcl" with "Hat'") as "Hstore".
   iPoseProof (credit_store_donate with "Hstore Hcred") as "Hstore".
   iPoseProof (credit_store_donate_atime with "Hstore Hat") as "Hstore".
-  iApply ("Hcont" $! _ _ _ (alias_ptr_t) with "HL").
+  iApply ("Hcont" $! _ π _ _ (alias_ptr_t) with "HL").
   { rewrite /ty_own_val /=. done. }
   iAssert ((l offset{use_layout_alg' T_st}ₗ offset) ◁ᵥ{ π} l offset{use_layout_alg' T_st}ₗ offset @ alias_ptr_t)%I as "?".
   { rewrite /ty_own_val /= //. }
@@ -756,7 +756,7 @@ Proof.
     apply val_to_Z_unsigned_nonneg in Halign_log2; last done. lia. }
   { lia. }
   iIntros "!>" (l) "Hl Hf %Hly Hcred".
-  iApply ("Hcont" $! _ _ _ (alias_ptr_t) l with "HL []").
+  iApply ("Hcont" $! _ π _ _ (alias_ptr_t) l with "HL []").
   { rewrite /ty_own_val /=. done. }
   set (ly := (Layout (Z.to_nat size) (Z.to_nat align_log2))).
   iAssert (l ◁ₗ[π, Owned false] .@ ◁ (uninit (UntypedSynType ly)))%I with "[Hl]" as "Hl'".
@@ -842,11 +842,10 @@ Proof.
   (* TODO *)
   instantiate (1 := ϝ).
   repeat liRStep; liShow.
-  admit.
 
   Unshelve. all: unshelve_sidecond; sidecond_hook; prepare_sideconditions; normalize_and_simpl_goal; try solve_goal; unsolved_sidecond_hook.
   Unshelve. all: unfold_common_defs; solve_goal.
-Admitted.
+Qed.
 
 (**
   fn alloc_realloc(old_size, align, new_size, ptr) -> *mut u8 {
@@ -1058,7 +1057,7 @@ Proof.
     iEval (rewrite (additive_time_receipt_succ 1)) in "Hat".
     iDestruct "Hat" as "[Hat1 Hat]".
     iPoseProof ("Hstore" with "Hat1") as "Hstore".
-    iApply ("Hcont" $! _ _ _ (box (uninit (ty_syn_type T))) (PlaceIn ()) with "HL [Hfree Hl Hcred Hat]").
+    iApply ("Hcont" $! _ π _ _ (box (uninit (ty_syn_type T))) (PlaceIn ()) with "HL [Hfree Hl Hcred Hat]").
     { iExists _, _. iSplitR; first done. iSplitR; first done.
       match goal with | H : CACHED (use_layout_alg (ty_syn_type T) = Some ?ly) |- _ => rename ly into T_ly; rename H into H_T end.
       iR.
@@ -1404,7 +1403,7 @@ Proof.
   { simpl. rewrite /check_arith_bin_op. simpl. f_equiv.
     rewrite /elem_of/int_elem_of_it/int_elem_of_it' MinInt_eq MaxInt_eq//. }
   iNext. iIntros "_".
-  iApply ("HC" $! _ _ _ (bool_t) with "HL"). { iApply type_val_bool'. }
+  iApply ("HC" $! _ π _ _ (bool_t) with "HL"). { iApply type_val_bool'. }
 
   repeat liRStep.
 

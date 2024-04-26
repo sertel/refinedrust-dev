@@ -683,7 +683,8 @@ Section generated_code.
      *)
 
     Lemma na_typed_place_ex_plain_t_shared_2 π E L l (ty : type rt) x κ bmin K T :
-      find_in_context (FindNaOwn π) (λ (mask: coPset),
+      find_in_context (FindNaOwn) (λ '(π', mask),
+        ⌜π = π'⌝ ∗
         ⌜↑shrN.@l ⊆ mask⌝ ∗
         prove_with_subtype E L false ProveDirect (£ 1) (λ L1 _ R, R -∗
           li_tactic (lctx_lft_alive_count_goal E L1 κ) (λ '(κs, L2),
@@ -702,7 +703,7 @@ Section generated_code.
       ⊢ typed_place π E L l (◁ (∃na; P, ty))%I (#x) bmin (Shared κ) K T.
     Proof.
       rewrite /find_in_context.
-      iDestruct 1 as (?) "(Hna & % & HT) /=".
+      iDestruct 1 as ([π' mask]) "(Hna & <- & % & HT) /=".
 
       rewrite /typed_place /introduce_with_hooks.
       iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL ? Hl Hcont". (* NOTE: Hincl is not used. *)
@@ -780,7 +781,8 @@ Section generated_code.
     Admitted.
 
     Lemma typed_place_alias_shared π E L l l2 rt''' (r : place_rfn rt''') st bmin0 κ P''' T :
-      find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
+      find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)),
+        ⌜π = π2⌝ ∗
         typed_place π E L l2 lt2 r2 b2 b2 P''' (λ L' κs li b3 bmin rti ltyi ri strong weak,
           T L' κs li b3 bmin rti ltyi ri
             (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, AliasLtype rt''' st l2) (λ _ _, r)
@@ -792,12 +794,11 @@ Section generated_code.
     Proof.
       unfold find_in_context, typed_place.
 
-      iDestruct 1 as ((rt2 & (r''' & b2))) "(Hl2 & HP)". simpl.
+      iDestruct 1 as ((rt2 & (((lt & r''') & b2) & π2))) "(Hl2 & <- & HP)". simpl.
       iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
       rewrite ltype_own_alias_unfold /alias_lty_own.
       iDestruct "Hl" as "(%ly & % & -> & #? & #?)".
 
-      destruct r''' as (lt & r''').
       iApply ("HP" with "[//] [//] CTX HE HL [] Hl2").
       { iApply bor_kind_incl_refl. }
       iIntros (L' κs l2 b0 bmin rti ltyi ri strong weak) "#Hincl1 Hl2 Hcl HT HL".
@@ -849,7 +850,6 @@ Section generated_code.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
-      done.
 
       all: print_remaining_goal.
       Unshelve. all: sidecond_solver.
@@ -868,7 +868,6 @@ Section generated_code.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
-      done.
 
       all: print_remaining_goal.
       Unshelve. all: sidecond_solver.

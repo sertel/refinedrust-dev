@@ -1761,7 +1761,7 @@ Section rules.
               (λ ri, #(<[Z.to_nat i' := weak.(weak_rfn) ri]> rs))
               (weak.(weak_R))
               ) weak))))
-    ⊢ typed_place π E L l (ArrayLtype def len lts) (#rs) bmin (Owned wl) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) v rtv tyv i :: P) T.
+    ⊢ typed_place π E L l (ArrayLtype def len lts) (#rs) bmin (Owned wl) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) π v rtv tyv i :: P) T.
   Proof.
     iIntros "(%i' & %Hst & HT)".
     iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
@@ -1825,7 +1825,7 @@ Section rules.
     - iPureIntro. apply place_access_rt_rel_refl.
   Qed.
   Global Instance typed_place_array_owned_inst π E L {rt rtv} (def : type rt) (lts : list (nat * ltype rt)) (len : nat) (rs : list (place_rfn rt)) wl bmin ly l it v (tyv : type rtv) (i : rtv) P :
-    TypedPlace E L π l (ArrayLtype def len lts) (#rs) bmin (Owned wl) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) v rtv tyv i :: P) | 30 :=
+    TypedPlace E L π l (ArrayLtype def len lts) (#rs) bmin (Owned wl) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) π v rtv tyv i :: P) | 30 :=
     λ T, i2p (typed_place_array_owned π E L def lts len rs wl bmin ly l it v tyv i P T).
 
   Lemma typed_place_array_uniq π E L {rt rtv} (def : type rt) (lts : list (nat * ltype rt)) (len : nat) (rs : list (place_rfn rt)) κ γ bmin ly l it v (tyv : type rtv) (i : rtv) P T :
@@ -1848,7 +1848,7 @@ Section rules.
               (λ ri, #(<[Z.to_nat i' := weak.(weak_rfn) ri]> rs))
               (weak.(weak_R))
               ) weak)))))
-    ⊢ typed_place π E L l (ArrayLtype def len lts) (#rs) bmin (Uniq κ γ) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) v rtv tyv i :: P) T.
+    ⊢ typed_place π E L l (ArrayLtype def len lts) (#rs) bmin (Uniq κ γ) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) π v rtv tyv i :: P) T.
   Proof.
     rewrite /lctx_lft_alive_count_goal.
     iIntros "(%i' & %Hst & HT)".
@@ -1917,7 +1917,7 @@ Section rules.
       iApply bor_kind_min_incl_r. }
   Qed.
   Global Instance typed_place_array_uniq_inst π E L {rt rtv} (def : type rt) (lts : list (nat * ltype rt)) (len : nat) (rs : list (place_rfn rt)) κ γ bmin ly l it v (tyv : type rtv) (i : rtv) P :
-    TypedPlace E L π l (ArrayLtype def len lts) (#rs) bmin (Uniq κ γ) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) v rtv tyv i :: P) | 30 :=
+    TypedPlace E L π l (ArrayLtype def len lts) (#rs) bmin (Uniq κ γ) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) π v rtv tyv i :: P) | 30 :=
     λ T, i2p (typed_place_array_uniq π E L def lts len rs κ γ bmin ly l it v tyv i P T).
 
   (* TODO this is a problem, because we can only get strong below OpenedLtype etc. *)
@@ -1941,7 +1941,7 @@ Section rules.
               (λ ri, #(<[Z.to_nat i' := weak.(weak_rfn) ri]> rs))
               (weak.(weak_R))
               ) weak))))
-    ⊢ typed_place π E L l (ArrayLtype def len lts) (#rs) bmin (Shared κ) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) v rtv tyv i :: P) T.
+    ⊢ typed_place π E L l (ArrayLtype def len lts) (#rs) bmin (Shared κ) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) π v rtv tyv i :: P) T.
   Proof.
     iIntros "(%i' & %Hst & HT)".
     iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
@@ -2020,7 +2020,7 @@ Section rules.
     done.
   Qed.
   Global Instance typed_place_array_shared_inst π E L {rt rtv} (def : type rt) (lts : list (nat * ltype rt)) (len : nat) (rs : list (place_rfn rt)) κ bmin ly l it v (tyv : type rtv) (i : rtv) P :
-    TypedPlace E L π l (ArrayLtype def len lts) (#rs) bmin (Shared κ) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) v rtv tyv i :: P) | 30 :=
+    TypedPlace E L π l (ArrayLtype def len lts) (#rs) bmin (Shared κ) (BinOpPCtx (PtrOffsetOp ly) (IntOp it) π v rtv tyv i :: P) | 30 :=
     λ T, i2p (typed_place_array_shared π E L def lts len rs κ bmin ly l it v tyv i P T).
 
   Lemma typed_place_array_unfold π E L l {rt} (def : type rt) len rs bmin k P T :
@@ -3353,7 +3353,8 @@ Section offset_rules.
       Problem: at the point of the subsumption, this is too late already for function calls, since we already have the evar then...
   *)
   Lemma subsume_from_offset_ptr_t π E L step l base off st k {rt} (ty : type rt) r T :
-    find_in_context (FindLoc base π) (λ '(existT rt' (lt', r', k')),
+    find_in_context (FindLoc base) (λ '(existT rt' (lt', r', k', π')),
+      ⌜π = π'⌝ ∗
       typed_array_access π E L base off st lt' r' k' (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         base ◁ₗ[π, k2] #rs2 @ ArrayLtype ty2 len2 iml2 -∗
         (* TODO maybe this should also stratify? *)
@@ -3361,7 +3362,7 @@ Section offset_rules.
     ⊢ subsume_full E L step (l ◁ᵥ{π} (base, off) @ offset_ptr_t st) (l ◁ₗ[π, k] r @ ◁ ty) T.
   Proof.
     rewrite /find_in_context.
-    iDestruct 1 as ([rt' [[lt' r'] k']]) "(Hl & Ha)". simpl.
+    iDestruct 1 as ([rt' [[[lt' r'] k'] π']]) "(Hl & <- & Ha)". simpl.
     iIntros (???) "#CTX #HE HL Hoffset".
     iMod ("Ha" with "[//] [//] CTX HE HL Hl") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hb & Hl & HL & HT)".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "%Heq".
@@ -3379,7 +3380,8 @@ Section offset_rules.
      Can I make the recursive part nicer? e.g. by just hooking on top of the alias ptr lemma?
   *)
   Lemma typed_place_offset_ptr_owned π E L l st base offset bmin P wl T :
-    find_in_context (FindLoc base π) (λ '(existT rt (lt, r, b)),
+    find_in_context (FindLoc base) (λ '(existT rt (lt, r, b, π')),
+      ⌜π = π'⌝ ∗
       typed_array_access π E L base offset st lt r b (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         base ◁ₗ[ π, k2] # rs2 @ ArrayLtype ty2 len2 iml2 -∗
         typed_place π E L2 (base offsetst{st}ₗ offset) lte re k2 k2 P (λ L2 κs li bi bmin' rti lti ri strong weak,
@@ -3400,7 +3402,7 @@ Section offset_rules.
     ⊢ typed_place π E L l (◁ offset_ptr_t st) (#(base, offset)) bmin (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     rewrite /FindLoc.
-    iDestruct 1 as ([rt [[lt r] b]]) "(Hbase & HT)". simpl.
+    iDestruct 1 as ([rt [[[lt r] b] π']]) "(Hbase & <- & HT)". simpl.
     iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
     iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
@@ -3418,7 +3420,8 @@ Section offset_rules.
     λ T, i2p (typed_place_offset_ptr_owned π E L l st base offset bmin P wl T).
 
   Lemma typed_place_offset_ptr_uniq π E L l st base offset bmin P κ γ T :
-    find_in_context (FindLoc base π) (λ '(existT rt (lt, r, b)),
+    find_in_context (FindLoc base) (λ '(existT rt (lt, r, b, π')),
+      ⌜π = π'⌝ ∗
       typed_array_access π E L base offset st lt r b (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         base ◁ₗ[ π, k2] # rs2 @ ArrayLtype ty2 len2 iml2 -∗
         ⌜lctx_lft_alive E L2 κ⌝ ∗
@@ -3430,7 +3433,7 @@ Section offset_rules.
     ⊢ typed_place π E L l (◁ offset_ptr_t st) (#(base, offset)) bmin (Uniq κ γ) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     rewrite /FindLoc.
-    iDestruct 1 as ([rt [[lt r] b]]) "(Hbase & HT)". simpl.
+    iDestruct 1 as ([rt [[[lt r] b] π']]) "(Hbase & <- & HT)". simpl.
     iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
     iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
@@ -3448,7 +3451,8 @@ Section offset_rules.
     λ T, i2p (typed_place_offset_ptr_uniq π E L l st base offset bmin P κ γ T).
 
   Lemma typed_place_offset_ptr_shared π E L l st base offset bmin P κ T :
-    find_in_context (FindLoc base π) (λ '(existT rt (lt, r, b)),
+    find_in_context (FindLoc base) (λ '(existT rt (lt, r, b, π')),
+      ⌜π = π'⌝ ∗
       typed_array_access π E L base offset st lt r b (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         base ◁ₗ[ π, k2] # rs2 @ ArrayLtype ty2 len2 iml2 -∗
         ⌜lctx_lft_alive E L2 κ⌝ ∗
@@ -3460,7 +3464,7 @@ Section offset_rules.
     ⊢ typed_place π E L l (◁ offset_ptr_t st) (#(base, offset)) bmin (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     rewrite /FindLoc.
-    iDestruct 1 as ([rt [[lt r] b]]) "(Hbase & HT)". simpl.
+    iDestruct 1 as ([rt [[[lt r] b] π']]) "(Hbase & <- & HT)". simpl.
     iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
     iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
@@ -3534,15 +3538,15 @@ Section offset_rules.
     λ T, i2p (offset_ptr_simplify_goal v π l st off T).
 
   Lemma type_extract_value_annot_offset π E L n v l (off : Z) st (T : typed_annot_expr_cont_t) :
-    (v ◁ᵥ{π} (l, off) @ offset_ptr_t st -∗ T L v _ (offset_ptr_t st) (l, off))
-    ⊢ typed_annot_expr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) T.
+    (v ◁ᵥ{π} (l, off) @ offset_ptr_t st -∗ T L π v _ (offset_ptr_t st) (l, off))
+    ⊢ typed_annot_expr E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st) T.
   Proof.
     iIntros "HT #CTX #HE HL #Hv".
-    iApply step_fupdN_intro; first done. iNext. iModIntro. iExists _, _, _, _. iFrame.
+    iApply step_fupdN_intro; first done. iNext. iModIntro. iExists _, _, _, _, _. iFrame.
     iR. by iApply "HT".
   Qed.
   Global Instance type_extract_value_annot_offset_inst π E L n v l off st :
-    TypedAnnotExpr π E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st)%I :=
+    TypedAnnotExpr E L n ExtractValueAnnot v (v ◁ᵥ{π} (l, off) @ offset_ptr_t st)%I :=
     λ T, i2p (type_extract_value_annot_offset π E L n v l off st T).
 
 End offset_rules.

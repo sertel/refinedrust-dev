@@ -89,7 +89,8 @@ Section rules.
    *)
 
   Lemma typed_place_ofty_alias_ptr_owned π E L l l2 bmin0 wl P T :
-    find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
+    find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)),
+      ⌜π = π2⌝ ∗
       typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
         T L' [] li b3 bmin rti ltyi ri
           (match strong with
@@ -107,7 +108,7 @@ Section rules.
           ))
     ⊢ typed_place π E L l (◁ alias_ptr_t) (#l2) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
-    iDestruct 1 as ((rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
+    iDestruct 1 as ((rt2 & [[[lt2 r2] b2] π2])) "(Hl2 & <- & HP)". simpl.
     iApply typed_place_ofty_access_val_owned. { rewrite ty_has_op_type_unfold; done. }
     iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame "Hl2 HP". done.
   Qed.
@@ -117,7 +118,8 @@ Section rules.
 
   Lemma typed_place_ofty_alias_ptr_uniq π E L l l2 bmin0 κ γ P T :
     ⌜lctx_lft_alive E L κ⌝ ∗
-    find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
+    find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)),
+      ⌜π = π2⌝ ∗
       typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
         T L' κs li b3 bmin rti ltyi ri
           (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, ◁ alias_ptr_t) (λ _ _, #l2)
@@ -128,7 +130,7 @@ Section rules.
           ))
     ⊢ typed_place π E L l (◁ alias_ptr_t) (#l2) bmin0 (Uniq κ γ) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
-    iDestruct 1 as (Hal (rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
+    iDestruct 1 as (Hal (rt2 & [[[lt2 r2] b2] π2])) "(Hl2 & <- & HP)". simpl.
     iApply typed_place_ofty_access_val_uniq. { rewrite ty_has_op_type_unfold; done. } iSplitR; first done.
     iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame. done.
   Qed.
@@ -138,7 +140,8 @@ Section rules.
 
   Lemma typed_place_ofty_alias_ptr_shared π E L l l2 bmin0 κ P T :
     ⌜lctx_lft_alive E L κ⌝ ∗
-    find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
+    find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)),
+      ⌜π = π2⌝ ∗
       typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
         T L' κs li b3 bmin rti ltyi ri
           (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, ◁ alias_ptr_t) (λ _ _, #l2)
@@ -149,7 +152,7 @@ Section rules.
           ))
     ⊢ typed_place π E L l (◁ alias_ptr_t) (#l2) bmin0 (Shared κ) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
-    iDestruct 1 as (Hal (rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
+    iDestruct 1 as (Hal (rt2 & [[[lt2 r2] b2] π2])) "(Hl2 & <- & HP)". simpl.
     iApply typed_place_ofty_access_val_shared. { rewrite ty_has_op_type_unfold; done. } iSplitR; first done.
     iIntros (? v ?) "-> !>". iExists _, _, _, _, _. iSplitR; first done. iFrame. done.
   Qed.
@@ -182,7 +185,8 @@ Section alias_ltype.
   (** Place typing for [AliasLtype].
     At the core this is really similar to the place lemma for alias_ptr_t - just without the deref *)
   Lemma typed_place_alias_owned π E L l l2 rt (r : place_rfn rt) st bmin0 wl P T :
-    find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
+    find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)),
+      ⌜π = π2⌝ ∗
       typed_place π E L l2 lt2 r2 b2 b2 P (λ L' κs li b3 bmin rti ltyi ri strong weak,
         T L' κs li b3 bmin rti ltyi ri
           (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, AliasLtype rt st l2) (λ _ _, r)
@@ -193,7 +197,7 @@ Section alias_ltype.
           ))
     ⊢ typed_place π E L l (AliasLtype rt st l2) r bmin0 (Owned wl) P T.
   Proof.
-    iDestruct 1 as ((rt2 & ([lt2 r2] & b2))) "(Hl2 & HP)". simpl.
+    iDestruct 1 as ((rt2 & [[[lt2 r2] b2] π2])) "(Hl2 & <- & HP)". simpl.
     iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
     rewrite ltype_own_alias_unfold /alias_lty_own.
     iDestruct "Hl" as "(%ly & % & -> & #? & #? & Hcred)".
@@ -229,8 +233,8 @@ Section alias_ltype.
     match ma with
     | StratNoRefold => T L True _ (AliasLtype rt st l2) r
     | _ =>
-      find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)),
-        ⌜ltype_st lt2 = st⌝ ∗ ⌜b2 = Owned wl⌝ ∗
+      find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)),
+        ⌜π = π2⌝ ∗ ⌜ltype_st lt2 = st⌝ ∗ ⌜b2 = Owned wl⌝ ∗
         (* recursively stratify *)
         stratify_ltype π E L mu mdu ma m l2 lt2 r2 b2 (λ L2 R rt2' lt2' r2',
           T L2 R rt2' lt2' r2'))
@@ -241,9 +245,9 @@ Section alias_ltype.
     destruct (decide (ma = StratNoRefold)) as [-> | ].
     { iIntros (???) "#CTX #HE HL Hl". iModIntro. iExists _, _, _, _, _. iFrame.
       iSplitR; first done. iApply logical_step_intro. by iFrame. }
-    iAssert (find_in_context (FindLoc l2 π) (λ '(existT rt2 (lt2, r2, b2)), ⌜ltype_st lt2 = st⌝ ∗ ⌜b2 = Owned wl⌝ ∗ stratify_ltype π E L mu mdu ma m l2 lt2 r2 b2 T))%I with "[HT]" as "HT".
+    iAssert (find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)), ⌜π = π2⌝ ∗ ⌜ltype_st lt2 = st⌝ ∗ ⌜b2 = Owned wl⌝ ∗ stratify_ltype π E L mu mdu ma m l2 lt2 r2 b2 T))%I with "[HT]" as "HT".
     { destruct ma; done. }
-    iDestruct "HT" as ([rt2 [[lt2 r2] b2]]) "(Hl2 & <- & -> & HT)".
+    iDestruct "HT" as ([rt2 [[[lt2 r2] b2] π2]]) "(Hl2 & <- & <- & -> & HT)".
     simpl. iIntros (???) "#CTX #HE HL Hl".
     rewrite ltype_own_alias_unfold /alias_lty_own.
     iDestruct "Hl" as "(%ly & %Halg & -> & %Hly & Hlb)".
@@ -344,16 +348,16 @@ Section alias_ltype.
 
   (** ExtractValueAnnot for splitting into a value assignment [◁ᵥ] and a [value_t] location *)
   Lemma type_extract_value_annot_alias π E L n v l (T : typed_annot_expr_cont_t) :
-    find_in_context (FindLoc l π) (λ '(existT rt (lt, r, bk)),
-      ∃ wl ty r', ⌜bk = Owned wl⌝ ∗ ⌜lt = ◁ty⌝ ∗ ⌜r = #r'⌝ ∗
+    find_in_context (FindLoc l) (λ '(existT rt (lt, r, bk, π2)),
+      ∃ wl ty r', ⌜π = π2⌝ ∗ ⌜bk = Owned wl⌝ ∗ ⌜lt = ◁ty⌝ ∗ ⌜r = #r'⌝ ∗
       (⌜Nat.b2n wl ≤ n⌝ ∗
       li_tactic (compute_layout_goal ty.(ty_syn_type)) (λ ly,
-      (∀ v3, v3 ◁ᵥ{π} r' @ ty -∗ l ◁ₗ[π, Owned wl] #v3 @ (◁ value_t (UntypedSynType ly)) -∗ T L v _ alias_ptr_t l))))
-    ⊢ typed_annot_expr π E L n ExtractValueAnnot v (v ◁ᵥ{π} l @ alias_ptr_t) T.
+      (∀ v3, v3 ◁ᵥ{π} r' @ ty -∗ l ◁ₗ[π, Owned wl] #v3 @ (◁ value_t (UntypedSynType ly)) -∗ T L π v _ alias_ptr_t l))))
+    ⊢ typed_annot_expr E L n ExtractValueAnnot v (v ◁ᵥ{π} l @ alias_ptr_t) T.
   Proof.
     rewrite /FindLoc.
-    iIntros "(%a & Hl & HT)". destruct a as [rt [[lt r] bk]].
-    iDestruct "HT" as "(%wl & %ty & %r' & -> & -> & -> & HT)".
+    iIntros "(%a & Hl & HT)". destruct a as [rt [[[lt r] bk] π2]].
+    iDestruct "HT" as "(%wl & %ty & %r' & <- & -> & -> & -> & HT)".
     rewrite /compute_layout_goal. simpl.
     iDestruct "HT" as "(%Hle & %ly & %Hst & HT)".
     iIntros "#CTX #HE HL Halias". iApply step_fupdN_intro; first done.
@@ -362,10 +366,10 @@ Section alias_ltype.
     iNext.
     iMod (fupd_mask_mono with "Ha") as "(%v3 & Hv & Hl)"; first done.
     iPoseProof ("HT" with "Hv Hl") as "HT".
-    iModIntro. eauto with iFrame.
+    iModIntro. eauto 8 with iFrame.
   Qed.
   Global Instance type_extract_value_annot_alias_inst π E L n v l :
-    TypedAnnotExpr π E L n ExtractValueAnnot v (v ◁ᵥ{π} l @ alias_ptr_t)%I :=
+    TypedAnnotExpr E L n ExtractValueAnnot v (v ◁ᵥ{π} l @ alias_ptr_t)%I :=
     λ T, i2p (type_extract_value_annot_alias π E L n v l T).
 
 End alias_ltype.

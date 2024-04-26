@@ -904,9 +904,9 @@ Section rules.
         *)
 
 
-  Lemma type_enum_init π E L (els : enum_layout_spec) (variant : string) (rsty : rust_type) (e : expr) (T : typed_val_expr_cont_t) :
+  Lemma type_enum_init E L (els : enum_layout_spec) (variant : string) (rsty : rust_type) (e : expr) (T : typed_val_expr_cont_t) :
     ⌜enum_layout_spec_is_layoutable els⌝ ∗
-    typed_val_expr π E L e (λ L2 v rti tyi ri,
+    typed_val_expr E L e (λ L2 π v rti tyi ri,
       ⌜((list_to_map (els_variants els) : gmap _ _) !! variant) = Some (ty_syn_type tyi)⌝ ∗
       ∃ M, named_lfts M ∗ (named_lfts M -∗
       (* get the desired enum type *)
@@ -914,14 +914,14 @@ Section rules.
         ∃ (e : enum rto), ⌜tyo = enum_t e⌝ ∗ ⌜e.(enum_els) = els⌝ ∗
         trigger_tc (ConstructEnum e variant tyi ri) (λ ro,
           (*⌜construct_enum_sc⌝ ∗*)
-          ∀ v', T L2 v' _ (enum_t e) ro))))
-    ⊢ typed_val_expr π E L (EnumInit els variant rsty e) T.
+          ∀ v', T L2 π v' _ (enum_t e) ro))))
+    ⊢ typed_val_expr E L (EnumInit els variant rsty e) T.
   Proof.
     iIntros "(%Hly & HT)". destruct Hly as [el Hly].
     iIntros (?) "#CTX #HE HL Hc".
     iApply wp_enum_init; first done.
     iApply ("HT" with "CTX HE HL [Hc]").
-    iIntros (L2 v rt ty r) "HL Hv HT".
+    iIntros (L2 π v rt ty r) "HL Hv HT".
     iDestruct "HT" as "(%Hlook_st & %M & Hlfts & HT)".
     iPoseProof ("HT" with "Hlfts") as "HT".
     rewrite /interpret_rust_type_goal.

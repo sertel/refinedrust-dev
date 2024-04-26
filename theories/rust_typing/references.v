@@ -1293,11 +1293,11 @@ Section rules.
     ProvePlaceCond E L k (MutLtype lt1 κ1) (MutLtype lt2 κ2) | 5 := λ T, i2p (prove_place_cond_mut_ltype E L lt1 lt2 κ1 κ2 k T).
 
   (** Typing rule for mutable borrows, manually applied by the tactics *)
-  Lemma type_mut_bor E L T e π κ_name (ty_annot : option rust_type) :
+  Lemma type_mut_bor E L T e κ_name (ty_annot : option rust_type) :
     (∃ M, named_lfts M ∗ li_tactic (compute_map_lookup_nofail_goal M κ_name) (λ κ,
-      (named_lfts M -∗ typed_borrow_mut π E L e κ ty_annot (λ L' v γ rt ty r,
-        T L' v (place_rfn rt * gname)%type (mut_ref ty κ) (PlaceIn r, γ)))))
-    ⊢ typed_val_expr π E L (&ref{Mut, ty_annot, κ_name} e)%E T.
+      (named_lfts M -∗ typed_borrow_mut E L e κ ty_annot (λ L' π v γ rt ty r,
+        T L' π v (place_rfn rt * gname)%type (mut_ref ty κ) (PlaceIn r, γ)))))
+    ⊢ typed_val_expr E L (&ref{Mut, ty_annot, κ_name} e)%E T.
   Proof.
     rewrite /compute_map_lookup_nofail_goal.
     iIntros "HT".
@@ -1316,7 +1316,7 @@ Section rules.
     iMod (persistent_time_receipt_0) as "Hp".
     iApply (wp_skip_credits with "TIME Hc Hp"); first done.
     iIntros "!> Hcred1 Hc HT" => /=.
-    iMod ("HT") as "(%L' & %rt' & %ty & %r & %γ & %ly & Hobs & Hbor & %Hst & %Hly & #Hlb & #Hsc & HL & HT)".
+    iMod ("HT") as "(%L' & %π & %rt' & %ty & %r & %γ & %ly & Hobs & Hbor & %Hst & %Hly & #Hlb & #Hsc & HL & HT)".
     iModIntro.
     (* generate the credits for the new reference *)
     iMod (persistent_time_receipt_0) as "Hp".
@@ -2831,10 +2831,10 @@ Section rules.
   Abort.
 
   (** Typing rule for shared borrowing, manually applied by the tactics *)
-  Lemma type_shr_bor E L T e π κ_name ty_annot :
+  Lemma type_shr_bor E L T e κ_name ty_annot :
     (∃ M, named_lfts M ∗ li_tactic (compute_map_lookup_nofail_goal M κ_name) (λ κ,
-    (named_lfts M -∗ typed_borrow_shr π E L e κ ty_annot (λ L' v rt ty r, T L' v (place_rfn rt) (shr_ref ty κ) (r)))))
-    ⊢ typed_val_expr π E L (&ref{Shr, ty_annot, κ_name} e)%E T.
+    (named_lfts M -∗ typed_borrow_shr E L e κ ty_annot (λ L' π v rt ty r, T L' π v (place_rfn rt) (shr_ref ty κ) (r)))))
+    ⊢ typed_val_expr E L (&ref{Shr, ty_annot, κ_name} e)%E T.
   Proof.
     rewrite /compute_map_lookup_nofail_goal.
     iIntros "(%M & Hnamed & %κ & _ & HT)". iIntros (Φ) "#(LFT & TIME & LLCTX) #HE HL HΦ".
@@ -2845,7 +2845,7 @@ Section rules.
     iApply wp_skip. iNext. iIntros "Hcred HT !> !>".
     iApply (wp_logical_step with "TIME HT"); [solve_ndisj.. | ].
     iApply wp_skip. iNext. iIntros "Hcred' HT".
-    iMod ("HT" with "Hcred'") as (L' rt ty r r' ly) "(#Hrfn & #Hshr & %Halg & %Hly & #Hlb & #Hsc & HL & HT)".
+    iMod ("HT" with "Hcred'") as (L' π rt ty r r' ly) "(#Hrfn & #Hshr & %Halg & %Hly & #Hlb & #Hsc & HL & HT)".
     iModIntro. iApply ("HΦ" with "HL [Hshr] HT").
     iExists l, ly, r'. iSplitR; first done. iFrame "Hlb Hrfn Hsc %".
     iModIntro. iModIntro. done.

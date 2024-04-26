@@ -46,18 +46,18 @@ Section typing.
     split; last done. rewrite /i2v Hv/=//.
   Qed.
 
-  Lemma type_val_int z (it : IntType) π (T : ∀ rt, type rt → rt → iProp Σ):
-    ⌜z ∈ (it : int_type)⌝ ∗ T _ (int it) z ⊢ typed_value (I2v z it) π T.
+  Lemma type_val_int π z (it : IntType) (T : typed_value_cont_t):
+    ⌜z ∈ (it : int_type)⌝ ∗ T _ (int it) z ⊢ typed_value π (I2v z it) T.
   Proof.
     iIntros "[%Hn HT] #CTX".
     iExists Z, (int it), z. iFrame.
     iApply type_int_val; last done.
     apply IntType_to_it_size_bounded.
   Qed.
-  Global Instance type_val_int_inst n (it : IntType) π : TypedValue (I2v n it) π :=
-    λ T, i2p (type_val_int n it π T).
+  Global Instance type_val_int_inst n (it : IntType) π : TypedValue π (I2v n it) :=
+    λ T, i2p (type_val_int π n it T).
 
-  Lemma type_relop_int_int E L it v1 (n1 : Z) v2 (n2 : Z) (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) b op π :
+  Lemma type_relop_int_int E L it v1 (n1 : Z) v2 (n2 : Z) (T : typed_val_expr_cont_t) b op π :
     match op with
     | EqOp rit => Some (bool_decide (n1 = n2)%Z, rit)
     | NeOp rit => Some (bool_decide (n1 ≠ n2)%Z, rit)
@@ -67,8 +67,8 @@ Section typing.
     | GeOp rit => Some (bool_decide (n1 >= n2)%Z, rit)
     | _ => None
     end = Some (b, u8) →
-    (⌜n1 ∈ it⌝ -∗ ⌜n2 ∈ it⌝ -∗ T L (val_of_bool b) bool bool_t b) ⊢
-      typed_bin_op π E L v1 (v1 ◁ᵥ{π} n1 @ int it) v2 (v2 ◁ᵥ{π} n2 @ int it) op (IntOp it) (IntOp it) T.
+    (⌜n1 ∈ it⌝ -∗ ⌜n2 ∈ it⌝ -∗ T L π (val_of_bool b) bool bool_t b) ⊢
+      typed_bin_op E L v1 (v1 ◁ᵥ{π} n1 @ int it) v2 (v2 ◁ᵥ{π} n2 @ int it) op (IntOp it) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
     iIntros "%Hop HT [%Hv1 %] [%Hv2 _]" (Φ) "#CTX #HE HL HΦ".
@@ -142,10 +142,10 @@ Section typing.
     | _     => True (* Relational operators. *)
     end.
 
-  Lemma type_arithop_int_int E L π it v1 n1 v2 n2 (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) n op:
+  Lemma type_arithop_int_int E L π it v1 n1 v2 n2 (T : typed_val_expr_cont_t) n op:
     int_arithop_result it n1 n2 op = Some n →
-    (⌜n1 ∈ it⌝ -∗ ⌜n2 ∈ it⌝ -∗ ⌜arith_op_sidecond it n1 n2 n op⌝ ∗ T L (i2v n it) Z (int it) n) ⊢
-      typed_bin_op π E L v1 (v1 ◁ᵥ{π} n1 @ int it) v2 (v2 ◁ᵥ{π} n2 @ int it) op (IntOp it) (IntOp it) T.
+    (⌜n1 ∈ it⌝ -∗ ⌜n2 ∈ it⌝ -∗ ⌜arith_op_sidecond it n1 n2 n op⌝ ∗ T L π (i2v n it) Z (int it) n) ⊢
+      typed_bin_op E L v1 (v1 ◁ᵥ{π} n1 @ int it) v2 (v2 ◁ᵥ{π} n2 @ int it) op (IntOp it) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
     iIntros "%Hop HT [%Hv1 %] [%Hv2 _] %Φ #CTX #HE HL HΦ".
@@ -227,8 +227,8 @@ Section typing.
     λ m ss def fn R ϝ, i2p (type_switch_int π E L n it m ss def fn R ϝ v).
 
   Lemma type_neg_int π E L n it v (T : typed_un_op_cont_t) :
-    (⌜n ∈ it⌝ -∗ ⌜it.(it_signed)⌝ ∗ ⌜n ≠ MinInt it⌝ ∗ T L (i2v (-n) it) _ (int it) (-n))
-    ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it)%I (NegOp) (IntOp it) T.
+    (⌜n ∈ it⌝ -∗ ⌜it.(it_signed)⌝ ∗ ⌜n ≠ MinInt it⌝ ∗ T L π (i2v (-n) it) _ (int it) (-n))
+    ⊢ typed_un_op E L v (v ◁ᵥ{π} n @ int it)%I (NegOp) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
     rewrite int_elem_of_it_iff MinInt_eq.
@@ -250,8 +250,8 @@ Section typing.
 
   (*(if it_signed it then Z.lnot n else Z_lunot (bits_per_int it) n)*)
   Lemma type_not_int π E L n it v (T : typed_un_op_cont_t) :
-    (⌜n ∈ it⌝ -∗ T L (i2v ((if it_signed it then Z.lnot n else Z_lunot (bits_per_int it) n)) it) _ (int it) ((if it_signed it then Z.lnot n else Z_lunot (bits_per_int it) n)))
-    ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it)%I (NotIntOp) (IntOp it) T.
+    (⌜n ∈ it⌝ -∗ T L π (i2v ((if it_signed it then Z.lnot n else Z_lunot (bits_per_int it) n)) it) _ (int it) ((if it_signed it then Z.lnot n else Z_lunot (bits_per_int it) n)))
+    ⊢ typed_un_op E L v (v ◁ᵥ{π} n @ int it)%I (NotIntOp) (IntOp it) T.
   Proof.
     rewrite /ty_own_val/=.
     rewrite int_elem_of_it_iff.
@@ -282,8 +282,8 @@ Section typing.
     λ T, i2p (type_not_int π E L n it v T).
 
   Lemma type_cast_int π E L n (it1 it2 : int_type) v (T : typed_un_op_cont_t) :
-    ⌜ly_size it2 ≤ MaxInt isize_t⌝ ∗ (⌜n ∈ it1⌝ -∗ ∀ v, T L v _ (int it2) (wrap_to_it n it2))
-    ⊢ typed_un_op π E L v (v ◁ᵥ{π} n @ int it1)%I (CastOp (IntOp it2)) (IntOp it1) T.
+    ⌜ly_size it2 ≤ MaxInt isize_t⌝ ∗ (⌜n ∈ it1⌝ -∗ ∀ v, T L π v _ (int it2) (wrap_to_it n it2))
+    ⊢ typed_un_op E L v (v ◁ᵥ{π} n @ int it1)%I (CastOp (IntOp it2)) (IntOp it1) T.
   Proof.
     rewrite /ty_own_val/=.
     rewrite int_elem_of_it_iff MaxInt_eq.
@@ -306,9 +306,9 @@ Section typing.
     ⊢ (val_of_bool b) ◁ᵥ{π} b @ bool_t.
   Proof. rewrite /ty_own_val/=. iIntros. by destruct b. Qed.
   Lemma type_val_bool b π (T : ∀ rt, type rt → rt → iProp Σ) :
-    (T bool bool_t b) ⊢ typed_value (val_of_bool b) π T.
+    (T bool bool_t b) ⊢ typed_value π (val_of_bool b) T.
   Proof. iIntros "HT #LFT". iExists bool, bool_t, b. iFrame. iApply type_val_bool'. Qed.
-  Global Instance type_val_bool_inst b π : TypedValue (val_of_bool b) π :=
+  Global Instance type_val_bool_inst b π : TypedValue π (val_of_bool b) :=
     λ T, i2p (type_val_bool b π T).
 
   Lemma val_to_bool_val_to_Z v b :
@@ -330,17 +330,14 @@ Section typing.
     destruct m as [ | [] | []]; congruence.
   Qed.
 
-  (* TODO: we should maybe also support RelOp with BoolOp in Caesium and use BoolOp here.
-     That would make the semantics maybe more realistic by triggering UB on invalid boolean input patterns.
-  *)
-  Lemma type_relop_bool_bool E L v1 b1 v2 b2 (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) b op π :
+  Lemma type_relop_bool_bool E L v1 b1 v2 b2 (T : typed_val_expr_cont_t) b op π :
     match op with
     | EqOp rit => Some (eqb b1 b2, rit)
     | NeOp rit => Some (negb (eqb b1 b2), rit)
     | _ => None
     end = Some (b, u8) →
-    (T L (val_of_bool b) bool bool_t b)
-    ⊢ typed_bin_op π E L v1 (v1 ◁ᵥ{π} b1 @ bool_t) v2 (v2 ◁ᵥ{π} b2 @ bool_t) op (BoolOp) (BoolOp) T.
+    (T L π (val_of_bool b) bool bool_t b)
+    ⊢ typed_bin_op E L v1 (v1 ◁ᵥ{π} b1 @ bool_t) v2 (v2 ◁ᵥ{π} b2 @ bool_t) op (BoolOp) (BoolOp) T.
   Proof.
     rewrite /ty_own_val/=.
     iIntros "%Hop HT %Hv1 %Hv2" (Φ) "#CTX #HE HL HΦ".
@@ -362,9 +359,9 @@ Section typing.
     TypedBinOpVal π E L v1 (bool_t) b1 v2 (bool_t) b2 (NeOp u8) (BoolOp) (BoolOp) := λ T, i2p (type_relop_bool_bool E L v1 b1 v2 b2 T (negb (eqb b1 b2)) _ π _).
   Solve Obligations with done.
 
-  Lemma type_notop_bool π E L v b (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) :
-    T L (val_of_bool (negb b)) bool bool_t (negb b)
-    ⊢ typed_un_op π E L v (v ◁ᵥ{π} b @ bool_t) NotBoolOp BoolOp T.
+  Lemma type_notop_bool π E L v b (T : typed_val_expr_cont_t) :
+    T L π (val_of_bool (negb b)) bool bool_t (negb b)
+    ⊢ typed_un_op E L v (v ◁ᵥ{π} b @ bool_t) NotBoolOp BoolOp T.
   Proof.
     rewrite /ty_own_val/=.
     iIntros "HT %Hv" (Φ) "#CTX #HE HL HΦ".
@@ -386,10 +383,10 @@ Section typing.
     | _     => None (* Other operators are not supported. *)
     end.
 
-  Lemma type_arithop_bool_bool E L π v1 b1 v2 b2 (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) b op:
+  Lemma type_arithop_bool_bool E L π v1 b1 v2 b2 (T : typed_val_expr_cont_t) b op:
     bool_arith_op_result b1 b2 op = Some b →
-    T L (val_of_bool b) bool (bool_t) b ⊢
-    typed_bin_op π E L v1 (v1 ◁ᵥ{π} b1 @ bool_t) v2 (v2 ◁ᵥ{π} b2 @ bool_t) op (BoolOp) (BoolOp) T.
+    T L π (val_of_bool b) bool (bool_t) b ⊢
+    typed_bin_op E L v1 (v1 ◁ᵥ{π} b1 @ bool_t) v2 (v2 ◁ᵥ{π} b2 @ bool_t) op (BoolOp) (BoolOp) T.
   Proof.
     rewrite /ty_own_val/=.
     iIntros "%Hop HT %Hv1 %Hv2 %Φ #CTX #HE HL HΦ".
@@ -452,13 +449,13 @@ Section typing.
     - rewrite decide_True; done.
   Qed.
 
-  Lemma type_val_char z π (T : ∀ rt, type rt → rt → iProp Σ):
-    ⌜is_valid_char z⌝ ∗ T _ (char_t) z ⊢ typed_value (I2v z CharIt) π T.
+  Lemma type_val_char z π (T : typed_value_cont_t):
+    ⌜is_valid_char z⌝ ∗ T _ (char_t) z ⊢ typed_value π (I2v z CharIt) T.
   Proof.
     iIntros "[%Hn HT] #CTX".
     iExists Z, (char_t), z. iFrame.
     iApply type_char_val; last done.
   Qed.
-  Global Instance type_val_char_inst n π : TypedValue (I2v n CharIt) π :=
+  Global Instance type_val_char_inst n π : TypedValue π (I2v n CharIt) :=
     λ T, i2p (type_val_char n π T).
 End typing.

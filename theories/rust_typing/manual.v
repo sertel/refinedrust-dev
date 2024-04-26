@@ -48,14 +48,14 @@ Section updateable.
     eauto.
   Qed.
 
-  Global Program Instance updateable_typed_val_expr π E L e T :
-    Updateable (typed_val_expr π E L e T) := {|
+  Global Program Instance updateable_typed_val_expr E L e T :
+    Updateable (typed_val_expr E L e T) := {|
       updateable_E := E;
       updateable_L := L;
-      updateable_core E L := typed_val_expr π E L e T;
+      updateable_core E L := typed_val_expr E L e T;
   |}.
   Next Obligation.
-    iIntros (π _ _ e T E L).
+    iIntros (_ _ e T E L).
     rewrite /typed_val_expr.
     iIntros "HT" (?) "#CTX #HE HL Hc".
     iApply fupd_wp. iMod ("HT" with "CTX HE HL") as "(%L2 & HL & HT)".
@@ -119,8 +119,8 @@ Section updateable.
     eauto.
   Qed.
 
-  Lemma fupd_typed_val_expr `{!typeGS Σ} π E L e T :
-    (|={⊤}=> typed_val_expr π E L e T) -∗ typed_val_expr π E L e T.
+  Lemma fupd_typed_val_expr `{!typeGS Σ} E L e T :
+    (|={⊤}=> typed_val_expr E L e T) -∗ typed_val_expr E L e T.
   Proof.
     rewrite /typed_val_expr.
     iIntros "HT" (?) "CTX HE HL Hc".
@@ -145,8 +145,8 @@ End updateable.
 Section updateable_rules.
   Context `{!typeGS Σ} {P} `{!Updateable P}.
 
-  Lemma updateable_typed_array_access π l off st :
-    find_in_context (FindLoc l π) (λ '(existT _ (lt, r, k)),
+  Lemma updateable_typed_array_access l off st :
+    find_in_context (FindLoc l) (λ '(existT _ (lt, r, k, π)),
       typed_array_access π updateable_E updateable_L l off st lt r k (λ L2 rt2 ty2 len2 iml2 rs2 k2 rte lte re,
         l ◁ₗ[π, k2] #rs2 @ ArrayLtype ty2 len2 iml2 -∗
         (l offsetst{st}ₗ off) ◁ₗ[π, k2] re @ lte -∗
@@ -157,7 +157,7 @@ Section updateable_rules.
     unshelve iApply add_updateable; first apply _.
     iIntros "#CTX #HE HL".
     rewrite /FindLoc /find_in_context/=.
-    iDestruct "HT" as ([rt [[lt r] k]]) "(Ha & Hb)".
+    iDestruct "HT" as ([rt [[[lt r] k] π]]) "(Ha & Hb)".
     rewrite /typed_array_access.
     iMod ("Hb" with "[] [] CTX HE HL Ha") as "(%L2 & %k2 & %rt2 & %ty2 & %len & %iml & %rs2 & %rte & %re & %lte & Hl & He & HL & HT)";
     [set_solver.. | ].
@@ -165,8 +165,8 @@ Section updateable_rules.
     iModIntro. iExists _. iFrame.
   Qed.
 
-  Lemma updateable_extract_value π l :
-    find_in_context (FindLoc l π) (λ '(existT rt (lt, r, bk)),
+  Lemma updateable_extract_value l :
+    find_in_context (FindLoc l) (λ '(existT rt (lt, r, bk, π)),
       ∃ wl ty r', ⌜bk = Owned wl⌝ ∗ ⌜lt = ◁ty⌝ ∗ ⌜r = #r'⌝ ∗
       prove_with_subtype updateable_E updateable_L false ProveDirect (£ (Nat.b2n wl)) (λ L2 κs R, R -∗
       li_tactic (compute_layout_goal ty.(ty_syn_type)) (λ ly,
@@ -179,7 +179,7 @@ Section updateable_rules.
     unshelve iApply add_updateable; first apply _.
     iIntros "#CTX #HE HL".
     rewrite /FindLoc /find_in_context.
-    iDestruct "HT" as ([rt [[lt r] bk]]) "(Ha & Hb)"; simpl.
+    iDestruct "HT" as ([rt [[[lt r] bk] π]]) "(Ha & Hb)"; simpl.
     iDestruct "Hb" as "(%wl & %ty & %r' & -> & -> & -> & HT)".
     rewrite /compute_layout_goal. simpl.
     rewrite /prove_with_subtype.
@@ -189,7 +189,7 @@ Section updateable_rules.
     iMod (ofty_own_split_value_untyped_lc with "Hcred Ha") as "Ha"; [done.. | ].
     iDestruct "Ha" as "(%v & Hv & Hl)".
     iPoseProof ("HT" with "Hv Hl") as "HT".
-    iModIntro. iExists _. iFrame. 
+    iModIntro. iExists _. iFrame.
   Qed.
 
   (* TODO: add lemma for unfolding / subtyping? *)
@@ -207,44 +207,44 @@ Tactic Notation "apply_update" uconstr(H) :=
 Section test.
   Context `{!typeGS Σ}.
 
-  Lemma updateable_updateable_b (π: thread_id) E L (l : loc) (off : Z) (st : syn_type) :
+  Lemma updateable_updateable_b E L (l : loc) (off : Z) (st : syn_type) :
     ⊢ updateable E L (λ _, True).
   Proof.
     iStartProof.
     add_updateable.
     add_updateable.
-    unshelve iApply (updateable_typed_array_access π l off st).
+    unshelve iApply (updateable_typed_array_access l off st).
     idtac.
   Abort.
 
-  Lemma typed_s_updateable (π: thread_id) E L s rf R ϝ (l : loc) (off : Z) (st : syn_type) :
+  Lemma typed_s_updateable E L s rf R ϝ (l : loc) (off : Z) (st : syn_type) :
     ⊢ typed_stmt E L s rf R ϝ.
   Proof.
     iStartProof.
-    unshelve apply_update (updateable_typed_array_access π l off st).
+    unshelve apply_update (updateable_typed_array_access l off st).
     idtac.
   Abort.
 End test.
 
-Lemma tac_typed_val_expr_bind' `{!typeGS Σ} π E L K e T :
-  typed_val_expr π E L (W.to_expr e) (λ L' v rt ty r,
-    v ◁ᵥ{π} r @ ty -∗ typed_val_expr π E L' (W.to_expr (W.fill K (W.Val v))) T) -∗
-  typed_val_expr π E L (W.to_expr (W.fill K e)) T.
+Lemma tac_typed_val_expr_bind' `{!typeGS Σ} E L K e T :
+  typed_val_expr E L (W.to_expr e) (λ L' π v rt ty r,
+    v ◁ᵥ{π} r @ ty -∗ typed_val_expr E L' (W.to_expr (W.fill K (W.Val v))) T) -∗
+  typed_val_expr E L (W.to_expr (W.fill K e)) T.
 Proof.
   iIntros "He".
   rewrite /typed_val_expr.
   iIntros (Φ) "#CTX #HE HL Hcont".
   iApply tac_wp_bind'.
   iApply ("He" with "CTX HE HL").
-  iIntros (L' v rt ty r) "HL Hv Hcont'".
+  iIntros (L' π v rt ty r) "HL Hv Hcont'".
   iApply ("Hcont'" with "Hv CTX HE HL"). done.
 Qed.
-Lemma tac_typed_val_expr_bind `{!typeGS Σ} π E L e Ks e' T :
+Lemma tac_typed_val_expr_bind `{!typeGS Σ} E L e Ks e' T :
   W.find_expr_fill e false = Some (Ks, e') →
-  typed_val_expr π E L (W.to_expr e') (λ L' v rt ty r,
-    if Ks is [] then T L' v rt ty r else
-      v ◁ᵥ{π} r @ ty -∗ typed_val_expr π E L' (W.to_expr (W.fill Ks (W.Val v))) T) -∗
-  typed_val_expr π E L (W.to_expr e) T.
+  typed_val_expr E L (W.to_expr e') (λ L' π v rt ty r,
+    if Ks is [] then T L' π v rt ty r else
+      v ◁ᵥ{π} r @ ty -∗ typed_val_expr E L' (W.to_expr (W.fill Ks (W.Val v))) T) -∗
+  typed_val_expr E L (W.to_expr e) T.
 Proof.
   move => /W.find_expr_fill_correct ->. move: Ks => [|K Ks] //.
   { auto. }
@@ -254,16 +254,16 @@ Qed.
 Tactic Notation "typed_val_expr_bind" :=
   iStartProof;
   lazymatch goal with
-  | |- envs_entails _ (typed_val_expr ?π ?E ?L ?e ?T) =>
-    let e' := W.of_expr e in change (typed_val_expr π E L e T) with (typed_val_expr π E L (W.to_expr e') T);
+  | |- envs_entails _ (typed_val_expr ?E ?L ?e ?T) =>
+    let e' := W.of_expr e in change (typed_val_expr E L e T) with (typed_val_expr E L (W.to_expr e') T);
     iApply tac_typed_val_expr_bind; [done |];
     unfold W.to_expr; simpl
   | _ => fail "typed_val_expr_bind: not a 'typed_val_expr'"
   end.
 
-Lemma tac_typed_stmt_bind `{!typeGS Σ} π E L s e Ks fn ϝ T :
+Lemma tac_typed_stmt_bind `{!typeGS Σ} E L s e Ks fn ϝ T :
   W.find_stmt_fill s = Some (Ks, e) →
-  typed_val_expr π E L (W.to_expr e) (λ L' v rt ty r,
+  typed_val_expr E L (W.to_expr e) (λ L' π v rt ty r,
     v ◁ᵥ{π} r @ ty -∗ typed_stmt E L' (W.to_stmt (W.stmt_fill Ks (W.Val v))) fn T ϝ) -∗
   typed_stmt E L (W.to_stmt s) fn T ϝ.
 Proof.
@@ -275,7 +275,7 @@ Proof.
   iApply wp_bind.
   iApply (wp_wand with "[He HL]").
   { rewrite /typed_val_expr. iApply ("He" with "CTX HE HL").
-    iIntros (L' v rt ty r) "HL Hv Hcont".
+    iIntros (L' π v rt ty r) "HL Hv Hcont".
     iApply ("Hcont" with "Hv CTX HE HL"). }
   iIntros (v) "HWP".
   rewrite -(HKs' (W.Val _)) /W.to_expr.

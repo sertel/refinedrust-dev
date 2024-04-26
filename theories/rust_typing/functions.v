@@ -1,7 +1,7 @@
 From refinedrust Require Export type.
 From refinedrust Require Import programs uninit.
 Set Default Proof Using "Type".
-  
+
 (** * Function types *)
 
 (* "entry-point" statement *)
@@ -150,7 +150,7 @@ Section function.
             (* we don't really kill it here, but just need to find it in the context *)
             li_tactic (llctx_find_llft_goal L4 ϝ LlctxFindLftFull) (λ _,
             find_in_context FindCreditStore (λ _,
-              find_in_context (FindNaOwn π) (λ (mask: coPset), ⌜mask = ⊤⌝ ∗ True))
+              find_in_context (FindNaOwn) (λ '(π', mask), ⌜π' = π⌝ ∗ ⌜mask = ⊤⌝ ∗ True))
           )))))
     )%I.
 
@@ -196,7 +196,9 @@ Section call.
 
   Lemma type_call_fnptr π E L {A : Type} (lfts : nat) eκs l v vl tys T (fp : prod_vec lft lfts → A → fn_params) sta :
     let eκs' := list_to_tup eκs in
-    find_in_context (FindNaOwn π) (λ (mask: coPset),
+    find_in_context (FindNaOwn) (λ '(π', mask),
+      ⌜π' = π⌝ ∗
+      (* TODO: do something to ensure invariants are closed before *)
       ⌜mask = ⊤⌝ ∗
       (([∗ list] v;t ∈ vl; tys, let '(existT rt (ty, r)) := t in v ◁ᵥ{π} r @ ty) -∗
       ∃ (Heq : lfts = length eκs),
@@ -220,11 +222,11 @@ Section call.
       ∀ v x', (* v = retval, x' = post existential *)
       (* also donate some credits we are generating here *)
       introduce_with_hooks E L2 (£ (S num_cred) ∗ atime 2 ∗ na_own π mask ∗ R3 ∗ ((fp κs x).(fp_fr) x').(fr_R) π) (λ L3,
-      T L3 v ((fp κs x).(fp_fr) x').(fr_rt) ((fp κs x).(fp_fr) x').(fr_ty) ((fp κs x).(fp_fr) x').(fr_ref))))))
+      T L3 π v ((fp κs x).(fp_fr) x').(fr_rt) ((fp κs x).(fp_fr) x').(fr_ty) ((fp κs x).(fp_fr) x').(fr_ref))))))
     ⊢ typed_call π E L eκs v (v ◁ᵥ{π} l @ function_ptr sta fp) vl tys T.
   Proof.
     simpl. iIntros "HT (%fn & %local_sts & -> & He & %Halg & %Halgl & Hfn) Htys" (Φ) "#CTX #HE HL HΦ".
-    iDestruct "HT" as (?) "(Hna & -> & HT) /=".
+    iDestruct "HT" as ([π' mask]) "(Hna & -> & -> & HT) /=".
     iDestruct ("HT" with "Htys") as "(%Heq & %x & HP)". subst lfts.
     set (aκs := list_to_tup eκs).
     iApply fupd_wp. iMod ("HP" with "[] [] CTX HE HL") as "(%L1 & % & %R2 & >(Hvl & R2) & HL & HT)"; [done.. | ].
@@ -372,7 +374,7 @@ Section call.
       unfold llctx_find_lft_key_interp in Hoc. subst.
       iDestruct "HL" as "(_ & Hϝ & _)".
       iDestruct "HT" as ([n' m']) "(Hstore & HT)"; simpl.
-      iDestruct "HT" as (b) "(Hna & (-> & _))"; simpl.
+      iDestruct "HT" as ([π' mask]) "(Hna & -> & -> & _)"; simpl.
 
       subst RET_PROP; simpl.
       iExists _. iFrame.
