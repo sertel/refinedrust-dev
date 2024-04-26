@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use log::{info, trace, warn};
-use radium;
+use radium::{self, write_list};
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty;
 use rustc_middle::ty::{IntTy, Ty, TyKind, UintTy};
@@ -875,16 +875,11 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             if expect_refinement {
                 // make a plist out of this
                 let mut rfn = String::with_capacity(100);
+
                 write!(rfn, "-[").unwrap();
-                let mut need_sep = false;
-                for refinement in &field_refinements {
-                    if need_sep {
-                        write!(rfn, "; ").unwrap();
-                    }
-                    need_sep = true;
-                    write!(rfn, "#({})", refinement).unwrap();
-                }
+                write_list!(rfn, &field_refinements, "; ", "#({})").unwrap();
                 write!(rfn, "]").unwrap();
+
                 invariant_spec.provide_abstracted_refinement(rfn);
             }
         }

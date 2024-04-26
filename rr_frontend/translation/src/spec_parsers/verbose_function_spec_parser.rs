@@ -9,7 +9,7 @@ use std::fmt::Write;
 
 use log::{info, warn};
 use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
-use radium::specs;
+use radium::{specs, write_list};
 use rustc_ast::ast::AttrItem;
 use rustc_middle::ty;
 use {attribute_parse as parse, radium};
@@ -504,16 +504,10 @@ where
             write!(pre_rfn, "()").unwrap();
         } else {
             write!(pre_rfn, "-[").unwrap();
-            let mut needs_sep = false;
-            for x in pre_types {
-                if needs_sep {
-                    write!(pre_rfn, "; ").unwrap();
-                }
-                needs_sep = true;
-                write!(pre_rfn, "#({})", x.1).unwrap();
-                pre_tys.push(x.0);
-            }
+            write_list!(pre_rfn, pre_types.clone(), "; ", |x| format!("#({})", x.1)).unwrap();
             write!(pre_rfn, "]").unwrap();
+
+            pre_tys = pre_types.iter().map(|x| x.0.clone()).collect();
         }
         let tuple = make_tuple(pre_tys);
 
@@ -564,19 +558,11 @@ where
                 let mut post_term = String::new();
 
                 write!(post_term, "-[").unwrap();
-                let mut needs_sep = false;
-                for p in post_patterns {
-                    if needs_sep {
-                        write!(post_term, "; ").unwrap();
-                    }
-                    needs_sep = true;
-                    match p {
-                        CapturePostRfn::ImmutOrConsume(pat) => write!(post_term, "#({pat})").unwrap(),
-                        CapturePostRfn::Mut(pat, gvar) => {
-                            write!(post_term, "#(#({pat}), {gvar})").unwrap();
-                        },
-                    }
-                }
+                write_list!(post_term, post_patterns, "; ", |p| match p {
+                    CapturePostRfn::ImmutOrConsume(pat) => format!("#({pat})"),
+                    CapturePostRfn::Mut(pat, gvar) => format!("#(#({pat}), {gvar})"),
+                })
+                .unwrap();
                 write!(post_term, "]").unwrap();
 
                 builder

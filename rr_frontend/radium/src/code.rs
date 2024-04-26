@@ -15,53 +15,10 @@ use indent_write::io::IndentWriter;
 use log::info;
 
 use crate::specs::*;
+use crate::write_list;
 
 fn make_indent(i: usize) -> String {
     " ".repeat(i)
-}
-
-/// Extend the `write!` macro to write a collection separated by a separator with an automatically added
-/// space.
-///
-/// The macro can take an optional fourth argument to customise the format string (default: `"{}"`).
-/// This fourth argument can also be a closure that takes an element from the collection and returns the
-/// formatted string.
-macro_rules! write_list {
-    ($f:expr, $collection:expr, $separator:literal) => {
-        write_list!($f, $collection, $separator, "{}")
-    };
-    ($f:expr, $collection:expr, $separator:literal, $pattern:literal) => {
-        write_list!($f, $collection, $separator, |e| format!($pattern, e))
-    };
-    ($f:expr, $collection:expr, $separator:literal, $fmt:expr) => {
-        write!($f, "{}", $collection.into_iter().map($fmt).collect::<Vec<_>>().join(concat!($separator, " ")))
-    };
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fmt::Write;
-
-    #[test]
-    fn write_list_default() {
-        let mut out = String::new();
-        write_list!(out, vec!["10", "20"], ";").unwrap();
-        assert_eq!(out, "10; 20");
-    }
-
-    #[test]
-    fn write_list_pattern() {
-        let mut out = String::new();
-        write_list!(out, vec!["10", "20"], ";", "'{}'").unwrap();
-        assert_eq!(out, "'10'; '20'");
-    }
-
-    #[test]
-    fn write_list_format() {
-        let mut out = String::new();
-        write_list!(out, vec![("x", "10"), ("y", "20")], ";", |(l, v)| format!("{l}: {v}")).unwrap();
-        assert_eq!(out, "x: 10; y: 20");
-    }
 }
 
 fn fmt_option<H>(f: &mut Formatter<'_>, o: &Option<H>) -> fmt::Result
@@ -96,9 +53,9 @@ impl Display for RustType {
         match self {
             Self::Lit(path, rhs) => {
                 write!(f, "RSTLitType [")?;
-                write_list!(f, path, ";", "\"{}\"")?;
+                write_list!(f, path, "; ", "\"{}\"")?;
                 write!(f, "] [")?;
-                write_list!(f, rhs, ";")?;
+                write_list!(f, rhs, "; ")?;
                 write!(f, "]")
             },
             Self::TyVar(var) => {
@@ -127,7 +84,7 @@ impl Display for RustType {
             },
             Self::Struct(sls, tys) => {
                 write!(f, "RSTStruct ({}) [", sls)?;
-                write_list!(f, tys, ";")?;
+                write_list!(f, tys, "; ")?;
                 write!(f, "]")
             },
             Self::Array(len, ty) => {
@@ -363,9 +320,9 @@ impl Display for Expr {
             },
             Self::Call { f: fe, lfts, args } => {
                 write!(f, "CallE {} [", fe.as_ref())?;
-                write_list!(f, lfts, ";", "\"{}\"")?;
+                write_list!(f, lfts, "; ", "\"{}\"")?;
                 write!(f, "] [@{{expr}} ")?;
-                write_list!(f, args, ";")?;
+                write_list!(f, args, "; ")?;
                 write!(f, "]")
             },
             Self::Deref { ot, e } => {
@@ -410,7 +367,7 @@ impl Display for Expr {
             },
             Self::StructInitE { sls, components } => {
                 write!(f, "StructInit {} [", sls)?;
-                write_list!(f, components, ";", |(name, e)| format!("(\"{}\", {} : expr)", name, e))?;
+                write_list!(f, components, "; ", |(name, e)| format!("(\"{}\", {} : expr)", name, e))?;
                 write!(f, "]")
             },
             Self::EnumInitE {
@@ -515,7 +472,7 @@ impl fmt::Display for Annotation {
         match self {
             Self::StartLft(l, sup) => {
                 write!(f, "StartLftAnnot \"{}\" [", l)?;
-                write_list!(f, sup, ";", "\"{}\"")?;
+                write_list!(f, sup, "; ", "\"{}\"")?;
                 write!(f, "]")
             },
             Self::EndLft(l) => {
@@ -538,7 +495,7 @@ impl fmt::Display for Annotation {
             },
             Self::AliasLftIntersection(lft, lfts) => {
                 write!(f, "AliasLftAnnot \"{}\" [", lft)?;
-                write_list!(f, lfts, ";", "\"{}\"")?;
+                write_list!(f, lfts, "; ", "\"{}\"")?;
                 write!(f, "]")
             },
             Self::EnterLoop => {
@@ -656,7 +613,7 @@ impl Stmt {
 
                 let mut fmt_targets = String::with_capacity(100);
                 write!(fmt_targets, "[").unwrap();
-                write_list!(fmt_targets, bs, ";", |tgt| tgt.caesium_fmt(0)).unwrap();
+                write_list!(fmt_targets, bs, "; ", |tgt| tgt.caesium_fmt(0)).unwrap();
                 write!(fmt_targets, "]").unwrap();
 
                 let fmt_default = def.caesium_fmt(0);
@@ -802,20 +759,17 @@ impl FunctionCode {
         // format args
         let format_stack_layout = |layout: std::slice::Iter<'_, (String, SynType)>| {
             let mut formatted_args: String = String::with_capacity(100);
+
             formatted_args.push_str("[");
-            let mut insert_sep = false;
-            for (ref name, ref st) in layout {
-                if insert_sep {
-                    formatted_args.push_str(";");
-                }
+
+            write_list!(formatted_args, layout, "; ", |(ref name, ref st)| {
                 let ly = st.layout_term(&[]); //should be closed already
-                formatted_args.push_str("\n");
-                formatted_args.push_str(make_indent(2).as_str());
+                let indent = make_indent(2);
 
-                formatted_args.push_str(format!("(\"{}\", {} : layout)", name, ly).as_str());
+                format!("\n{indent}(\"{name}\", {ly} : layout)")
+            })
+            .unwrap();
 
-                insert_sep = true;
-            }
             formatted_args.push_str(format!("\n{}]", make_indent(1).as_str()).as_str());
             return formatted_args;
         };
@@ -1112,15 +1066,7 @@ impl<'def> Function<'def> {
 
         // write local syntypes
         write!(f, ") [")?;
-        let mut needs_sep = false;
-        for (_, st) in &self.code.stack_layout.local_map {
-            if needs_sep {
-                write!(f, "; ")?;
-            }
-            needs_sep = true;
-            write!(f, "{}", st)?;
-        }
-
+        write_list!(f, &self.code.stack_layout.local_map, "; ", |(_, st)| format!("{}", st))?;
         write!(f, "] (type_of_{} ", self.name())?;
 
         // write type args (passed to the type definition)

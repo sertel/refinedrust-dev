@@ -13,6 +13,7 @@ use std::fmt::{Display, Formatter, Write};
 use indent_write::fmt::IndentWriter;
 
 pub use crate::coq::*;
+use crate::write_list;
 
 #[derive(Clone, PartialEq, Debug)]
 /// Encodes a RR type with an accompanying refinement.
@@ -160,14 +161,7 @@ impl Display for OpType {
             Self::PtrOp => write!(f, "PtrOp"),
             Self::StructOp(sl, ops) => {
                 write!(f, "StructOp {} [", sl)?;
-                let mut need_sep = false;
-                for op in ops {
-                    if need_sep {
-                        write!(f, "; ")?;
-                    }
-                    need_sep = true;
-                    write!(f, "{}", op)?;
-                }
+                write_list!(f, ops, "; ")?;
                 write!(f, "]")
             },
             Self::UntypedOp(ly) => write!(f, "UntypedOp ({})", ly),
@@ -879,14 +873,7 @@ impl InvariantSpec {
         let mut out = String::with_capacity(200);
 
         write!(out, "∃ ").unwrap();
-        let mut needs_sep = false;
-        for (name, ty) in &self.existentials {
-            if needs_sep {
-                write!(out, " ").unwrap();
-            }
-            needs_sep = true;
-            write!(out, "({} : {})", name, ty).unwrap();
-        }
+        write_list!(out, &self.existentials, " ", |(name, ty)| format!("({} : {})", name, ty)).unwrap();
         write!(out, ", ").unwrap();
 
         out
@@ -905,6 +892,7 @@ impl InvariantSpec {
             self.abstracted_refinement.as_ref().unwrap()
         )
         .unwrap();
+
         for own in &self.ty_own_invariants {
             write!(out, "{} ∗ ", IProp::Atom(own.fmt_owned("π"))).unwrap();
         }
@@ -1277,15 +1265,14 @@ impl<'def> AbstractVariant<'def> {
             self.name
         )
         .unwrap();
-        let mut needs_sep = false;
-        for (name, ty) in &self.subst_fields {
-            if needs_sep {
-                out.push_str(";");
-            }
-            needs_sep = true;
+
+        write_list!(out, &self.subst_fields, ";", |(name, ty)| {
             let synty = ty.get_syn_type();
-            write!(out, "\n{indent}{indent}(\"{}\", {})", name, synty).unwrap();
-        }
+
+            format!("\n{indent}{indent}(\"{}\", {})", name, synty)
+        })
+        .unwrap();
+
         write!(out, "] {}.\n", self.repr).unwrap();
 
         // also generate a definition for the syntype
@@ -1330,16 +1317,9 @@ impl<'def> AbstractVariant<'def> {
         let mut out = String::with_capacity(200);
 
         write!(out, "struct_t {} +[", CoqAppTerm::new(&self.sls_def_name, sls_app)).unwrap();
+        write_list!(out, &self.subst_fields, ";", |(_, ty)| format!("{}", ty)).unwrap();
+        write!(out, "]").unwrap();
 
-        let mut needs_sep = false;
-        for (_name, ty) in &self.subst_fields {
-            if needs_sep {
-                out.push_str("; ");
-            }
-            needs_sep = true;
-            write!(out, "{}", ty).unwrap();
-        }
-        out.push_str("]");
         out
     }
 
@@ -1950,40 +1930,21 @@ impl<'def> AbstractEnum<'def> {
             self.discriminant_type
         )
         .unwrap();
-        let mut needs_sep = false;
 
-        for (name, var, _) in &self.variants {
-            if needs_sep {
-                out.push_str(";");
-            }
-            needs_sep = true;
-
+        write_list!(out, &self.variants, ";", |(name, var, _)| {
             let vbor = var.borrow();
             let vbor = vbor.as_ref().unwrap();
 
-            write!(
-                out,
-                "\n{}{}(\"{}\", {} {})",
-                indent,
-                indent,
-                name,
-                vbor.st_def_name(),
-                typarams.join(" ")
-            )
-            .unwrap();
-        }
+            format!("\n{}{}(\"{}\", {} {})", indent, indent, name, vbor.st_def_name(), typarams.join(" "))
+        })
+        .unwrap();
+
         // write the repr
         write!(out, "] {} [", self.repr).unwrap();
-        // now write the tag-discriminant list
-        needs_sep = false;
-        for (name, _, discr) in &self.variants {
-            if needs_sep {
-                out.push_str("; ");
-            }
-            needs_sep = true;
 
-            write!(out, "(\"{}\", {})", name, discr).unwrap();
-        }
+        // now write the tag-discriminant list
+        write_list!(out, &self.variants, "; ", |(name, _, discr)| format!("(\"{name}\", {discr})")).unwrap();
+
         out.push_str("] _ _ _ _.\n");
         write!(out, "{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n").unwrap();
         write!(out, "{indent}Next Obligation. done. Qed.\n").unwrap();
@@ -2546,15 +2507,7 @@ where
         return write!(f, "True");
     }
 
-    let mut needs_sep = false;
-    for s in v {
-        if needs_sep {
-            write!(f, " {} ", op)?;
-        }
-        needs_sep = true;
-        write!(f, "({})", s)?;
-    }
-    Ok(())
+    write_list!(f, v, &format!(" {op} "), "({})")
 }
 
 fn fmt_binders(b: &[CoqBinder], op: &str, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -2712,42 +2665,27 @@ pub struct FunctionSpec<'def> {
 impl<'def> FunctionSpec<'def> {
     fn format_elctx(&self) -> String {
         let mut out = String::with_capacity(100);
+
         out.push_str("λ ϝ, [");
-        let mut need_sep = false;
-        for (ref lft1, ref lft2) in &self.elctx {
-            if need_sep {
-                out.push_str(", ");
-            }
-            out.push_str(format!("({}, {})", lft1, lft2).as_str());
-            need_sep = true;
-        }
+        write_list!(out, &self.elctx, ", ", |(ref lft1, ref lft2)| format!("({lft1}, {lft2})")).unwrap();
         out.push_str("]");
+
         out
     }
 
     pub(crate) fn format_coq_params(&self) -> String {
         let mut out = String::with_capacity(100);
-        let mut need_sep = false;
-        for param in &self.coq_params {
-            if need_sep {
-                out.push_str(" ");
-            }
-            out.push_str(format!("{}", param).as_str());
-            need_sep = true;
-        }
+
+        write_list!(out, &self.coq_params, " ").unwrap();
+
         out
     }
 
     fn format_args(&self) -> String {
         let mut out = String::with_capacity(100);
-        let mut need_sep = false;
-        for type_with_rfn in &self.args {
-            if need_sep {
-                out.push_str(", ");
-            }
-            out.push_str(format!("{}", type_with_rfn).as_str());
-            need_sep = true;
-        }
+
+        write_list!(out, &self.args, ", ").unwrap();
+
         out
     }
 
@@ -2768,18 +2706,23 @@ impl<'def> FunctionSpec<'def> {
 
             pattern.push_str("(");
             types.push_str("(");
+
             let mut need_sep = false;
             for (name, t) in v {
                 if need_sep {
                     pattern.push_str(", ");
                     types.push_str(" * ");
                 }
-                pattern.push_str(format!("{}", name).as_str());
-                types.push_str(format!("{}", t).as_str());
+
+                pattern.push_str(&name.to_string());
+                types.push_str(&t.to_string());
+
                 need_sep = true;
             }
+
             pattern.push_str(")");
             types.push_str(")");
+
             (pattern, CoqType::Literal(types))
         }
     }
