@@ -780,10 +780,10 @@ Section ltype_def.
         (lt_full : lty)
     | ShadowedLty {rt : Type} (lt_cur : lty) (r_cur : place_rfn rt) (lt_full : lty)
     | MagicLty
-        {rt_inner rt_full : Type}
-        (lt_cur : lty) (lt_inner : lty) (lt_full : lty)
-        (Cpre : rt_inner → rt_full → iProp Σ)
-        (Cpost : rt_inner → rt_full → iProp Σ)
+        {rt_inner : Type}
+        (lt_cur : lty) (lt_inner : lty)
+        (Cpre : rt_inner → iProp Σ)
+        (Cpost : rt_inner → iProp Σ)
   .
 
   (*
@@ -817,7 +817,7 @@ Section ltype_def.
         lty_rt lt_full
     | ShadowedLty lt_cur r_cur lt_full =>
         lty_rt lt_full
-    | MagicLty lt_cur _ _ _ _ =>
+    | MagicLty lt_cur _ _ _ =>
         lty_rt lt_cur
     end.
 
@@ -839,7 +839,7 @@ Section ltype_def.
         lty_st lt_full
     | ShadowedLty lt_cur r_cur lt_full =>
         lty_st lt_full
-    | MagicLty lt_cur _ _ _ _ =>
+    | MagicLty lt_cur _ _ _ =>
         lty_st lt_cur
     end.
 
@@ -866,8 +866,8 @@ Section ltype_def.
         lty_wf lt
     | @ShadowedLty rt_cur lt_cur r_cur lt_full =>
         lty_wf lt_cur ∧ lty_wf lt_full ∧ lty_rt lt_cur = rt_cur
-    | @MagicLty rt_inner rt_full lt_cur lt_inner lt_full _ _ =>
-        rt_inner = lty_rt lt_inner ∧ rt_full = lty_rt lt_full ∧ lty_wf lt_cur ∧ lty_wf lt_inner ∧ lty_wf lt_full
+    | @MagicLty rt_inner lt_cur lt_inner _ _ =>
+        rt_inner = lty_rt lt_inner ∧ lty_wf lt_cur ∧ lty_wf lt_inner
     end.
 
 
@@ -892,9 +892,9 @@ Section ltype_def.
           P lt_cur → P lt_inner → P lt_full → P (OpenedLty lt_cur lt_inner lt_full Cpre Cpost)) →
       (∀ κs (lt_full : lty), P lt_full → P (CoreableLty κs lt_full)) →
       (∀ (rt_cur : Type) (lt_cur : lty) (r_cur : place_rfn rt_cur) (lt_full : lty), P lt_cur → P lt_full → P (ShadowedLty lt_cur r_cur lt_full)) →
-      (∀ (rt_inner rt_full : Type) (lt_cur lt_inner lt_full : lty)
-        (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ),
-          P lt_cur → P lt_inner → P lt_full → P (MagicLty lt_cur lt_inner lt_full Cpre Cpost)) →
+      (∀ (rt_inner : Type) (lt_cur lt_inner : lty)
+        (Cpre : rt_inner → iProp Σ) (Cpost : rt_inner → iProp Σ),
+          P lt_cur → P lt_inner → P (MagicLty lt_cur lt_inner Cpre Cpost)) →
       ∀ lt : lty, P lt.
   Proof.
     intros P Hblocked Hshrblocked Hofty Halias Hmut Hshr Hbox Hptr Hstruct Harr Henum Hopened Hcoreable Hshadow Hmagic.
@@ -921,7 +921,7 @@ Section ltype_def.
           _
       | ShadowedLty lt_cur r_cur lt_full =>
           _
-      | MagicLty _ _ _ _ _ =>
+      | MagicLty _ _ _ _ =>
           _
       end); [apply IH.. | | | | | | | ].
       - apply Hstruct.
@@ -953,9 +953,9 @@ Section ltype_def.
           P lt_cur → P lt_inner → P lt_full → P (OpenedLty lt_cur lt_inner lt_full Cpre Cpost)) →
       (∀ κs (lt_full : lty), P lt_full → P (CoreableLty κs lt_full)) →
       (∀ (rt_cur : Type) (lt_cur : lty) (r_cur : place_rfn rt_cur) (lt_full : lty), P lt_cur → P lt_full → P (ShadowedLty lt_cur r_cur lt_full)) →
-      (∀ (rt_inner rt_full : Type) (lt_cur lt_inner lt_full : lty)
-        (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ),
-          P lt_cur → P lt_inner → P lt_full → P (MagicLty lt_cur lt_inner lt_full Cpre Cpost)) →
+      (∀ (rt_inner : Type) (lt_cur lt_inner : lty)
+        (Cpre : rt_inner → iProp Σ) (Cpost : rt_inner → iProp Σ),
+          P lt_cur → P lt_inner → P (MagicLty lt_cur lt_inner Cpre Cpost)) →
       ∀ lt : lty, P lt.
   Proof.
     intros P ? ? ? ? ? ? ? ? Hstruct Harr Henum Hopened Hcoreable Hshadow Hmagic lt.
@@ -998,9 +998,8 @@ Section ltype_def.
       (∀ κs (lt_full : lty), P lt_full → P (CoreableLty κs lt_full)) →
       (∀ (lt_cur : lty) (r_cur : place_rfn (lty_rt lt_cur)) (lt_full : lty),
         P lt_cur → P lt_full → P (ShadowedLty lt_cur r_cur lt_full)) →
-      (∀ (lt_cur lt_inner lt_full : lty) (Cpre : (lty_rt lt_inner) → lty_rt lt_full → iProp Σ)
-        (Cpost : (lty_rt lt_inner) → (lty_rt lt_full) → iProp Σ),
-          P lt_cur → P lt_inner → P lt_full → P (MagicLty lt_cur lt_inner lt_full Cpre Cpost)) →
+      (∀ (lt_cur lt_inner : lty) (Cpre : lty_rt lt_inner → iProp Σ) (Cpost : lty_rt lt_inner → iProp Σ),
+        P lt_cur → P lt_inner → P (MagicLty lt_cur lt_inner Cpre Cpost)) →
       ∀ lt : lty, lty_wf lt → P lt.
   Proof.
     intros P ???????? Hstruct Harr Henum Hopened Hcoreable Hshadow Hmagic lt Hwf.
@@ -1022,7 +1021,7 @@ Section ltype_def.
     - eapply Hcoreable; eauto.
     - destruct Hwf as (? & ? & <-).
       eapply Hshadow; eauto.
-    - destruct Hwf as (Heq1 & Heq2 & Hcur & Hinner & Hfull ). subst.
+    - destruct Hwf as (Heq1 & Hcur & Hinner). subst.
       eapply Hmagic; eauto.
   Qed.
 
@@ -1046,8 +1045,8 @@ Section ltype_def.
         1 + lty_size lt_full
     | ShadowedLty lt_cur r_cur lt_full =>
         1 + lty_size lt_cur + lty_size lt_full
-    | MagicLty lt_cur lt_inner lt_full Cpre Cpost =>
-        1 + max (lty_size lt_cur) (max (lty_size lt_inner) (lty_size lt_full))
+    | MagicLty lt_cur lt_inner Cpre Cpost =>
+        1 + max (lty_size lt_cur) (lty_size lt_inner)
     end.
   Definition lty_size_rel : lty → lty → Prop :=
     ltof _ lty_size.
@@ -1093,8 +1092,8 @@ Section ltype_def.
         lty_core lt_full
     | ShadowedLty lt_cur r_cur lt_full =>
         lty_core lt_full
-    | MagicLty lt_cur lt_inner lt_full Cpre Cpost =>
-        MagicLty lt_cur lt_inner lt_full Cpre Cpost
+    | MagicLty lt_cur lt_inner Cpre Cpost =>
+        MagicLty lt_cur lt_inner Cpre Cpost
     end.
 
   Lemma lty_core_syn_type_eq (lt : lty) :
@@ -1693,22 +1692,21 @@ Section ltype_def.
         ⌜lty_st lt_cur = lty_st lt_full⌝ ∗
         lty_own_pre core lt_cur k π ((rew Heq_cur in r_cur)) l ∗
         lty_own_pre core lt_full k π r l)%I;
-    lty_own_pre core (@MagicLty rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost) k π r l :=
+    lty_own_pre core (@MagicLty rt_inner lt_cur lt_inner Cpre Cpost) k π r l :=
       (** MagicLty *)
       ∃ ly, ⌜use_layout_alg (lty_st lt_cur) = Some ly⌝ ∗
         ⌜l `has_layout_loc` ly⌝ ∗
         loc_in_bounds l 0 (ly_size ly) ∗
         ⌜lty_st lt_cur = lty_st lt_inner⌝ ∗
-        ⌜lty_st lt_inner = lty_st lt_full⌝ ∗
 
       match k with
       | Owned wl =>
           lty_own_pre false lt_cur (Owned false) π r l ∗
           logical_step lftE
-          (∃ (Heq_inner : rt_inner = lty_rt lt_inner) (Heq_full : rt_full = lty_rt lt_full),
-            ∀ (r : rt_inner) (r' : rt_full),
-              Cpre r r' -∗
-              lty_own_pre false lt_inner (Owned false) π (PlaceIn (rew [id] Heq_inner in r)) l ={lftE ∪ shrE}=∗ Cpost r r')
+          (∃ (Heq_inner : rt_inner = lty_rt lt_inner),
+            ∀ (r : rt_inner),
+              Cpre r -∗
+              lty_own_pre false lt_inner (Owned false) π (PlaceIn (rew [id] Heq_inner in r)) l ={lftE ∪ shrE}=∗ Cpost r)
       | _ => False
       end
   .
@@ -1832,14 +1830,14 @@ Section ltype_def.
     - iDestruct "Hown" as (->) "(%Hst & Ha & Hb)".
       simpl in Ha. rewrite -Hst in Ha.
       iApply "IH"; done.
-    - iDestruct "Hown" as "(%ly' & %Halg & ? & ? & ? & ? & _)".
+    - iDestruct "Hown" as "(%ly' & %Halg & ? & ? & ? & ?)".
       simpl in *. assert (ly' = ly) as ->. { by eapply syn_type_has_layout_inj. }
       iFrame.
   Qed.
 
   Lemma lty_own_Owned_true_false (lt : lty) π r l :
     match lt with
-    | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ | MagicLty _ _ _ _ _ => False
+    | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ | MagicLty _ _ _ _ => False
     | _ => True
     end →
     lty_own lt (Owned true) π r l -∗
@@ -1867,7 +1865,7 @@ Section ltype_def.
   Qed.
   Lemma lty_own_Owned_false_true (lt : lty) π r l :
     match lt with
-    | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ | MagicLty _ _ _ _ _ => False
+    | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ | MagicLty _ _ _ _ => False
     | _ => True
     end →
     (lty_own lt (Owned false) π r l) -∗
@@ -2501,7 +2499,7 @@ Section ltype_def.
       iIntros "(%Heq_cur & %Hst & Ha & Hb)".
       iApply (IH2 with "Hb").
     - simp lty_own_pre.
-      iIntros "(%ly & % & % & ? & % & % & [])".
+      iIntros "(%ly & % & % & ? & % & [])".
   Qed.
   (* NOTE: The reverse does not hold because the core of [BlockedLty] is [OfTy], which has a sharing predicate, but [BlockedLty] doesn't *)
 
@@ -2690,16 +2688,16 @@ Section ltype_def.
   Global Arguments ShadowedLtype : simpl never.
   Global Typeclasses Opaque ShadowedLtype.
 
-  Program Definition MagicLtype {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full)
-      (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ) : ltype rt_cur := {|
-    ltype_lty := MagicLty (ltype_lty lt_cur) (ltype_lty lt_inner) (ltype_lty lt_full) Cpre Cpost;
+  Program Definition MagicLtype {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner)
+      (Cpre : rt_inner → iProp Σ) (Cpost : rt_inner → iProp Σ) : ltype rt_cur := {|
+    ltype_lty := MagicLty (ltype_lty lt_cur) (ltype_lty lt_inner) Cpre Cpost;
   |}.
   Next Obligation.
-    intros rt_cur rt_full lt_cur lt_full Cpre Cpost. simpl.
+    intros rt_cur lt_cur Cpre Cpost. simpl.
     rewrite ltype_rt_agree. done.
   Qed.
   Next Obligation.
-    intros rt_cur rt_inner rt_full [lt_cur <- Hcur] [lt_inner <- Hinner] [lt_full <- Hfull] Cpre Cpost; simpl.
+    intros rt_cur rt_inner [lt_cur <- Hcur] [lt_inner <- Hinner] Cpre Cpost; simpl.
     eauto.
   Qed.
   Global Typeclasses Opaque MagicLtype.
@@ -2819,10 +2817,10 @@ Section ltype_def.
       (∀ (rt_full : Type) κs (lt_full : ltype rt_full), P _ lt_full → P _ (CoreableLtype κs lt_full)) →
       (∀ (rt_cur rt_full : Type) (lt_cur : ltype rt_cur) (r_cur : place_rfn rt_cur) (lt_full : ltype rt_full),
         P _ lt_cur → P _ lt_full → P _ (ShadowedLtype lt_cur r_cur lt_full)) →
-      (∀ (rt_cur rt_inner rt_full : Type) (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full)
-        (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ),
-        P _ lt_cur → P _ lt_inner → P _ lt_full →
-        P _ (MagicLtype lt_cur lt_inner lt_full Cpre Cpost)) →
+      (∀ (rt_cur rt_inner : Type) (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner)
+        (Cpre : rt_inner → iProp Σ) (Cpost : rt_inner → iProp Σ),
+        P _ lt_cur → P _ lt_inner →
+        P _ (MagicLtype lt_cur lt_inner Cpre Cpost)) →
       ∀ (rt : Type) (lt : ltype rt), P _ lt.
     Proof.
       intros Hblocked Hshrblocked Hofty Halias Hmut Hshr Hbox Hptr Hstruct Harr Hen Hopened Hcoreable Hshadow Hmagic.
@@ -2833,7 +2831,7 @@ Section ltype_def.
         intros Hwf1 Hwf2. rewrite (proof_irrelevance _ Hwf1 Hwf2). done. }
 
       intros rt [lt <- Hwf].
-      induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH | rt en variant lte IH | rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost IH_cur IH_inner IH_full | κ lt_full IH | rt_cur lt_cur r_cur lt_full IH_cur IH_full | rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost IH_cur IH_inner IH_full ] using lty_induction; simpl.
+      induction lt as [ | | | | lt IH κ | lt IH κ | lt IH | lt ls IH | lts IH sls | rt def len lts IH | rt en variant lte IH | rt_inner rt_full lt_cur lt_inner lt_full Cpre Cpost IH_cur IH_inner IH_full | κ lt_full IH | rt_cur lt_cur r_cur lt_full IH_cur IH_full | rt_inner lt_cur lt_inner Cpre Cpost IH_cur IH_inner ] using lty_induction; simpl.
       - eapply P_irrel. apply Hblocked.
       - eapply P_irrel. apply Hshrblocked.
       - eapply P_irrel. apply Hofty.
@@ -2878,8 +2876,8 @@ Section ltype_def.
       - destruct Hwf as (Hwf_cur & Hwf_full & <-).
         specialize (Hshadow _ _ _ r_cur _ (IH_cur Hwf_cur) (IH_full Hwf_full)).
         eapply P_irrel. eapply Hshadow.
-      - destruct Hwf as (Heq1 & Heq2 & Hwf_cur & Hwf_inner & Hwf_full); subst.
-        specialize (Hmagic _ _ _ _ _ _ Cpre Cpost (IH_cur Hwf_cur) (IH_inner Hwf_inner) (IH_full Hwf_full)).
+      - destruct Hwf as (Heq & Hwf_cur & Hwf_inner); subst.
+        specialize (Hmagic _ _ _ _ Cpre Cpost (IH_cur Hwf_cur) (IH_inner Hwf_inner)).
         eapply P_irrel. eapply Hmagic.
     Qed.
   End induction.
@@ -3244,22 +3242,21 @@ Section ltype_def.
 
   Definition magic_ltype_own
       (rec : ltype_own_type) (rec_core : ltype_own_type)
-      {rt_cur rt_inner rt_full : Type}
-      (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full)
-      (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ)
+      {rt_cur rt_inner : Type}
+      (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner)
+      (Cpre : rt_inner → iProp Σ) (Cpost : rt_inner → iProp Σ)
       (k : bor_kind) (π : thread_id) (r : place_rfn rt_cur) (l : loc) : iProp Σ :=
     ∃ ly, ⌜use_layout_alg (ltype_st lt_cur) = Some ly⌝ ∗
       ⌜l `has_layout_loc` ly⌝ ∗
       loc_in_bounds l 0 (ly_size ly) ∗
       ⌜ltype_st lt_cur = ltype_st lt_inner⌝ ∗
-      ⌜ltype_st lt_inner = ltype_st lt_full⌝ ∗
       match k with
       | Owned wl =>
             ltype_own lt_cur (Owned false) π r l ∗
             logical_step lftE
-            (∀ (r : rt_inner) (r' : rt_full),
-              Cpre r r' -∗
-              ltype_own lt_inner (Owned false) π (PlaceIn r) l ={lftE ∪ shrE}=∗ Cpost r r')
+            (∀ (r : rt_inner),
+              Cpre r -∗
+              ltype_own lt_inner (Owned false) π (PlaceIn r) l ={lftE ∪ shrE}=∗ Cpost r)
       | _ => False
     end.
 
@@ -3791,33 +3788,31 @@ Section ltype_def.
     intros ?. done.
   Qed.
 
-  Lemma ltype_own_magic_unfold {rt_cur rt_inner rt_full : Type} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full)
-      (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ) k π r l :
-    ltype_own (MagicLtype lt_cur lt_inner lt_full Cpre Cpost) k π r l ≡ magic_ltype_own (@ltype_own) (@ltype_own_core) lt_cur lt_inner lt_full Cpre Cpost k π r l.
+  Lemma ltype_own_magic_unfold {rt_cur rt_inner : Type} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner)
+      (Cpre : rt_inner → iProp Σ) (Cpost : rt_inner → iProp Σ) k π r l :
+    ltype_own (MagicLtype lt_cur lt_inner Cpre Cpost) k π r l ≡ magic_ltype_own (@ltype_own) (@ltype_own_core) lt_cur lt_inner Cpre Cpost k π r l.
   Proof.
     rewrite /magic_ltype_own ?ltype_own_core_unseal /ltype_own_core_def ?ltype_own_unseal /ltype_own_def /ltype_own_pre.
     simp lty_own_pre.
     generalize (ltype_rt_agree lt_cur).
-    generalize (ltype_rt_agree lt_full).
     generalize (ltype_rt_agree lt_inner).
-    generalize (ltype_rt_agree (MagicLtype lt_cur lt_inner lt_full Cpre Cpost)).
+    generalize (ltype_rt_agree (MagicLtype lt_cur lt_inner Cpre Cpost)).
     simpl.
-    intros Heq1 Heq2 Heq3 Heq4. move : Cpre Cpost r.
-    move: Heq1 Heq2 Heq3 Heq4.
-    intros <- <- ->.
+    intros Heq1 Heq2 Heq3. move : Cpre Cpost r.
+    move: Heq1 Heq2 Heq3.
+    intros <- <-.
     intros Heq Cpre Cpost r.
     specialize (UIP_refl _ _ Heq) => ->. clear Heq.
     repeat f_equiv.
     - done.
-    - done.
     - iSplit.
-      + iIntros "(%Heq1 & %Heq2 & Ha)".
-        rewrite (UIP_refl _ _ Heq1). done.
-      + iIntros "Ha". iExists eq_refl, eq_refl. done.
+      + iIntros "(%Heq & Ha)".
+        rewrite (UIP_refl _ _ Heq). done.
+      + iIntros "Ha". iExists eq_refl. done.
   Qed.
-  Lemma ltype_own_core_magic_unfold {rt_cur rt_inner rt_full : Type} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full)
-      (Cpre : rt_inner → rt_full → iProp Σ) (Cpost : rt_inner → rt_full → iProp Σ) k π r l :
-    ltype_own_core (MagicLtype lt_cur lt_inner lt_full Cpre Cpost) k π r l ≡ magic_ltype_own (@ltype_own) (@ltype_own_core) lt_cur lt_inner lt_full Cpre Cpost k π r l.
+  Lemma ltype_own_core_magic_unfold {rt_cur rt_inner : Type} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner)
+      (Cpre : rt_inner → iProp Σ) (Cpost : rt_inner → iProp Σ) k π r l :
+    ltype_own_core (MagicLtype lt_cur lt_inner Cpre Cpost) k π r l ≡ magic_ltype_own (@ltype_own) (@ltype_own_core) lt_cur lt_inner Cpre Cpost k π r l.
   Proof.
     rewrite -ltype_own_magic_unfold.
     rewrite ltype_own_core_unseal ltype_own_unseal /ltype_own_core_def /ltype_own_def /ltype_own_pre.
@@ -3923,7 +3918,7 @@ Section ltype_def.
 
   Lemma ltype_own_Owned_true_false {rt} (lt : ltype rt) π r l :
     match ltype_lty lt with
-    | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ | MagicLty _ _ _ _ _ => False
+    | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ | MagicLty _ _ _ _ => False
     | _ => True
     end →
     ltype_own lt (Owned true) π r l -∗
@@ -3935,7 +3930,7 @@ Section ltype_def.
   Qed.
   Lemma ltype_own_Owned_false_true {rt} (lt : ltype rt) π r l :
     match ltype_lty lt with
-    | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ | MagicLty _ _ _ _ _ => False
+    | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ | MagicLty _ _ _ _ => False
     | _ => True
     end →
     ltype_own lt (Owned false) π r l -∗
@@ -4087,8 +4082,8 @@ Section ltype_def.
     - apply UIP_t.
     - apply proof_irrelevance.
   Qed.
-  Lemma ltype_core_magic {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost :
-    ltype_core (MagicLtype lt_cur lt_inner lt_full Cpre Cpost) = MagicLtype lt_cur lt_inner lt_full Cpre Cpost.
+  Lemma ltype_core_magic {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) Cpre Cpost :
+    ltype_core (MagicLtype lt_cur lt_inner Cpre Cpost) = MagicLtype lt_cur lt_inner Cpre Cpost.
   Proof.
     rewrite /ltype_core /MagicLtype /=.
     f_equiv; simpl.
@@ -4144,8 +4139,8 @@ Section ltype_def.
   Lemma ltype_st_shadowed {rt_cur rt_full} (lt_cur : ltype rt_cur) (r_cur : place_rfn rt_cur) (lt_full : ltype rt_full) :
     ltype_st (ShadowedLtype lt_cur r_cur lt_full) = ltype_st lt_full.
   Proof. done. Qed.
-  Lemma ltype_st_magic {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost :
-    ltype_st (MagicLtype lt_cur lt_inner lt_full Cpre Cpost) = ltype_st lt_cur.
+  Lemma ltype_st_magic {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) Cpre Cpost :
+    ltype_st (MagicLtype lt_cur lt_inner Cpre Cpost) = ltype_st lt_cur.
   Proof. done. Qed.
 
   (** Lifting the core equations to ltypes *)
@@ -4198,7 +4193,7 @@ Section ltype_def.
     | OpenedLty _ _ _ _ _  => []
     | CoreableLty κs _ => κs
     | ShadowedLty lt_cur r_cur lt_full => lty_blocked_lfts lt_full
-    | MagicLty _ _ _ _ _ => []
+    | MagicLty _ _ _ _ => []
     end.
 
   Definition ltype_blocked_lfts {rt} (lt : ltype rt) : list lft :=
@@ -4227,7 +4222,7 @@ Section ltype_def.
     | CoreableLty _ _ => True
     | ShadowedLty lt _ _ =>
         False
-    | MagicLty _ _ _ _ _ => False
+    | MagicLty _ _ _ _ => False
     end.
   Definition ltype_uniq_deinitializable {rt} (lt : ltype rt) :=
     lty_uniq_deinitializable lt.(ltype_lty).
@@ -4292,7 +4287,7 @@ Section ltype_def.
     | CoreableLty _ _ => Some None
     | ShadowedLty lt _ _ =>
         None
-    | MagicLty _ _ _ _ _ => None
+    | MagicLty _ _ _ _ => None
     end.
   Definition ltype_uniq_extractable {rt} (lt : ltype rt) : option (option lft) :=
     lty_uniq_extractable lt.(ltype_lty).
@@ -4401,7 +4396,7 @@ Ltac simp_ltype_core Heq :=
       rewrite (ltype_core_coreable) in Heq
   | _ = ltype_core (ShadowedLtype _ _ _) =>
       rewrite (ltype_core_shadowed _ _ _) in Heq
-  | _ = ltype_core (MagicLtype _ _ _ _ _) =>
+  | _ = ltype_core (MagicLtype _ _ _ _) =>
       rewrite (ltype_core_magic) in Heq
   end.
 Ltac simp_ltype_st Heq :=
@@ -5559,8 +5554,8 @@ Section blocked.
       rewrite -ltype_own_core_equiv. iApply ("Ha2" with "Hdead Hb").
   Qed.
 
-  Lemma magic_ltype_imp_unblockable {rt_cur rt_inner rt_full} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (lt_full : ltype rt_full) Cpre Cpost κs :
-    ⊢ imp_unblockable κs (MagicLtype lt_cur lt_inner lt_full Cpre Cpost).
+  Lemma magic_ltype_imp_unblockable {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) Cpre Cpost κs :
+    ⊢ imp_unblockable κs (MagicLtype lt_cur lt_inner Cpre Cpost).
   Proof.
     iModIntro. iSplitL.
     - iIntros (κ' ????). rewrite ltype_own_core_equiv ltype_core_magic. eauto.
@@ -5617,7 +5612,7 @@ Section blocked.
     - iIntros (rt_full κ' lt_full Hdead). iApply coreable_ltype_imp_unblockable.
     - iIntros (rt_cur rt_full lt_cur r_cur lt_full _ Hub).
       iApply shadowed_ltype_imp_unblockable. done.
-    - iIntros (rt_cur rt_inner rt_full lt_cur lt_inner ty_full Cpre R Cpost IH1 IH2).
+    - iIntros (rt_cur rt_inner lt_cur lt_inner Cpre R Cpost IH).
       iApply magic_ltype_imp_unblockable.
   Qed.
 

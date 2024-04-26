@@ -2063,7 +2063,7 @@ Section judgments.
         (*owned_subltype_step E L false (l ◁ₗ[π, bk'] r' @ lt') (l ◁ₗ[π, bk] r @ ◁ ty) T*)
         match bk' with
         | Owned wl =>
-          prove_with_subtype E L2 false ProveDirect (maybe_creds (negb wl) ∗ ⌜if negb wl then match ltype_lty rt2 lt2 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ _ => False | _ => True end else True⌝) (λ L3 κs2 R3,
+          prove_with_subtype E L2 false ProveDirect (maybe_creds (negb wl) ∗ ⌜if negb wl then match ltype_lty rt2 lt2 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ => False | _ => True end else True⌝) (λ L3 κs2 R3,
             match ltype_blocked_lfts lt2 with
             | [] =>
                 (* we could unblock everything, directly subsume *)

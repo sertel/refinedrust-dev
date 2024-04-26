@@ -520,7 +520,7 @@ Section typing.
     λ T, i2p (subsume_full_own_loc_owned_false π E L l lt1 lt2 r1 r2 T).
 
   Lemma subsume_full_own_loc_owned_false_true {rt1 rt2} π E L s l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 T
-    `{!TCDone (match ltype_lty _ lt2 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ _ => False | _ => True end)} :
+    `{!TCDone (match ltype_lty _ lt2 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ => False | _ => True end)} :
     prove_with_subtype E L s ProveDirect (have_creds) (λ L2 κs R,
       subsume_full E L2 s (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) (λ L3 R2, T L3 (R ∗ R2)))
     ⊢ subsume_full E L s (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned true] r2 @ lt2) T.
@@ -536,12 +536,12 @@ Section typing.
     iApply (ltype_own_Owned_false_true with "Hl Hcred"); done.
   Qed.
   Global Instance subsume_full_own_loc_owned_false_true_inst {rt1 rt2} π E L s l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2
-    `{!TCDone (match ltype_lty _ lt2 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ _ => False | _ => True end)} :
+    `{!TCDone (match ltype_lty _ lt2 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ => False | _ => True end)} :
     SubsumeFull E L s (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned true] r2 @ lt2) | 1001 :=
     λ T, i2p (subsume_full_own_loc_owned_false_true π E L s l lt1 lt2 r1 r2 T).
 
   Lemma subsume_full_own_loc_owned_true_false {rt1 rt2} π E L s l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2 T
-    `{!TCDone (match ltype_lty _ lt1 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ _ => False | _ => True end)} :
+    `{!TCDone (match ltype_lty _ lt1 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ => False | _ => True end)} :
       introduce_with_hooks E L (£ (num_cred - 1) ∗ atime 1) (λ L2,
       subsume_full E L2 s (l ◁ₗ[π, Owned false] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) T)
     ⊢ subsume_full E L s (l ◁ₗ[π, Owned true] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) T.
@@ -553,7 +553,7 @@ Section typing.
     by iApply ("HT" with "[//] [//] CTX HE HL").
   Qed.
   Global Instance subsume_full_own_loc_owned_true_false_inst {rt1 rt2} π E L s l (lt1 : ltype rt1) (lt2 : ltype rt2) r1 r2
-    `{!TCDone (match ltype_lty _ lt1 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ _ => False | _ => True end)} :
+    `{!TCDone (match ltype_lty _ lt1 with | OpenedLty _ _ _ _ _ | CoreableLty _ _ | ShadowedLty _ _ _ => False | MagicLty _ _ _ _ => False | _ => True end)} :
     SubsumeFull E L s (l ◁ₗ[π, Owned true] r1 @ lt1) (l ◁ₗ[π, Owned false] r2 @ lt2) | 1001 :=
     λ T, i2p (subsume_full_own_loc_owned_true_false π E L s l lt1 lt2 r1 r2 T).
 
