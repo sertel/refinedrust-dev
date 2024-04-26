@@ -430,13 +430,12 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     info!("generating struct use for {:?}", adt.did());
                     // register the ADT, if necessary
                     self.register_adt(*adt)?;
-                    self.generate_struct_use_noshim(adt.did(), *args, adt_deps)
-                        .map(|x| radium::Type::Struct(x))
+                    self.generate_struct_use_noshim(adt.did(), *args, adt_deps).map(radium::Type::Struct)
                 } else if adt.is_enum() {
                     if let Some(variant) = variant {
                         self.register_adt(*adt)?;
                         self.generate_enum_variant_use_noshim(adt.did(), variant, args.iter(), adt_deps)
-                            .map(|x| radium::Type::Struct(x))
+                            .map(radium::Type::Struct)
                     } else {
                         Err(TranslationError::UnknownError(
                             "a non-downcast enum is not a structlike".to_string(),
@@ -448,7 +447,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     })
                 }
             },
-            TyKind::Tuple(args) => self.generate_tuple_use(*args, adt_deps).map(|x| radium::Type::Literal(x)),
+            TyKind::Tuple(args) => self.generate_tuple_use(*args, adt_deps).map(radium::Type::Literal),
             _ => Err(TranslationError::UnknownError("not a structlike".to_string())),
         }
     }
@@ -813,7 +812,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let ty_name = strip_coq_ident(format!("{}_inv_t", struct_name).as_str());
             let res = spec_parser
                 .parse_invariant_spec(&ty_name, &outer_attrs, ty_param_defs, &lft_params)
-                .map_err(|err| TranslationError::FatalError(err))?;
+                .map_err(TranslationError::FatalError)?;
             invariant_spec = Some(res.0);
             expect_refinement = !res.1;
         } else {
@@ -848,9 +847,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 expect_refinement,
                 |lit| self.intern_literal(lit),
             );
-            let field_spec = parser
-                .parse_field_spec(&f_name, &attrs)
-                .map_err(|err| TranslationError::UnknownError(err))?;
+            let field_spec =
+                parser.parse_field_spec(&f_name, &attrs).map_err(TranslationError::UnknownError)?;
 
             info!("adt variant field: {:?} -> {} (with rfn {:?})", f_name, field_spec.ty, field_spec.rfn);
             builder.add_field(&f_name, field_spec.ty);
@@ -1187,7 +1185,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 let mut parser = VerboseEnumSpecParser::new();
                 enum_spec = parser
                     .parse_enum_spec("", &attributes, &variant_attrs, &ty_param_defs, &lft_params)
-                    .map_err(|err| TranslationError::FatalError(err))?;
+                    .map_err(TranslationError::FatalError)?;
             } else {
                 // generate a specification
                 let decl;
@@ -1609,7 +1607,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
                     if let Some(variant) = variant {
                         self.register_adt(*adt)?;
                         let v = &adt.variants()[variant];
-                        self.generate_enum_variant_use(v.def_id, args.iter(), scope).map(|x| Some(x))
+                        self.generate_enum_variant_use(v.def_id, args.iter(), scope).map(Some)
                     } else {
                         Err(TranslationError::UnknownError(
                             "a non-downcast enum is not a structlike".to_string(),
@@ -1621,15 +1619,14 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
                     })
                 }
             },
-            TyKind::Tuple(args) => self
-                .generate_tuple_use(*args, &mut TranslationStateInner::InFunction(scope))
-                .map(|x| Some(x)),
+            TyKind::Tuple(args) => {
+                self.generate_tuple_use(*args, &mut TranslationStateInner::InFunction(scope)).map(Some)
+            },
             TyKind::Closure(_, args) => {
                 // use the upvar tuple
                 let closure_args = args.as_closure();
                 let upvars = closure_args.upvar_tys();
-                self.generate_tuple_use(upvars, &mut TranslationStateInner::InFunction(scope))
-                    .map(|x| Some(x))
+                self.generate_tuple_use(upvars, &mut TranslationStateInner::InFunction(scope)).map(Some)
             },
             _ => Err(TranslationError::UnknownError("not a structlike".to_string())),
         }

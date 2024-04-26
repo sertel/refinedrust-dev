@@ -507,7 +507,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     // ty::RegionVid::from_u32(1+r));
                     translated_fn
                         .add_universal_lifetime(name.clone(), lft.to_string())
-                        .map_err(|e| TranslationError::UnknownError(e))?;
+                        .map_err(TranslationError::UnknownError)?;
                 }
 
                 let mut inclusion_tracker = InclusionTracker::new(info);
@@ -557,7 +557,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 for (lft1, lft2) in universal_constraints {
                     t.translated_fn
                         .add_universal_lifetime_constraint(lft1, lft2)
-                        .map_err(|e| TranslationError::UnknownError(e))?;
+                        .map_err(TranslationError::UnknownError)?;
                 }
 
                 // compute meta information needed to generate the spec
@@ -643,7 +643,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 for (lft, name) in universal_lifetimes.values() {
                     translated_fn
                         .add_universal_lifetime(name.clone(), lft.to_string())
-                        .map_err(|e| TranslationError::UnknownError(e))?;
+                        .map_err(TranslationError::UnknownError)?;
                 }
 
                 let mut inclusion_tracker = InclusionTracker::new(info);
@@ -688,7 +688,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 for (lft1, lft2) in universal_constraints {
                     t.translated_fn
                         .add_universal_lifetime_constraint(lft1, lft2)
-                        .map_err(|e| TranslationError::UnknownError(e))?;
+                        .map_err(TranslationError::UnknownError)?;
                 }
 
                 // process attributes
@@ -777,9 +777,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, |lit| {
                         ty_translator.translator.intern_literal(lit)
                     });
+
                 parser
                     .parse_closure_spec(v, &mut self.translated_fn, meta, |x| ty_translator.make_tuple_use(x))
-                    .map_err(|e| TranslationError::AttributeError(e))?;
+                    .map_err(TranslationError::AttributeError)?;
+
                 trace!("leaving process_closure_attrs");
                 Ok(())
             },
@@ -816,9 +818,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, |lit| {
                         ty_translator.translator.intern_literal(lit)
                     });
+
                 parser
                     .parse_function_spec(v, &mut self.translated_fn)
-                    .map_err(|e| TranslationError::AttributeError(e))?;
+                    .map_err(TranslationError::AttributeError)?;
+
                 Ok(())
             },
             _ => Err(TranslationError::UnknownAttributeParser(parser)),
@@ -830,18 +834,20 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         match k {
             info::UniversalRegionKind::Function => Some(radium::UniversalLft::Function),
             info::UniversalRegionKind::Static => Some(radium::UniversalLft::Static),
+
             info::UniversalRegionKind::Local => self
                 .ty_translator
                 .scope
                 .borrow()
                 .lookup_universal_region(r)
-                .map(|x| radium::UniversalLft::Local(x)),
+                .map(radium::UniversalLft::Local),
+
             info::UniversalRegionKind::External => self
                 .ty_translator
                 .scope
                 .borrow()
                 .lookup_universal_region(r)
-                .map(|x| radium::UniversalLft::External(x)),
+                .map(radium::UniversalLft::External),
         }
     }
 

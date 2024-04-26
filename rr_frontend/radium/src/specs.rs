@@ -2997,7 +2997,7 @@ impl<'def> FunctionSpecBuilder<'def> {
             pre: self.pre,
             args: self.args,
             existentials: self.existential,
-            ret: self.ret.unwrap_or_else(|| TypeWithRef::make_unit()),
+            ret: self.ret.unwrap_or_else(TypeWithRef::make_unit),
             post: self.post,
             has_spec: self.has_spec,
         }

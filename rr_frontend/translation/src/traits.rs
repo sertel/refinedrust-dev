@@ -65,8 +65,7 @@ pub fn resolve_impl_source<'tcx>(
         }
     };
 
-    let source = tcx.codegen_select_candidate((param_env, trait_ref));
-    source.map_or_else(|_| None, |x| Some(x))
+    tcx.codegen_select_candidate((param_env, trait_ref)).ok()
 }
 
 pub fn resolve_trait_or_item<'tcx>(
