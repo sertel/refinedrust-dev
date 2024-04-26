@@ -816,11 +816,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 /// Register shims in the procedure registry.
 fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
     for shim in vcx.shim_registry.get_function_shims() {
-        let did;
-        if shim.is_method {
-            did = utils::try_resolve_method_did(vcx.env.tcx(), &shim.path);
+        let did = if shim.is_method {
+            utils::try_resolve_method_did(vcx.env.tcx(), &shim.path)
         } else {
-            did = utils::try_resolve_did(vcx.env.tcx(), &shim.path);
+            utils::try_resolve_did(vcx.env.tcx(), &shim.path)
         };
 
         match did {
@@ -1022,37 +1021,29 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
 
         info!("\nTranslating function {}", fname);
 
-        let translator;
-
         let ty: ty::EarlyBinder<ty::Ty<'tcx>> = vcx.env.tcx().type_of(proc.get_id());
         let ty = ty.instantiate_identity();
-        match ty.kind() {
-            ty::TyKind::FnDef(_def, _args) => {
-                translator = FunctionTranslator::new(
-                    vcx.env,
-                    meta,
-                    proc,
-                    &filtered_attrs,
-                    vcx.type_translator,
-                    &vcx.procedure_registry,
-                    &vcx.const_registry,
-                )
-            },
-            ty::TyKind::Closure(_, _) => {
-                translator = FunctionTranslator::new_closure(
-                    vcx.env,
-                    meta,
-                    proc,
-                    &filtered_attrs,
-                    vcx.type_translator,
-                    &vcx.procedure_registry,
-                    &vcx.const_registry,
-                )
-            },
-            _ => {
-                translator =
-                    Err(function_body::TranslationError::UnknownError("unknown function kind".to_string()));
-            },
+
+        let translator = match ty.kind() {
+            ty::TyKind::FnDef(_def, _args) => FunctionTranslator::new(
+                vcx.env,
+                meta,
+                proc,
+                &filtered_attrs,
+                vcx.type_translator,
+                &vcx.procedure_registry,
+                &vcx.const_registry,
+            ),
+            ty::TyKind::Closure(_, _) => FunctionTranslator::new_closure(
+                vcx.env,
+                meta,
+                proc,
+                &filtered_attrs,
+                vcx.type_translator,
+                &vcx.procedure_registry,
+                &vcx.const_registry,
+            ),
+            _ => Err(function_body::TranslationError::UnknownError("unknown function kind".to_string())),
         };
 
         if mode.is_only_spec() {

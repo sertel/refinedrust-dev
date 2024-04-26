@@ -209,8 +209,7 @@ impl<'a> ShimRegistry<'a> {
         let deser: serde_json::Value = serde_json::from_reader(reader).unwrap();
 
         // We support both directly giving the items array, or also specifying a path to import
-        let v: Vec<serde_json::Value>;
-        match deser {
+        let v = match deser {
             serde_json::Value::Object(obj) => {
                 let path =
                     obj.get("refinedrust_path").ok_or(format!("Missing attribute \"refinedrust_path\""))?;
@@ -249,13 +248,13 @@ impl<'a> ShimRegistry<'a> {
 
                 let arr = obj.get("items").ok_or(format!("Missing attribute \"items\""))?;
                 let arr = arr.as_array().ok_or(format!("Expected array for \"items\" attribute"))?;
-                v = arr.clone();
+                arr.clone()
             },
-            serde_json::Value::Array(arr) => {
-                v = arr;
-            },
+
+            serde_json::Value::Array(arr) => arr,
+
             _ => return Err("invalid Json format".to_string()),
-        }
+        };
 
         for i in v {
             let kind = Self::get_shim_kind(&i)?;

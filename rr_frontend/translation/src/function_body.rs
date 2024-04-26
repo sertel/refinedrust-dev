@@ -353,79 +353,73 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let body = proc.get_mir();
         Self::dump_body(body);
 
-        let closure_kind;
-
         let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
         let ty = ty.instantiate_identity();
-        match ty.kind() {
+
+        let closure_kind = match ty.kind() {
             TyKind::Closure(_def, closure_args) => {
                 assert!(ty.is_closure());
-                let clos = closure_args.as_closure();
-
-                closure_kind = clos.kind();
+                closure_args.as_closure().kind()
             },
             _ => panic!("can not handle non-closures"),
         };
 
         let local_decls = &body.local_decls;
         let closure_arg = local_decls.get(Local::from_usize(1)).unwrap();
-        let closure_ty;
 
-        match closure_kind {
+        let closure_ty = match closure_kind {
             ty::ClosureKind::Fn => {
-                if let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() {
-                    closure_ty = ty;
-                } else {
+                let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() else {
                     unreachable!();
-                }
+                };
+
+                ty
             },
+
             ty::ClosureKind::FnMut => {
-                if let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() {
-                    closure_ty = ty;
-                } else {
+                let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() else {
                     unreachable!("unexpected type {:?}", closure_arg.ty);
-                }
-            },
-            ty::ClosureKind::FnOnce => {
-                closure_ty = &closure_arg.ty;
-            },
-        }
+                };
 
-        let parent_args;
+                ty
+            },
+
+            ty::ClosureKind::FnOnce => &closure_arg.ty,
+        };
+
         let mut capture_regions = Vec::new();
-        let sig;
-        let captures;
-        let upvars_tys;
-        if let ty::TyKind::Closure(did, closure_args) = closure_ty.kind() {
-            let clos = closure_args.as_closure();
 
-            let tupled_upvars_tys = clos.tupled_upvars_ty();
-            upvars_tys = clos.upvar_tys();
-            parent_args = clos.parent_args();
-            let unnormalized_sig = clos.sig();
-            sig = normalize_in_function(proc.get_id(), env.tcx(), unnormalized_sig)?;
-            info!("closure sig: {:?}", sig);
+        let ty::TyKind::Closure(did, closure_args) = closure_ty.kind() else {
+            unreachable!();
+        };
 
-            captures = env.tcx().closure_captures(did.as_local().unwrap());
-            info!("Closure has captures: {:?}", captures);
+        let clos = closure_args.as_closure();
 
-            // find additional lifetime parameters
-            for (place, ty) in captures.iter().zip(clos.upvar_tys().iter()) {
-                if let Some(_) = place.region {
-                    // find region from ty
-                    if let ty::TyKind::Ref(region, _, _) = ty.kind() {
-                        capture_regions.push(*region);
-                    }
+        let tupled_upvars_tys = clos.tupled_upvars_ty();
+        let upvars_tys = clos.upvar_tys();
+        let parent_args = clos.parent_args();
+        let unnormalized_sig = clos.sig();
+
+        let sig = normalize_in_function(proc.get_id(), env.tcx(), unnormalized_sig)?;
+        info!("closure sig: {:?}", sig);
+
+        let captures = env.tcx().closure_captures(did.as_local().unwrap());
+        info!("Closure has captures: {:?}", captures);
+
+        // find additional lifetime parameters
+        for (place, ty) in captures.iter().zip(clos.upvar_tys().iter()) {
+            if let Some(_) = place.region {
+                // find region from ty
+                if let ty::TyKind::Ref(region, _, _) = ty.kind() {
+                    capture_regions.push(*region);
                 }
             }
-            info!("Closure capture regions: {:?}", capture_regions);
-
-            info!("Closure arg upvar_tys: {:?}", tupled_upvars_tys);
-            info!("Function signature: {:?}", sig);
-            info!("Closure generic args: {:?}", parent_args);
-        } else {
-            unreachable!();
         }
+
+        info!("Closure capture regions: {:?}", capture_regions);
+        info!("Closure arg upvar_tys: {:?}", tupled_upvars_tys);
+        info!("Function signature: {:?}", sig);
+        info!("Closure generic args: {:?}", parent_args);
 
         match PoloniusInfo::new(env, proc) {
             Ok(info) => {
@@ -452,32 +446,33 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // Process the lifetime parameters that come from the captures
                 for r in capture_regions {
                     // TODO: problem: we're introducing inconsistent names here.
-                    if let ty::RegionKind::ReVar(r) = r.kind() {
-                        let lft = info.mk_atomic_region(r);
-                        let name = format_atomic_region_direct(&lft, None);
-                        universal_lifetimes.insert(r, (name, None));
-                    } else {
+                    let ty::RegionKind::ReVar(r) = r.kind() else {
                         unreachable!();
-                    }
+                    };
+
+                    let lft = info.mk_atomic_region(r);
+                    let name = format_atomic_region_direct(&lft, None);
+                    universal_lifetimes.insert(r, (name, None));
                 }
+
                 // also add the lifetime for the outer reference
                 let mut maybe_outer_lifetime = None;
                 if let ty::TyKind::Ref(r, _, _) = closure_arg.ty.kind() {
-                    if let ty::RegionKind::ReVar(r) = r.kind() {
-                        // We need to do some hacks here to find the right Polonius region:
-                        // `r` is the non-placeholder region that the variable gets, but we are
-                        // looking for the corresponding placeholder region
-                        let r2 = Self::find_placeholder_region_for(r, info).unwrap();
-
-                        info!("using lifetime {:?} for closure universal", r2);
-                        let lft = info.mk_atomic_region(r2);
-                        let name = format_atomic_region_direct(&lft, None);
-                        universal_lifetimes.insert(r2, (name, None));
-
-                        maybe_outer_lifetime = Some(r2);
-                    } else {
+                    let ty::RegionKind::ReVar(r) = r.kind() else {
                         unreachable!();
-                    }
+                    };
+
+                    // We need to do some hacks here to find the right Polonius region:
+                    // `r` is the non-placeholder region that the variable gets, but we are
+                    // looking for the corresponding placeholder region
+                    let r2 = Self::find_placeholder_region_for(r, info).unwrap();
+
+                    info!("using lifetime {:?} for closure universal", r2);
+                    let lft = info.mk_atomic_region(r2);
+                    let name = format_atomic_region_direct(&lft, None);
+                    universal_lifetimes.insert(r2, (name, None));
+
+                    maybe_outer_lifetime = Some(r2);
                 }
 
                 // detuple the inputs
@@ -571,17 +566,18 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     let translated_ty = t.ty_translator.translate_type(&ty)?;
                     translated_upvars_types.push(translated_ty);
                 }
-                let meta;
-                {
+
+                let meta = {
                     let scope = t.ty_translator.scope.borrow();
-                    meta = ClosureMetaInfo {
+
+                    ClosureMetaInfo {
                         kind: closure_kind,
                         captures,
                         capture_tys: &translated_upvars_types,
                         closure_lifetime: maybe_outer_lifetime
                             .map(|x| scope.lookup_universal_region(x).unwrap()),
-                    };
-                }
+                    }
+                };
 
                 // process attributes
                 t.process_closure_attrs(&inputs, &output, meta)?;
@@ -616,13 +612,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let sig = match ty.kind() {
             TyKind::FnDef(_def, _args) => {
                 assert!(ty.is_fn());
-                let sig = ty.fn_sig(env.tcx());
-                sig
+                ty.fn_sig(env.tcx())
             },
             _ => panic!("can not handle non-fns"),
         };
-        let sig = normalize_in_function(proc.get_id(), env.tcx(), sig)?;
 
+        let sig = normalize_in_function(proc.get_id(), env.tcx(), sig)?;
         info!("Function signature: {:?}", sig);
 
         match PoloniusInfo::new(env, proc) {
