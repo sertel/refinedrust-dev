@@ -771,7 +771,8 @@ impl FunctionCode {
             });
 
             formatted_args.push_str(format!("\n{}]", make_indent(1).as_str()).as_str());
-            return formatted_args;
+
+            formatted_args
         };
 
         let mut formatted_args = String::with_capacity(100);

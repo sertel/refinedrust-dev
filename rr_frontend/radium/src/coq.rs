@@ -166,22 +166,8 @@ impl CoqType {
     pub fn is_closed(&self) -> bool {
         match self {
             Self::Var(_) => false,
-            Self::Prod(v) => {
-                for t in v {
-                    if !t.is_closed() {
-                        return false;
-                    }
-                }
-                return true;
-            },
-            Self::PList(_, tys) => {
-                for t in tys {
-                    if !t.is_closed() {
-                        return false;
-                    }
-                }
-                return true;
-            },
+            Self::Prod(v) => v.iter().all(|t| t.is_closed()),
+            Self::PList(_, tys) => tys.iter().all(|t| t.is_closed()),
             Self::Ttype(box ty) => ty.is_closed(),
             Self::PlaceRfn(t) => t.is_closed(),
             Self::Literal(..) => true,

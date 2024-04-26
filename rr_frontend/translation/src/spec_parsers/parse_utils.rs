@@ -303,7 +303,8 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
                 }
             }
         }
-        return None;
+
+        None
     };
 
     let cs = &s;

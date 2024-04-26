@@ -872,6 +872,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         used_names: &HashSet<String>,
     ) -> Option<String> {
         let debug_info = &body.var_debug_info;
+
         for dbg in debug_info {
             let name = &dbg.name;
             let val = &dbg.value;
@@ -897,7 +898,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             }
         }
 
-        return None;
+        None
     }
 
     fn dump_body(body: &Body) {

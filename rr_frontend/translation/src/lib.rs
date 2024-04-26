@@ -1130,7 +1130,7 @@ pub fn get_filtered_functions(env: &Environment<'_>) -> Vec<LocalDefId> {
                 return false;
             }
 
-            return true;
+            true
         })
         .collect();
 
