@@ -2957,7 +2957,7 @@ impl<'def> FunctionSpecBuilder<'def> {
 
     /// Set the return type of the function
     pub fn set_ret_type(&mut self, ret: TypeWithRef<'def>) -> Result<(), String> {
-        if let Some(_) = self.ret {
+        if self.ret.is_some() {
             return Err("Re-definition of return type".to_string());
         }
         self.ret = Some(ret);

@@ -635,7 +635,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         base_dir_path.push(stem);
 
-        if let Err(_) = fs::read_dir(base_dir_path.as_path()) {
+        if fs::read_dir(base_dir_path.as_path()).is_err() {
             warn!("Output directory {:?} does not exist, creating directory", base_dir_path);
             fs::create_dir_all(base_dir_path.as_path()).unwrap();
         }
@@ -707,7 +707,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write generated (subdirectory "generated")
         info!("outputting generated code to {}", generated_dir_path.to_str().unwrap());
-        if let Err(_) = fs::read_dir(generated_dir_path) {
+        if fs::read_dir(generated_dir_path).is_err() {
             warn!("Output directory {:?} does not exist, creating directory", generated_dir_path);
             fs::create_dir_all(generated_dir_path).unwrap();
         } else {

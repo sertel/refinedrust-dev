@@ -147,7 +147,7 @@ impl<'def> ProcedureScope<'def> {
 
     /// Register a function.
     pub fn register_function(&mut self, did: &DefId, meta: ProcedureMeta) -> Result<(), String> {
-        if let Some(_) = self.name_map.insert(*did, meta) {
+        if self.name_map.insert(*did, meta).is_some() {
             Err(format!("function for defid {:?} has already been registered", did))
         } else {
             Ok(())
@@ -408,7 +408,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
         // find additional lifetime parameters
         for (place, ty) in captures.iter().zip(clos.upvar_tys().iter()) {
-            if let Some(_) = place.region {
+            if place.region.is_some() {
                 // find region from ty
                 if let ty::TyKind::Ref(region, _, _) = ty.kind() {
                     capture_regions.push(*region);
@@ -2327,7 +2327,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Collect all the regions appearing in a type.
     fn find_region_variables_of_place_type(&self, ty: PlaceTy<'tcx>) -> Vec<Region> {
         let mut collector = TyRegionCollectFolder::new(self.env.tcx());
-        if let Some(_) = ty.variant_index {
+        if ty.variant_index.is_some() {
             panic!("find_region_variables_of_place_type: don't support enums");
         }
 
@@ -2735,7 +2735,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 StatementKind::Assign(b) => {
                     let (plc, val) = b.as_ref();
 
-                    if let Some(_) = self.is_spec_closure_local(plc.local)? {
+                    if (self.is_spec_closure_local(plc.local)?).is_some() {
                         info!("skipping assignment to spec closure local: {:?}", plc);
                     } else if let Some(rewritten_ty) = self.checked_op_temporaries.get(&plc.local) {
                         // if this is a checked op, be sure to remember it

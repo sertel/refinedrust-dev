@@ -250,11 +250,10 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                     },
                     "refines" => {
                         let term = IdentOrTerm::parse(&buffer, &meta).map_err(str_err)?;
-                        if let Some(_) = abstracted_refinement {
+                        if abstracted_refinement.is_some() {
                             return Err("multiple refines specifications given".to_string());
-                        } else {
-                            abstracted_refinement = Some(term.to_string());
                         }
+                        abstracted_refinement = Some(term.to_string());
                     },
                     "context" => {
                         let param = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;

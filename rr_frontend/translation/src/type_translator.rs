@@ -420,7 +420,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         match ty.kind() {
             TyKind::Adt(adt, args) => {
                 // Check if we have a shim
-                if let Some(_) = self.lookup_adt_shim(adt.did()) {
+                if self.lookup_adt_shim(adt.did()).is_some() {
                     self.generate_adt_shim_use(adt, args, adt_deps)
                 } else if adt.is_box() {
                     // TODO: for now, Box gets a special treatment and is not accurately
@@ -1347,7 +1347,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                         adt_deps.insert(adt.did());
                     }
 
-                    if let Some(_) = self.lookup_adt_shim(adt.did()) {
+                    if self.lookup_adt_shim(adt.did()).is_some() {
                         self.generate_adt_shim_use(adt, substs, &mut *state)
                     } else if adt.is_struct() {
                         self.generate_structlike_use_internal(ty, None, &mut *state)
