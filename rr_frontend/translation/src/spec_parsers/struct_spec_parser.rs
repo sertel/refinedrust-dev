@@ -271,7 +271,6 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                     },
                     _ => {
                         //skip, this may be part of an enum spec
-                        ()
                     },
                 }
             }

@@ -1234,7 +1234,7 @@ fn scan_loadpaths(paths: &[std::path::PathBuf]) -> io::Result<HashMap<String, st
 /// Translate a crate, creating a `VerificationCtxt` in the process.
 pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F) -> Result<(), String>
 where
-    F: Fn(VerificationCtxt<'tcx, '_>) -> (),
+    F: Fn(VerificationCtxt<'tcx, '_>),
 {
     let env = Environment::new(tcx);
     let env: &Environment = &*Box::leak(Box::new(env));

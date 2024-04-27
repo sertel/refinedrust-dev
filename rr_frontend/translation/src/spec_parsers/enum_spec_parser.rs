@@ -130,7 +130,6 @@ impl EnumSpecParser for VerboseEnumSpecParser {
                         },
                         _ => {
                             // skip and ignore other attributes
-                            ()
                         },
                     }
                 }

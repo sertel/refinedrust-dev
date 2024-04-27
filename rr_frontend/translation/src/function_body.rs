@@ -2799,14 +2799,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 StatementKind::FakeRead(b) => {
                     // we can probably ignore this, but I'm not sure
                     info!("Ignoring FakeRead: {:?}", b);
-                    ()
                 },
                 StatementKind::SetDiscriminant {
                     place: _place,
                     variant_index: _variant_index,
-                } =>
-                // TODO
-                {
+                } => {
+                    // TODO
                     return Err(TranslationError::UnsupportedFeature {
                         description: "TODO: implement SetDiscriminant".to_string(),
                     });
@@ -2814,54 +2812,38 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 StatementKind::PlaceMention(place) => {
                     // TODO: this is missed UB
                     info!("Ignoring PlaceMention: {:?}", place);
-                    ()
                 },
                 StatementKind::Intrinsic(_intrinsic) => {
                     return Err(TranslationError::UnsupportedFeature {
                         description: "TODO: implement Intrinsic".to_string(),
                     });
                 },
-                StatementKind::ConstEvalCounter =>
-                // no-op
-                {
-                    ()
+                StatementKind::ConstEvalCounter => {
+                    // no-op
                 },
-                StatementKind::StorageLive(_) =>
-                // just ignore
-                {
-                    ()
+                StatementKind::StorageLive(_) => {
+                    // just ignore
                 },
-                StatementKind::StorageDead(_) =>
-                // just ignore
-                {
-                    ()
+                StatementKind::StorageDead(_) => {
+                    // just ignore
                 },
-                StatementKind::Deinit(_) =>
-                // TODO: find out where this is emitted
-                {
+                StatementKind::Deinit(_) => {
+                    // TODO: find out where this is emitted
                     return Err(TranslationError::UnsupportedFeature {
                         description: "Unsupported statement: Deinit".to_string(),
                     });
                 },
-                StatementKind::Retag(_, _) =>
-                // just ignore retags
-                {
-                    ()
+                StatementKind::Retag(_, _) => {
+                    // just ignore retags
                 },
-                StatementKind::AscribeUserType(_, _) =>
-                // don't need that info
-                {
-                    ()
+                StatementKind::AscribeUserType(_, _) => {
+                    // don't need that info
                 },
-                StatementKind::Coverage(_) =>
-                // don't need that
-                {
-                    ()
+                StatementKind::Coverage(_) => {
+                    // don't need that
                 },
-                StatementKind::Nop =>
-                // ignore
-                {
-                    ()
+                StatementKind::Nop => {
+                    // ignore
                 },
             }
             cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.into_iter());
