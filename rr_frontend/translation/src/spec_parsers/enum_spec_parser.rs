@@ -90,8 +90,8 @@ impl EnumSpecParser for VerboseEnumSpecParser {
         let mut rfn_type = None;
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
@@ -114,7 +114,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
             let mut pattern = None;
             let mut refinement = None;
             for &it in attrs {
-                let ref path_segs = it.path.segments;
+                let path_segs = &it.path.segments;
 
                 if let Some(seg) = path_segs.get(1) {
                     let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());

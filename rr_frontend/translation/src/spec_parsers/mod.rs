@@ -28,7 +28,7 @@ pub fn get_export_as_attr(attrs: &[&AttrItem]) -> Result<Vec<String>, String> {
     let meta: () = ();
     let meta = &meta;
     for &it in attrs {
-        let ref path_segs = it.path.segments;
+        let path_segs = &it.path.segments;
 
         if let Some(seg) = path_segs.get(1) {
             let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
@@ -76,7 +76,7 @@ pub fn get_shim_attrs(attrs: &[&AttrItem]) -> Result<ShimAnnot, String> {
     let meta: () = ();
     let meta = &meta;
     for &it in attrs {
-        let ref path_segs = it.path.segments;
+        let path_segs = &it.path.segments;
 
         if let Some(seg) = path_segs.get(1) {
             let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());

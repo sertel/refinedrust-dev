@@ -603,8 +603,8 @@ where
         // parse captures -- we need to handle it before the other annotations because we will have
         // to add the first arg for the capture
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
             let meta: ParseMeta = (&meta, &lfts);
@@ -622,8 +622,8 @@ where
         self.merge_capture_information(capture_specs, closure_meta, make_tuple, &mut *builder)?;
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
@@ -662,8 +662,8 @@ where
         info!("ty params: {:?}", meta);
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());

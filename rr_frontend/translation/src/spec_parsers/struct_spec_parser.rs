@@ -204,8 +204,8 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
         let mut params: Vec<specs::CoqParam> = Vec::new();
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&args.inner_tokens());
@@ -401,8 +401,8 @@ where
         let mut parsed_rfn = None;
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&args.inner_tokens());

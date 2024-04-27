@@ -1192,7 +1192,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
 
         while let Some(bb_idx) = self.bb_queue.pop() {
-            let ref bb = basic_blocks[bb_idx];
+            let bb = &basic_blocks[bb_idx];
             let translated_bb = self.translate_basic_block(bb_idx, bb)?;
             self.translated_fn.code.add_basic_block(bb_idx.as_usize(), translated_bb);
         }
