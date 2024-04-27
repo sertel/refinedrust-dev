@@ -876,7 +876,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
                 rfn.push_str("-[");
                 push_str_list!(rfn, &field_refinements, "; ", "#({})");
-                rfn.push_str("]");
+                rfn.push(']');
 
                 invariant_spec.provide_abstracted_refinement(rfn);
             }

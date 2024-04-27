@@ -1299,7 +1299,7 @@ impl<'def> AbstractVariant<'def> {
             typarams.push(format!("({} : syn_type)", names.syn_type));
             typarams_use.push(format!("{}", names.syn_type));
         }
-        out.push_str("\n");
+        out.push('\n');
 
         write!(out, "{}", self.generate_coq_sls_def_core(&typarams, &typarams_use)).unwrap();
 
@@ -1313,7 +1313,7 @@ impl<'def> AbstractVariant<'def> {
 
         out.push_str(&format!("struct_t {} +[", CoqAppTerm::new(&self.sls_def_name, sls_app)));
         push_str_list!(out, &self.subst_fields, ";", |(_, ty)| ty.to_string());
-        out.push_str("]");
+        out.push(']');
 
         out
     }
@@ -1389,7 +1389,7 @@ impl<'def> AbstractVariant<'def> {
             }
             out.push_str(".\n");
         }
-        out.push_str("\n");
+        out.push('\n');
 
         // write coq parameters
         let (context_names, dep_sigma) = format_extra_context_items(extra_context, &mut out).unwrap();
@@ -1895,7 +1895,7 @@ impl<'def> AbstractEnum<'def> {
 
         out.push_str(&format!("Section {}.\n", self.els_def_name));
         out.push_str(&format!("{indent}Context `{{!refinedrustGS Σ}}.\n"));
-        out.push_str("\n");
+        out.push('\n');
 
         // add syntype parameters
         let mut typarams = Vec::new();
@@ -2093,7 +2093,7 @@ impl<'def> AbstractEnum<'def> {
             }
             out.push_str(".\n");
         }
-        out.push_str("\n");
+        out.push('\n');
 
         let rt_params: Vec<_> = self.ty_params.iter().map(|x| x.refinement_type.clone()).collect();
 
@@ -2661,7 +2661,7 @@ impl<'def> FunctionSpec<'def> {
 
         out.push_str("λ ϝ, [");
         push_str_list!(out, &self.elctx, ", ", |(ref lft1, ref lft2)| format!("({lft1}, {lft2})"));
-        out.push_str("]");
+        out.push(']');
 
         out
     }
@@ -2699,8 +2699,8 @@ impl<'def> FunctionSpec<'def> {
         let mut pattern = String::with_capacity(100);
         let mut types = String::with_capacity(100);
 
-        pattern.push_str("(");
-        types.push_str("(");
+        pattern.push('(');
+        types.push('(');
 
         let mut need_sep = false;
         for (name, t) in v {
@@ -2715,8 +2715,8 @@ impl<'def> FunctionSpec<'def> {
             need_sep = true;
         }
 
-        pattern.push_str(")");
-        types.push_str(")");
+        pattern.push(')');
+        types.push(')');
 
         (pattern, CoqType::Literal(types))
     }

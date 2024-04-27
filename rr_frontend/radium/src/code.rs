@@ -613,9 +613,9 @@ impl Stmt {
 
                 let mut fmt_targets = String::with_capacity(100);
 
-                fmt_targets.push_str("[");
+                fmt_targets.push('[');
                 push_str_list!(fmt_targets, bs, "; ", |tgt| tgt.caesium_fmt(0));
-                fmt_targets.push_str("]");
+                fmt_targets.push(']');
 
                 let fmt_default = def.caesium_fmt(0);
 
@@ -740,7 +740,7 @@ fn make_map_string(sep0: &str, sep: &str, els: Vec<(String, String)>) -> String 
         out.push_str(format!("<[{sep}\"{}\" :={}{}{}]>%E $", key, sep0, value, sep).as_str());
     }
     out.push_str(sep);
-    out.push_str("∅");
+    out.push('∅');
     out
 }
 
@@ -749,7 +749,7 @@ fn make_lft_map_string(els: Vec<(String, String)>) -> String {
     for (key, value) in &els {
         out.push_str(format!("named_lft_update \"{}\" {} $ ", key, value).as_str());
     }
-    out.push_str("∅");
+    out.push('∅');
     out
 }
 
@@ -761,7 +761,7 @@ impl FunctionCode {
         let format_stack_layout = |layout: std::slice::Iter<'_, (String, SynType)>| {
             let mut formatted_args: String = String::with_capacity(100);
 
-            formatted_args.push_str("[");
+            formatted_args.push('[');
 
             push_str_list!(formatted_args, layout, "; ", |(ref name, ref st)| {
                 let ly = st.layout_term(&[]); //should be closed already
@@ -1124,7 +1124,7 @@ impl<'def> Function<'def> {
                 if p_count > 1 {
                     ip_params.push_str(" ]");
                 }
-                ip_params.push_str(" ");
+                ip_params.push(' ');
                 p_count += 1;
                 ip_params.push_str(format!("{}", n).as_str());
             }
@@ -1138,7 +1138,7 @@ impl<'def> Function<'def> {
         } else {
             // no params, but still need to provide something to catch the unit
             // (and no empty intropatterns are allowed)
-            ip_params.push_str("?");
+            ip_params.push('?');
         }
 
         // generate intro pattern for lifetimes

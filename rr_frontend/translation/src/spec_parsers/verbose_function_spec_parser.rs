@@ -504,7 +504,7 @@ where
         } else {
             pre_rfn.push_str("-[");
             push_str_list!(pre_rfn, pre_types.clone(), "; ", |x| format!("#({})", x.1));
-            pre_rfn.push_str("]");
+            pre_rfn.push(']');
 
             pre_tys = pre_types.iter().map(|x| x.0.clone()).collect();
         }
@@ -561,7 +561,7 @@ where
                     CapturePostRfn::ImmutOrConsume(pat) => format!("#({pat})"),
                     CapturePostRfn::Mut(pat, gvar) => format!("#(#({pat}), {gvar})"),
                 });
-                post_term.push_str("]");
+                post_term.push(']');
 
                 builder
                     .spec
