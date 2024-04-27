@@ -7,7 +7,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use log::{info, trace, warn};
-use radium;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::tcx::PlaceTy;

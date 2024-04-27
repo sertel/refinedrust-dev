@@ -60,7 +60,6 @@ use crate_parser::CrateAttrParser;
 use environment::Environment;
 use function_body::{ConstScope, FunctionTranslator, ProcedureMode, ProcedureScope};
 use mod_parser::ModuleAttrParser;
-use rrconfig;
 use spec_parsers::{
     const_attr_parser as const_parser, crate_attr_parser as crate_parser, get_shim_attrs,
     module_attr_parser as mod_parser,
