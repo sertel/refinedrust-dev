@@ -11,7 +11,7 @@ use indent_write::fmt::IndentWriter;
 
 use crate::write_list;
 
-pub(crate) const BASE_INDENT: &'static str = "  ";
+pub(crate) const BASE_INDENT: &str = "  ";
 
 /// Represents a Coq path of the form
 /// `From A.B.C Import D`
