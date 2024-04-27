@@ -81,7 +81,6 @@ rustflags = [
 
     # clippy::style
     "-Aclippy::new_without_default",
-    "-Aclippy::unwrap_or_default",
     "-Aclippy::write_with_newline",
 
     # clippy::suspicious
