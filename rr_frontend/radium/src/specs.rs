@@ -308,14 +308,11 @@ impl SynType {
     /// The types in `substi` should not contain variables themselves, as this substitution
     /// operation is capture-incurring!
     pub fn subst(&mut self, substi: &[Option<Self>]) {
-        match self {
-            Self::Var(i) => {
-                if let Some(Some(ta)) = substi.get(*i) {
-                    assert!(ta.is_closed());
-                    *self = ta.clone();
-                }
-            },
-            _ => (),
+        if let Self::Var(i) = self {
+            if let Some(Some(ta)) = substi.get(*i) {
+                assert!(ta.is_closed());
+                *self = ta.clone();
+            }
         }
     }
 }
@@ -835,14 +832,10 @@ impl InvariantSpec {
         abstracted_refinement: Option<CoqPattern>,
         coq_params: Vec<CoqParam>,
     ) -> Self {
-        match flags {
-            InvariantSpecFlags::Persistent => {
-                assert!(
-                    invariants.iter().all(|it| it.1 == InvariantMode::All) && ty_own_invariants.is_empty()
-                );
-            },
-            _ => (),
+        if flags == InvariantSpecFlags::Persistent {
+            assert!(invariants.iter().all(|it| it.1 == InvariantMode::All) && ty_own_invariants.is_empty());
         }
+
         Self {
             type_name,
             flags,
@@ -2849,11 +2842,8 @@ impl<'def> FunctionSpecBuilder<'def> {
     pub fn add_param_type_annot(&mut self, name: &CoqName, t: CoqType) -> Result<(), String> {
         for (name0, t0) in &mut self.params {
             if *name0 == *name {
-                match *t0 {
-                    CoqType::Infer => {
-                        *t0 = t;
-                    },
-                    _ => (),
+                if *t0 == CoqType::Infer {
+                    *t0 = t;
                 }
                 return Ok(());
             }

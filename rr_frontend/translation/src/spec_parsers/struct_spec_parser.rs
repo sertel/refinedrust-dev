@@ -212,14 +212,16 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                 match seg.ident.name.as_str() {
                     "refined_by" => {
                         let pat = RfnPattern::parse(&buffer, &meta).map_err(str_err)?;
+
                         rfn_pat = pat.rfn_pat;
-                        match pat.rfn_type {
-                            Some(ty) => rfn_type = ty,
-                            None => (),
+
+                        if let Some(ty) = pat.rfn_type {
+                            rfn_type = ty;
                         }
                     },
                     "invariant" => {
                         let prop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+
                         match prop {
                             MetaIProp::Own(iprop) => {
                                 invariants.push((iprop, specs::InvariantMode::OnlyOwned));
@@ -242,14 +244,17 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                     },
                     "exists" => {
                         let mut params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+
                         existentials.append(&mut params.params);
                     },
                     "mode" => {
                         let mode = InvariantSpecFlags::parse(&buffer, &meta).map_err(str_err)?;
+
                         inv_flags = mode.into();
                     },
                     "refines" => {
                         let term = IdentOrTerm::parse(&buffer, &meta).map_err(str_err)?;
+
                         if abstracted_refinement.is_some() {
                             return Err("multiple refines specifications given".to_string());
                         }
@@ -257,6 +262,7 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                     },
                     "context" => {
                         let param = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
+
                         params.push(specs::CoqParam::new(
                             specs::CoqName::Unnamed,
                             specs::CoqType::Literal(param.item),

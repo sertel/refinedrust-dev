@@ -173,12 +173,10 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyRegionCollectFolder<'tcx> {
     }
 
     fn fold_region(&mut self, r: ty::Region<'tcx>) -> ty::Region<'tcx> {
-        match r.kind() {
-            ty::RegionKind::ReVar(r) => {
-                self.regions.push(r);
-            },
-            _ => {},
+        if let ty::RegionKind::ReVar(r) = r.kind() {
+            self.regions.push(r);
         }
+
         r
     }
 }

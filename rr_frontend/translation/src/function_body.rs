@@ -265,29 +265,29 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let mut num_late_bounds = 0;
         for b in sig.bound_vars() {
             let next_id = ty::RegionVid::from_u32(num_early_bounds + num_late_bounds + 1);
-            match b {
-                ty::BoundVariableKind::Region(r) => {
-                    match r {
-                        ty::BoundRegionKind::BrNamed(_, sym) => {
-                            let mut region_name = strip_coq_ident(sym.as_str());
-                            if region_name == "_" {
-                                region_name = format!("{}", next_id.as_usize());
-                                universal_lifetimes.insert(next_id, (format!("ulft_{}", region_name), None));
-                            } else {
-                                universal_lifetimes
-                                    .insert(next_id, (format!("ulft_{}", region_name), Some(region_name)));
-                            }
-                        },
-                        ty::BoundRegionKind::BrAnon(_) => {
-                            universal_lifetimes
-                                .insert(next_id, (format!("ulft_{}", next_id.as_usize()), None));
-                        },
-                        _ => (),
+
+            let ty::BoundVariableKind::Region(r) = b else {
+                continue;
+            };
+
+            match r {
+                ty::BoundRegionKind::BrNamed(_, sym) => {
+                    let mut region_name = strip_coq_ident(sym.as_str());
+                    if region_name == "_" {
+                        region_name = format!("{}", next_id.as_usize());
+                        universal_lifetimes.insert(next_id, (format!("ulft_{}", region_name), None));
+                    } else {
+                        universal_lifetimes
+                            .insert(next_id, (format!("ulft_{}", region_name), Some(region_name)));
                     }
-                    num_late_bounds += 1;
+                },
+                ty::BoundRegionKind::BrAnon(_) => {
+                    universal_lifetimes.insert(next_id, (format!("ulft_{}", next_id.as_usize()), None));
                 },
                 _ => (),
             }
+
+            num_late_bounds += 1;
         }
 
         // replace late-bound region variables by re-enumerating them in the same way as the MIR
@@ -1514,23 +1514,21 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Checks whether a place access descends below a reference.
-    fn check_place_below_reference(&self, place: &Place<'tcx>) -> Result<bool, TranslationError> {
+    fn check_place_below_reference(&self, place: &Place<'tcx>) -> bool {
         if self.checked_op_temporaries.contains_key(&place.local) {
             // temporaries are never below references
-            return Ok(false);
+            return false;
         }
 
         for (pl, _) in place.iter_projections() {
             // check if the current ty is a reference that we then descend under with proj
             let cur_ty_kind = pl.ty(&self.proc.get_mir().local_decls, self.env.tcx()).ty.kind();
-            match cur_ty_kind {
-                TyKind::Ref(_, _, _) => {
-                    return Ok(true);
-                },
-                _ => (),
+            if let TyKind::Ref(_, _, _) = cur_ty_kind {
+                return true;
             }
         }
-        Ok(false)
+
+        false
     }
 
     fn get_assignment_strong_update_constraints(
@@ -1767,12 +1765,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let mut early_regions = Vec::new();
         info!("call substs: {:?} = {:?}, {:?}", func, sig, substs);
         for a in substs {
-            match a.unpack() {
-                ty::GenericArgKind::Lifetime(r) => match r.kind() {
-                    ty::RegionKind::ReVar(r) => early_regions.push(r),
-                    _ => (),
-                },
-                _ => (),
+            if let ty::GenericArgKind::Lifetime(r) = a.unpack() {
+                if let ty::RegionKind::ReVar(r) = r.kind() {
+                    early_regions.push(r);
+                }
             }
         }
         info!("call region instantiations (early): {:?}", early_regions);
@@ -1796,12 +1792,9 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         };
 
         for a in substs {
-            match a.unpack() {
-                ty::GenericArgKind::Type(c) => {
-                    let mut folder = ty::fold::RegionFolder::new(self.env.tcx(), &mut clos);
-                    folder.fold_ty(c);
-                },
-                _ => (),
+            if let ty::GenericArgKind::Type(c) = a.unpack() {
+                let mut folder = ty::fold::RegionFolder::new(self.env.tcx(), &mut clos);
+                folder.fold_ty(c);
             }
         }
         info!("Regions of generic args: {:?}", generic_regions);
@@ -2560,7 +2553,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         TranslationError,
     > {
         // check if the place is strongly writeable
-        let strongly_writeable = !self.check_place_below_reference(lhs)?;
+        let strongly_writeable = !self.check_place_below_reference(lhs);
         let plc_ty = self.get_type_of_place(lhs)?;
 
         let new_dyn_inclusions;
