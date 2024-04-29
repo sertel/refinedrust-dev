@@ -741,7 +741,7 @@ impl<T, P> Punctuated<T, P> {
     /// This is the number of nodes of type `T`, not counting the punctuation of
     /// type `P`.
     pub fn len(&self) -> usize {
-        self.inner.len() + if self.last.is_some() { 1 } else { 0 }
+        self.inner.len() + usize::from(self.last.is_some())
     }
 
     /// Borrows the first element in this sequence.
