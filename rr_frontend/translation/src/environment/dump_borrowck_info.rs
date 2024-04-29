@@ -601,7 +601,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                         .map(move |&l1| (**l2, l1))
                         .any(|r| self.polonius_info.additional_facts.reborrows.contains(&r))
                 })
-                .cloned()
+                .copied()
                 .collect();
 
             // This assertion would fail if instead of reborrow we happen to have a move
@@ -722,7 +722,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             .loan_issued_at
             .iter()
             .filter(|(_, _, point)| *point == start_point)
-            .cloned()
+            .copied()
             .map(|(region, loan, _)| (region, loan))
             .collect();
         write_graph!(self, "<td>{}</td>", to_sorted_string!(borrow_regions));
@@ -732,7 +732,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             .loan_issued_at
             .iter()
             .filter(|(_, _, point)| *point == mid_point)
-            .cloned()
+            .copied()
             .map(|(region, loan, _)| (region, loan))
             .collect();
         write_graph!(self, "<td>{}</td>", to_sorted_string!(borrow_regions));
@@ -1067,12 +1067,12 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 
         write_graph!(self, "<td>{}", blas.join(", "));
         let mut all_dying_loans: Vec<_> =
-            dying_loans.iter().filter(|loan| !becoming_zombie_loans.contains(loan)).cloned().collect();
+            dying_loans.iter().filter(|loan| !becoming_zombie_loans.contains(loan)).copied().collect();
         debug!(
             "all_dying_loans={:?} dying_zombie_loans={:?} location={:?}",
             all_dying_loans, dying_zombie_loans, location
         );
-        all_dying_loans.extend(dying_zombie_loans.iter().cloned());
+        all_dying_loans.extend(dying_zombie_loans.iter().copied());
         write_graph!(self, "</td>");
 
         Ok(())

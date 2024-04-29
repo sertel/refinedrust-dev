@@ -148,25 +148,17 @@ fn order_basic_blocks(
         if permanent_mark[current] {
             return;
         }
+
         assert!(!temporary_mark[current], "Not a DAG!");
         temporary_mark[current] = true;
+
         let curr_depth = loop_depth(current);
+
         // We want to order the loop body before exit edges
-        let successors_groups: Vec<Vec<_>> = vec![
-            real_edges
-                .successors(current)
-                .iter()
-                .filter(|&&bb| loop_depth(bb) < curr_depth)
-                .cloned()
-                .collect(),
-            real_edges
-                .successors(current)
-                .iter()
-                .filter(|&&bb| loop_depth(bb) >= curr_depth)
-                .cloned()
-                .collect(),
-        ];
-        for group in &successors_groups {
+        let successors: (Vec<_>, Vec<_>) =
+            real_edges.successors(current).iter().partition(|&&bb| loop_depth(bb) < curr_depth);
+
+        for group in <[_; 2]>::from(successors) {
             for &successor in group {
                 if back_edges.contains(&(current, successor)) {
                     continue;
@@ -182,7 +174,9 @@ fn order_basic_blocks(
                 );
             }
         }
+
         permanent_mark[current] = true;
+
         sorted_blocks.push(current);
     }
 
@@ -263,7 +257,7 @@ impl ProcedureLoops {
 
         let mut enclosing_loop_heads = HashMap::new();
         for (&block, loop_heads) in &enclosing_loop_heads_set {
-            let mut heads: Vec<BasicBlockIndex> = loop_heads.iter().cloned().collect();
+            let mut heads: Vec<BasicBlockIndex> = loop_heads.iter().copied().collect();
             heads.sort_by_key(|bbi| loop_head_depths[bbi]);
             enclosing_loop_heads.insert(block, heads);
         }
@@ -278,12 +272,12 @@ impl ProcedureLoops {
 
         let ordered_blocks = order_basic_blocks(mir, real_edges, &back_edges, &get_loop_depth);
         let block_order: HashMap<BasicBlockIndex, usize> =
-            ordered_blocks.iter().cloned().enumerate().map(|(i, v)| (v, i)).collect();
+            ordered_blocks.iter().copied().enumerate().map(|(i, v)| (v, i)).collect();
         debug!("ordered_blocks: {:?}", ordered_blocks);
 
         let mut ordered_loop_bodies = HashMap::new();
         for (&loop_head, loop_body) in &loop_bodies {
-            let mut ordered_body: Vec<_> = loop_body.iter().cloned().collect();
+            let mut ordered_body: Vec<_> = loop_body.iter().copied().collect();
             ordered_body.sort_by_key(|bb| block_order[bb]);
             debug_assert_eq!(loop_head, ordered_body[0]);
             ordered_loop_bodies.insert(loop_head, ordered_body);
@@ -364,7 +358,7 @@ impl ProcedureLoops {
     }
 
     pub fn max_loop_nesting(&self) -> usize {
-        self.loop_head_depths.values().max().cloned().unwrap_or(0)
+        self.loop_head_depths.values().max().copied().unwrap_or(0)
     }
 
     pub fn is_loop_head(&self, bbi: BasicBlockIndex) -> bool {
@@ -388,7 +382,7 @@ impl ProcedureLoops {
     /// Get the loop head, if any
     /// Note: a loop head **is** loop head of itself
     pub fn get_loop_head(&self, bbi: BasicBlockIndex) -> Option<BasicBlockIndex> {
-        self.enclosing_loop_heads.get(&bbi).and_then(|heads| heads.last()).cloned()
+        self.enclosing_loop_heads.get(&bbi).and_then(|heads| heads.last()).copied()
     }
 
     /// Get the depth of a loop head, starting from one for a simple loop

@@ -823,7 +823,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             self.get_loans_kept_alive_by(point, region, &self.borrowck_out_facts.origin_contains_loan_at);
         let zombie_loans =
             self.get_loans_kept_alive_by(point, region, &self.additional_facts.zombie_requires);
-        loans.extend(zombie_loans.iter().cloned());
+        loans.extend(zombie_loans.iter().copied());
         (loans, zombie_loans)
     }
 
@@ -838,7 +838,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             .get(&point)
             .as_ref()
             .and_then(|origin_contains_loan_at| origin_contains_loan_at.get(&region))
-            .map(|loans| loans.iter().cloned().collect())
+            .map(|loans| loans.iter().copied().collect())
             .unwrap_or_default()
     }
 
@@ -862,7 +862,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     pub fn get_all_active_loans(&self, location: mir::Location) -> (Vec<facts::Loan>, Vec<facts::Loan>) {
         let mut loans = self.get_active_loans(location, false);
         let zombie_loans = self.get_active_loans(location, true);
-        loans.extend(zombie_loans.iter().cloned());
+        loans.extend(zombie_loans.iter().copied());
         (loans, zombie_loans)
     }
 
@@ -912,7 +912,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     pub fn get_all_loans_dying_at(&self, location: mir::Location) -> (Vec<facts::Loan>, Vec<facts::Loan>) {
         let mut loans = self.get_loans_dying_at(location, false);
         let zombie_loans = self.get_loans_dying_at(location, true);
-        loans.extend(zombie_loans.iter().cloned());
+        loans.extend(zombie_loans.iter().copied());
         (loans, zombie_loans)
     }
 
@@ -926,7 +926,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
 
         let mut loans = self.get_loans_dying_between(initial_loc, final_loc, false);
         let zombie_loans = self.get_loans_dying_between(initial_loc, final_loc, true);
-        loans.extend(zombie_loans.iter().cloned());
+        loans.extend(zombie_loans.iter().copied());
         trace!(
             "[exit] get_all_loans_dying_between \
              initial_loc={:?} final_loc={:?} all={:?} zombie={:?}",
@@ -1040,7 +1040,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     pub fn get_conflicting_loans(&self, loan: facts::Loan) -> Vec<facts::Loan> {
         self.loan_conflict_sets
             .get(&loan)
-            .map(|set| set.iter().cloned().collect())
+            .map(|set| set.iter().copied().collect())
             .unwrap_or_default()
     }
 
@@ -1059,7 +1059,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         };
 
         let alive_conflicting_loans =
-            all_conflicting_loans.iter().filter(|loan| alive_loans.contains(loan)).cloned().collect();
+            all_conflicting_loans.iter().filter(|loan| alive_loans.contains(loan)).copied().collect();
         trace!("get_alive_conflicting_loans({:?}, {:?}) = {:?}", loan, location, alive_conflicting_loans);
 
         alive_conflicting_loans
@@ -1505,9 +1505,9 @@ impl AdditionalFacts {
 
         let origin_live_on_entry_vec = {
             output.origin_live_on_entry.iter().flat_map(|(point, origins)| {
-                let points: Vec<_> = origins.iter().cloned().map(|origin| (origin, *point)).collect();
-                points
+                origins.iter().copied().map(|origin| (origin, *point)).collect::<Vec<_>>()
             })
+
             // let mut origin_live_on_entry = output.origin_live_on_entry.clone();
             // let all_points: BTreeSet<Point> = all_facts
             //     .cfg_edge
@@ -1694,7 +1694,7 @@ impl AdditionalFacts {
     fn derive_nontransitive(reborrows: &[(facts::Loan, facts::Loan)]) -> Vec<(facts::Loan, facts::Loan)> {
         reborrows
             .iter()
-            .cloned()
+            .copied()
             .filter(|&(l1, l2)| !reborrows.iter().any(|&(l3, l4)| l4 == l2 && reborrows.contains(&(l1, l3))))
             .collect()
     }
