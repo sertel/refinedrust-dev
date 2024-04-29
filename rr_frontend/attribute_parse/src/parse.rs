@@ -248,6 +248,7 @@ macro_rules! define_punctuation_structs {
         $(
             #[repr(C)]
             #[$doc]
+            #[derive(Copy, Clone)]
             ///
             /// Don't try to remember the name of this type &mdash; use the
             /// [`MToken!`] macro instead.
@@ -270,14 +271,6 @@ macro_rules! define_punctuation_structs {
                     //}
                 //}
             //}
-
-            impl Copy for $name {}
-
-            impl Clone for $name {
-                fn clone(&self) -> Self {
-                    *self
-                }
-            }
 
             //impl Debug for $name {
                 //fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

@@ -32,7 +32,6 @@ rustflags = [
     "-Aclippy::string_lit_as_bytes",
 
     # clippy::pedantic
-    "-Aclippy::expl_impl_clone_on_copy",
     "-Aclippy::flat_map_option",
     "-Aclippy::from_iter_instead_of_collect",
     "-Aclippy::if_not_else",
