@@ -80,21 +80,7 @@ rustflags = [
     "-Aclippy::unwrap_in_result",
 
     # clippy::style
-    "-Aclippy::needless_borrow",
-    "-Aclippy::needless_late_init",
-    "-Aclippy::needless_return",
     "-Aclippy::new_without_default",
-    "-Aclippy::op_ref",
-    "-Aclippy::redundant_closure",
-    "-Aclippy::redundant_field_names",
-    "-Aclippy::redundant_pattern_matching",
-    "-Aclippy::redundant_static_lifetimes",
-    "-Aclippy::single_char_add_str",
-    "-Aclippy::single_component_path_imports",
-    "-Aclippy::single_match",
-    "-Aclippy::toplevel_ref_arg",
-    "-Aclippy::unused_unit",
-    "-Aclippy::unwrap_or_default",
     "-Aclippy::write_with_newline",
 
     # clippy::suspicious
@@ -160,6 +146,7 @@ rustflags = [
     "-Aclippy::else_if_without_else",
     "-Aclippy::exhaustive_enums",
     "-Aclippy::exhaustive_structs",
+    "-Aclippy::format_push_string",
     "-Aclippy::implicit_return",
     "-Aclippy::integer_division",
     "-Aclippy::min_ident_chars",

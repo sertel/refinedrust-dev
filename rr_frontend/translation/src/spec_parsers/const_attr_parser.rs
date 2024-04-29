@@ -44,8 +44,8 @@ impl ConstAttrParser for VerboseConstAttrParser {
         let mut name: Option<String> = None;
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());

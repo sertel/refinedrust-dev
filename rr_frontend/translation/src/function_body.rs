@@ -7,7 +7,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use log::{info, trace, warn};
-use radium;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::tcx::PlaceTy;
@@ -147,7 +146,7 @@ impl<'def> ProcedureScope<'def> {
 
     /// Register a function.
     pub fn register_function(&mut self, did: &DefId, meta: ProcedureMeta) -> Result<(), String> {
-        if let Some(_) = self.name_map.insert(*did, meta) {
+        if self.name_map.insert(*did, meta).is_some() {
             Err(format!("function for defid {:?} has already been registered", did))
         } else {
             Ok(())
@@ -266,29 +265,29 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let mut num_late_bounds = 0;
         for b in sig.bound_vars() {
             let next_id = ty::RegionVid::from_u32(num_early_bounds + num_late_bounds + 1);
-            match b {
-                ty::BoundVariableKind::Region(r) => {
-                    match r {
-                        ty::BoundRegionKind::BrNamed(_, sym) => {
-                            let mut region_name = strip_coq_ident(sym.as_str());
-                            if region_name == "_" {
-                                region_name = format!("{}", next_id.as_usize());
-                                universal_lifetimes.insert(next_id, (format!("ulft_{}", region_name), None));
-                            } else {
-                                universal_lifetimes
-                                    .insert(next_id, (format!("ulft_{}", region_name), Some(region_name)));
-                            }
-                        },
-                        ty::BoundRegionKind::BrAnon(_) => {
-                            universal_lifetimes
-                                .insert(next_id, (format!("ulft_{}", next_id.as_usize()), None));
-                        },
-                        _ => (),
+
+            let ty::BoundVariableKind::Region(r) = b else {
+                continue;
+            };
+
+            match r {
+                ty::BoundRegionKind::BrNamed(_, sym) => {
+                    let mut region_name = strip_coq_ident(sym.as_str());
+                    if region_name == "_" {
+                        region_name = format!("{}", next_id.as_usize());
+                        universal_lifetimes.insert(next_id, (format!("ulft_{}", region_name), None));
+                    } else {
+                        universal_lifetimes
+                            .insert(next_id, (format!("ulft_{}", region_name), Some(region_name)));
                     }
-                    num_late_bounds += 1;
+                },
+                ty::BoundRegionKind::BrAnon(_) => {
+                    universal_lifetimes.insert(next_id, (format!("ulft_{}", next_id.as_usize()), None));
                 },
                 _ => (),
             }
+
+            num_late_bounds += 1;
         }
 
         // replace late-bound region variables by re-enumerating them in the same way as the MIR
@@ -351,81 +350,75 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         // TODO can we avoid the leak
         let proc: &'def Procedure = &*Box::leak(Box::new(proc));
         let body = proc.get_mir();
-        Self::dump_body(&body);
-
-        let closure_kind;
+        Self::dump_body(body);
 
         let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
         let ty = ty.instantiate_identity();
-        match ty.kind() {
+
+        let closure_kind = match ty.kind() {
             TyKind::Closure(_def, closure_args) => {
                 assert!(ty.is_closure());
-                let clos = closure_args.as_closure();
-
-                closure_kind = clos.kind();
+                closure_args.as_closure().kind()
             },
             _ => panic!("can not handle non-closures"),
         };
 
         let local_decls = &body.local_decls;
         let closure_arg = local_decls.get(Local::from_usize(1)).unwrap();
-        let closure_ty;
 
-        match closure_kind {
+        let closure_ty = match closure_kind {
             ty::ClosureKind::Fn => {
-                if let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() {
-                    closure_ty = ty;
-                } else {
+                let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() else {
                     unreachable!();
-                }
+                };
+
+                ty
             },
+
             ty::ClosureKind::FnMut => {
-                if let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() {
-                    closure_ty = ty;
-                } else {
+                let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() else {
                     unreachable!("unexpected type {:?}", closure_arg.ty);
-                }
-            },
-            ty::ClosureKind::FnOnce => {
-                closure_ty = &closure_arg.ty;
-            },
-        }
+                };
 
-        let parent_args;
+                ty
+            },
+
+            ty::ClosureKind::FnOnce => &closure_arg.ty,
+        };
+
         let mut capture_regions = Vec::new();
-        let sig;
-        let captures;
-        let upvars_tys;
-        if let ty::TyKind::Closure(did, closure_args) = closure_ty.kind() {
-            let clos = closure_args.as_closure();
 
-            let tupled_upvars_tys = clos.tupled_upvars_ty();
-            upvars_tys = clos.upvar_tys();
-            parent_args = clos.parent_args();
-            let unnormalized_sig = clos.sig();
-            sig = normalize_in_function(proc.get_id(), env.tcx(), unnormalized_sig)?;
-            info!("closure sig: {:?}", sig);
+        let ty::TyKind::Closure(did, closure_args) = closure_ty.kind() else {
+            unreachable!();
+        };
 
-            captures = env.tcx().closure_captures(did.as_local().unwrap());
-            info!("Closure has captures: {:?}", captures);
+        let clos = closure_args.as_closure();
 
-            // find additional lifetime parameters
-            for (place, ty) in captures.iter().zip(clos.upvar_tys().iter()) {
-                if let Some(_) = place.region {
-                    // find region from ty
-                    if let ty::TyKind::Ref(region, _, _) = ty.kind() {
-                        capture_regions.push(*region);
-                    }
+        let tupled_upvars_tys = clos.tupled_upvars_ty();
+        let upvars_tys = clos.upvar_tys();
+        let parent_args = clos.parent_args();
+        let unnormalized_sig = clos.sig();
+
+        let sig = normalize_in_function(proc.get_id(), env.tcx(), unnormalized_sig)?;
+        info!("closure sig: {:?}", sig);
+
+        let captures = env.tcx().closure_captures(did.as_local().unwrap());
+        info!("Closure has captures: {:?}", captures);
+
+        // find additional lifetime parameters
+        for (place, ty) in captures.iter().zip(clos.upvar_tys().iter()) {
+            if place.region.is_some() {
+                // find region from ty
+                if let ty::TyKind::Ref(region, _, _) = ty.kind() {
+                    capture_regions.push(*region);
                 }
             }
-            info!("Closure capture regions: {:?}", capture_regions);
-
-            info!("Closure arg upvar_tys: {:?}", tupled_upvars_tys);
-            info!("Function signature: {:?}", sig);
-            info!("Closure generic args: {:?}", parent_args);
-        } else {
-            unreachable!();
         }
+
+        info!("Closure capture regions: {:?}", capture_regions);
+        info!("Closure arg upvar_tys: {:?}", tupled_upvars_tys);
+        info!("Function signature: {:?}", sig);
+        info!("Closure generic args: {:?}", parent_args);
 
         match PoloniusInfo::new(env, proc) {
             Ok(info) => {
@@ -443,41 +436,42 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // dump graphviz files
                 // color code: red: dying loan, pink: becoming a zombie; green: is zombie
                 if rrconfig::dump_borrowck_info() {
-                    crate::environment::dump_borrowck_info(env, &proc.get_id(), &info);
+                    crate::environment::dump_borrowck_info(env, &proc.get_id(), info);
                 }
 
                 let (tupled_inputs, output, mut universal_lifetimes) =
-                    Self::process_lifetimes_of_args(&env, params, sig, body);
+                    Self::process_lifetimes_of_args(env, params, sig, body);
 
                 // Process the lifetime parameters that come from the captures
                 for r in capture_regions {
                     // TODO: problem: we're introducing inconsistent names here.
-                    if let ty::RegionKind::ReVar(r) = r.kind() {
-                        let lft = info.mk_atomic_region(r);
-                        let name = format_atomic_region_direct(&lft, None);
-                        universal_lifetimes.insert(r, (name, None));
-                    } else {
+                    let ty::RegionKind::ReVar(r) = r.kind() else {
                         unreachable!();
-                    }
+                    };
+
+                    let lft = info.mk_atomic_region(r);
+                    let name = format_atomic_region_direct(&lft, None);
+                    universal_lifetimes.insert(r, (name, None));
                 }
+
                 // also add the lifetime for the outer reference
                 let mut maybe_outer_lifetime = None;
                 if let ty::TyKind::Ref(r, _, _) = closure_arg.ty.kind() {
-                    if let ty::RegionKind::ReVar(r) = r.kind() {
-                        // We need to do some hacks here to find the right Polonius region:
-                        // `r` is the non-placeholder region that the variable gets, but we are
-                        // looking for the corresponding placeholder region
-                        let r2 = Self::find_placeholder_region_for(r, info).unwrap();
-
-                        info!("using lifetime {:?} for closure universal", r2);
-                        let lft = info.mk_atomic_region(r2);
-                        let name = format_atomic_region_direct(&lft, None);
-                        universal_lifetimes.insert(r2, (name, None));
-
-                        maybe_outer_lifetime = Some(r2);
-                    } else {
+                    let ty::RegionKind::ReVar(r) = r.kind() else {
                         unreachable!();
-                    }
+                    };
+
+                    // We need to do some hacks here to find the right Polonius region:
+                    // `r` is the non-placeholder region that the variable gets, but we are
+                    // looking for the corresponding placeholder region
+                    let r2 = Self::find_placeholder_region_for(r, info).unwrap();
+
+                    info!("using lifetime {:?} for closure universal", r2);
+                    let lft = info.mk_atomic_region(r2);
+                    let name = format_atomic_region_direct(&lft, None);
+                    universal_lifetimes.insert(r2, (name, None));
+
+                    maybe_outer_lifetime = Some(r2);
                 }
 
                 // detuple the inputs
@@ -512,7 +506,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     // ty::RegionVid::from_u32(1+r));
                     translated_fn
                         .add_universal_lifetime(name.clone(), lft.to_string())
-                        .map_err(|e| TranslationError::UnknownError(e))?;
+                        .map_err(TranslationError::UnknownError)?;
                 }
 
                 let mut inclusion_tracker = InclusionTracker::new(info);
@@ -562,7 +556,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 for (lft1, lft2) in universal_constraints {
                     t.translated_fn
                         .add_universal_lifetime_constraint(lft1, lft2)
-                        .map_err(|e| TranslationError::UnknownError(e))?;
+                        .map_err(TranslationError::UnknownError)?;
                 }
 
                 // compute meta information needed to generate the spec
@@ -571,17 +565,18 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     let translated_ty = t.ty_translator.translate_type(&ty)?;
                     translated_upvars_types.push(translated_ty);
                 }
-                let meta;
-                {
+
+                let meta = {
                     let scope = t.ty_translator.scope.borrow();
-                    meta = ClosureMetaInfo {
+
+                    ClosureMetaInfo {
                         kind: closure_kind,
                         captures,
                         capture_tys: &translated_upvars_types,
                         closure_lifetime: maybe_outer_lifetime
                             .map(|x| scope.lookup_universal_region(x).unwrap()),
-                    };
-                }
+                    }
+                };
 
                 // process attributes
                 t.process_closure_attrs(&inputs, &output, meta)?;
@@ -607,7 +602,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let proc: &'def Procedure = &*Box::leak(Box::new(proc));
 
         let body = proc.get_mir();
-        Self::dump_body(&body);
+        Self::dump_body(body);
 
         let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
         let ty = ty.instantiate_identity();
@@ -616,13 +611,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let sig = match ty.kind() {
             TyKind::FnDef(_def, _args) => {
                 assert!(ty.is_fn());
-                let sig = ty.fn_sig(env.tcx());
-                sig
+                ty.fn_sig(env.tcx())
             },
             _ => panic!("can not handle non-fns"),
         };
-        let sig = normalize_in_function(proc.get_id(), env.tcx(), sig)?;
 
+        let sig = normalize_in_function(proc.get_id(), env.tcx(), sig)?;
         info!("Function signature: {:?}", sig);
 
         match PoloniusInfo::new(env, proc) {
@@ -636,11 +630,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // dump graphviz files
                 // color code: red: dying loan, pink: becoming a zombie; green: is zombie
                 if rrconfig::dump_borrowck_info() {
-                    crate::environment::dump_borrowck_info(env, &proc.get_id(), &info);
+                    crate::environment::dump_borrowck_info(env, &proc.get_id(), info);
                 }
 
                 let (inputs, output, universal_lifetimes) =
-                    Self::process_lifetimes_of_args(&env, params, sig, &body);
+                    Self::process_lifetimes_of_args(env, params, sig, body);
                 info!("Have lifetime parameters: {:?}", universal_lifetimes);
                 info!("inputs: {:?}, output: {:?}", inputs, output);
 
@@ -648,7 +642,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 for (lft, name) in universal_lifetimes.values() {
                     translated_fn
                         .add_universal_lifetime(name.clone(), lft.to_string())
-                        .map_err(|e| TranslationError::UnknownError(e))?;
+                        .map_err(TranslationError::UnknownError)?;
                 }
 
                 let mut inclusion_tracker = InclusionTracker::new(info);
@@ -693,7 +687,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 for (lft1, lft2) in universal_constraints {
                     t.translated_fn
                         .add_universal_lifetime_constraint(lft1, lft2)
-                        .map_err(|e| TranslationError::UnknownError(e))?;
+                        .map_err(TranslationError::UnknownError)?;
                 }
 
                 // process attributes
@@ -782,9 +776,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, |lit| {
                         ty_translator.translator.intern_literal(lit)
                     });
+
                 parser
                     .parse_closure_spec(v, &mut self.translated_fn, meta, |x| ty_translator.make_tuple_use(x))
-                    .map_err(|e| TranslationError::AttributeError(e))?;
+                    .map_err(TranslationError::AttributeError)?;
+
                 trace!("leaving process_closure_attrs");
                 Ok(())
             },
@@ -821,9 +817,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, |lit| {
                         ty_translator.translator.intern_literal(lit)
                     });
+
                 parser
                     .parse_function_spec(v, &mut self.translated_fn)
-                    .map_err(|e| TranslationError::AttributeError(e))?;
+                    .map_err(TranslationError::AttributeError)?;
+
                 Ok(())
             },
             _ => Err(TranslationError::UnknownAttributeParser(parser)),
@@ -835,18 +833,20 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         match k {
             info::UniversalRegionKind::Function => Some(radium::UniversalLft::Function),
             info::UniversalRegionKind::Static => Some(radium::UniversalLft::Static),
+
             info::UniversalRegionKind::Local => self
                 .ty_translator
                 .scope
                 .borrow()
                 .lookup_universal_region(r)
-                .map(|x| radium::UniversalLft::Local(x)),
+                .map(radium::UniversalLft::Local),
+
             info::UniversalRegionKind::External => self
                 .ty_translator
                 .scope
                 .borrow()
                 .lookup_universal_region(r)
-                .map(|x| radium::UniversalLft::External(x)),
+                .map(radium::UniversalLft::External),
         }
     }
 
@@ -859,7 +859,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     /// Tries to find the Rust source code name of the local, otherwise simply enumerates.
     /// `used_names` keeps track of the Rust source code names that have already been used.
     fn make_local_name(mir_body: &Body<'tcx>, local: &Local, used_names: &mut HashSet<String>) -> String {
-        if let Some(mir_name) = Self::find_name_for_local(mir_body, local, &used_names) {
+        if let Some(mir_name) = Self::find_name_for_local(mir_body, local, used_names) {
             let name = strip_coq_ident(&mir_name);
             used_names.insert(mir_name);
             name
@@ -877,6 +877,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         used_names: &HashSet<String>,
     ) -> Option<String> {
         let debug_info = &body.var_debug_info;
+
         for dbg in debug_info {
             let name = &dbg.name;
             let val = &dbg.value;
@@ -902,7 +903,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             }
         }
 
-        return None;
+        None
     }
 
     fn dump_body(body: &Body) {
@@ -1191,7 +1192,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
 
         while let Some(bb_idx) = self.bb_queue.pop() {
-            let ref bb = basic_blocks[bb_idx];
+            let bb = &basic_blocks[bb_idx];
             let translated_bb = self.translate_basic_block(bb_idx, bb)?;
             self.translated_fn.code.add_basic_block(bb_idx.as_usize(), translated_bb);
         }
@@ -1513,23 +1514,21 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Checks whether a place access descends below a reference.
-    fn check_place_below_reference(&self, place: &Place<'tcx>) -> Result<bool, TranslationError> {
+    fn check_place_below_reference(&self, place: &Place<'tcx>) -> bool {
         if self.checked_op_temporaries.contains_key(&place.local) {
             // temporaries are never below references
-            return Ok(false);
+            return false;
         }
 
         for (pl, _) in place.iter_projections() {
             // check if the current ty is a reference that we then descend under with proj
             let cur_ty_kind = pl.ty(&self.proc.get_mir().local_decls, self.env.tcx()).ty.kind();
-            match cur_ty_kind {
-                TyKind::Ref(_, _, _) => {
-                    return Ok(true);
-                },
-                _ => (),
+            if let TyKind::Ref(_, _, _) = cur_ty_kind {
+                return true;
             }
         }
-        Ok(false)
+
+        false
     }
 
     fn get_assignment_strong_update_constraints(
@@ -1766,12 +1765,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let mut early_regions = Vec::new();
         info!("call substs: {:?} = {:?}, {:?}", func, sig, substs);
         for a in substs {
-            match a.unpack() {
-                ty::GenericArgKind::Lifetime(r) => match r.kind() {
-                    ty::RegionKind::ReVar(r) => early_regions.push(r),
-                    _ => (),
-                },
-                _ => (),
+            if let ty::GenericArgKind::Lifetime(r) = a.unpack() {
+                if let ty::RegionKind::ReVar(r) = r.kind() {
+                    early_regions.push(r);
+                }
             }
         }
         info!("call region instantiations (early): {:?}", early_regions);
@@ -1795,12 +1792,9 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         };
 
         for a in substs {
-            match a.unpack() {
-                ty::GenericArgKind::Type(c) => {
-                    let mut folder = ty::fold::RegionFolder::new(self.env.tcx(), &mut clos);
-                    folder.fold_ty(c);
-                },
-                _ => (),
+            if let ty::GenericArgKind::Type(c) = a.unpack() {
+                let mut folder = ty::fold::RegionFolder::new(self.env.tcx(), &mut clos);
+                folder.fold_ty(c);
             }
         }
         info!("Regions of generic args: {:?}", generic_regions);
@@ -1996,7 +1990,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 // compute the resulting annotations
                 let (rhs_annots, pre_stmt_annots, post_stmt_annots) =
-                    self.get_assignment_annots(loc, &destination, output_ty)?;
+                    self.get_assignment_annots(loc, destination, output_ty)?;
                 info!(
                     "assignment annots after call: expr: {:?}, pre-stmt: {:?}, post-stmt: {:?}",
                     rhs_annots, pre_stmt_annots, post_stmt_annots
@@ -2157,7 +2151,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     // `true` branch
                     let true_target = all_targets.get(1).unwrap();
                     let false_target = all_targets[0];
-                    let true_branch = self.translate_goto_like(&loc, &true_target)?;
+                    let true_branch = self.translate_goto_like(&loc, true_target)?;
                     let false_branch = self.translate_goto_like(&loc, &false_target)?;
                     res_stmt = radium::Stmt::If {
                         e: operand,
@@ -2325,7 +2319,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Collect all the regions appearing in a type.
     fn find_region_variables_of_place_type(&self, ty: PlaceTy<'tcx>) -> Vec<Region> {
         let mut collector = TyRegionCollectFolder::new(self.env.tcx());
-        if let Some(_) = ty.variant_index {
+        if ty.variant_index.is_some() {
             panic!("find_region_variables_of_place_type: don't support enums");
         }
 
@@ -2559,7 +2553,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         TranslationError,
     > {
         // check if the place is strongly writeable
-        let strongly_writeable = !self.check_place_below_reference(lhs)?;
+        let strongly_writeable = !self.check_place_below_reference(lhs);
         let plc_ty = self.get_type_of_place(lhs)?;
 
         let new_dyn_inclusions;
@@ -2733,13 +2727,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 StatementKind::Assign(b) => {
                     let (plc, val) = b.as_ref();
 
-                    if let Some(_) = self.is_spec_closure_local(plc.local)? {
+                    if (self.is_spec_closure_local(plc.local)?).is_some() {
                         info!("skipping assignment to spec closure local: {:?}", plc);
                     } else if let Some(rewritten_ty) = self.checked_op_temporaries.get(&plc.local) {
                         // if this is a checked op, be sure to remember it
                         info!("rewriting assignment to checked op: {:?}", plc);
 
-                        let synty = self.ty_translator.translate_type_to_syn_type(&rewritten_ty)?;
+                        let synty = self.ty_translator.translate_type_to_syn_type(rewritten_ty)?;
 
                         let translated_val = self.translate_rvalue(loc, val)?;
                         let translated_place = self.translate_place(plc)?;
@@ -2805,14 +2799,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 StatementKind::FakeRead(b) => {
                     // we can probably ignore this, but I'm not sure
                     info!("Ignoring FakeRead: {:?}", b);
-                    ()
                 },
                 StatementKind::SetDiscriminant {
                     place: _place,
                     variant_index: _variant_index,
-                } =>
-                // TODO
-                {
+                } => {
+                    // TODO
                     return Err(TranslationError::UnsupportedFeature {
                         description: "TODO: implement SetDiscriminant".to_string(),
                     });
@@ -2820,54 +2812,38 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 StatementKind::PlaceMention(place) => {
                     // TODO: this is missed UB
                     info!("Ignoring PlaceMention: {:?}", place);
-                    ()
                 },
                 StatementKind::Intrinsic(_intrinsic) => {
                     return Err(TranslationError::UnsupportedFeature {
                         description: "TODO: implement Intrinsic".to_string(),
                     });
                 },
-                StatementKind::ConstEvalCounter =>
-                // no-op
-                {
-                    ()
+                StatementKind::ConstEvalCounter => {
+                    // no-op
                 },
-                StatementKind::StorageLive(_) =>
-                // just ignore
-                {
-                    ()
+                StatementKind::StorageLive(_) => {
+                    // just ignore
                 },
-                StatementKind::StorageDead(_) =>
-                // just ignore
-                {
-                    ()
+                StatementKind::StorageDead(_) => {
+                    // just ignore
                 },
-                StatementKind::Deinit(_) =>
-                // TODO: find out where this is emitted
-                {
+                StatementKind::Deinit(_) => {
+                    // TODO: find out where this is emitted
                     return Err(TranslationError::UnsupportedFeature {
                         description: "Unsupported statement: Deinit".to_string(),
                     });
                 },
-                StatementKind::Retag(_, _) =>
-                // just ignore retags
-                {
-                    ()
+                StatementKind::Retag(_, _) => {
+                    // just ignore retags
                 },
-                StatementKind::AscribeUserType(_, _) =>
-                // don't need that info
-                {
-                    ()
+                StatementKind::AscribeUserType(_, _) => {
+                    // don't need that info
                 },
-                StatementKind::Coverage(_) =>
-                // don't need that
-                {
-                    ()
+                StatementKind::Coverage(_) => {
+                    // don't need that
                 },
-                StatementKind::Nop =>
-                // ignore
-                {
-                    ()
+                StatementKind::Nop => {
+                    // ignore
                 },
             }
             cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.into_iter());

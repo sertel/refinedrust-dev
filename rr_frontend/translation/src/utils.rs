@@ -719,7 +719,7 @@ pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
 
                 let seg = item.path.segments.get(0)?;
 
-                if seg.ident.name.as_str() == &config::spec_hotword() { Some(item) } else { None }
+                if seg.ident.name.as_str() == config::spec_hotword() { Some(item) } else { None }
             },
             _ => None,
         })

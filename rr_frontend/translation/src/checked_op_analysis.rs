@@ -132,25 +132,25 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
         // check if a statement is an assignment of a checked op result
 
         for stmt in &bb.statements {
-            match &stmt.kind {
-                StatementKind::Assign(b) => {
-                    let (plc, val) = b.as_ref();
-                    // if this is a checked op, be sure to remember it
-                    if self.is_checked_op(val) {
-                        // this should be a temporary
-                        assert!(plc.projection.is_empty());
+            let StatementKind::Assign(b) = &stmt.kind else {
+                continue;
+            };
 
-                        // just use the RHS ty
-                        let ty = self.get_type_of_place(plc);
-                        let ty = self.get_checked_op_result_type(ty.ty);
+            let (plc, val) = b.as_ref();
 
-                        self.result.insert(plc.local, ty);
-                    }
-                },
-                _ => (),
+            // if this is a checked op, be sure to remember it
+            if self.is_checked_op(val) {
+                // this should be a temporary
+                assert!(plc.projection.is_empty());
+
+                // just use the RHS ty
+                let ty = self.get_type_of_place(plc);
+                let ty = self.get_checked_op_result_type(ty.ty);
+
+                self.result.insert(plc.local, ty);
             }
         }
-        let mut successors = self.successors_of_bb(&bb);
-        self.bb_queue.append(&mut successors);
+
+        self.bb_queue.append(&mut self.successors_of_bb(bb));
     }
 }

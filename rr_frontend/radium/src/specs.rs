@@ -13,6 +13,7 @@ use std::fmt::{Display, Formatter, Write};
 use indent_write::fmt::IndentWriter;
 
 pub use crate::coq::*;
+use crate::{push_str_list, write_list};
 
 #[derive(Clone, PartialEq, Debug)]
 /// Encodes a RR type with an accompanying refinement.
@@ -160,14 +161,7 @@ impl Display for OpType {
             Self::PtrOp => write!(f, "PtrOp"),
             Self::StructOp(sl, ops) => {
                 write!(f, "StructOp {} [", sl)?;
-                let mut need_sep = false;
-                for op in ops {
-                    if need_sep {
-                        write!(f, "; ")?;
-                    }
-                    need_sep = true;
-                    write!(f, "{}", op)?;
-                }
+                write_list!(f, ops, "; ")?;
                 write!(f, "]")
             },
             Self::UntypedOp(ly) => write!(f, "UntypedOp ({})", ly),
@@ -314,14 +308,11 @@ impl SynType {
     /// The types in `substi` should not contain variables themselves, as this substitution
     /// operation is capture-incurring!
     pub fn subst(&mut self, substi: &[Option<Self>]) {
-        match self {
-            Self::Var(i) => {
-                if let Some(Some(ta)) = substi.get(*i) {
-                    assert!(ta.is_closed());
-                    *self = ta.clone();
-                }
-            },
-            _ => (),
+        if let Self::Var(i) = self {
+            if let Some(Some(ta)) = substi.get(*i) {
+                assert!(ta.is_closed());
+                *self = ta.clone();
+            }
         }
     }
 }
@@ -841,14 +832,10 @@ impl InvariantSpec {
         abstracted_refinement: Option<CoqPattern>,
         coq_params: Vec<CoqParam>,
     ) -> Self {
-        match flags {
-            InvariantSpecFlags::Persistent => {
-                assert!(
-                    invariants.iter().all(|it| it.1 == InvariantMode::All) && ty_own_invariants.is_empty()
-                );
-            },
-            _ => (),
+        if flags == InvariantSpecFlags::Persistent {
+            assert!(invariants.iter().all(|it| it.1 == InvariantMode::All) && ty_own_invariants.is_empty());
         }
+
         Self {
             type_name,
             flags,
@@ -878,16 +865,9 @@ impl InvariantSpec {
 
         let mut out = String::with_capacity(200);
 
-        write!(out, "∃ ").unwrap();
-        let mut needs_sep = false;
-        for (name, ty) in &self.existentials {
-            if needs_sep {
-                write!(out, " ").unwrap();
-            }
-            needs_sep = true;
-            write!(out, "({} : {})", name, ty).unwrap();
-        }
-        write!(out, ", ").unwrap();
+        out.push_str("∃ ");
+        push_str_list!(out, &self.existentials, " ", |(name, ty)| format!("({name} : {ty})"));
+        out.push_str(", ");
 
         out
     }
@@ -905,6 +885,7 @@ impl InvariantSpec {
             self.abstracted_refinement.as_ref().unwrap()
         )
         .unwrap();
+
         for own in &self.ty_own_invariants {
             write!(out, "{} ∗ ", IProp::Atom(own.fmt_owned("π"))).unwrap();
         }
@@ -1269,35 +1250,29 @@ impl<'def> AbstractVariant<'def> {
         let indent = "  ";
 
         // intro to main def
-        write!(
-            out,
+        out.push_str(&format!(
             "{indent}Definition {} {} : struct_layout_spec := mk_sls \"{}\" [",
             self.sls_def_name,
             typarams.join(" "),
             self.name
-        )
-        .unwrap();
-        let mut needs_sep = false;
-        for (name, ty) in &self.subst_fields {
-            if needs_sep {
-                out.push_str(";");
-            }
-            needs_sep = true;
+        ));
+
+        push_str_list!(out, &self.subst_fields, ";", |(name, ty)| {
             let synty = ty.get_syn_type();
-            write!(out, "\n{indent}{indent}(\"{}\", {})", name, synty).unwrap();
-        }
-        write!(out, "] {}.\n", self.repr).unwrap();
+
+            format!("\n{indent}{indent}(\"{name}\", {synty})")
+        });
+
+        out.push_str(&format!("] {}.\n", self.repr));
 
         // also generate a definition for the syntype
-        write!(
-            out,
+        out.push_str(&format!(
             "{indent}Definition {} {} : syn_type := {} {}.\n",
             self.st_def_name,
             typarams.join(" "),
             self.sls_def_name,
             typarams_use.join(" ")
-        )
-        .unwrap();
+        ));
 
         out
     }
@@ -1317,7 +1292,7 @@ impl<'def> AbstractVariant<'def> {
             typarams.push(format!("({} : syn_type)", names.syn_type));
             typarams_use.push(format!("{}", names.syn_type));
         }
-        out.push_str("\n");
+        out.push('\n');
 
         write!(out, "{}", self.generate_coq_sls_def_core(&typarams, &typarams_use)).unwrap();
 
@@ -1329,17 +1304,10 @@ impl<'def> AbstractVariant<'def> {
     pub fn generate_coq_type_term(&self, sls_app: Vec<String>) -> String {
         let mut out = String::with_capacity(200);
 
-        write!(out, "struct_t {} +[", CoqAppTerm::new(&self.sls_def_name, sls_app)).unwrap();
+        out.push_str(&format!("struct_t {} +[", CoqAppTerm::new(&self.sls_def_name, sls_app)));
+        push_str_list!(out, &self.subst_fields, ";", |(_, ty)| ty.to_string());
+        out.push(']');
 
-        let mut needs_sep = false;
-        for (_name, ty) in &self.subst_fields {
-            if needs_sep {
-                out.push_str("; ");
-            }
-            needs_sep = true;
-            write!(out, "{}", ty).unwrap();
-        }
-        out.push_str("]");
         out
     }
 
@@ -1414,7 +1382,7 @@ impl<'def> AbstractVariant<'def> {
             }
             out.push_str(".\n");
         }
-        out.push_str("\n");
+        out.push('\n');
 
         // write coq parameters
         let (context_names, dep_sigma) = format_extra_context_items(extra_context, &mut out).unwrap();
@@ -1502,7 +1470,7 @@ impl<'def> AbstractStruct<'def> {
 
     /// Get the name of this struct
     pub fn name(&self) -> &str {
-        &self.variant_def.name()
+        self.variant_def.name()
     }
 
     pub fn sls_def_name(&self) -> &str {
@@ -1559,7 +1527,7 @@ impl<'def> AbstractStruct<'def> {
     /// Generate an optional definition for the invariant of this type, if one has been specified.
     pub fn generate_optional_invariant_def(&self) -> Option<String> {
         self.invariant.as_ref().map(|spec| {
-            spec.generate_coq_type_def(self.plain_ty_name(), &self.plain_rt_def_name(), &self.ty_params)
+            spec.generate_coq_type_def(self.plain_ty_name(), self.plain_rt_def_name(), &self.ty_params)
         })
     }
 
@@ -1914,97 +1882,76 @@ impl<'def> AbstractEnum<'def> {
     /// Generate a Coq definition for the enum layout spec, and all the struct_layout_specs for the
     /// variants.
     pub fn generate_coq_els_def(&self) -> String {
+        let indent = "  ";
+
         let mut out = String::with_capacity(200);
 
-        let indent = "  ";
-        write!(out, "Section {}.\n", self.els_def_name).unwrap();
-        write!(out, "{}Context `{{!refinedrustGS Σ}}.\n", indent).unwrap();
+        out.push_str(&format!("Section {}.\n", self.els_def_name));
+        out.push_str(&format!("{indent}Context `{{!refinedrustGS Σ}}.\n"));
+        out.push('\n');
 
         // add syntype parameters
         let mut typarams = Vec::new();
         let mut typarams_use = Vec::new();
+
         if !self.ty_params.is_empty() {
             for names in &self.ty_params {
                 typarams.push(format!("({} : syn_type)", names.syn_type));
-                typarams_use.push(format!("{}", names.syn_type));
+                typarams_use.push(names.syn_type.to_string());
             }
         }
-        out.push_str("\n");
 
         // generate all the component structs
         for (_, v, _) in &self.variants {
             let vbor = v.borrow();
             let vbor = vbor.as_ref().unwrap();
 
-            write!(out, "{}\n", vbor.variant_def.generate_coq_sls_def_core(&typarams, &typarams_use))
-                .unwrap();
+            out.push_str(&vbor.variant_def.generate_coq_sls_def_core(&typarams, &typarams_use));
+            out.push('\n');
         }
 
         // intro to main def
-        write!(
-            out,
+        out.push_str(&format!(
             "{indent}Program Definition {} {}: enum_layout_spec := mk_els \"{}\" {} [",
             self.els_def_name,
             typarams.join(" "),
             self.name,
             self.discriminant_type
-        )
-        .unwrap();
-        let mut needs_sep = false;
+        ));
 
-        for (name, var, _) in &self.variants {
-            if needs_sep {
-                out.push_str(";");
-            }
-            needs_sep = true;
-
+        push_str_list!(out, &self.variants, ";", |(name, var, _)| {
             let vbor = var.borrow();
             let vbor = vbor.as_ref().unwrap();
 
-            write!(
-                out,
-                "\n{}{}(\"{}\", {} {})",
-                indent,
-                indent,
-                name,
-                vbor.st_def_name(),
-                typarams.join(" ")
-            )
-            .unwrap();
-        }
-        // write the repr
-        write!(out, "] {} [", self.repr).unwrap();
-        // now write the tag-discriminant list
-        needs_sep = false;
-        for (name, _, discr) in &self.variants {
-            if needs_sep {
-                out.push_str("; ");
-            }
-            needs_sep = true;
+            format!("\n{}{}(\"{}\", {} {})", indent, indent, name, vbor.st_def_name(), typarams.join(" "))
+        });
 
-            write!(out, "(\"{}\", {})", name, discr).unwrap();
-        }
+        // write the repr
+        out.push_str(&format!("] {} [", self.repr));
+
+        // now write the tag-discriminant list
+        push_str_list!(out, &self.variants, "; ", |(name, _, discr)| format!("(\"{name}\", {discr})"));
+
         out.push_str("] _ _ _ _.\n");
-        write!(out, "{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n").unwrap();
-        write!(out, "{indent}Next Obligation. done. Qed.\n").unwrap();
-        write!(out, "{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n").unwrap();
-        write!(out, "{indent}Next Obligation. repeat first [econstructor | init_cache; solve_goal]. Qed.\n")
-            .unwrap();
-        write!(out, "{indent}Global Typeclasses Opaque {}.\n", self.els_def_name).unwrap();
+        out.push_str(&format!("{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n"));
+        out.push_str(&format!("{indent}Next Obligation. done. Qed.\n"));
+        out.push_str(&format!("{indent}Next Obligation. repeat first [econstructor | set_solver]. Qed.\n"));
+        out.push_str(&format!(
+            "{indent}Next Obligation. repeat first [econstructor | init_cache; solve_goal]. Qed.\n"
+        ));
+        out.push_str(&format!("{indent}Global Typeclasses Opaque {}.\n", self.els_def_name));
 
         // also write an st definition
-        write!(
-            out,
+        out.push_str(&format!(
             "{indent}Definition {} {} : syn_type := {} {}.\n",
             self.st_def_name,
             typarams.join(" "),
             self.els_def_name,
             typarams_use.join(" ")
-        )
-        .unwrap();
+        ));
 
         // finish
-        write!(out, "End {}.\n", self.els_def_name).unwrap();
+        out.push_str(&format!("End {}.\n", self.els_def_name));
 
         out
     }
@@ -2139,7 +2086,7 @@ impl<'def> AbstractEnum<'def> {
             }
             out.push_str(".\n");
         }
-        out.push_str("\n");
+        out.push('\n');
 
         let rt_params: Vec<_> = self.ty_params.iter().map(|x| x.refinement_type.clone()).collect();
 
@@ -2546,15 +2493,7 @@ where
         return write!(f, "True");
     }
 
-    let mut needs_sep = false;
-    for s in v {
-        if needs_sep {
-            write!(f, " {} ", op)?;
-        }
-        needs_sep = true;
-        write!(f, "({})", s)?;
-    }
-    Ok(())
+    write_list!(f, v, &format!(" {op} "), "({})")
 }
 
 fn fmt_binders(b: &[CoqBinder], op: &str, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -2574,9 +2513,9 @@ impl Display for IProp {
             Self::Pure(a) => write!(f, "⌜{a}⌝"),
             Self::Linktime(a) => write!(f, "⌜{a}⌝"),
             Self::PureWithName(p, name) => write!(f, "⌜name_hint \"{name}\" ({p})⌝"),
-            Self::Sep(v) => fmt_with_op(&v, "∗", f),
-            Self::Disj(v) => fmt_with_op(&v, "∨", f),
-            Self::Conj(v) => fmt_with_op(&v, "∧", f),
+            Self::Sep(v) => fmt_with_op(v, "∗", f),
+            Self::Disj(v) => fmt_with_op(v, "∨", f),
+            Self::Conj(v) => fmt_with_op(v, "∧", f),
             Self::Wand(l, r) => {
                 write!(f, "({l}) -∗ {r}")
             },
@@ -2712,42 +2651,27 @@ pub struct FunctionSpec<'def> {
 impl<'def> FunctionSpec<'def> {
     fn format_elctx(&self) -> String {
         let mut out = String::with_capacity(100);
+
         out.push_str("λ ϝ, [");
-        let mut need_sep = false;
-        for (ref lft1, ref lft2) in &self.elctx {
-            if need_sep {
-                out.push_str(", ");
-            }
-            out.push_str(format!("({}, {})", lft1, lft2).as_str());
-            need_sep = true;
-        }
-        out.push_str("]");
+        push_str_list!(out, &self.elctx, ", ", |(ref lft1, ref lft2)| format!("({lft1}, {lft2})"));
+        out.push(']');
+
         out
     }
 
     pub(crate) fn format_coq_params(&self) -> String {
         let mut out = String::with_capacity(100);
-        let mut need_sep = false;
-        for param in &self.coq_params {
-            if need_sep {
-                out.push_str(" ");
-            }
-            out.push_str(format!("{}", param).as_str());
-            need_sep = true;
-        }
+
+        push_str_list!(out, &self.coq_params, " ");
+
         out
     }
 
     fn format_args(&self) -> String {
         let mut out = String::with_capacity(100);
-        let mut need_sep = false;
-        for type_with_rfn in &self.args {
-            if need_sep {
-                out.push_str(", ");
-            }
-            out.push_str(format!("{}", type_with_rfn).as_str());
-            need_sep = true;
-        }
+
+        push_str_list!(out, &self.args, ", ");
+
         out
     }
 
@@ -2760,28 +2684,34 @@ impl<'def> FunctionSpec<'def> {
         F: IntoIterator<Item = &'a (CoqName, CoqType)>,
     {
         let mut v = v.into_iter().peekable();
-        if v.peek().is_none() {
-            ("_".to_string(), CoqType::Literal("unit".to_string()))
-        } else {
-            let mut pattern = String::with_capacity(100);
-            let mut types = String::with_capacity(100);
 
-            pattern.push_str("(");
-            types.push_str("(");
-            let mut need_sep = false;
-            for (name, t) in v {
-                if need_sep {
-                    pattern.push_str(", ");
-                    types.push_str(" * ");
-                }
-                pattern.push_str(format!("{}", name).as_str());
-                types.push_str(format!("{}", t).as_str());
-                need_sep = true;
-            }
-            pattern.push_str(")");
-            types.push_str(")");
-            (pattern, CoqType::Literal(types))
+        if v.peek().is_none() {
+            return ("_".to_string(), CoqType::Literal("unit".to_string()));
         }
+
+        let mut pattern = String::with_capacity(100);
+        let mut types = String::with_capacity(100);
+
+        pattern.push('(');
+        types.push('(');
+
+        let mut need_sep = false;
+        for (name, t) in v {
+            if need_sep {
+                pattern.push_str(", ");
+                types.push_str(" * ");
+            }
+
+            pattern.push_str(&name.to_string());
+            types.push_str(&t.to_string());
+
+            need_sep = true;
+        }
+
+        pattern.push(')');
+        types.push(')');
+
+        (pattern, CoqType::Literal(types))
     }
 }
 
@@ -2912,11 +2842,8 @@ impl<'def> FunctionSpecBuilder<'def> {
     pub fn add_param_type_annot(&mut self, name: &CoqName, t: CoqType) -> Result<(), String> {
         for (name0, t0) in &mut self.params {
             if *name0 == *name {
-                match *t0 {
-                    CoqType::Infer => {
-                        *t0 = t;
-                    },
-                    _ => (),
+                if *t0 == CoqType::Infer {
+                    *t0 = t;
                 }
                 return Ok(());
             }
@@ -3020,7 +2947,7 @@ impl<'def> FunctionSpecBuilder<'def> {
 
     /// Set the return type of the function
     pub fn set_ret_type(&mut self, ret: TypeWithRef<'def>) -> Result<(), String> {
-        if let Some(_) = self.ret {
+        if self.ret.is_some() {
             return Err("Re-definition of return type".to_string());
         }
         self.ret = Some(ret);
@@ -3060,7 +2987,7 @@ impl<'def> FunctionSpecBuilder<'def> {
             pre: self.pre,
             args: self.args,
             existentials: self.existential,
-            ret: self.ret.unwrap_or_else(|| TypeWithRef::make_unit()),
+            ret: self.ret.unwrap_or_else(TypeWithRef::make_unit),
             post: self.post,
             has_spec: self.has_spec,
         }

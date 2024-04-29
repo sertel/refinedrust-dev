@@ -250,7 +250,7 @@ impl ProcedureLoops {
         let mut enclosing_loop_heads_set: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>> = HashMap::new();
         for (&loop_head, loop_body) in &loop_bodies {
             for &block in loop_body {
-                let heads_set = enclosing_loop_heads_set.entry(block).or_insert_with(HashSet::new);
+                let heads_set = enclosing_loop_heads_set.entry(block).or_default();
                 heads_set.insert(loop_head);
             }
         }

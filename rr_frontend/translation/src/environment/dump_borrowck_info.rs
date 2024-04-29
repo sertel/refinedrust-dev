@@ -215,7 +215,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         let graph_file = File::create(graph_path).expect("Unable to create file");
         let graph = BufWriter::new(graph_file);
 
-        let initialization = compute_definitely_initialized(def_id, &mir, self.tcx);
+        let initialization = compute_definitely_initialized(def_id, mir, self.tcx);
 
         // FIXME: this computes the wrong loop invariant permission
         //let loop_invariant_block = HashMap::new();

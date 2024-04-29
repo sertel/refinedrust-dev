@@ -204,22 +204,24 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
         let mut params: Vec<specs::CoqParam> = Vec::new();
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&args.inner_tokens());
                 match seg.ident.name.as_str() {
                     "refined_by" => {
                         let pat = RfnPattern::parse(&buffer, &meta).map_err(str_err)?;
+
                         rfn_pat = pat.rfn_pat;
-                        match pat.rfn_type {
-                            Some(ty) => rfn_type = ty,
-                            None => (),
+
+                        if let Some(ty) = pat.rfn_type {
+                            rfn_type = ty;
                         }
                     },
                     "invariant" => {
                         let prop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+
                         match prop {
                             MetaIProp::Own(iprop) => {
                                 invariants.push((iprop, specs::InvariantMode::OnlyOwned));
@@ -242,22 +244,25 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                     },
                     "exists" => {
                         let mut params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+
                         existentials.append(&mut params.params);
                     },
                     "mode" => {
                         let mode = InvariantSpecFlags::parse(&buffer, &meta).map_err(str_err)?;
+
                         inv_flags = mode.into();
                     },
                     "refines" => {
                         let term = IdentOrTerm::parse(&buffer, &meta).map_err(str_err)?;
-                        if let Some(_) = abstracted_refinement {
+
+                        if abstracted_refinement.is_some() {
                             return Err("multiple refines specifications given".to_string());
-                        } else {
-                            abstracted_refinement = Some(term.to_string());
                         }
+                        abstracted_refinement = Some(term.to_string());
                     },
                     "context" => {
                         let param = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
+
                         params.push(specs::CoqParam::new(
                             specs::CoqName::Unnamed,
                             specs::CoqType::Literal(param.item),
@@ -266,7 +271,6 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                     },
                     _ => {
                         //skip, this may be part of an enum spec
-                        ()
                     },
                 }
             }
@@ -368,7 +372,7 @@ where
             refinement_type: specs::CoqType::Infer,
             syn_type: st,
         };
-        let lit_ref = (&self.make_literal)(lit_ty);
+        let lit_ref = (self.make_literal)(lit_ty);
         let lit_use = specs::LiteralTypeUse::new_with_annot(lit_ref, vec![], lit.meta);
 
         specs::Type::Literal(lit_use)
@@ -396,8 +400,8 @@ where
         let mut parsed_rfn = None;
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&args.inner_tokens());

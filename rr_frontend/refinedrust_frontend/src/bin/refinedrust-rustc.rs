@@ -26,7 +26,6 @@ use rustc_middle::query::{ExternProviders, Providers};
 use rustc_middle::ty::TyCtxt;
 use rustc_session::Session;
 use translation::environment::mir_storage;
-use {shlex, translation};
 
 const BUG_REPORT_URL: &str = "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev/-/issues/new";
 

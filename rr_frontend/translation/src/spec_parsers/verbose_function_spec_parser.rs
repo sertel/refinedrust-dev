@@ -5,11 +5,10 @@
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
 use std::collections::HashMap;
-use std::fmt::Write;
 
 use log::{info, warn};
 use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
-use radium::specs;
+use radium::{push_str_list, specs};
 use rustc_ast::ast::AttrItem;
 use rustc_middle::ty;
 use {attribute_parse as parse, radium};
@@ -265,7 +264,7 @@ where
                 refinement_type: specs::CoqType::Infer,
                 syn_type: st,
             };
-            let lit_ref = (&self.make_literal)(lit_ty);
+            let lit_ref = (self.make_literal)(lit_ty);
             let lit_ty_use = specs::LiteralTypeUse::new_with_annot(lit_ref, vec![], lit.meta.clone());
 
             (specs::TypeWithRef::new(specs::Type::Literal(lit_ty_use), lit.rfn.to_string()), None)
@@ -299,17 +298,17 @@ where
 
         match name {
             "params" => {
-                let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+                let params = RRParams::parse(buffer, &meta).map_err(str_err)?;
                 for p in params.params {
                     builder.spec.add_param(p.name, p.ty)?;
                 }
             },
             "param" => {
-                let param = RRParam::parse(&buffer, &meta).map_err(str_err)?;
+                let param = RRParam::parse(buffer, &meta).map_err(str_err)?;
                 builder.spec.add_param(param.name, param.ty)?;
             },
             "args" => {
-                let args = RRArgs::parse(&buffer, &meta).map_err(str_err)?;
+                let args = RRArgs::parse(buffer, &meta).map_err(str_err)?;
                 if self.arg_types.len() != args.args.len() {
                     return Err(format!(
                         "wrong number of function arguments given: expected {} args",
@@ -329,11 +328,11 @@ where
                 }
             },
             "requires" => {
-                let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+                let iprop = MetaIProp::parse(buffer, &meta).map_err(str_err)?;
                 builder.spec.add_precondition(iprop.into())?;
             },
             "ensures" => {
-                let iprop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+                let iprop = MetaIProp::parse(buffer, &meta).map_err(str_err)?;
                 builder.spec.add_postcondition(iprop.into())?;
             },
             "observe" => {
@@ -349,24 +348,24 @@ where
                 builder.spec.add_postcondition(m.into())?;
             },
             "returns" => {
-                let tr = LiteralTypeWithRef::parse(&buffer, &meta).map_err(str_err)?;
+                let tr = LiteralTypeWithRef::parse(buffer, &meta).map_err(str_err)?;
                 // convert to type
                 let (ty, _) = self.make_type_with_ref(&tr, self.ret_type);
                 builder.spec.set_ret_type(ty)?;
             },
             "exists" => {
-                let params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+                let params = RRParams::parse(buffer, &meta).map_err(str_err)?;
                 for param in params.params {
                     builder.spec.add_existential(param.name, param.ty)?;
                 }
             },
             "tactics" => {
-                let tacs = parse::LitStr::parse(&buffer, &meta).map_err(str_err)?;
+                let tacs = parse::LitStr::parse(buffer, &meta).map_err(str_err)?;
                 let tacs = tacs.value();
                 builder.add_manual_tactic(&tacs);
             },
             "context" => {
-                let context_item = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
+                let context_item = RRCoqContextItem::parse(buffer, &meta).map_err(str_err)?;
                 if context_item.at_end {
                     builder.spec.add_late_coq_param(
                         specs::CoqName::Unnamed,
@@ -501,19 +500,13 @@ where
         let mut pre_tys = Vec::new();
 
         if pre_types.is_empty() {
-            write!(pre_rfn, "()").unwrap();
+            pre_rfn.push_str("()");
         } else {
-            write!(pre_rfn, "-[").unwrap();
-            let mut needs_sep = false;
-            for x in pre_types {
-                if needs_sep {
-                    write!(pre_rfn, "; ").unwrap();
-                }
-                needs_sep = true;
-                write!(pre_rfn, "#({})", x.1).unwrap();
-                pre_tys.push(x.0);
-            }
-            write!(pre_rfn, "]").unwrap();
+            pre_rfn.push_str("-[");
+            push_str_list!(pre_rfn, pre_types.clone(), "; ", |x| format!("#({})", x.1));
+            pre_rfn.push(']');
+
+            pre_tys = pre_types.iter().map(|x| x.0.clone()).collect();
         }
         let tuple = make_tuple(pre_tys);
 
@@ -563,21 +556,12 @@ where
                 // references
                 let mut post_term = String::new();
 
-                write!(post_term, "-[").unwrap();
-                let mut needs_sep = false;
-                for p in post_patterns {
-                    if needs_sep {
-                        write!(post_term, "; ").unwrap();
-                    }
-                    needs_sep = true;
-                    match p {
-                        CapturePostRfn::ImmutOrConsume(pat) => write!(post_term, "#({pat})").unwrap(),
-                        CapturePostRfn::Mut(pat, gvar) => {
-                            write!(post_term, "#(#({pat}), {gvar})").unwrap();
-                        },
-                    }
-                }
-                write!(post_term, "]").unwrap();
+                post_term.push_str("-[");
+                push_str_list!(post_term, post_patterns, "; ", |p| match p {
+                    CapturePostRfn::ImmutOrConsume(pat) => format!("#({pat})"),
+                    CapturePostRfn::Mut(pat, gvar) => format!("#(#({pat}), {gvar})"),
+                });
+                post_term.push(']');
 
                 builder
                     .spec
@@ -619,8 +603,8 @@ where
         // parse captures -- we need to handle it before the other annotations because we will have
         // to add the first arg for the capture
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
             let meta: ParseMeta = (&meta, &lfts);
@@ -638,8 +622,8 @@ where
         self.merge_capture_information(capture_specs, closure_meta, make_tuple, &mut *builder)?;
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
@@ -678,8 +662,8 @@ where
         info!("ty params: {:?}", meta);
 
         for &it in attrs {
-            let ref path_segs = it.path.segments;
-            let ref args = it.args;
+            let path_segs = &it.path.segments;
+            let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());

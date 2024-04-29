@@ -795,7 +795,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             let mut new_map: BTreeMap<facts::Region, BTreeSet<facts::Region>> = BTreeMap::new();
             for (&r1, set) in map {
                 for &r2 in set {
-                    new_map.entry(r2).or_insert_with(|| BTreeSet::new());
+                    new_map.entry(r2).or_default();
 
                     let new_set = new_map.get_mut(&r2).unwrap();
                     new_set.insert(r1);

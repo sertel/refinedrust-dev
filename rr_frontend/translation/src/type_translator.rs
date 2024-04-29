@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use log::{info, trace, warn};
-use radium;
+use radium::{self, push_str_list};
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty;
 use rustc_middle::ty::{IntTy, Ty, TyKind, UintTy};
@@ -420,7 +420,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         match ty.kind() {
             TyKind::Adt(adt, args) => {
                 // Check if we have a shim
-                if let Some(_) = self.lookup_adt_shim(adt.did()) {
+                if self.lookup_adt_shim(adt.did()).is_some() {
                     self.generate_adt_shim_use(adt, args, adt_deps)
                 } else if adt.is_box() {
                     // TODO: for now, Box gets a special treatment and is not accurately
@@ -430,13 +430,12 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     info!("generating struct use for {:?}", adt.did());
                     // register the ADT, if necessary
                     self.register_adt(*adt)?;
-                    self.generate_struct_use_noshim(adt.did(), *args, adt_deps)
-                        .map(|x| radium::Type::Struct(x))
+                    self.generate_struct_use_noshim(adt.did(), *args, adt_deps).map(radium::Type::Struct)
                 } else if adt.is_enum() {
                     if let Some(variant) = variant {
                         self.register_adt(*adt)?;
                         self.generate_enum_variant_use_noshim(adt.did(), variant, args.iter(), adt_deps)
-                            .map(|x| radium::Type::Struct(x))
+                            .map(radium::Type::Struct)
                     } else {
                         Err(TranslationError::UnknownError(
                             "a non-downcast enum is not a structlike".to_string(),
@@ -448,7 +447,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     })
                 }
             },
-            TyKind::Tuple(args) => self.generate_tuple_use(*args, adt_deps).map(|x| radium::Type::Literal(x)),
+            TyKind::Tuple(args) => self.generate_tuple_use(*args, adt_deps).map(radium::Type::Literal),
             _ => Err(TranslationError::UnknownError("not a structlike".to_string())),
         }
     }
@@ -812,8 +811,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let mut spec_parser = struct_spec_parser::VerboseInvariantSpecParser::new();
             let ty_name = strip_coq_ident(format!("{}_inv_t", struct_name).as_str());
             let res = spec_parser
-                .parse_invariant_spec(&ty_name, &outer_attrs, &ty_param_defs, &lft_params)
-                .map_err(|err| TranslationError::FatalError(err))?;
+                .parse_invariant_spec(&ty_name, &outer_attrs, ty_param_defs, &lft_params)
+                .map_err(TranslationError::FatalError)?;
             invariant_spec = Some(res.0);
             expect_refinement = !res.1;
         } else {
@@ -843,14 +842,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             let mut parser = struct_spec_parser::VerboseStructFieldSpecParser::new(
                 &ty,
-                &ty_param_defs,
+                ty_param_defs,
                 &lft_params,
                 expect_refinement,
                 |lit| self.intern_literal(lit),
             );
-            let field_spec = parser
-                .parse_field_spec(&f_name, &attrs)
-                .map_err(|err| TranslationError::UnknownError(err))?;
+            let field_spec =
+                parser.parse_field_spec(&f_name, &attrs).map_err(TranslationError::UnknownError)?;
 
             info!("adt variant field: {:?} -> {} (with rfn {:?})", f_name, field_spec.ty, field_spec.rfn);
             builder.add_field(&f_name, field_spec.ty);
@@ -867,7 +865,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             }
         }
 
-        let struct_def = builder.finish(&ty_param_defs);
+        let struct_def = builder.finish(ty_param_defs);
         info!("finished variant def: {:?}", struct_def);
 
         // now add the invariant, if one was annotated
@@ -875,16 +873,11 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             if expect_refinement {
                 // make a plist out of this
                 let mut rfn = String::with_capacity(100);
-                write!(rfn, "-[").unwrap();
-                let mut need_sep = false;
-                for refinement in &field_refinements {
-                    if need_sep {
-                        write!(rfn, "; ").unwrap();
-                    }
-                    need_sep = true;
-                    write!(rfn, "#({})", refinement).unwrap();
-                }
-                write!(rfn, "]").unwrap();
+
+                rfn.push_str("-[");
+                push_str_list!(rfn, &field_refinements, "; ", "#({})");
+                rfn.push(']');
+
                 invariant_spec.provide_abstracted_refinement(rfn);
             }
         }
@@ -1192,7 +1185,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 let mut parser = VerboseEnumSpecParser::new();
                 enum_spec = parser
                     .parse_enum_spec("", &attributes, &variant_attrs, &ty_param_defs, &lft_params)
-                    .map_err(|err| TranslationError::FatalError(err))?;
+                    .map_err(TranslationError::FatalError)?;
             } else {
                 // generate a specification
                 let decl;
@@ -1354,7 +1347,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                         adt_deps.insert(adt.did());
                     }
 
-                    if let Some(_) = self.lookup_adt_shim(adt.did()) {
+                    if self.lookup_adt_shim(adt.did()).is_some() {
                         self.generate_adt_shim_use(adt, substs, &mut *state)
                     } else if adt.is_struct() {
                         self.generate_structlike_use_internal(ty, None, &mut *state)
@@ -1583,7 +1576,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         ty: &Ty<'tcx>,
         scope: InFunctionState<'_, 'def>,
     ) -> Result<radium::Type<'def>, TranslationError> {
-        self.translate_type_with_deps(&ty, &mut TranslationStateInner::InFunction(&mut *scope))
+        self.translate_type_with_deps(ty, &mut TranslationStateInner::InFunction(&mut *scope))
     }
 
     /// Translate type in an empty scope.
@@ -1614,7 +1607,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
                     if let Some(variant) = variant {
                         self.register_adt(*adt)?;
                         let v = &adt.variants()[variant];
-                        self.generate_enum_variant_use(v.def_id, args.iter(), scope).map(|x| Some(x))
+                        self.generate_enum_variant_use(v.def_id, args.iter(), scope).map(Some)
                     } else {
                         Err(TranslationError::UnknownError(
                             "a non-downcast enum is not a structlike".to_string(),
@@ -1626,15 +1619,14 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
                     })
                 }
             },
-            TyKind::Tuple(args) => self
-                .generate_tuple_use(*args, &mut TranslationStateInner::InFunction(scope))
-                .map(|x| Some(x)),
+            TyKind::Tuple(args) => {
+                self.generate_tuple_use(*args, &mut TranslationStateInner::InFunction(scope)).map(Some)
+            },
             TyKind::Closure(_, args) => {
                 // use the upvar tuple
                 let closure_args = args.as_closure();
                 let upvars = closure_args.upvar_tys();
-                self.generate_tuple_use(upvars, &mut TranslationStateInner::InFunction(scope))
-                    .map(|x| Some(x))
+                self.generate_tuple_use(upvars, &mut TranslationStateInner::InFunction(scope)).map(Some)
             },
             _ => Err(TranslationError::UnknownError("not a structlike".to_string())),
         }

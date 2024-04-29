@@ -9,7 +9,9 @@ use std::fmt::{Display, Formatter, Write};
 
 use indent_write::fmt::IndentWriter;
 
-pub(crate) const BASE_INDENT: &'static str = "  ";
+use crate::write_list;
+
+pub(crate) const BASE_INDENT: &str = "  ";
 
 /// Represents a Coq path of the form
 /// `From A.B.C Import D`
@@ -140,36 +142,19 @@ impl Display for CoqType {
             Self::Bool => write!(f, "bool"),
             Self::Prod(v) => match v.len() {
                 0 => write!(f, "unit"),
-                1 => v[0].fmt(f),
+                1 => write!(f, "{}", v[0]),
                 _ => {
                     write!(f, "(")?;
-                    let mut need_sep = false;
-                    for t in v {
-                        if need_sep {
-                            write!(f, " * ")?;
-                        }
-                        need_sep = true;
-
-                        t.fmt(f)?;
-                    }
+                    write_list!(f, v, " * ")?;
                     write!(f, ")%type")
                 },
             },
-            Self::PlaceRfn(box t) => {
-                write!(f, "(place_rfn {})", t)
-            },
+            Self::PlaceRfn(box t) => write!(f, "(place_rfn {})", t),
             Self::Gname => write!(f, "gname"),
             Self::Var(i) => write!(f, "#{}", i),
             Self::PList(cons, tys) => {
                 write!(f, "plist {} [", cons)?;
-                let mut needs_sep = false;
-                for ty in tys {
-                    if needs_sep {
-                        write!(f, "; ")?;
-                    }
-                    needs_sep = true;
-                    write!(f, "{} : Type", ty)?;
-                }
+                write_list!(f, tys, "; ", "{} : Type")?;
                 write!(f, "]")
             },
         }
@@ -181,22 +166,8 @@ impl CoqType {
     pub fn is_closed(&self) -> bool {
         match self {
             Self::Var(_) => false,
-            Self::Prod(v) => {
-                for t in v {
-                    if !t.is_closed() {
-                        return false;
-                    }
-                }
-                return true;
-            },
-            Self::PList(_, tys) => {
-                for t in tys {
-                    if !t.is_closed() {
-                        return false;
-                    }
-                }
-                return true;
-            },
+            Self::Prod(v) => v.iter().all(|t| t.is_closed()),
+            Self::PList(_, tys) => tys.iter().all(|t| t.is_closed()),
             Self::Ttype(box ty) => ty.is_closed(),
             Self::PlaceRfn(t) => t.is_closed(),
             Self::Literal(..) => true,
@@ -269,15 +240,7 @@ impl CoqParamList {
 
 impl Display for CoqParamList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut needs_sep = false;
-        for (name, ty) in &self.0 {
-            if needs_sep {
-                write!(f, " ")?;
-            }
-            needs_sep = true;
-            write!(f, "({} : {})", name, ty)?;
-        }
-        Ok(())
+        write_list!(f, &self.0, " ", |(name, ty)| format!("({name} : {ty})"))
     }
 }
 
@@ -426,19 +389,13 @@ impl CoqAttributes {
 }
 impl Display for CoqAttributes {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if !self.attrs.is_empty() {
-            write!(f, "#[ ")?;
-            let mut needs_sep = false;
-            for attr in &self.attrs {
-                if needs_sep {
-                    write!(f, ", ")?;
-                }
-                needs_sep = true;
-                write!(f, "{}", attr)?;
-            }
-            write!(f, "]")?;
+        if self.attrs.is_empty() {
+            return Ok(());
         }
-        Ok(())
+
+        write!(f, "#[ ")?;
+        write_list!(f, &self.attrs, ", ")?;
+        write!(f, "]")
     }
 }
 
