@@ -83,7 +83,7 @@ pub struct FunctionShim<'a> {
 impl<'a> From<FunctionShim<'a>> for ShimFunctionEntry {
     fn from(shim: FunctionShim<'a>) -> Self {
         Self {
-            path: shim.path.iter().map(|x| x.to_string()).collect(),
+            path: shim.path.iter().map(|x| (*x).to_string()).collect(),
             kind: if shim.is_method { "method".to_string() } else { "function".to_string() },
             name: shim.name,
             spec: shim.spec_name,
@@ -124,7 +124,7 @@ pub struct AdtShim<'a> {
 impl<'a> From<AdtShim<'a>> for ShimAdtEntry {
     fn from(shim: AdtShim<'a>) -> Self {
         Self {
-            path: shim.path.iter().map(|x| x.to_string()).collect(),
+            path: shim.path.iter().map(|x| (*x).to_string()).collect(),
             kind: "adt".to_string(),
             syntype: shim.syn_type,
             semtype: shim.sem_type,
