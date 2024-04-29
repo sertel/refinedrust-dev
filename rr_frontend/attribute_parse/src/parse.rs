@@ -662,7 +662,9 @@ impl BigInt {
 
     fn reserve_two_digits(&mut self) {
         let len = self.digits.len();
-        let desired = len + !self.digits.ends_with(&[0, 0]) as usize + !self.digits.ends_with(&[0]) as usize;
+        let desired =
+            len + usize::from(!self.digits.ends_with(&[0, 0])) + usize::from(!self.digits.ends_with(&[0]));
+
         self.digits.resize(desired, 0);
     }
 }

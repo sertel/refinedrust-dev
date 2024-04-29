@@ -950,7 +950,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     map.insert(name, evaluated_int);
                 },
                 ty::VariantDiscr::Relative(offset) => {
-                    let idx: i128 = last_explicit_discr + (offset as i128);
+                    let idx: i128 = last_explicit_discr + i128::from(offset);
                     map.insert(name, idx);
                 },
             }

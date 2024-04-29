@@ -32,7 +32,6 @@ rustflags = [
     "-Aclippy::string_lit_as_bytes",
 
     # clippy::pedantic
-    "-Aclippy::cast_lossless",
     "-Aclippy::cloned_instead_of_copied",
     "-Aclippy::default_trait_access",
     "-Aclippy::doc_markdown",
