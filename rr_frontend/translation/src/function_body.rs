@@ -160,7 +160,7 @@ impl<'def> ProcedureScope<'def> {
         assert!(self.translated_functions.insert(*did, trf).is_none());
     }
 
-    /// Provide the specification for an only_spec function.
+    /// Provide the specification for an `only_spec` function.
     pub fn provide_specced_function(&mut self, did: &DefId, spec: radium::FunctionSpec<'def>) {
         let meta = self.name_map.get(did).unwrap();
         assert!(meta.get_mode().is_only_spec());
@@ -1093,10 +1093,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 }
 
 /**
- * Struct that keeps track of all information necessary to translate a MIR Body to a radium::Function.
+ * Struct that keeps track of all information necessary to translate a MIR Body to a `radium::Function`.
  * `'a` is the lifetime of the translator and ends after translation has finished.
  * `'def` is the lifetime of the generated code (the code may refer to struct defs).
- * `'tcx' is the lifetime of the rustc tctx.
+ * `'tcx` is the lifetime of the rustc tctx.
  */
 struct BodyTranslator<'a, 'def, 'tcx> {
     env: &'def Environment<'tcx>,
@@ -1155,7 +1155,7 @@ struct BodyTranslator<'a, 'def, 'tcx> {
 }
 
 impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
-    /// Main translation function that actually does the translation and returns a radium::Function
+    /// Main translation function that actually does the translation and returns a `radium::Function`
     /// if successful.
     pub fn translate(
         mut self,
@@ -1656,7 +1656,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    /// Find the optional DefId of the closure giving the invariant for the loop with head `head_bb`.
+    /// Find the optional `DefId` of the closure giving the invariant for the loop with head `head_bb`.
     fn find_loop_spec_closure(&self, head_bb: BasicBlock) -> Result<Option<DefId>, TranslationError> {
         let bodies = self.proc.loop_info().ordered_loop_bodies.get(&head_bb).unwrap();
         let basic_blocks = &self.proc.get_mir().basic_blocks;
@@ -1699,7 +1699,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         Ok(res_stmt)
     }
 
-    /// Check if a call goes to std::rt::begin_panic
+    /// Check if a call goes to `std::rt::begin_panic`
     fn is_call_destination_panic(&mut self, func: &Operand) -> Result<bool, TranslationError> {
         match func {
             Operand::Constant(box c) => match c.literal {
@@ -2852,7 +2852,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         Ok(cont_stmt)
     }
 
-    /// Translate a BorrowKind.
+    /// Translate a `BorrowKind`.
     fn translate_borrow_kind(&self, kind: &BorrowKind) -> Result<radium::BorKind, TranslationError> {
         match kind {
             BorrowKind::Shared => Ok(radium::BorKind::Shared),
@@ -3508,7 +3508,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    /// Translate a scalar at a specific type to a radium::Expr.
+    /// Translate a scalar at a specific type to a `radium::Expr`.
     // TODO: Use `TryFrom` instead
     fn translate_scalar(&mut self, sc: &Scalar, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
         // TODO: Use `TryFrom` instead
@@ -3600,7 +3600,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    /// Translate a Constant to a radium::Expr.
+    /// Translate a Constant to a `radium::Expr`.
     fn translate_constant(&mut self, constant: &Constant<'tcx>) -> Result<radium::Expr, TranslationError> {
         match constant.literal {
             ConstantKind::Ty(v) => {

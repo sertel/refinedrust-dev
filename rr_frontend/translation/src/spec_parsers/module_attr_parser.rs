@@ -13,7 +13,7 @@ use crate::spec_parsers::parse_utils::{self, str_err};
 
 /// Parse attributes on a module.
 /// Permitted attributes:
-/// - rr::import("A.B.C", "D"), which will import the Coq path "A.B.C.D"
+/// - `rr::import("A.B.C`", "D"), which will import the Coq path "A.B.C.D"
 pub trait ModuleAttrParser {
     fn parse_module_attrs<'a>(
         &'a mut self,

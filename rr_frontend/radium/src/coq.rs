@@ -162,7 +162,7 @@ impl Display for CoqType {
 }
 
 impl CoqType {
-    /// Check if the CoqType contains a free variable `Var(i)`.
+    /// Check if the `CoqType` contains a free variable `Var(i)`.
     pub fn is_closed(&self) -> bool {
         match self {
             Self::Var(_) => false,

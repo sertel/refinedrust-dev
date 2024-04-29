@@ -115,7 +115,7 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyVarRenameFolder<'tcx> {
     }
 }
 
-/// A TypeFolder that erases all regions.
+/// A `TypeFolder` that erases all regions.
 pub struct TyRegionEraseFolder<'tcx> {
     tcx: TyCtxt<'tcx>,
 }
@@ -142,7 +142,7 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyRegionEraseFolder<'tcx> {
     }
 }
 
-/// A TypeFolder that finds all regions occurring in a type.
+/// A `TypeFolder` that finds all regions occurring in a type.
 pub struct TyRegionCollectFolder<'tcx> {
     tcx: TyCtxt<'tcx>,
     regions: Vec<Region>,

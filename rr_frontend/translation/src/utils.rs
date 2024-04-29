@@ -204,7 +204,7 @@ pub fn get_export_path_for_did(env: &Environment, did: DefId) -> Vec<String> {
 }
 
 /// Gets an instance for a path.
-/// Taken from Miri https://github.com/rust-lang/miri/blob/31fb32e49f42df19b45baccb6aa80c3d726ed6d5/src/helpers.rs#L48.
+/// Taken from Miri <https://github.com/rust-lang/miri/blob/31fb32e49f42df19b45baccb6aa80c3d726ed6d5/src/helpers.rs#L48>.
 pub fn try_resolve_did_direct<T>(tcx: TyCtxt<'_>, path: &[T]) -> Option<DefId>
 where
     T: AsRef<str>,
@@ -297,7 +297,7 @@ fn args_match_types<'tcx>(
 //tcx.implementations_of_trait
 //tcx.trait_impls_of
 //tcx.trait_impls_in_crate
-/// Try to resolve the DefId of a method in an implementation of a trait for a particular type.
+/// Try to resolve the `DefId` of a method in an implementation of a trait for a particular type.
 /// Note that this does not, in general, find a unique solution, in case there are complex things
 /// with different where clauses going on.
 pub fn try_resolve_trait_method_did<'tcx>(

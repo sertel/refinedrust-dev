@@ -38,8 +38,8 @@ pub fn strip_coq_ident(s: &str) -> String {
 /// TODO: handle early-bound lifetimes.
 pub type FnGenericKey<'tcx> = Vec<ty::Ty<'tcx>>;
 
-/// Keys used to deduplicate adt uses for syn_type assumptions.
-/// TODO maybe we should use SimplifiedType + simplify_type instead of the syntys?
+/// Keys used to deduplicate adt uses for `syn_type` assumptions.
+/// TODO maybe we should use `SimplifiedType` + `simplify_type` instead of the syntys?
 #[derive(Eq, PartialEq, Hash, Debug)]
 pub struct AdtUseKey {
     pub base_did: DefId,
@@ -318,7 +318,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Try to translate a region to a Caesium lifetime.
-    /// Note: This relies on all the regions being ReVar inference variables.
+    /// Note: This relies on all the regions being `ReVar` inference variables.
     fn translate_region<'a, 'b>(
         &self,
         translation_state: TranslationState<'a, 'b, 'def>,
@@ -483,7 +483,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         Ok(enum_use)
     }
 
-    /// Check if a variant given by a [DefId] is [std::marker::PhantomData].
+    /// Check if a variant given by a [`DefId`] is [`std::marker::PhantomData`].
     fn is_phantom_data(&self, did: DefId) -> Option<bool> {
         let ty: ty::Ty<'tcx> = self.env.tcx().type_of(did).instantiate_identity();
         match ty.kind() {
@@ -497,7 +497,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         self.is_phantom_data(did)
     }
 
-    /// Translate generic_args of an ADT instantiation, tracking dependencies on other ADTs in `adt_deps`.
+    /// Translate `generic_args` of an ADT instantiation, tracking dependencies on other ADTs in `adt_deps`.
     fn translate_generic_args<'a, 'b, F>(
         &self,
         args: F,
@@ -631,7 +631,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         Ok(struct_use)
     }
 
-    /// Get the struct ref for a tuple with [num_components] components.
+    /// Get the struct ref for a tuple with `num_components` components.
     fn get_tuple_struct_ref(
         &self,
         num_components: usize,
@@ -642,7 +642,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         (struct_ref, lit)
     }
 
-    /// Register a tuple type with [num_components] components.
+    /// Register a tuple type with `num_components` components.
     fn register_tuple(&self, num_components: usize) {
         if self.tuple_registry.borrow().get(&num_components).is_some() {
             return;
@@ -888,7 +888,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         Ok((struct_def, invariant_spec))
     }
 
-    /// Make a GlobalId for constants (use for discriminants).
+    /// Make a `GlobalId` for constants (use for discriminants).
     fn make_global_id_for_discr<'a>(
         &self,
         did: DefId,
@@ -969,7 +969,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         false
     }
 
-    /// Get the spec for a built-in enum like std::option::Option.
+    /// Get the spec for a built-in enum like `std::option::Option`.
     fn get_builtin_enum_spec(&self, did: DefId) -> Result<Option<radium::EnumSpec>, TranslationError> {
         let option_spec = radium::EnumSpec {
             rfn_type: radium::CoqType::Literal("_".to_string()),
@@ -1003,7 +1003,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Given a Rust enum which has already been registered and whose fields have been translated, generate a
-    /// corresponding Coq Inductive as well as an EnumSpec.
+    /// corresponding Coq Inductive as well as an `EnumSpec`.
     fn generate_enum_spec(
         &self,
         def: ty::AdtDef<'tcx>,
@@ -1266,7 +1266,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     // I guess I can just do interior mutability with RefCell.
     //
 
-    /// Translate types, while placing the DefIds of ADTs that this type uses in the adt_deps
+    /// Translate types, while placing the `DefIds` of ADTs that this type uses in the `adt_deps`
     /// argument, if provided.
     pub fn translate_type_with_deps<'a, 'b>(
         &self,
@@ -1443,7 +1443,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         }
     }
 
-    /// Translate a rustc_attr::IntType (this is different from the rustc_ty IntType).
+    /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
     const fn translate_int_type(&self, it: rustc_attr::IntType) -> Result<radium::IntType, TranslationError> {
         match it {
             rustc_attr::IntType::SignedInt(it) => Ok(match it {
@@ -1465,7 +1465,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         }
     }
 
-    /// Translate a rustc_attr::IntType (this is different from the rustc_ty IntType).
+    /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
     const fn translate_integer_type(
         &self,
         it: rustc_abi::IntegerType,
@@ -1554,7 +1554,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 }
 
-/// Public functions used by the BodyTranslator.
+/// Public functions used by the `BodyTranslator`.
 impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     /// Translate a MIR type to the Caesium syntactic type we need when storing an element of the type,
     /// substituting all generics.

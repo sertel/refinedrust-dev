@@ -250,9 +250,7 @@ macro_rules! define_punctuation_structs {
             #[$doc]
             ///
             /// Don't try to remember the name of this type &mdash; use the
-            /// [`Token!`] macro instead.
-            ///
-            /// [`Token!`]: crate::token
+            /// [`MToken!`] macro instead.
             pub struct $name {
                 pub span: Span,
             }

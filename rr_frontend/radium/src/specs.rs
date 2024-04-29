@@ -187,8 +187,8 @@ impl From<Layout> for OpType {
 // NOTE: see ty::layout::layout_of_uncached for the rustc description of this.
 pub static BOOL_REPR: IntType = IntType::U8;
 
-/// A syntactic RefinedRust type.
-/// Every semantic RefinedRust type has a corresponding syntactic type that determines its
+/// A syntactic `RefinedRust` type.
+/// Every semantic `RefinedRust` type has a corresponding syntactic type that determines its
 /// representation in memory.
 /// A syntactic type does not necessarily specify a concrete layout. A layout is only fixed once
 /// a specific layout algorithm that resolves the non-deterministic choice of the compiler.
@@ -287,8 +287,8 @@ impl SynType {
     }
 
     /// Determine the optype used to access a value of this syntactic type.
-    /// Note that we may also always use UntypedOp, but this here computes the more specific
-    /// op_type that triggers more UB on invalid values.
+    /// Note that we may also always use `UntypedOp`, but this here computes the more specific
+    /// `op_type` that triggers more UB on invalid values.
     pub fn optype_typaram(&self, env: &[Option<LiteralTyParam>]) -> OpType {
         self.optype_core(env, |x| Self::Literal(x.syn_type.clone()))
     }
@@ -298,7 +298,7 @@ impl SynType {
         self.optype_core(env, |x| x.clone())
     }
 
-    /// Check if the SynType contains a free variable `Var(i)`.
+    /// Check if the `SynType` contains a free variable `Var(i)`.
     pub const fn is_closed(&self) -> bool {
         !matches!(self, Self::Var(_))
     }
@@ -426,7 +426,7 @@ impl<'def> LiteralTypeUse<'def> {
         applied.to_string()
     }
 
-    /// Get the syn_type term for this struct use.
+    /// Get the `syn_type` term for this struct use.
     pub fn generate_raw_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -473,7 +473,7 @@ pub struct LiteralTyParam {
 }
 
 impl LiteralTyParam {
-    /// Make a literal type for this type parameter and a given st_name.
+    /// Make a literal type for this type parameter and a given `st_name`.
     pub fn make_literal_type(&self) -> LiteralType {
         LiteralType {
             rust_name: Some(self.rust_name.clone()),
@@ -484,7 +484,7 @@ impl LiteralTyParam {
     }
 }
 
-/// Representation of (semantic) RefinedRust types.
+/// Representation of (semantic) `RefinedRust` types.
 /// 'def is the lifetime of the frontend for referencing struct definitions.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type<'def> {
@@ -1724,7 +1724,7 @@ impl<'def> AbstractStructUse<'def> {
         }
     }
 
-    /// Generate a term for the struct_layout (of type struct_layout)
+    /// Generate a term for the `struct_layout` (of type `struct_layout`)
     pub fn generate_struct_layout_term(&self) -> String {
         let Some(def) = self.def.as_ref() else {
             return Layout::UnitLayout.to_string();
@@ -1760,7 +1760,7 @@ impl<'def> AbstractStructUse<'def> {
         format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts))
     }
 
-    /// Get the syn_type term for this struct use.
+    /// Get the `syn_type` term for this struct use.
     pub fn generate_syn_type_term(&self) -> SynType {
         let Some(def) = self.def.as_ref() else {
             return SynType::Unit;
@@ -1811,8 +1811,8 @@ pub struct EnumSpec {
     pub rfn_type: CoqType,
     /// the refinement patterns for each of the variants
     /// eg. for options:
-    /// - (None, [], -[])
-    /// - (Some, [x], -[x])
+    /// - `(None, [], -[])`
+    /// - `(Some, [x], -[x])`
     pub variant_patterns: Vec<(String, Vec<String>, String)>,
 }
 
@@ -1879,7 +1879,7 @@ impl<'def> AbstractEnum<'def> {
         self.variants.get(i)
     }
 
-    /// Generate a Coq definition for the enum layout spec, and all the struct_layout_specs for the
+    /// Generate a Coq definition for the enum layout spec, and all the `struct_layout_specs` for the
     /// variants.
     pub fn generate_coq_els_def(&self) -> String {
         let indent = "  ";
@@ -2316,7 +2316,7 @@ impl<'def> AbstractEnumUse<'def> {
         rfn_type
     }
 
-    /// Generate a term for the enum layout (of type struct_layout)
+    /// Generate a term for the enum layout (of type `struct_layout`)
     pub fn generate_enum_layout_term(&self) -> String {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -2333,7 +2333,7 @@ impl<'def> AbstractEnumUse<'def> {
         CoqAppTerm::new("use_enum_layout_alg'".to_string(), vec![specialized_spec]).to_string()
     }
 
-    /// Generate a term for the enum layout spec (of type enum_layout_spec).
+    /// Generate a term for the enum layout spec (of type `enum_layout_spec`).
     pub fn generate_enum_layout_spec_term(&self) -> String {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -2346,7 +2346,7 @@ impl<'def> AbstractEnumUse<'def> {
         format!("({})", CoqAppTerm::new(self.def.borrow().as_ref().unwrap().els_def_name.clone(), param_sts))
     }
 
-    /// Get the syn_type term for this enum use.
+    /// Get the `syn_type` term for this enum use.
     pub fn generate_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -2878,12 +2878,14 @@ impl<'def> FunctionSpecBuilder<'def> {
         Ok(())
     }
 
-    /// Variant of [add_coq_param] that can never fail and makes the parameter anonymous.
+    /// Variant of [`FunctionSpecBuilder::add_coq_param`] that can never fail and makes the parameter
+    /// anonymous.
     pub fn add_unnamed_coq_param(&mut self, t: CoqType, implicit: bool) {
         self.coq_params.push(CoqParam::new(CoqName::Unnamed, t, implicit));
     }
 
-    /// Variant of [add_late_coq_param] that can never fail and makes the parameter anonymous.
+    /// Variant of [`FunctionSpecBuilder::add_late_coq_param`] that can never fail and makes the parameter
+    /// anonymous.
     pub fn add_unnamed_late_coq_param(&mut self, t: CoqType, implicit: bool) {
         self.late_coq_params.push(CoqParam::new(CoqName::Unnamed, t, implicit));
     }

@@ -364,7 +364,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         Ok(())
     }
 
-    /// Print the origin_contains_loan_at relation as a tree of loans.
+    /// Print the `origin_contains_loan_at` relation as a tree of loans.
     fn print_restricts(&self) -> Result<(), io::Error> {
         if !self.show_restricts() {
             return Ok(());

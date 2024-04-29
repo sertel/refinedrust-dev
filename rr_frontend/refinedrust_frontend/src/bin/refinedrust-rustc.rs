@@ -39,7 +39,7 @@ fn get_rr_version_info() -> String {
     )
 }
 
-/// Callbacks for the RefinedRust frontend.
+/// Callbacks for the `RefinedRust` frontend.
 struct RRCompilerCalls {}
 
 // From Prusti.

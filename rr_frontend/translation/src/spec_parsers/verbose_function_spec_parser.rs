@@ -111,7 +111,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for ClosureCaptureSpec {
     }
 }
 
-/// Representation of the IProps that can appear in a requires or ensures clause.
+/// Representation of the `IProps` that can appear in a requires or ensures clause.
 enum MetaIProp {
     /// #[rr::requires("..")] or #[rr::requires("Ha" : "..")]
     Pure(String, Option<String>),

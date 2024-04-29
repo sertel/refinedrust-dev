@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-/// Registry of shims for Rust functions that get mapped to custom RefinedRust
+/// Registry of shims for Rust functions that get mapped to custom `RefinedRust`
 /// implementations.
 /// Provides deserialization from a JSON file defining this registry.
 extern crate serde_json;
@@ -366,7 +366,7 @@ pub fn write_shims<'a>(
     serde_json::to_writer_pretty(writer, &object).unwrap();
 }
 
-/// Check if this file declares a RefinedRust module.
+/// Check if this file declares a `RefinedRust` module.
 pub fn is_valid_refinedrust_module(f: File) -> Option<String> {
     let reader = BufReader::new(f);
     let deser: serde_json::Value = serde_json::from_reader(reader).unwrap();

@@ -40,7 +40,7 @@ pub struct LoanPlaces<'tcx> {
 
 /// This represents "rich" regions that are directly annotated with their `RegionKind`.
 ///
-/// PlaceRegions are a bit special: in Polonius, they contain sets of loans, but in RR's
+/// `PlaceRegions` are a bit special: in Polonius, they contain sets of loans, but in RR's
 /// path-sensitive type system they also end up referencing one particular loan.
 ///
 /// Loan regions can themselves be intersections of other loan regions and universal regions,
@@ -80,7 +80,7 @@ impl AtomicRegion {
     }
 }
 
-/// for an overview fo universal regions, see also rustc_borrowck/src/universal_regions.rs
+/// for an overview fo universal regions, see also `rustc_borrowck/src/universal_regions.rs`
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum UniversalRegionKind {
     /// the static region
@@ -1091,7 +1091,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         self.loan_position.iter().map(|(loan, location)| (*loan, *location)).collect()
     }
 
-    /// Convert a facts::Loan to LoanPlaces<'tcx> (if possible)
+    /// Convert a `facts::Loan` to `LoanPlaces`<'tcx> (if possible)
     pub fn get_loan_places(&self, loan: &facts::Loan) -> Result<Option<LoanPlaces<'tcx>>, PlaceRegionsError> {
         // Implementing get_loan_places is a bit more complicated when there are tuples. This is
         // because an assignment like
@@ -1120,7 +1120,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     }
 
     /// Returns the atomic assignment that created a loan. Refer to the documentation of
-    /// SplitAggregateAssignment for more information on what an atomic assignment is.
+    /// `SplitAggregateAssignment` for more information on what an atomic assignment is.
     pub fn get_assignment_for_loan(
         &self,
         loan: facts::Loan,

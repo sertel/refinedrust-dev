@@ -10,7 +10,7 @@ use attribute_parse as parse;
 use parse::{MToken, Parse};
 use rustc_ast::ast::AttrItem;
 
-/// For parsing of RustPaths
+/// For parsing of `RustPaths`
 pub struct RustPath {
     path: Vec<String>,
 }

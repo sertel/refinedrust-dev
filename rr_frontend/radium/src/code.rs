@@ -31,7 +31,7 @@ where
     }
 }
 
-/// A representation of syntactic Rust types that we can use in annotations for the RefinedRust
+/// A representation of syntactic Rust types that we can use in annotations for the `RefinedRust`
 /// type system.
 #[derive(Clone, PartialEq, Debug)]
 pub enum RustType {
@@ -895,7 +895,7 @@ impl StackMap {
     }
 }
 
-/// Builder for a FunctionCode.
+/// Builder for a `FunctionCode`.
 pub struct FunctionCodeBuilder {
     stack_layout: StackMap,
     basic_blocks: BTreeMap<usize, Stmt>,
@@ -1254,7 +1254,7 @@ pub struct StaticMeta<'def> {
     pub ty: Type<'def>,
 }
 
-/// A CaesiumFunctionBuilder allows to incrementally construct the functions's code and the spec
+/// A `CaesiumFunctionBuilder` allows to incrementally construct the functions's code and the spec
 /// at the same time. It ensures that both definitions line up in the right way (for instance, by
 /// ensuring that other functions are linked up in a consistent way).
 pub struct FunctionBuilder<'def> {
@@ -1362,7 +1362,7 @@ impl<'def> FunctionBuilder<'def> {
         self.layoutable_syntys.push(st);
     }
 
-    /// Register a loop invariant for the basic block [bb].
+    /// Register a loop invariant for the basic block `bb`.
     /// Should only be called once per bb.
     pub fn register_loop_invariant(&mut self, bb: usize, spec: LoopSpec) {
         if self.loop_invariants.0.insert(bb, spec).is_some() {
