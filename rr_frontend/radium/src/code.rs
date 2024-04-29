@@ -1097,10 +1097,10 @@ impl<'def> Function<'def> {
         if !self.spec.coq_params.is_empty() {
             write!(f, "intros")?;
             for param in &self.spec.coq_params {
-                if !param.implicit {
-                    write!(f, " {}", param.name)?;
-                } else {
+                if param.implicit {
                     write!(f, " ?")?;
+                } else {
+                    write!(f, " {}", param.name)?;
                 }
             }
             writeln!(f, ";")?;

@@ -2852,7 +2852,11 @@ impl<'def> FunctionSpecBuilder<'def> {
     }
 
     fn ensure_coq_bound(&self, name: &str) -> Result<(), String> {
-        if !self.coq_names.contains(name) { Err(format!("Unbound Coq name {} ", name)) } else { Ok(()) }
+        if !self.coq_names.contains(name) {
+            return Err(format!("Unbound Coq name {} ", name));
+        }
+
+        Ok(())
     }
 
     fn ensure_coq_not_bound(&self, name: &CoqName) -> Result<(), String> {

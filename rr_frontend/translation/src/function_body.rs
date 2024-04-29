@@ -2456,13 +2456,16 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // before executing the assignment, first enforce dynamic inclusions
         info!("Generating dynamic inclusions {:?}", incls);
         let mut stmt_annots = Vec::new();
+
         for (r1, r2, p) in &incls {
-            if !incls.contains(&(*r2, *r1, *p)) {
-                self.generate_dyn_inclusion(&mut stmt_annots, *r1, *r2, *p);
-            } else {
+            if incls.contains(&(*r2, *r1, *p)) {
                 warn!("Skipping impossible dynamic inclusion {:?} ⊑ {:?} at {:?}", r1, r2, p);
+                continue;
             }
+
+            self.generate_dyn_inclusion(&mut stmt_annots, *r1, *r2, *p);
         }
+
         stmt_annots
     }
 

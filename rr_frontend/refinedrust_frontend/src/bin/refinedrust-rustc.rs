@@ -128,17 +128,18 @@ impl rustc_driver::Callbacks for RRCompilerCalls {
         _: &rustc_interface::interface::Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> Compilation {
-        if !rrconfig::no_verify() {
-            // Analyze the crate and inspect the types under the cursor.
-            queries.global_ctxt().unwrap().enter(|tcx| {
-                analyze(tcx);
-            });
-            Compilation::Stop
-        } else {
+        if rrconfig::no_verify() {
             // TODO: We also need this to properly compile deps.
             // However, for deps I'd ideally anyways have be_rustc??
-            Compilation::Continue
+            return Compilation::Continue;
         }
+
+        // Analyze the crate and inspect the types under the cursor.
+        queries.global_ctxt().unwrap().enter(|tcx| {
+            analyze(tcx);
+        });
+
+        Compilation::Stop
     }
 }
 
