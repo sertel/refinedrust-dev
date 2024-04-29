@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::io::Write;
 use std::path::PathBuf;
 
 use log::{debug, trace};
@@ -203,11 +204,11 @@ pub fn graphviz<'tcx>(
     let borrowck_out_facts = &info.borrowck_out_facts;
     //let borrowck_out_facts = Output::compute(&borrowck_in_facts, Algorithm::Naive, true);
 
-    use std::io::Write;
     let graph_path = config::log_dir()
         .join("nll-facts")
         .join(def_path.to_filename_friendly_no_crate())
         .join("polonius.dot");
+
     let graph_file = std::fs::File::create(graph_path).expect("Unable to create file");
     let mut graph = std::io::BufWriter::new(graph_file);
 

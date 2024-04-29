@@ -607,7 +607,6 @@ pub fn collapse<'tcx>(
     places: &mut FxHashSet<mir::Place<'tcx>>,
     guide_place: &mir::Place<'tcx>,
 ) {
-    let guide_place = *guide_place;
     fn recurse<'tcx>(
         mir: &mir::Body<'tcx>,
         tcx: TyCtxt<'tcx>,
@@ -615,19 +614,24 @@ pub fn collapse<'tcx>(
         current_place: mir::Place<'tcx>,
         guide_place: mir::Place<'tcx>,
     ) {
-        if current_place != guide_place {
-            let (new_current_place, mut expansion) = expand_one_level(mir, tcx, current_place, guide_place);
-            recurse(mir, tcx, places, new_current_place, guide_place);
-            expansion.push(new_current_place);
-            if expansion.iter().all(|place| places.contains(place)) {
-                for place in expansion {
-                    places.remove(&place);
-                }
-                places.insert(current_place);
+        if current_place == guide_place {
+            return;
+        }
+
+        let (new_current_place, mut expansion) = expand_one_level(mir, tcx, current_place, guide_place);
+
+        recurse(mir, tcx, places, new_current_place, guide_place);
+        expansion.push(new_current_place);
+
+        if expansion.iter().all(|place| places.contains(place)) {
+            for place in expansion {
+                places.remove(&place);
             }
+            places.insert(current_place);
         }
     }
-    recurse(mir, tcx, places, guide_place.local.into(), guide_place);
+
+    recurse(mir, tcx, places, guide_place.local.into(), *guide_place);
 }
 
 #[derive(Debug)]

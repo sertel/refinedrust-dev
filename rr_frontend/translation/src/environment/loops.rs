@@ -94,32 +94,34 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
         context: mir::visit::PlaceContext,
         location: mir::Location,
     ) {
+        use rustc_middle::mir::visit::PlaceContext::*;
+
         // TODO: using `location`, skip the places that are used for typechecking
         // because that part of the generated code contains closures.
-        if self.body.contains(&location.block) && context.is_use() {
-            trace!("visit_place(place={:?}, context={:?}, location={:?})", place, context, location);
-            use rustc_middle::mir::visit::PlaceContext::*;
-            let access_kind = match context {
-                MutatingUse(mir::visit::MutatingUseContext::Store) => PlaceAccessKind::Store,
-                MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
-                MutatingUse(mir::visit::MutatingUseContext::Borrow) => PlaceAccessKind::MutableBorrow,
-                MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
-                NonMutatingUse(mir::visit::NonMutatingUseContext::Copy) => PlaceAccessKind::Read,
-                NonMutatingUse(mir::visit::NonMutatingUseContext::Move) => PlaceAccessKind::Move,
-                NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => PlaceAccessKind::Read,
-                NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => {
-                    PlaceAccessKind::SharedBorrow
-                },
-                NonUse(_) => unreachable!(),
-                x => unimplemented!("{:?}", x),
-            };
-            let access = PlaceAccess {
-                location,
-                place: *place,
-                kind: access_kind,
-            };
-            self.accessed_places.push(access);
+        if !(self.body.contains(&location.block) && context.is_use()) {
+            return;
         }
+
+        trace!("visit_place(place={:?}, context={:?}, location={:?})", place, context, location);
+
+        let access_kind = match context {
+            MutatingUse(mir::visit::MutatingUseContext::Store) => PlaceAccessKind::Store,
+            MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
+            MutatingUse(mir::visit::MutatingUseContext::Borrow) => PlaceAccessKind::MutableBorrow,
+            MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
+            NonMutatingUse(mir::visit::NonMutatingUseContext::Copy) => PlaceAccessKind::Read,
+            NonMutatingUse(mir::visit::NonMutatingUseContext::Move) => PlaceAccessKind::Move,
+            NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => PlaceAccessKind::Read,
+            NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => PlaceAccessKind::SharedBorrow,
+            NonUse(_) => unreachable!(),
+            x => unimplemented!("{:?}", x),
+        };
+
+        self.accessed_places.push(PlaceAccess {
+            location,
+            place: *place,
+            kind: access_kind,
+        });
     }
 }
 
@@ -130,12 +132,6 @@ fn order_basic_blocks(
     back_edges: &HashSet<(BasicBlockIndex, BasicBlockIndex)>,
     loop_depth: &dyn Fn(BasicBlockIndex) -> usize,
 ) -> Vec<BasicBlockIndex> {
-    let basic_blocks = &mir.basic_blocks;
-    let mut sorted_blocks = Vec::new();
-    let mut permanent_mark = IndexVec::<BasicBlockIndex, bool>::from_elem_n(false, basic_blocks.len());
-    let mut temporary_mark = permanent_mark.clone();
-
-    #[allow(clippy::too_many_arguments)]
     fn visit(
         real_edges: &RealEdges,
         back_edges: &HashSet<(BasicBlockIndex, BasicBlockIndex)>,
@@ -180,6 +176,11 @@ fn order_basic_blocks(
         sorted_blocks.push(current);
     }
 
+    let basic_blocks = &mir.basic_blocks;
+    let mut sorted_blocks = Vec::new();
+    let mut permanent_mark = IndexVec::<BasicBlockIndex, bool>::from_elem_n(false, basic_blocks.len());
+    let mut temporary_mark = permanent_mark.clone();
+
     while let Some(index) = permanent_mark.iter().position(|x| !*x) {
         let index = BasicBlockIndex::new(index);
         visit(
@@ -192,6 +193,7 @@ fn order_basic_blocks(
             &mut temporary_mark,
         );
     }
+
     sorted_blocks.reverse();
     sorted_blocks
 }
