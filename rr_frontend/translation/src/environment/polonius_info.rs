@@ -371,7 +371,7 @@ fn get_borrowed_places<'a, 'tcx: 'a>(
 
                 mir::Rvalue::Aggregate(_, ref operands) => Ok(operands
                     .iter()
-                    .flat_map(|operand| match *operand {
+                    .filter_map(|operand| match *operand {
                         mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => Some(place),
                         mir::Operand::Constant(_) => None,
                     })
@@ -1250,17 +1250,17 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     ) -> Result<Vec<(facts::Loan, mir::BasicBlock)>, PoloniusInfoError> {
         let pairs: Vec<_> = loans
             .iter()
-            .flat_map(|loan| {
-                let loan_location = if let Some(location) = self.loan_position.get(loan) {
-                    location
-                } else {
+            .filter_map(|loan| {
+                let Some(loan_location) = self.loan_position.get(loan) else {
                     // FIXME (Vytautas): This is likely to be wrong.
                     debug!("ERROR: not found for loan: {:?}", loan);
                     return None;
                 };
+
                 self.loops.get_loop_head(loan_location.block).map(|loop_head| (*loan, loop_head))
             })
             .collect();
+
         for (loan1, loop1) in &pairs {
             let location1 = self.loan_position[loan1];
             for (loan2, loop2) in &pairs {
@@ -1270,6 +1270,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
                 }
             }
         }
+
         Ok(pairs)
     }
 
