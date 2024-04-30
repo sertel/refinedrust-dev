@@ -268,8 +268,7 @@ impl ProcedureLoops {
             enclosing_loop_heads
                 .get(&bb)
                 .and_then(|heads| heads.last())
-                .map(|bb_head| loop_head_depths[bb_head])
-                .unwrap_or(0)
+                .map_or(0, |bb_head| loop_head_depths[bb_head])
         };
 
         let ordered_blocks = order_basic_blocks(mir, real_edges, &back_edges, &get_loop_depth);
@@ -395,7 +394,7 @@ impl ProcedureLoops {
 
     /// Get the loop-depth of a block (zero if it's not in a loop).
     pub fn get_loop_depth(&self, bbi: BasicBlockIndex) -> usize {
-        self.get_loop_head(bbi).map(|x| self.get_loop_head_depth(x)).unwrap_or(0)
+        self.get_loop_head(bbi).map_or(0, |x| self.get_loop_head_depth(x))
     }
 
     /// Get the (topologically ordered) body of a loop, given a loop head
@@ -406,19 +405,19 @@ impl ProcedureLoops {
 
     /// Does this edge exit a loop?
     pub fn is_out_edge(&self, from: BasicBlockIndex, to: BasicBlockIndex) -> bool {
-        if let Some(from_loop_head) = self.get_loop_head(from) {
-            if let Some(to_loop_head) = self.get_loop_head(to) {
-                if from_loop_head == to_loop_head || to == to_loop_head {
-                    false
-                } else {
-                    !self.enclosing_loop_heads[&to].contains(&from_loop_head)
-                }
-            } else {
-                true
-            }
-        } else {
-            false
-        }
+        let Some(from_loop_head) = self.get_loop_head(from) else {
+            return false;
+        };
+
+        let Some(to_loop_head) = self.get_loop_head(to) else {
+            return true;
+        };
+
+        if from_loop_head == to_loop_head || to == to_loop_head {
+            return false;
+        };
+
+        !self.enclosing_loop_heads[&to].contains(&from_loop_head)
     }
 
     /// Check if ``block`` is inside a given loop.
