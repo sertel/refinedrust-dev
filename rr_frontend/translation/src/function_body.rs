@@ -3758,7 +3758,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             .local_decls
             .get(*local)
             .map(|decl| decl.ty)
-            .ok_or_else(|| TranslationError::UnknownVar("".to_string()))
+            .ok_or_else(|| TranslationError::UnknownVar(String::new()))
     }
 
     /// Get the type of a place expression.

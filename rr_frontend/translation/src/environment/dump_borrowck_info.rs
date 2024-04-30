@@ -323,44 +323,49 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
     }
 
     fn print_temp_variables(&self) -> Result<(), io::Error> {
-        if self.show_temp_variables() {
-            write_graph!(self, "Variables [ style=filled shape = \"record\"");
-            write_graph!(self, "label =<<table>");
-            write_graph!(self, "<tr><td>VARIABLES</td></tr>");
-            write_graph!(self, "<tr><td>Name</td><td>Temporary</td><td>Type</td><td>Region</td></tr>");
-            let mut var_names = HashMap::new();
-            for info in &self.mir.var_debug_info {
-                if let mir::VarDebugInfoContents::Place(place) = info.value {
-                    if let Some(local) = place.as_local() {
-                        var_names.insert(local, info.name);
-                    } else {
-                        var_names.insert(place.local, info.name);
-                        //unimplemented!();
-                    }
-                } else {
-                    unimplemented!();
-                }
-            }
-            for (temp, var) in self.mir.local_decls.iter_enumerated() {
-                let name = var_names.get(&temp).map(|s| s.to_string()).unwrap_or_else(|| String::from(""));
-                let region = self
-                    .polonius_info
-                    .place_regions
-                    .for_local(temp)
-                    .map(|region| format!("{:?}", region))
-                    .unwrap_or_else(|| String::from(""));
-                let typ = to_html!(var.ty);
-                write_graph!(
-                    self,
-                    "<tr><td>{}</td><td>{:?}</td><td>{}</td><td>{}</td></tr>",
-                    name,
-                    temp,
-                    typ,
-                    region
-                );
-            }
-            write_graph!(self, "</table>>];");
+        if !self.show_temp_variables() {
+            return Ok(());
         }
+
+        write_graph!(self, "Variables [ style=filled shape = \"record\"");
+        write_graph!(self, "label =<<table>");
+        write_graph!(self, "<tr><td>VARIABLES</td></tr>");
+        write_graph!(self, "<tr><td>Name</td><td>Temporary</td><td>Type</td><td>Region</td></tr>");
+
+        let mut var_names = HashMap::new();
+        for info in &self.mir.var_debug_info {
+            let mir::VarDebugInfoContents::Place(place) = info.value else {
+                unimplemented!();
+            };
+
+            if let Some(local) = place.as_local() {
+                var_names.insert(local, info.name);
+            } else {
+                var_names.insert(place.local, info.name);
+                //unimplemented!();
+            }
+        }
+        for (temp, var) in self.mir.local_decls.iter_enumerated() {
+            let name = var_names.get(&temp).map_or_else(String::new, |s| s.to_string());
+
+            let region = self
+                .polonius_info
+                .place_regions
+                .for_local(temp)
+                .map_or_else(String::new, |region| format!("{:?}", region));
+
+            let typ = to_html!(var.ty);
+            write_graph!(
+                self,
+                "<tr><td>{}</td><td>{:?}</td><td>{}</td><td>{}</td></tr>",
+                name,
+                temp,
+                typ,
+                region
+            );
+        }
+        write_graph!(self, "</table>>];");
+
         Ok(())
     }
 
@@ -556,8 +561,9 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             self.visit_statement(location, &statements[location.statement_index])?;
             location.statement_index += 1;
         }
-        let terminator = terminator.clone();
-        let term_str = if let Some(ref term) = &terminator { to_html!(term.kind) } else { String::from("") };
+
+        let term_str = terminator.as_ref().map_or_else(String::new, |term| to_html!(term.kind));
+
         write_graph!(self, "<tr>");
         if self.show_statement_indices() {
             write_graph!(self, "<td></td>");
