@@ -95,40 +95,35 @@ pub enum FlatType {
 impl FlatType {
     /// Try to convert a flat type to a type.
     pub fn to_type<'tcx>(&self, tcx: ty::TyCtxt<'tcx>) -> Option<ty::Ty<'tcx>> {
-        match self {
-            Self::Adt(path_with_args) => {
-                let (did, flat_args) = path_with_args.to_item(tcx)?;
-                let ty: ty::EarlyBinder<ty::Ty<'tcx>> = tcx.type_of(did);
+        let Self::Adt(path_with_args) = self;
+        let (did, flat_args) = path_with_args.to_item(tcx)?;
 
-                let args = if let ty::TyKind::Adt(_, adt_args) = ty.skip_binder().kind() {
-                    adt_args
-                } else {
-                    return None;
-                };
+        let ty: ty::EarlyBinder<ty::Ty<'tcx>> = tcx.type_of(did);
+        let ty::TyKind::Adt(_, args) = ty.skip_binder().kind() else {
+            return None;
+        };
 
-                // build substitution
-                let mut substs = Vec::new();
-                for (ty_arg, flat_arg) in args.iter().zip(flat_args.into_iter()) {
-                    match ty_arg.unpack() {
-                        ty::GenericArgKind::Type(_ty) => {
-                            if let Some(flat_arg) = flat_arg {
-                                substs.push(flat_arg);
-                            }
-                        },
-                        _ => {
-                            substs.push(ty_arg);
-                        },
+        // build substitution
+        let mut substs = Vec::new();
+        for (ty_arg, flat_arg) in args.iter().zip(flat_args.into_iter()) {
+            match ty_arg.unpack() {
+                ty::GenericArgKind::Type(_) => {
+                    if let Some(flat_arg) = flat_arg {
+                        substs.push(flat_arg);
                     }
-                }
-
-                // substitute
-                info!("substituting {:?} with {:?}", ty, substs);
-                let subst_ty =
-                    if substs.is_empty() { ty.instantiate_identity() } else { ty.instantiate(tcx, &substs) };
-
-                Some(subst_ty)
-            },
+                },
+                _ => {
+                    substs.push(ty_arg);
+                },
+            }
         }
+
+        // substitute
+        info!("substituting {:?} with {:?}", ty, substs);
+        let subst_ty =
+            if substs.is_empty() { ty.instantiate_identity() } else { ty.instantiate(tcx, &substs) };
+
+        Some(subst_ty)
     }
 }
 

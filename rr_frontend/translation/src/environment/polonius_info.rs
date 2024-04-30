@@ -350,59 +350,58 @@ fn get_borrowed_places<'a, 'tcx: 'a>(
     loan_position: &HashMap<facts::Loan, mir::Location>,
     loan: facts::Loan,
 ) -> Result<Vec<&'a mir::Place<'tcx>>, PoloniusInfoError> {
-    let location = if let Some(location) = loan_position.get(&loan) {
-        location
-    } else {
+    let Some(location) = loan_position.get(&loan) else {
         // FIXME (Vytautas): This is likely to be wrong.
         debug!("Not found: {:?}", loan);
         return Ok(Vec::new());
     };
+
     let mir::BasicBlockData { ref statements, .. } = mir[location.block];
     if statements.len() == location.statement_index {
-        Ok(Vec::new())
-    } else {
-        let statement = &statements[location.statement_index];
-        match statement.kind {
-            mir::StatementKind::Assign(box (ref _lhs, ref rhs)) => match *rhs {
-                mir::Rvalue::Use(mir::Operand::Copy(ref place) | mir::Operand::Move(ref place))
-                | mir::Rvalue::Ref(_, _, ref place)
-                | mir::Rvalue::Discriminant(ref place) => Ok(vec![place]),
+        return Ok(Vec::new());
+    }
 
-                mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
+    let statement = &statements[location.statement_index];
+    match statement.kind {
+        mir::StatementKind::Assign(box (ref _lhs, ref rhs)) => match *rhs {
+            mir::Rvalue::Use(mir::Operand::Copy(ref place) | mir::Operand::Move(ref place))
+            | mir::Rvalue::Ref(_, _, ref place)
+            | mir::Rvalue::Discriminant(ref place) => Ok(vec![place]),
 
-                mir::Rvalue::Aggregate(_, ref operands) => Ok(operands
-                    .iter()
-                    .filter_map(|operand| match *operand {
-                        mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => Some(place),
-                        mir::Operand::Constant(_) => None,
-                    })
-                    .collect()),
+            mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
 
-                // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
-                mir::Rvalue::Cast(
-                    mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize),
-                    ref operand,
-                    ref ty,
-                ) if ty.is_slice() && !ty.is_unsafe_ptr() => {
-                    trace!("slice: operand={:?}, ty={:?}", operand, ty);
-                    Ok(match *operand {
-                        mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => vec![place],
-                        mir::Operand::Constant(_) => vec![],
-                    })
-                },
+            mir::Rvalue::Aggregate(_, ref operands) => Ok(operands
+                .iter()
+                .filter_map(|operand| match *operand {
+                    mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => Some(place),
+                    mir::Operand::Constant(_) => None,
+                })
+                .collect()),
 
-                mir::Rvalue::Cast(..) => {
-                    // all other loan-casts are unsupported
-                    Err(PoloniusInfoError::LoanInUnsupportedStatement(
-                        "cast statements that create loans are not supported".to_string(),
-                        *location,
-                    ))
-                },
-
-                ref x => unreachable!("{:?}", x),
+            // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
+            mir::Rvalue::Cast(
+                mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize),
+                ref operand,
+                ref ty,
+            ) if ty.is_slice() && !ty.is_unsafe_ptr() => {
+                trace!("slice: operand={:?}, ty={:?}", operand, ty);
+                Ok(match *operand {
+                    mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => vec![place],
+                    mir::Operand::Constant(_) => vec![],
+                })
             },
+
+            mir::Rvalue::Cast(..) => {
+                // all other loan-casts are unsupported
+                Err(PoloniusInfoError::LoanInUnsupportedStatement(
+                    "cast statements that create loans are not supported".to_string(),
+                    *location,
+                ))
+            },
+
             ref x => unreachable!("{:?}", x),
-        }
+        },
+        ref x => unreachable!("{:?}", x),
     }
 }
 
@@ -1105,14 +1104,14 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         // get_assignment_for_loan(L1) would be _3.1 = move _5. Using these atomic assignments, we
         // can simply read off the loan places as before.
 
-        let assignment = if let Some(loan_assignment) = self.get_assignment_for_loan(*loan)? {
-            loan_assignment
-        } else {
+        let Some(assignment) = self.get_assignment_for_loan(*loan)? else {
             return Ok(None);
         };
+
         let (dest, source) = assignment.as_assign().unwrap();
         let source = source.clone();
         let location = self.loan_position[loan];
+
         Ok(Some(LoanPlaces {
             dest,
             source,
@@ -1126,17 +1125,15 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         &self,
         loan: facts::Loan,
     ) -> Result<Option<mir::Statement<'tcx>>, PlaceRegionsError> {
-        let &location = if let Some(loc) = self.loan_position.get(&loan) {
-            loc
-        } else {
+        let Some(&location) = self.loan_position.get(&loan) else {
             return Ok(None);
         };
-        let stmt = if let Some(s) = self.mir.statement_at(location) {
-            s.clone()
-        } else {
+
+        let Some(stmt) = self.mir.statement_at(location) else {
             return Ok(None);
         };
-        let mut assignments: Vec<_> = stmt.split_assignment(self.tcx, self.mir);
+
+        let mut assignments: Vec<_> = stmt.clone().split_assignment(self.tcx, self.mir);
 
         // TODO: This is a workaround. It seems like some local variables don't have a local
         //  variable declaration in the MIR. One example of this can be observed in the
