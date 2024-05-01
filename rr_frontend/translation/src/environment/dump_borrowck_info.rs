@@ -323,48 +323,53 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
     }
 
     fn print_temp_variables(&self) -> Result<(), io::Error> {
-        if self.show_temp_variables() {
-            write_graph!(self, "Variables [ style=filled shape = \"record\"");
-            write_graph!(self, "label =<<table>");
-            write_graph!(self, "<tr><td>VARIABLES</td></tr>");
-            write_graph!(self, "<tr><td>Name</td><td>Temporary</td><td>Type</td><td>Region</td></tr>");
-            let mut var_names = HashMap::new();
-            for info in &self.mir.var_debug_info {
-                if let mir::VarDebugInfoContents::Place(place) = info.value {
-                    if let Some(local) = place.as_local() {
-                        var_names.insert(local, info.name);
-                    } else {
-                        var_names.insert(place.local, info.name);
-                        //unimplemented!();
-                    }
-                } else {
-                    unimplemented!();
-                }
-            }
-            for (temp, var) in self.mir.local_decls.iter_enumerated() {
-                let name = var_names.get(&temp).map(|s| s.to_string()).unwrap_or_else(|| String::from(""));
-                let region = self
-                    .polonius_info
-                    .place_regions
-                    .for_local(temp)
-                    .map(|region| format!("{:?}", region))
-                    .unwrap_or_else(|| String::from(""));
-                let typ = to_html!(var.ty);
-                write_graph!(
-                    self,
-                    "<tr><td>{}</td><td>{:?}</td><td>{}</td><td>{}</td></tr>",
-                    name,
-                    temp,
-                    typ,
-                    region
-                );
-            }
-            write_graph!(self, "</table>>];");
+        if !self.show_temp_variables() {
+            return Ok(());
         }
+
+        write_graph!(self, "Variables [ style=filled shape = \"record\"");
+        write_graph!(self, "label =<<table>");
+        write_graph!(self, "<tr><td>VARIABLES</td></tr>");
+        write_graph!(self, "<tr><td>Name</td><td>Temporary</td><td>Type</td><td>Region</td></tr>");
+
+        let mut var_names = HashMap::new();
+        for info in &self.mir.var_debug_info {
+            let mir::VarDebugInfoContents::Place(place) = info.value else {
+                unimplemented!();
+            };
+
+            if let Some(local) = place.as_local() {
+                var_names.insert(local, info.name);
+            } else {
+                var_names.insert(place.local, info.name);
+                //unimplemented!();
+            }
+        }
+        for (temp, var) in self.mir.local_decls.iter_enumerated() {
+            let name = var_names.get(&temp).map_or_else(String::new, |s| s.to_string());
+
+            let region = self
+                .polonius_info
+                .place_regions
+                .for_local(temp)
+                .map_or_else(String::new, |region| format!("{:?}", region));
+
+            let typ = to_html!(var.ty);
+            write_graph!(
+                self,
+                "<tr><td>{}</td><td>{:?}</td><td>{}</td><td>{}</td></tr>",
+                name,
+                temp,
+                typ,
+                region
+            );
+        }
+        write_graph!(self, "</table>>];");
+
         Ok(())
     }
 
-    /// Print the origin_contains_loan_at relation as a tree of loans.
+    /// Print the `origin_contains_loan_at` relation as a tree of loans.
     fn print_restricts(&self) -> Result<(), io::Error> {
         if !self.show_restricts() {
             return Ok(());
@@ -556,8 +561,9 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             self.visit_statement(location, &statements[location.statement_index])?;
             location.statement_index += 1;
         }
-        let terminator = terminator.clone();
-        let term_str = if let Some(ref term) = &terminator { to_html!(term.kind) } else { String::from("") };
+
+        let term_str = terminator.as_ref().map_or_else(String::new, |term| to_html!(term.kind));
+
         write_graph!(self, "<tr>");
         if self.show_statement_indices() {
             write_graph!(self, "<td></td>");
@@ -601,7 +607,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
                         .map(move |&l1| (**l2, l1))
                         .any(|r| self.polonius_info.additional_facts.reborrows.contains(&r))
                 })
-                .cloned()
+                .copied()
                 .collect();
 
             // This assertion would fail if instead of reborrow we happen to have a move
@@ -722,7 +728,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             .loan_issued_at
             .iter()
             .filter(|(_, _, point)| *point == start_point)
-            .cloned()
+            .copied()
             .map(|(region, loan, _)| (region, loan))
             .collect();
         write_graph!(self, "<td>{}</td>", to_sorted_string!(borrow_regions));
@@ -732,7 +738,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             .loan_issued_at
             .iter()
             .filter(|(_, _, point)| *point == mid_point)
-            .cloned()
+            .copied()
             .map(|(region, loan, _)| (region, loan))
             .collect();
         write_graph!(self, "<td>{}</td>", to_sorted_string!(borrow_regions));
@@ -1067,12 +1073,12 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 
         write_graph!(self, "<td>{}", blas.join(", "));
         let mut all_dying_loans: Vec<_> =
-            dying_loans.iter().filter(|loan| !becoming_zombie_loans.contains(loan)).cloned().collect();
+            dying_loans.iter().filter(|loan| !becoming_zombie_loans.contains(loan)).copied().collect();
         debug!(
             "all_dying_loans={:?} dying_zombie_loans={:?} location={:?}",
             all_dying_loans, dying_zombie_loans, location
         );
-        all_dying_loans.extend(dying_zombie_loans.iter().cloned());
+        all_dying_loans.extend(dying_zombie_loans.iter().copied());
         write_graph!(self, "</td>");
 
         Ok(())

@@ -12,7 +12,7 @@ use crate::spec_parsers::parse_utils::{self, str_err};
 
 /// Parse attributes on a crate.
 /// Permitted attributes:
-/// - rr::import("A.B.C", "D"), which will import the Coq path "A.B.C.D"
+/// - `rr::import("A.B.C`", "D"), which will import the Coq path "A.B.C.D"
 pub trait CrateAttrParser {
     fn parse_crate_attrs<'a>(&'a mut self, attrs: &'a [&'a AttrItem]) -> Result<CrateAttrs, String>;
 }

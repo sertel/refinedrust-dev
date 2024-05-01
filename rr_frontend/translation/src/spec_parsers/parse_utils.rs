@@ -38,8 +38,7 @@ where
 impl ToString for IdentOrTerm {
     fn to_string(&self) -> String {
         match self {
-            Self::Ident(s) => s.to_string(),
-            Self::Term(s) => s.to_string(),
+            Self::Ident(s) | Self::Term(s) => s.to_string(),
         }
     }
 }
@@ -185,7 +184,7 @@ impl From<CoqPath> for specs::CoqPath {
     }
 }
 
-/// Parse a CoqPath.
+/// Parse a `CoqPath`.
 impl<U> Parse<U> for CoqPath {
     fn parse(input: ParseStream, meta: &U) -> ParseResult<Self> {
         let path_or_module: parse::LitStr = input.parse(meta)?;
@@ -210,7 +209,7 @@ impl<U> Parse<U> for CoqPath {
 }
 
 /// Parse an assumed Coq context item, e.g.
-/// `"`{ghost_mapG Σ Z Z}"`.
+/// ``"`{ghost_mapG Σ Z Z}"``.
 #[derive(Debug)]
 pub struct RRCoqContextItem {
     pub item: String,

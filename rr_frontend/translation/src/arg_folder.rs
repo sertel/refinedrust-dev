@@ -3,7 +3,7 @@ use rustc_middle::ty::{self, Binder, GenericArg, GenericArgKind, ParamConst, Ty,
 pub use rustc_type_ir::fold::{TypeFoldable, TypeSuperFoldable};
 pub use rustc_type_ir::visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor};
 
-/// A version of the `ArgFolder` in rustc_middle::src::ty::generic_args that skips over `ReVar`
+/// A version of the `ArgFolder` in `rustc_middle::src::ty::generic_args` that skips over `ReVar`
 /// (instead of triggering a bug).
 
 struct ArgFolder<'a, 'tcx> {
@@ -169,7 +169,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
     /// //      Binders
     /// ```
     /// Here the `'a` lifetime is bound in the outer function, but appears as an argument of the
-    /// inner one. Therefore, that appearance will have a DebruijnIndex of 2, because we must skip
+    /// inner one. Therefore, that appearance will have a `DebruijnIndex` of 2, because we must skip
     /// over the inner binder (remember that we count De Bruijn indices from 1). However, in the
     /// definition of `MetaFunc`, the binder is not visible, so the type `&'a i32` will have a
     /// De Bruijn index of 1. It's only during the substitution that we can see we must increase the

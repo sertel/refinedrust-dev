@@ -53,13 +53,13 @@ pub enum UniversalLft {
     Local(Lft),
     External(Lft),
 }
+
 impl Display for UniversalLft {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
             Self::Function => write!(f, "ϝ"),
             Self::Static => write!(f, "static"),
-            Self::Local(lft) => write!(f, "{}", lft),
-            Self::External(lft) => write!(f, "{}", lft),
+            Self::Local(lft) | Self::External(lft) => write!(f, "{}", lft),
         }
     }
 }
@@ -91,11 +91,13 @@ impl Display for IntType {
             Self::I32 => write!(f, "I32"),
             Self::I64 => write!(f, "I64"),
             Self::I128 => write!(f, "I128"),
+
             Self::U8 => write!(f, "U8"),
             Self::U16 => write!(f, "U16"),
             Self::U32 => write!(f, "U32"),
             Self::U64 => write!(f, "U64"),
             Self::U128 => write!(f, "U128"),
+
             Self::ISize => write!(f, "ISize"),
             Self::USize => write!(f, "USize"),
         }
@@ -106,36 +108,22 @@ impl IntType {
     /// Get the size in bytes of the Caesium representation.
     pub const fn size(&self) -> u32 {
         match self {
-            Self::I8 => 1,
-            Self::I16 => 2,
-            Self::I32 => 4,
-            Self::I64 => 8,
-            Self::I128 => 16,
-            Self::U8 => 1,
-            Self::U16 => 2,
-            Self::U32 => 4,
-            Self::U64 => 8,
-            Self::U128 => 16,
-            Self::USize => 8,
-            Self::ISize => 8,
+            Self::I8 | Self::U8 => 1,
+            Self::I16 | Self::U16 => 2,
+            Self::I32 | Self::U32 => 4,
+            Self::I64 | Self::U64 | Self::ISize | Self::USize => 8,
+            Self::I128 | Self::U128 => 16,
         }
     }
 
     /// Get the alignment in bytes of the Caesium representation.
     pub const fn alignment(&self) -> u32 {
         match self {
-            Self::I8 => 1,
-            Self::I16 => 2,
-            Self::I32 => 4,
-            Self::I64 => 8,
-            Self::I128 => 16,
-            Self::U8 => 1,
-            Self::U16 => 2,
-            Self::U32 => 4,
-            Self::U64 => 8,
-            Self::U128 => 16,
-            Self::ISize => 8,
-            Self::USize => 8,
+            Self::I8 | Self::U8 => 1,
+            Self::I16 | Self::U16 => 2,
+            Self::I32 | Self::U32 => 4,
+            Self::I64 | Self::U64 | Self::ISize | Self::USize => 8,
+            Self::I128 | Self::U128 => 16,
         }
     }
 }
@@ -155,9 +143,9 @@ pub enum OpType {
 impl Display for OpType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::IntOp(it) => write!(f, "IntOp {}", it),
             Self::BoolOp => write!(f, "BoolOp"),
             Self::CharOp => write!(f, "CharOp"),
+            Self::IntOp(it) => write!(f, "IntOp {}", it),
             Self::PtrOp => write!(f, "PtrOp"),
             Self::StructOp(sl, ops) => {
                 write!(f, "StructOp {} [", sl)?;
@@ -187,8 +175,8 @@ impl From<Layout> for OpType {
 // NOTE: see ty::layout::layout_of_uncached for the rustc description of this.
 pub static BOOL_REPR: IntType = IntType::U8;
 
-/// A syntactic RefinedRust type.
-/// Every semantic RefinedRust type has a corresponding syntactic type that determines its
+/// A syntactic `RefinedRust` type.
+/// Every semantic `RefinedRust` type has a corresponding syntactic type that determines its
 /// representation in memory.
 /// A syntactic type does not necessarily specify a concrete layout. A layout is only fixed once
 /// a specific layout algorithm that resolves the non-deterministic choice of the compiler.
@@ -212,14 +200,16 @@ pub enum SynType {
 impl Display for SynType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Int(it) => write!(f, "IntSynType {}", it),
             Self::Bool => write!(f, "BoolSynType"),
             Self::Char => write!(f, "CharSynType"),
+            Self::Int(it) => write!(f, "IntSynType {}", it),
+
             Self::Ptr => write!(f, "PtrSynType"),
             Self::FnPtr => write!(f, "FnPtrSynType"),
+
             Self::Untyped(ly) => write!(f, "UntypedSynType {}", ly),
-            Self::Unit => write!(f, "UnitSynType"),
-            Self::Never => write!(f, "UnitSynType"),
+            Self::Unit | Self::Never => write!(f, "UnitSynType"),
+
             Self::Literal(ca) => write!(f, "{}", ca),
             Self::Var(i) => write!(f, "#{}", i),
         }
@@ -232,18 +222,20 @@ impl SynType {
         G: Fn(&F) -> Self,
     {
         match self {
-            Self::Int(it) => Layout::IntLayout(*it),
             Self::Bool => Layout::BoolLayout,
             Self::Char => Layout::CharLayout,
-            Self::Ptr => Layout::PtrLayout,
-            Self::FnPtr => Layout::PtrLayout,
+            Self::Int(it) => Layout::IntLayout(*it),
+
+            Self::Ptr | Self::FnPtr => Layout::PtrLayout,
+
             Self::Untyped(ly) => ly.clone(),
-            Self::Unit => Layout::UnitLayout,
-            Self::Never => Layout::UnitLayout,
+            Self::Unit | Self::Never => Layout::UnitLayout,
+
             Self::Literal(ca) => {
                 let rhs = format!("{}", ca);
                 Layout::Literal(CoqAppTerm::new("use_layout_alg'".to_string(), vec![rhs]))
             },
+
             Self::Var(i) => {
                 let a = env.get(*i).unwrap().as_ref().unwrap();
                 to_syntype(a).layout_term_core(env, to_syntype)
@@ -267,18 +259,21 @@ impl SynType {
         G: Fn(&F) -> Self,
     {
         match self {
-            Self::Int(it) => OpType::IntOp(*it),
             Self::Bool => OpType::BoolOp,
             Self::Char => OpType::CharOp,
-            Self::Ptr => OpType::PtrOp,
-            Self::FnPtr => OpType::PtrOp,
+            Self::Int(it) => OpType::IntOp(*it),
+
+            Self::Ptr | Self::FnPtr => OpType::PtrOp,
+
             Self::Untyped(ly) => OpType::UntypedOp(ly.clone()),
             Self::Unit => OpType::StructOp(CoqAppTerm::new_lhs("unit_sl".to_string()), Vec::new()),
             Self::Never => OpType::UntypedOp(Layout::UnitLayout),
+
             Self::Literal(ca) => {
                 let rhs = format!("{}", ca);
                 OpType::Literal(CoqAppTerm::new("use_op_alg'".to_string(), vec![rhs]))
             },
+
             Self::Var(i) => {
                 let a = env.get(*i).unwrap().as_ref().unwrap();
                 to_syntype(a).optype_core(env, to_syntype)
@@ -287,8 +282,8 @@ impl SynType {
     }
 
     /// Determine the optype used to access a value of this syntactic type.
-    /// Note that we may also always use UntypedOp, but this here computes the more specific
-    /// op_type that triggers more UB on invalid values.
+    /// Note that we may also always use `UntypedOp`, but this here computes the more specific
+    /// `op_type` that triggers more UB on invalid values.
     pub fn optype_typaram(&self, env: &[Option<LiteralTyParam>]) -> OpType {
         self.optype_core(env, |x| Self::Literal(x.syn_type.clone()))
     }
@@ -298,7 +293,7 @@ impl SynType {
         self.optype_core(env, |x| x.clone())
     }
 
-    /// Check if the SynType contains a free variable `Var(i)`.
+    /// Check if the `SynType` contains a free variable `Var(i)`.
     pub const fn is_closed(&self) -> bool {
         !matches!(self, Self::Var(_))
     }
@@ -426,7 +421,7 @@ impl<'def> LiteralTypeUse<'def> {
         applied.to_string()
     }
 
-    /// Get the syn_type term for this struct use.
+    /// Get the `syn_type` term for this struct use.
     pub fn generate_raw_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -473,7 +468,7 @@ pub struct LiteralTyParam {
 }
 
 impl LiteralTyParam {
-    /// Make a literal type for this type parameter and a given st_name.
+    /// Make a literal type for this type parameter and a given `st_name`.
     pub fn make_literal_type(&self) -> LiteralType {
         LiteralType {
             rust_name: Some(self.rust_name.clone()),
@@ -484,7 +479,7 @@ impl LiteralTyParam {
     }
 }
 
-/// Representation of (semantic) RefinedRust types.
+/// Representation of (semantic) `RefinedRust` types.
 /// 'def is the lifetime of the frontend for referencing struct definitions.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type<'def> {
@@ -518,37 +513,26 @@ pub enum Type<'def> {
 impl<'def> Display for Type<'def> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Int(it) => write!(f, "(int {})", it),
             Self::Bool => write!(f, "bool_t"),
             Self::Char => write!(f, "char_t"),
-            Self::MutRef(ty, lft) => {
-                write!(f, "(mut_ref {} {})", ty, lft)
-            },
-            Self::ShrRef(ty, lft) => {
-                write!(f, "(shr_ref {} {})", ty, lft)
-            },
-            Self::BoxType(ty) => {
-                write!(f, "(box {})", ty)
-            },
-            Self::Struct(su) => {
-                write!(f, "{}", su.generate_type_term())
-            },
-            Self::Enum(su) => {
-                write!(f, "{}", su.generate_type_term())
-            },
-            Self::Literal(lit) => {
-                write!(f, "{}", lit.generate_type_term())
-            },
-            Self::LiteralParam(p) => {
-                write!(f, "{}", p.type_term)
-            },
-            Self::Uninit(ly) => {
-                write!(f, "(uninit ({}))", ly)
-            },
-            Self::Unit => write!(f, "unit_t"),
-            Self::Var(i) => write!(f, "#{}", i),
-            Self::Never => write!(f, "never_t"),
+            Self::Int(it) => write!(f, "(int {})", it),
+
+            Self::MutRef(ty, lft) => write!(f, "(mut_ref {} {})", ty, lft),
+            Self::ShrRef(ty, lft) => write!(f, "(shr_ref {} {})", ty, lft),
+            Self::BoxType(ty) => write!(f, "(box {})", ty),
             Self::RawPtr => write!(f, "alias_ptr_t"),
+
+            Self::Struct(su) => write!(f, "{}", su.generate_type_term()),
+            Self::Enum(su) => write!(f, "{}", su.generate_type_term()),
+
+            Self::Literal(lit) => write!(f, "{}", lit.generate_type_term()),
+            Self::LiteralParam(p) => write!(f, "{}", p.type_term),
+
+            Self::Uninit(ly) => write!(f, "(uninit ({}))", ly),
+            Self::Unit => write!(f, "unit_t"),
+            Self::Never => write!(f, "never_t"),
+
+            Self::Var(i) => write!(f, "#{}", i),
         }
     }
 }
@@ -558,9 +542,7 @@ impl<'def> Type<'def> {
     pub fn make_raw(&mut self) {
         match self {
             Self::Struct(su) => su.make_raw(),
-            Self::MutRef(box ty, _) => ty.make_raw(),
-            Self::ShrRef(box ty, _) => ty.make_raw(),
-            Self::BoxType(box ty) => ty.make_raw(),
+            Self::MutRef(box ty, _) | Self::ShrRef(box ty, _) | Self::BoxType(box ty) => ty.make_raw(),
             _ => (),
         }
     }
@@ -569,30 +551,37 @@ impl<'def> Type<'def> {
     /// `env` gives the environment for `Var(i)` constructors.
     pub fn get_rfn_type(&self, env: &[Option<CoqType>]) -> CoqType {
         match self {
-            Self::Int(_) => CoqType::Z,
             Self::Bool => CoqType::Bool,
-            Self::Char => CoqType::Z,
+            Self::Char | Self::Int(_) => CoqType::Z,
+
             Self::MutRef(box ty, _) => {
                 CoqType::Prod(vec![CoqType::PlaceRfn(Box::new(ty.get_rfn_type(env))), CoqType::Gname])
             },
-            Self::ShrRef(box ty, _) => CoqType::PlaceRfn(Box::new(ty.get_rfn_type(env))),
-            Self::BoxType(box ty) => CoqType::PlaceRfn(Box::new(ty.get_rfn_type(env))),
+
+            Self::ShrRef(box ty, _) | Self::BoxType(box ty) => {
+                CoqType::PlaceRfn(Box::new(ty.get_rfn_type(env)))
+            },
+
+            Self::RawPtr => CoqType::Loc,
+
             Self::LiteralParam(lit) => CoqType::Literal(lit.refinement_type.clone()),
             Self::Literal(lit) => CoqType::Literal(lit.get_rfn_type()),
-            Self::Uninit(_) => CoqType::Unit,
-            Self::Struct(su) =>
-            // NOTE: we don't need to subst, due to our invariant that the instantiations for
-            // struct uses are already fully substituted
-            {
+
+            Self::Struct(su) => {
+                // NOTE: we don't need to subst, due to our invariant that the instantiations for
+                // struct uses are already fully substituted
                 CoqType::Literal(su.get_rfn_type())
             },
-            Self::Enum(su) =>
-            // similar to structs, we don't need to subst
-            {
+            Self::Enum(su) => {
+                // similar to structs, we don't need to subst
                 su.get_rfn_type()
             },
-            Self::Unit => CoqType::Unit,
-            Self::Never => CoqType::Unit, // NOTE: could also choose to use an uninhabited type here
+
+            Self::Unit | Self::Never | Self::Uninit(_) => {
+                // NOTE: could also choose to use an uninhabited type for Never
+                CoqType::Unit
+            },
+
             Self::Var(i) => match env.get(*i) {
                 Some(e) => match e.as_ref() {
                     Some(e) => e.clone(),
@@ -602,84 +591,91 @@ impl<'def> Type<'def> {
                     unimplemented!("did not find type parameter {i} in environment {:?}", env)
                 },
             },
-            Self::RawPtr => CoqType::Loc,
         }
     }
 
     /// Get the layout of a type.
     pub fn get_syn_type(&self) -> SynType {
         match self {
-            Self::Int(it) => SynType::Int(*it),
             Self::Bool => SynType::Bool,
             Self::Char => SynType::Char,
-            Self::MutRef(..) => SynType::Ptr,
-            Self::ShrRef(..) => SynType::Ptr,
-            Self::BoxType(..) => SynType::Ptr,
+            Self::Int(it) => SynType::Int(*it),
+
+            Self::MutRef(..) | Self::ShrRef(..) | Self::BoxType(..) | Self::RawPtr => SynType::Ptr,
+
             Self::Struct(s) => s.generate_syn_type_term(),
             Self::Enum(s) => s.generate_syn_type_term(),
-            Self::LiteralParam(lit) => SynType::Literal(lit.syn_type.clone()),
+
             Self::Literal(lit) => lit.generate_syn_type_term(),
             Self::Uninit(st) => st.clone(),
+
             Self::Unit => SynType::Unit,
             // NOTE: for now, just treat Never as a ZST
             Self::Never => SynType::Never,
+
+            Self::LiteralParam(lit) => SynType::Literal(lit.syn_type.clone()),
             Self::Var(i) => SynType::Var(*i),
-            Self::RawPtr => SynType::Ptr,
         }
     }
 
     pub fn get_ty_lfts(&self, s: &mut HashSet<Lft>) {
         match self {
-            Self::Int(_) => (),
-            Self::Bool => (),
-            Self::Char => (),
-            Self::MutRef(box ty, lft) => {
+            Self::Bool
+            | Self::Char
+            | Self::Int(_)
+            | Self::Uninit(_)
+            | Self::Unit
+            | Self::Never
+            | Self::RawPtr => (),
+
+            Self::MutRef(box ty, lft) | Self::ShrRef(box ty, lft) => {
                 s.insert(lft.to_string());
                 ty.get_ty_lfts(s)
             },
-            Self::ShrRef(box ty, lft) => {
-                s.insert(lft.to_string());
-                ty.get_ty_lfts(s)
-            },
+
             Self::BoxType(box ty) => ty.get_ty_lfts(s),
+            Self::Literal(lit) => lit.get_ty_lfts(s),
+
+            Self::Struct(su) => su.get_ty_lfts(s),
+            Self::Enum(su) => su.get_ty_lfts(s),
+
             Self::LiteralParam(lit) => {
                 // TODO: use meta
                 s.insert(format!("ty_lfts {}", lit.type_term));
             },
-            Self::Literal(lit) => lit.get_ty_lfts(s),
-            Self::Uninit(_) => (),
-            Self::Struct(su) => su.get_ty_lfts(s),
-            Self::Enum(su) => su.get_ty_lfts(s),
-            Self::Unit => (),
-            Self::Never => (),
+
             Self::Var(_i) => {
                 s.insert("RAW".to_string());
             },
-            Self::RawPtr => (),
         }
     }
 
     pub fn get_ty_wf_elctx(&self, s: &mut HashSet<String>) {
         match self {
-            Self::Int(_) => (),
-            Self::Bool => (),
-            Self::Char => (),
-            Self::MutRef(box ty, _lft) => ty.get_ty_wf_elctx(s),
-            Self::ShrRef(box ty, _lft) => ty.get_ty_wf_elctx(s),
-            Self::BoxType(box ty) => ty.get_ty_wf_elctx(s),
+            Self::Bool
+            | Self::Char
+            | Self::Int(_)
+            | Self::Uninit(_)
+            | Self::Unit
+            | Self::Never
+            | Self::RawPtr => (),
+
+            Self::MutRef(box ty, _) | Self::ShrRef(box ty, _) | Self::BoxType(box ty) => {
+                ty.get_ty_wf_elctx(s)
+            },
+
+            Self::Literal(lit) => lit.get_ty_wf_elctx(s),
+
+            Self::Struct(su) => su.get_ty_wf_elctx(s),
+            Self::Enum(su) => su.get_ty_wf_elctx(s),
+
             Self::LiteralParam(lit) => {
                 s.insert(format!("ty_wf_elctx {}", lit.type_term));
             },
-            Self::Literal(lit) => lit.get_ty_wf_elctx(s),
-            Self::Uninit(_) => (),
-            Self::Struct(su) => su.get_ty_wf_elctx(s),
-            Self::Enum(su) => su.get_ty_wf_elctx(s),
-            Self::Unit => (),
-            Self::Never => (),
-            Self::Var(_i) => {
+
+            Self::Var(_) => {
                 s.insert("RAW".to_string());
             },
-            Self::RawPtr => (),
         }
     }
 
@@ -687,9 +683,7 @@ impl<'def> Type<'def> {
     pub fn is_closed(&self) -> bool {
         match self {
             Self::Var(_) => false,
-            Self::MutRef(box t, _) => t.is_closed(),
-            Self::ShrRef(box t, _) => t.is_closed(),
-            Self::BoxType(box t) => t.is_closed(),
+            Self::MutRef(box t, _) | Self::ShrRef(box t, _) | Self::BoxType(box t) => t.is_closed(),
             _ => true,
         }
     }
@@ -699,9 +693,9 @@ impl<'def> Type<'def> {
         G: Fn(&F) -> Type<'def>,
     {
         match self {
-            Self::MutRef(box t, _) => t.subst_core(substi, to_type),
-            Self::ShrRef(box t, _) => t.subst_core(substi, to_type),
-            Self::BoxType(box t) => t.subst_core(substi, to_type),
+            Self::MutRef(box t, _) | Self::ShrRef(box t, _) | Self::BoxType(box t) => {
+                t.subst_core(substi, to_type)
+            },
             Self::Struct(s) => {
                 // the struct def itself should be closed, but the arguments to it may contain
                 // further variables
@@ -1724,7 +1718,7 @@ impl<'def> AbstractStructUse<'def> {
         }
     }
 
-    /// Generate a term for the struct_layout (of type struct_layout)
+    /// Generate a term for the `struct_layout` (of type `struct_layout`)
     pub fn generate_struct_layout_term(&self) -> String {
         let Some(def) = self.def.as_ref() else {
             return Layout::UnitLayout.to_string();
@@ -1760,7 +1754,7 @@ impl<'def> AbstractStructUse<'def> {
         format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts))
     }
 
-    /// Get the syn_type term for this struct use.
+    /// Get the `syn_type` term for this struct use.
     pub fn generate_syn_type_term(&self) -> SynType {
         let Some(def) = self.def.as_ref() else {
             return SynType::Unit;
@@ -1811,8 +1805,8 @@ pub struct EnumSpec {
     pub rfn_type: CoqType,
     /// the refinement patterns for each of the variants
     /// eg. for options:
-    /// - (None, [], -[])
-    /// - (Some, [x], -[x])
+    /// - `(None, [], -[])`
+    /// - `(Some, [x], -[x])`
     pub variant_patterns: Vec<(String, Vec<String>, String)>,
 }
 
@@ -1879,7 +1873,7 @@ impl<'def> AbstractEnum<'def> {
         self.variants.get(i)
     }
 
-    /// Generate a Coq definition for the enum layout spec, and all the struct_layout_specs for the
+    /// Generate a Coq definition for the enum layout spec, and all the `struct_layout_specs` for the
     /// variants.
     pub fn generate_coq_els_def(&self) -> String {
         let indent = "  ";
@@ -2316,7 +2310,7 @@ impl<'def> AbstractEnumUse<'def> {
         rfn_type
     }
 
-    /// Generate a term for the enum layout (of type struct_layout)
+    /// Generate a term for the enum layout (of type `struct_layout`)
     pub fn generate_enum_layout_term(&self) -> String {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -2333,7 +2327,7 @@ impl<'def> AbstractEnumUse<'def> {
         CoqAppTerm::new("use_enum_layout_alg'".to_string(), vec![specialized_spec]).to_string()
     }
 
-    /// Generate a term for the enum layout spec (of type enum_layout_spec).
+    /// Generate a term for the enum layout spec (of type `enum_layout_spec`).
     pub fn generate_enum_layout_spec_term(&self) -> String {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -2346,7 +2340,7 @@ impl<'def> AbstractEnumUse<'def> {
         format!("({})", CoqAppTerm::new(self.def.borrow().as_ref().unwrap().els_def_name.clone(), param_sts))
     }
 
-    /// Get the syn_type term for this enum use.
+    /// Get the `syn_type` term for this enum use.
     pub fn generate_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -2413,11 +2407,10 @@ impl Display for Layout {
 impl Layout {
     pub fn size(&self, env: &LayoutEnv) -> Option<u32> {
         match self {
-            Self::PtrLayout => Some(4),
-            Self::IntLayout(it) => Some(it.size()),
-            Self::BoolLayout => Some(1),
-            Self::CharLayout => Some(4),
             Self::UnitLayout => Some(0),
+            Self::BoolLayout => Some(1),
+            Self::CharLayout | Self::PtrLayout => Some(4),
+            Self::IntLayout(it) => Some(it.size()),
             Self::Literal(n) => {
                 // TODO: this doesn't work if the layout is applied to things.
                 match env.get(&n.lhs) {
@@ -2432,11 +2425,9 @@ impl Layout {
 
     pub fn alignment(&self, env: &LayoutEnv) -> Option<u32> {
         match self {
-            Self::PtrLayout => Some(4),
+            Self::BoolLayout | Self::UnitLayout | Self::PadLayout(_) => Some(1),
+            Self::CharLayout | Self::PtrLayout => Some(4),
             Self::IntLayout(it) => Some(it.alignment()),
-            Self::BoolLayout => Some(1),
-            Self::CharLayout => Some(4),
-            Self::UnitLayout => Some(1),
             Self::Literal(n) => {
                 // TODO: this doesn't work if the layout is applied to things.
                 match env.get(&n.lhs) {
@@ -2445,7 +2436,6 @@ impl Layout {
                 }
             },
             //Self::StructLayout(ly) => ly.alignment(env),
-            Self::PadLayout(_) => Some(1),
         }
     }
 }
@@ -2510,15 +2500,12 @@ impl Display for IProp {
         match self {
             Self::True => write!(f, "True"),
             Self::Atom(a) => write!(f, "{a}"),
-            Self::Pure(a) => write!(f, "⌜{a}⌝"),
-            Self::Linktime(a) => write!(f, "⌜{a}⌝"),
+            Self::Pure(a) | Self::Linktime(a) => write!(f, "⌜{a}⌝"),
             Self::PureWithName(p, name) => write!(f, "⌜name_hint \"{name}\" ({p})⌝"),
             Self::Sep(v) => fmt_with_op(v, "∗", f),
             Self::Disj(v) => fmt_with_op(v, "∨", f),
             Self::Conj(v) => fmt_with_op(v, "∧", f),
-            Self::Wand(l, r) => {
-                write!(f, "({l}) -∗ {r}")
-            },
+            Self::Wand(l, r) => write!(f, "({l}) -∗ {r}"),
             Self::Exists(b, p) => {
                 fmt_binders(b, "∃", f)?;
                 write!(f, ", {p}")
@@ -2852,7 +2839,11 @@ impl<'def> FunctionSpecBuilder<'def> {
     }
 
     fn ensure_coq_bound(&self, name: &str) -> Result<(), String> {
-        if !self.coq_names.contains(name) { Err(format!("Unbound Coq name {} ", name)) } else { Ok(()) }
+        if !self.coq_names.contains(name) {
+            return Err(format!("Unbound Coq name {} ", name));
+        }
+
+        Ok(())
     }
 
     fn ensure_coq_not_bound(&self, name: &CoqName) -> Result<(), String> {
@@ -2878,12 +2869,14 @@ impl<'def> FunctionSpecBuilder<'def> {
         Ok(())
     }
 
-    /// Variant of [add_coq_param] that can never fail and makes the parameter anonymous.
+    /// Variant of [`FunctionSpecBuilder::add_coq_param`] that can never fail and makes the parameter
+    /// anonymous.
     pub fn add_unnamed_coq_param(&mut self, t: CoqType, implicit: bool) {
         self.coq_params.push(CoqParam::new(CoqName::Unnamed, t, implicit));
     }
 
-    /// Variant of [add_late_coq_param] that can never fail and makes the parameter anonymous.
+    /// Variant of [`FunctionSpecBuilder::add_late_coq_param`] that can never fail and makes the parameter
+    /// anonymous.
     pub fn add_unnamed_late_coq_param(&mut self, t: CoqType, implicit: bool) {
         self.late_coq_params.push(CoqParam::new(CoqName::Unnamed, t, implicit));
     }

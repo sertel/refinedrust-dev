@@ -15,11 +15,11 @@ use crate::spec_parsers::parse_utils::*;
 /// attributes on the variants at once.
 ///
 /// Supported attributes for the whole enum:
-/// - rr::refined_by: specifies the refinement type
+/// - `rr::refined_by`: specifies the refinement type
 ///
 /// Supported attributes for the enum variants:
-/// - rr::pattern: specifies the Coq pattern of the refinement type that matches this variant
-/// - rr::refinement: specifies the refinement of the struct for this variant in the scope introduced by the
+/// - `rr::pattern`: specifies the Coq pattern of the refinement type that matches this variant
+/// - `rr::refinement`: specifies the refinement of the struct for this variant in the scope introduced by the
 ///   pattern. Can be omitted if the variant does not have any fields.
 pub trait EnumSpecParser {
     fn parse_enum_spec<'a>(

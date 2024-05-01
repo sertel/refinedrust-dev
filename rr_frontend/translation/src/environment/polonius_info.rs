@@ -5,6 +5,7 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::io::Write;
 use std::path::PathBuf;
 
 use log::{debug, trace};
@@ -40,7 +41,7 @@ pub struct LoanPlaces<'tcx> {
 
 /// This represents "rich" regions that are directly annotated with their `RegionKind`.
 ///
-/// PlaceRegions are a bit special: in Polonius, they contain sets of loans, but in RR's
+/// `PlaceRegions` are a bit special: in Polonius, they contain sets of loans, but in RR's
 /// path-sensitive type system they also end up referencing one particular loan.
 ///
 /// Loan regions can themselves be intersections of other loan regions and universal regions,
@@ -72,15 +73,12 @@ impl AtomicRegion {
 
     pub const fn get_region(&self) -> facts::Region {
         match self {
-            Self::Loan(_, r) => *r,
-            Self::Universal(_, r) => *r,
-            Self::PlaceRegion(r) => *r,
-            Self::Unknown(r) => *r,
+            Self::Loan(_, r) | Self::Universal(_, r) | Self::PlaceRegion(r) | Self::Unknown(r) => *r,
         }
     }
 }
 
-/// for an overview fo universal regions, see also rustc_borrowck/src/universal_regions.rs
+/// for an overview fo universal regions, see also `rustc_borrowck/src/universal_regions.rs`
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum UniversalRegionKind {
     /// the static region
@@ -203,11 +201,11 @@ pub fn graphviz<'tcx>(
     let borrowck_out_facts = &info.borrowck_out_facts;
     //let borrowck_out_facts = Output::compute(&borrowck_in_facts, Algorithm::Naive, true);
 
-    use std::io::Write;
     let graph_path = config::log_dir()
         .join("nll-facts")
         .join(def_path.to_filename_friendly_no_crate())
         .join("polonius.dot");
+
     let graph_file = std::fs::File::create(graph_path).expect("Unable to create file");
     let mut graph = std::io::BufWriter::new(graph_file);
 
@@ -349,59 +347,58 @@ fn get_borrowed_places<'a, 'tcx: 'a>(
     loan_position: &HashMap<facts::Loan, mir::Location>,
     loan: facts::Loan,
 ) -> Result<Vec<&'a mir::Place<'tcx>>, PoloniusInfoError> {
-    let location = if let Some(location) = loan_position.get(&loan) {
-        location
-    } else {
+    let Some(location) = loan_position.get(&loan) else {
         // FIXME (Vytautas): This is likely to be wrong.
         debug!("Not found: {:?}", loan);
         return Ok(Vec::new());
     };
+
     let mir::BasicBlockData { ref statements, .. } = mir[location.block];
     if statements.len() == location.statement_index {
-        Ok(Vec::new())
-    } else {
-        let statement = &statements[location.statement_index];
-        match statement.kind {
-            mir::StatementKind::Assign(box (ref _lhs, ref rhs)) => match *rhs {
-                mir::Rvalue::Use(mir::Operand::Copy(ref place) | mir::Operand::Move(ref place))
-                | mir::Rvalue::Ref(_, _, ref place)
-                | mir::Rvalue::Discriminant(ref place) => Ok(vec![place]),
+        return Ok(Vec::new());
+    }
 
-                mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
+    let statement = &statements[location.statement_index];
+    match statement.kind {
+        mir::StatementKind::Assign(box (ref _lhs, ref rhs)) => match *rhs {
+            mir::Rvalue::Use(mir::Operand::Copy(ref place) | mir::Operand::Move(ref place))
+            | mir::Rvalue::Ref(_, _, ref place)
+            | mir::Rvalue::Discriminant(ref place) => Ok(vec![place]),
 
-                mir::Rvalue::Aggregate(_, ref operands) => Ok(operands
-                    .iter()
-                    .flat_map(|operand| match *operand {
-                        mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => Some(place),
-                        mir::Operand::Constant(_) => None,
-                    })
-                    .collect()),
+            mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
 
-                // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
-                mir::Rvalue::Cast(
-                    mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize),
-                    ref operand,
-                    ref ty,
-                ) if ty.is_slice() && !ty.is_unsafe_ptr() => {
-                    trace!("slice: operand={:?}, ty={:?}", operand, ty);
-                    Ok(match *operand {
-                        mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => vec![place],
-                        mir::Operand::Constant(_) => vec![],
-                    })
-                },
+            mir::Rvalue::Aggregate(_, ref operands) => Ok(operands
+                .iter()
+                .filter_map(|operand| match *operand {
+                    mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => Some(place),
+                    mir::Operand::Constant(_) => None,
+                })
+                .collect()),
 
-                mir::Rvalue::Cast(..) => {
-                    // all other loan-casts are unsupported
-                    Err(PoloniusInfoError::LoanInUnsupportedStatement(
-                        "cast statements that create loans are not supported".to_string(),
-                        *location,
-                    ))
-                },
-
-                ref x => unreachable!("{:?}", x),
+            // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
+            mir::Rvalue::Cast(
+                mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize),
+                ref operand,
+                ref ty,
+            ) if ty.is_slice() && !ty.is_unsafe_ptr() => {
+                trace!("slice: operand={:?}, ty={:?}", operand, ty);
+                Ok(match *operand {
+                    mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => vec![place],
+                    mir::Operand::Constant(_) => vec![],
+                })
             },
+
+            mir::Rvalue::Cast(..) => {
+                // all other loan-casts are unsupported
+                Err(PoloniusInfoError::LoanInUnsupportedStatement(
+                    "cast statements that create loans are not supported".to_string(),
+                    *location,
+                ))
+            },
+
             ref x => unreachable!("{:?}", x),
-        }
+        },
+        ref x => unreachable!("{:?}", x),
     }
 }
 
@@ -823,7 +820,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             self.get_loans_kept_alive_by(point, region, &self.borrowck_out_facts.origin_contains_loan_at);
         let zombie_loans =
             self.get_loans_kept_alive_by(point, region, &self.additional_facts.zombie_requires);
-        loans.extend(zombie_loans.iter().cloned());
+        loans.extend(zombie_loans.iter().copied());
         (loans, zombie_loans)
     }
 
@@ -838,7 +835,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             .get(&point)
             .as_ref()
             .and_then(|origin_contains_loan_at| origin_contains_loan_at.get(&region))
-            .map(|loans| loans.iter().cloned().collect())
+            .map(|loans| loans.iter().copied().collect())
             .unwrap_or_default()
     }
 
@@ -862,7 +859,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     pub fn get_all_active_loans(&self, location: mir::Location) -> (Vec<facts::Loan>, Vec<facts::Loan>) {
         let mut loans = self.get_active_loans(location, false);
         let zombie_loans = self.get_active_loans(location, true);
-        loans.extend(zombie_loans.iter().cloned());
+        loans.extend(zombie_loans.iter().copied());
         (loans, zombie_loans)
     }
 
@@ -912,7 +909,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     pub fn get_all_loans_dying_at(&self, location: mir::Location) -> (Vec<facts::Loan>, Vec<facts::Loan>) {
         let mut loans = self.get_loans_dying_at(location, false);
         let zombie_loans = self.get_loans_dying_at(location, true);
-        loans.extend(zombie_loans.iter().cloned());
+        loans.extend(zombie_loans.iter().copied());
         (loans, zombie_loans)
     }
 
@@ -926,7 +923,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
 
         let mut loans = self.get_loans_dying_between(initial_loc, final_loc, false);
         let zombie_loans = self.get_loans_dying_between(initial_loc, final_loc, true);
-        loans.extend(zombie_loans.iter().cloned());
+        loans.extend(zombie_loans.iter().copied());
         trace!(
             "[exit] get_all_loans_dying_between \
              initial_loc={:?} final_loc={:?} all={:?} zombie={:?}",
@@ -1040,7 +1037,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     pub fn get_conflicting_loans(&self, loan: facts::Loan) -> Vec<facts::Loan> {
         self.loan_conflict_sets
             .get(&loan)
-            .map(|set| set.iter().cloned().collect())
+            .map(|set| set.iter().copied().collect())
             .unwrap_or_default()
     }
 
@@ -1059,7 +1056,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         };
 
         let alive_conflicting_loans =
-            all_conflicting_loans.iter().filter(|loan| alive_loans.contains(loan)).cloned().collect();
+            all_conflicting_loans.iter().filter(|loan| alive_loans.contains(loan)).copied().collect();
         trace!("get_alive_conflicting_loans({:?}, {:?}) = {:?}", loan, location, alive_conflicting_loans);
 
         alive_conflicting_loans
@@ -1091,7 +1088,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         self.loan_position.iter().map(|(loan, location)| (*loan, *location)).collect()
     }
 
-    /// Convert a facts::Loan to LoanPlaces<'tcx> (if possible)
+    /// Convert a `facts::Loan` to `LoanPlaces`<'tcx> (if possible)
     pub fn get_loan_places(&self, loan: &facts::Loan) -> Result<Option<LoanPlaces<'tcx>>, PlaceRegionsError> {
         // Implementing get_loan_places is a bit more complicated when there are tuples. This is
         // because an assignment like
@@ -1104,14 +1101,14 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         // get_assignment_for_loan(L1) would be _3.1 = move _5. Using these atomic assignments, we
         // can simply read off the loan places as before.
 
-        let assignment = if let Some(loan_assignment) = self.get_assignment_for_loan(*loan)? {
-            loan_assignment
-        } else {
+        let Some(assignment) = self.get_assignment_for_loan(*loan)? else {
             return Ok(None);
         };
+
         let (dest, source) = assignment.as_assign().unwrap();
         let source = source.clone();
         let location = self.loan_position[loan];
+
         Ok(Some(LoanPlaces {
             dest,
             source,
@@ -1120,22 +1117,20 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     }
 
     /// Returns the atomic assignment that created a loan. Refer to the documentation of
-    /// SplitAggregateAssignment for more information on what an atomic assignment is.
+    /// `SplitAggregateAssignment` for more information on what an atomic assignment is.
     pub fn get_assignment_for_loan(
         &self,
         loan: facts::Loan,
     ) -> Result<Option<mir::Statement<'tcx>>, PlaceRegionsError> {
-        let &location = if let Some(loc) = self.loan_position.get(&loan) {
-            loc
-        } else {
+        let Some(&location) = self.loan_position.get(&loan) else {
             return Ok(None);
         };
-        let stmt = if let Some(s) = self.mir.statement_at(location) {
-            s.clone()
-        } else {
+
+        let Some(stmt) = self.mir.statement_at(location) else {
             return Ok(None);
         };
-        let mut assignments: Vec<_> = stmt.split_assignment(self.tcx, self.mir);
+
+        let mut assignments: Vec<_> = stmt.clone().split_assignment(self.tcx, self.mir);
 
         // TODO: This is a workaround. It seems like some local variables don't have a local
         //  variable declaration in the MIR. One example of this can be observed in the
@@ -1250,17 +1245,17 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     ) -> Result<Vec<(facts::Loan, mir::BasicBlock)>, PoloniusInfoError> {
         let pairs: Vec<_> = loans
             .iter()
-            .flat_map(|loan| {
-                let loan_location = if let Some(location) = self.loan_position.get(loan) {
-                    location
-                } else {
+            .filter_map(|loan| {
+                let Some(loan_location) = self.loan_position.get(loan) else {
                     // FIXME (Vytautas): This is likely to be wrong.
                     debug!("ERROR: not found for loan: {:?}", loan);
                     return None;
                 };
+
                 self.loops.get_loop_head(loan_location.block).map(|loop_head| (*loan, loop_head))
             })
             .collect();
+
         for (loan1, loop1) in &pairs {
             let location1 = self.loan_position[loan1];
             for (loan2, loop2) in &pairs {
@@ -1270,6 +1265,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
                 }
             }
         }
+
         Ok(pairs)
     }
 
@@ -1505,9 +1501,9 @@ impl AdditionalFacts {
 
         let origin_live_on_entry_vec = {
             output.origin_live_on_entry.iter().flat_map(|(point, origins)| {
-                let points: Vec<_> = origins.iter().cloned().map(|origin| (origin, *point)).collect();
-                points
+                origins.iter().copied().map(|origin| (origin, *point)).collect::<Vec<_>>()
             })
+
             // let mut origin_live_on_entry = output.origin_live_on_entry.clone();
             // let all_points: BTreeSet<Point> = all_facts
             //     .cfg_edge
@@ -1694,7 +1690,7 @@ impl AdditionalFacts {
     fn derive_nontransitive(reborrows: &[(facts::Loan, facts::Loan)]) -> Vec<(facts::Loan, facts::Loan)> {
         reborrows
             .iter()
-            .cloned()
+            .copied()
             .filter(|&(l1, l2)| !reborrows.iter().any(|&(l3, l4)| l4 == l2 && reborrows.contains(&(l1, l3))))
             .collect()
     }

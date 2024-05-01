@@ -248,11 +248,10 @@ macro_rules! define_punctuation_structs {
         $(
             #[repr(C)]
             #[$doc]
+            #[derive(Copy, Clone)]
             ///
             /// Don't try to remember the name of this type &mdash; use the
-            /// [`Token!`] macro instead.
-            ///
-            /// [`Token!`]: crate::token
+            /// [`MToken!`] macro instead.
             pub struct $name {
                 pub span: Span,
             }
@@ -272,14 +271,6 @@ macro_rules! define_punctuation_structs {
                     //}
                 //}
             //}
-
-            impl Copy for $name {}
-
-            impl Clone for $name {
-                fn clone(&self) -> Self {
-                    *self
-                }
-            }
 
             //impl Debug for $name {
                 //fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -662,7 +653,9 @@ impl BigInt {
 
     fn reserve_two_digits(&mut self) {
         let len = self.digits.len();
-        let desired = len + !self.digits.ends_with(&[0, 0]) as usize + !self.digits.ends_with(&[0]) as usize;
+        let desired =
+            len + usize::from(!self.digits.ends_with(&[0, 0])) + usize::from(!self.digits.ends_with(&[0]));
+
         self.digits.resize(desired, 0);
     }
 }
@@ -741,7 +734,7 @@ impl<T, P> Punctuated<T, P> {
     /// This is the number of nodes of type `T`, not counting the punctuation of
     /// type `P`.
     pub fn len(&self) -> usize {
-        self.inner.len() + if self.last.is_some() { 1 } else { 0 }
+        self.inner.len() + usize::from(self.last.is_some())
     }
 
     /// Borrows the first element in this sequence.

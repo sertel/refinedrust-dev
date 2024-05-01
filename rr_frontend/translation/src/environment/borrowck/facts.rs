@@ -52,11 +52,12 @@ pub enum PointType {
 impl std::cmp::PartialOrd for PointType {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         let res = match (self, other) {
-            (Self::Start, Self::Start) => std::cmp::Ordering::Equal,
             (Self::Start, Self::Mid) => std::cmp::Ordering::Less,
             (Self::Mid, Self::Start) => std::cmp::Ordering::Greater,
-            (Self::Mid, Self::Mid) => std::cmp::Ordering::Equal,
+
+            (Self::Start, Self::Start) | (Self::Mid, Self::Mid) => std::cmp::Ordering::Equal,
         };
+
         Some(res)
     }
 }
@@ -114,8 +115,7 @@ impl Interner {
     pub fn get_location(&self, index: PointIndex) -> mir::Location {
         // self.points.get_element(index)
         match self.location_table.to_location(index) {
-            RichLocation::Start(location) => location,
-            RichLocation::Mid(location) => location,
+            RichLocation::Start(location) | RichLocation::Mid(location) => location,
         }
     }
 }

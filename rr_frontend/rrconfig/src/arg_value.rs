@@ -5,7 +5,7 @@
 // https://opensource.org/licenses/MIT>, at your option. Files in the project may not be copied,
 // modified, or distributed except according to those terms.
 
-/// Source: https://github.com/rust-lang/rust-clippy/blob/master/src/driver.rs
+/// Source: <https://github.com/rust-lang/rust-clippy/blob/master/src/driver.rs>
 use std::ops::Deref;
 
 /// If a command-line option matches `find_arg`, then apply the predicate `pred` on its value. If

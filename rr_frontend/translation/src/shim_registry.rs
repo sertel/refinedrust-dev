@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-/// Registry of shims for Rust functions that get mapped to custom RefinedRust
+/// Registry of shims for Rust functions that get mapped to custom `RefinedRust`
 /// implementations.
 /// Provides deserialization from a JSON file defining this registry.
 extern crate serde_json;
@@ -83,7 +83,7 @@ pub struct FunctionShim<'a> {
 impl<'a> From<FunctionShim<'a>> for ShimFunctionEntry {
     fn from(shim: FunctionShim<'a>) -> Self {
         Self {
-            path: shim.path.iter().map(|x| x.to_string()).collect(),
+            path: shim.path.iter().map(|x| (*x).to_string()).collect(),
             kind: if shim.is_method { "method".to_string() } else { "function".to_string() },
             name: shim.name,
             spec: shim.spec_name,
@@ -124,7 +124,7 @@ pub struct AdtShim<'a> {
 impl<'a> From<AdtShim<'a>> for ShimAdtEntry {
     fn from(shim: AdtShim<'a>) -> Self {
         Self {
-            path: shim.path.iter().map(|x| x.to_string()).collect(),
+            path: shim.path.iter().map(|x| (*x).to_string()).collect(),
             kind: "adt".to_string(),
             syntype: shim.syn_type,
             semtype: shim.sem_type,
@@ -366,7 +366,7 @@ pub fn write_shims<'a>(
     serde_json::to_writer_pretty(writer, &object).unwrap();
 }
 
-/// Check if this file declares a RefinedRust module.
+/// Check if this file declares a `RefinedRust` module.
 pub fn is_valid_refinedrust_module(f: File) -> Option<String> {
     let reader = BufReader::new(f);
     let deser: serde_json::Value = serde_json::from_reader(reader).unwrap();

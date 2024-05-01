@@ -1101,7 +1101,7 @@ fn exit_with_error(s: &str) {
 }
 
 /// Get all functions and closures in the current crate that have attributes on them and are not
-/// skipped due to rr::skip attributes.
+/// skipped due to `rr::skip` attributes.
 pub fn get_filtered_functions(env: &Environment<'_>) -> Vec<LocalDefId> {
     let mut functions = env.get_procedures();
     let closures = env.get_closures();
@@ -1195,7 +1195,7 @@ pub fn get_module_attributes(
     Ok(attrs)
 }
 
-/// Find RefinedRust modules in the given loadpath.
+/// Find `RefinedRust` modules in the given loadpath.
 fn scan_loadpath(path: &Path, storage: &mut HashMap<String, std::path::PathBuf>) -> io::Result<()> {
     if path.is_dir() {
         for entry in fs::read_dir(path)? {
@@ -1220,7 +1220,7 @@ fn scan_loadpath(path: &Path, storage: &mut HashMap<String, std::path::PathBuf>)
     Ok(())
 }
 
-/// Find RefinedRust modules in the given loadpaths.
+/// Find `RefinedRust` modules in the given loadpaths.
 fn scan_loadpaths(paths: &[std::path::PathBuf]) -> io::Result<HashMap<String, std::path::PathBuf>> {
     let mut found_lib_files: HashMap<String, std::path::PathBuf> = HashMap::new();
 

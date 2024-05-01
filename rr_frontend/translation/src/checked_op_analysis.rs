@@ -57,43 +57,13 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
         };
 
         match &term.kind {
-            TerminatorKind::Call {
-                func: _,
-                args: _,
-                destination: _,
+            TerminatorKind::Assert { target, .. }
+            | TerminatorKind::Drop { target, .. }
+            | TerminatorKind::Goto { target }
+            | TerminatorKind::Call {
                 target: Some(target),
                 ..
             } => v.push(*target),
-
-            TerminatorKind::Drop {
-                place: _,
-                target,
-                unwind: _,
-                replace: _,
-            } => v.push(*target),
-
-            TerminatorKind::SwitchInt { discr: _, targets } => {
-                for target in targets.all_targets() {
-                    v.push(*target);
-                }
-            },
-
-            TerminatorKind::Goto { target } => v.push(*target),
-
-            TerminatorKind::Assert {
-                cond: _,
-                expected: _,
-                msg: _,
-                target,
-                unwind: _,
-            } => v.push(*target),
-
-            TerminatorKind::Yield {
-                value: _,
-                resume,
-                resume_arg: _,
-                drop: _,
-            } => v.push(*resume),
 
             TerminatorKind::InlineAsm {
                 template: _,
@@ -103,6 +73,19 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
                 destination: Some(destination),
                 unwind: _,
             } => v.push(*destination),
+
+            TerminatorKind::SwitchInt { discr: _, targets } => {
+                for target in targets.all_targets() {
+                    v.push(*target);
+                }
+            },
+
+            TerminatorKind::Yield {
+                value: _,
+                resume,
+                resume_arg: _,
+                drop: _,
+            } => v.push(*resume),
 
             _ => (),
         }

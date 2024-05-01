@@ -160,7 +160,7 @@ impl<'def> ProcedureScope<'def> {
         assert!(self.translated_functions.insert(*did, trf).is_none());
     }
 
-    /// Provide the specification for an only_spec function.
+    /// Provide the specification for an `only_spec` function.
     pub fn provide_specced_function(&mut self, did: &DefId, spec: radium::FunctionSpec<'def>) {
         let meta = self.name_map.get(did).unwrap();
         assert!(meta.get_mode().is_only_spec());
@@ -1093,10 +1093,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 }
 
 /**
- * Struct that keeps track of all information necessary to translate a MIR Body to a radium::Function.
+ * Struct that keeps track of all information necessary to translate a MIR Body to a `radium::Function`.
  * `'a` is the lifetime of the translator and ends after translation has finished.
  * `'def` is the lifetime of the generated code (the code may refer to struct defs).
- * `'tcx' is the lifetime of the rustc tctx.
+ * `'tcx` is the lifetime of the rustc tctx.
  */
 struct BodyTranslator<'a, 'def, 'tcx> {
     env: &'def Environment<'tcx>,
@@ -1155,7 +1155,7 @@ struct BodyTranslator<'a, 'def, 'tcx> {
 }
 
 impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
-    /// Main translation function that actually does the translation and returns a radium::Function
+    /// Main translation function that actually does the translation and returns a `radium::Function`
     /// if successful.
     pub fn translate(
         mut self,
@@ -1329,99 +1329,108 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         ty_params: ty::GenericArgsRef<'tcx>,
     ) -> Result<String, TranslationError> {
         trace!("enter register_use_procedure did={:?} ty_params={:?}", did, ty_params);
+
         let key = self.generate_procedure_inst_key(ty_params)?;
-
         let tup = (*did, key);
-        let res;
+
         if let Some((n, ..)) = self.collected_procedures.get(&tup) {
-            res = format!("{}", n);
-        } else {
-            // lookup the name in the procedure registry
+            trace!("leave register_use_procedure");
 
-            let name = self
-                .procedure_registry
-                .lookup_function_mangled_name(did)
-                .ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
-            let spec_name = self
-                .procedure_registry
-                .lookup_function_spec_name(did)
-                .ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
-
-            let mut mangled_name = name.to_string();
-            let mut translated_params = Vec::new();
-
-            // TODO: maybe come up with some better way to generate names
-            info!("register_use_procedure: translating args {:?}", tup.1);
-            for p in &tup.1 {
-                mangled_name.push_str(format!("_{}", p).as_str());
-
-                let translated_ty = self.ty_translator.translate_type(p)?;
-
-                translated_params.push(translated_ty);
-            }
-            let mangled_name = strip_coq_ident(&mangled_name);
-
-            // also gather all the layouts of the arguments.
-            let full_ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(*did);
-            let full_ty: Ty<'tcx> = full_ty.instantiate_identity();
-
-            let mut normalized_inputs = Vec::new();
-            let mut syntypes = Vec::new();
-            match full_ty.kind() {
-                ty::TyKind::FnDef(_, _) => {
-                    let sig = full_ty.fn_sig(self.env.tcx());
-                    let sig = normalize_in_function(*did, self.env.tcx(), sig)?;
-                    for ty in sig.inputs().skip_binder() {
-                        normalized_inputs.push(*ty);
-                    }
-                },
-                ty::TyKind::Closure(_, args) => {
-                    let clos_args = args.as_closure();
-                    let sig = clos_args.sig();
-                    let sig = normalize_in_function(*did, self.env.tcx(), sig)?;
-                    let pre_sig = sig.skip_binder();
-                    // we also need to add the closure argument here
-                    // in this case, we need to patch the region first
-
-                    let tuple_ty = clos_args.tupled_upvars_ty();
-                    match clos_args.kind() {
-                        ty::ClosureKind::Fn => {
-                            syntypes.push(radium::SynType::Ptr);
-                        },
-                        ty::ClosureKind::FnMut => {
-                            syntypes.push(radium::SynType::Ptr);
-                        },
-                        ty::ClosureKind::FnOnce => {
-                            normalized_inputs.push(tuple_ty);
-                        },
-                    }
-                    for ty in pre_sig.inputs() {
-                        normalized_inputs.push(*ty);
-                    }
-                },
-                _ => unimplemented!(),
-            }
-
-            //info!("substs: {:?}, inputs {:?} ", ty_params, inputs);
-            for i in &normalized_inputs {
-                // need to wrap it, because there's no Subst instance for Ty
-                let i = ty::EarlyBinder::bind(*i);
-                let ty = i.instantiate(self.env.tcx(), ty_params);
-                let t = self.ty_translator.translate_type_to_syn_type_no_normalize(&ty)?;
-                syntypes.push(t);
-            }
-
-            let loc_name = format!("{}_loc", mangled_name);
-            info!(
-                "Registered procedure instance {} of {:?} with {:?} and layouts {:?}",
-                mangled_name, did, translated_params, syntypes
-            );
-            self.collected_procedures
-                .insert(tup, (loc_name.clone(), spec_name.to_string(), translated_params, syntypes));
-            res = loc_name;
+            return Ok(format!("{}", n));
         }
+
+        // lookup the name in the procedure registry
+        let name = self
+            .procedure_registry
+            .lookup_function_mangled_name(did)
+            .ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
+
+        let spec_name = self
+            .procedure_registry
+            .lookup_function_spec_name(did)
+            .ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
+
+        let mut mangled_name = name.to_string();
+        let mut translated_params = Vec::new();
+
+        // TODO: maybe come up with some better way to generate names
+        info!("register_use_procedure: translating args {:?}", tup.1);
+
+        for p in &tup.1 {
+            mangled_name.push_str(format!("_{}", p).as_str());
+
+            let translated_ty = self.ty_translator.translate_type(p)?;
+
+            translated_params.push(translated_ty);
+        }
+
+        let mangled_name = strip_coq_ident(&mangled_name);
+
+        // also gather all the layouts of the arguments.
+        let full_ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(*did);
+        let full_ty: Ty<'tcx> = full_ty.instantiate_identity();
+
+        let mut normalized_inputs = Vec::new();
+        let mut syntypes = Vec::new();
+
+        match full_ty.kind() {
+            ty::TyKind::FnDef(_, _) => {
+                let sig = full_ty.fn_sig(self.env.tcx());
+                let sig = normalize_in_function(*did, self.env.tcx(), sig)?;
+
+                for ty in sig.inputs().skip_binder() {
+                    normalized_inputs.push(*ty);
+                }
+            },
+
+            ty::TyKind::Closure(_, args) => {
+                let clos_args = args.as_closure();
+                let sig = clos_args.sig();
+                let sig = normalize_in_function(*did, self.env.tcx(), sig)?;
+                let pre_sig = sig.skip_binder();
+                // we also need to add the closure argument here
+                // in this case, we need to patch the region first
+
+                let tuple_ty = clos_args.tupled_upvars_ty();
+
+                match clos_args.kind() {
+                    ty::ClosureKind::Fn | ty::ClosureKind::FnMut => {
+                        syntypes.push(radium::SynType::Ptr);
+                    },
+                    ty::ClosureKind::FnOnce => {
+                        normalized_inputs.push(tuple_ty);
+                    },
+                }
+
+                for ty in pre_sig.inputs() {
+                    normalized_inputs.push(*ty);
+                }
+            },
+
+            _ => unimplemented!(),
+        }
+
+        //info!("substs: {:?}, inputs {:?} ", ty_params, inputs);
+        for i in &normalized_inputs {
+            // need to wrap it, because there's no Subst instance for Ty
+            let i = ty::EarlyBinder::bind(*i);
+            let ty = i.instantiate(self.env.tcx(), ty_params);
+            let t = self.ty_translator.translate_type_to_syn_type_no_normalize(&ty)?;
+            syntypes.push(t);
+        }
+
+        let loc_name = format!("{}_loc", mangled_name);
+
+        info!(
+            "Registered procedure instance {} of {:?} with {:?} and layouts {:?}",
+            mangled_name, did, translated_params, syntypes
+        );
+
+        self.collected_procedures
+            .insert(tup, (loc_name.clone(), spec_name.to_string(), translated_params, syntypes));
+
         trace!("leave register_use_procedure");
-        Ok(res)
+        Ok(loc_name)
     }
 
     /// Enqueues a basic block for processing, if it has not already been processed,
@@ -1656,7 +1665,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    /// Find the optional DefId of the closure giving the invariant for the loop with head `head_bb`.
+    /// Find the optional `DefId` of the closure giving the invariant for the loop with head `head_bb`.
     fn find_loop_spec_closure(&self, head_bb: BasicBlock) -> Result<Option<DefId>, TranslationError> {
         let bodies = self.proc.loop_info().ordered_loop_bodies.get(&head_bb).unwrap();
         let basic_blocks = &self.proc.get_mir().basic_blocks;
@@ -1699,7 +1708,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         Ok(res_stmt)
     }
 
-    /// Check if a call goes to std::rt::begin_panic
+    /// Check if a call goes to `std::rt::begin_panic`
     fn is_call_destination_panic(&mut self, func: &Operand) -> Result<bool, TranslationError> {
         match func {
             Operand::Constant(box c) => match c.literal {
@@ -1815,7 +1824,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             }
         }
         // first sort this to enable cycle resolution
-        let mut new_regions_sorted: Vec<Region> = new_regions.iter().cloned().collect();
+        let mut new_regions_sorted: Vec<Region> = new_regions.iter().copied().collect();
         new_regions_sorted.sort();
 
         // identify the late-bound regions
@@ -1980,7 +1989,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let mut cont_stmt = self.translate_goto_like(&loc, target)?;
                 // end loans before the goto, but after the call.
                 // TODO: may cause duplications?
-                cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.iter().cloned());
+                cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.iter().copied());
 
                 // Get the type of the return value from the function
                 let (_, _, _, inst_sig) = self.call_expr_op_split_inst(func)?;
@@ -2079,21 +2088,9 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         loc: Location,
         dying_loans: Vec<facts::Loan>,
     ) -> Result<radium::Stmt, TranslationError> {
-        let mut res_stmt;
         match term.kind {
-            TerminatorKind::UnwindResume => {
-                return Err(TranslationError::Unimplemented {
-                    description: "implement UnwindResume".to_string(),
-                });
-            },
-            TerminatorKind::UnwindTerminate(_) => {
-                return Err(TranslationError::Unimplemented {
-                    description: "implement UnwindTerminate".to_string(),
-                });
-            },
-            TerminatorKind::Goto { ref target } => {
-                res_stmt = self.translate_goto_like(&loc, target)?;
-            },
+            TerminatorKind::Goto { ref target } => self.translate_goto_like(&loc, target),
+
             TerminatorKind::Call {
                 ref func,
                 ref args,
@@ -2102,20 +2099,14 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 ..
             } => {
                 trace!("translating Call {:?}", term);
-                let is_panic = self.is_call_destination_panic(func)?;
-                if is_panic {
+                if self.is_call_destination_panic(func)? {
                     info!("Replacing call to std::panicking::begin_panic with Stuck");
                     return Ok(radium::Stmt::Stuck);
                 }
-                res_stmt = self.translate_function_call(
-                    func,
-                    args,
-                    destination,
-                    *target,
-                    loc,
-                    dying_loans.as_slice(),
-                )?;
+
+                self.translate_function_call(func, args, destination, *target, loc, dying_loans.as_slice())
             },
+
             TerminatorKind::Return => {
                 // TODO: this requires additional handling for reborrows
 
@@ -2123,14 +2114,15 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // Is this semantics accurate wrt what the intended MIR semantics is?
                 // Possibly handle this differently by making the first argument of a function a dedicated
                 // return place? See also discussion at https://github.com/rust-lang/rust/issues/71117
-                res_stmt = radium::Stmt::Return(radium::Expr::Use {
+                let stmt = radium::Stmt::Return(radium::Expr::Use {
                     ot: self.ty_translator.translate_syn_type_to_op_type(&self.return_synty),
                     e: Box::new(radium::Expr::Var(self.return_name.to_string())),
                 });
 
                 // TODO is this right?
-                res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
+                Ok(self.prepend_endlfts(stmt, dying_loans.into_iter()))
             },
+
             //TerminatorKind::Abort => {
             //res_stmt = radium::Stmt::Stuck;
             //res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
@@ -2142,8 +2134,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let operand = self.translate_operand(discr, true)?;
                 let all_targets: &[BasicBlock] = targets.all_targets();
 
-                let switch_ty = self.get_type_of_operand(discr)?;
-                if switch_ty.is_bool() {
+                if self.get_type_of_operand(discr)?.is_bool() {
                     // we currently special-case this as Caesium has a built-in if and this is more
                     // convenient to handle for the type-checker
 
@@ -2151,9 +2142,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     // `true` branch
                     let true_target = all_targets.get(1).unwrap();
                     let false_target = all_targets[0];
+
                     let true_branch = self.translate_goto_like(&loc, true_target)?;
                     let false_branch = self.translate_goto_like(&loc, &false_target)?;
-                    res_stmt = radium::Stmt::If {
+
+                    let stmt = radium::Stmt::If {
                         e: operand,
                         ot: radium::OpType::BoolOp,
                         s1: Box::new(true_branch),
@@ -2161,40 +2154,43 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     };
 
                     // TODO: is this right?
-                    res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
-                } else {
-                    //info!("switchint: {:?}", term.kind);
-                    let operand = self.translate_operand(discr, true)?;
-                    let ty = self.get_type_of_operand(discr)?;
-
-                    let mut target_map: HashMap<u128, usize> = HashMap::new();
-                    let mut translated_targets: Vec<radium::Stmt> = Vec::new();
-                    for (idx, (tgt, bb)) in targets.iter().enumerate() {
-                        let bb: BasicBlock = bb;
-                        let translated_target = self.translate_goto_like(&loc, &bb)?;
-
-                        target_map.insert(tgt, idx);
-                        translated_targets.push(translated_target);
-                    }
-                    let translated_default = self.translate_goto_like(&loc, &targets.otherwise())?;
-                    // TODO: need to put endlfts infront of gotos?
-
-                    let translated_ty = self.ty_translator.translate_type(&ty)?;
-                    if let radium::Type::Int(it) = translated_ty {
-                        res_stmt = radium::Stmt::Switch {
-                            e: operand,
-                            it,
-                            index_map: target_map,
-                            bs: translated_targets,
-                            def: Box::new(translated_default),
-                        };
-                    } else {
-                        return Err(TranslationError::UnknownError(
-                            "SwitchInt switching on non-integer type".to_string(),
-                        ));
-                    }
+                    return Ok(self.prepend_endlfts(stmt, dying_loans.into_iter()));
                 }
+
+                //info!("switchint: {:?}", term.kind);
+                let operand = self.translate_operand(discr, true)?;
+                let ty = self.get_type_of_operand(discr)?;
+
+                let mut target_map: HashMap<u128, usize> = HashMap::new();
+                let mut translated_targets: Vec<radium::Stmt> = Vec::new();
+
+                for (idx, (tgt, bb)) in targets.iter().enumerate() {
+                    let bb: BasicBlock = bb;
+                    let translated_target = self.translate_goto_like(&loc, &bb)?;
+
+                    target_map.insert(tgt, idx);
+                    translated_targets.push(translated_target);
+                }
+
+                let translated_default = self.translate_goto_like(&loc, &targets.otherwise())?;
+                // TODO: need to put endlfts infront of gotos?
+
+                let translated_ty = self.ty_translator.translate_type(&ty)?;
+                let radium::Type::Int(it) = translated_ty else {
+                    return Err(TranslationError::UnknownError(
+                        "SwitchInt switching on non-integer type".to_string(),
+                    ));
+                };
+
+                Ok(radium::Stmt::Switch {
+                    e: operand,
+                    it,
+                    index_map: target_map,
+                    bs: translated_targets,
+                    def: Box::new(translated_default),
+                })
             },
+
             TerminatorKind::Assert {
                 ref cond,
                 expected,
@@ -2211,16 +2207,17 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     e2: Box::new(radium::Expr::Literal(radium::Literal::LitBool(expected))),
                 };
 
-                res_stmt = self.translate_goto_like(&loc, target)?;
+                let stmt = self.translate_goto_like(&loc, target)?;
 
                 // TODO: should we really have this?
-                res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
+                let stmt = self.prepend_endlfts(stmt, dying_loans.into_iter());
 
-                res_stmt = radium::Stmt::AssertS {
+                Ok(radium::Stmt::AssertS {
                     e: comp,
-                    s: Box::new(res_stmt),
-                };
+                    s: Box::new(stmt),
+                })
             },
+
             TerminatorKind::Drop {
                 ref place,
                 ref target,
@@ -2232,43 +2229,44 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let place_translated = self.translate_place(place)?;
                 let _drope = radium::Expr::DropE(Box::new(place_translated));
 
-                res_stmt = self.translate_goto_like(&loc, target)?;
+                let stmt = self.translate_goto_like(&loc, target)?;
 
-                res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
+                Ok(self.prepend_endlfts(stmt, dying_loans.into_iter()))
 
                 //res_stmt = radium::Stmt::ExprS { e: drope, s: Box::new(res_stmt)};
             },
+
             TerminatorKind::FalseEdge { real_target, .. } => {
                 // just a goto for our purposes
-                res_stmt = self.translate_goto_like(&loc, &real_target)?;
+                self.translate_goto_like(&loc, &real_target)
             },
+
             TerminatorKind::FalseUnwind {
                 ref real_target, ..
             } => {
                 // this is just a virtual edge for the borrowchecker, we can translate this to a normal goto
-                res_stmt = self.translate_goto_like(&loc, real_target)?;
+                self.translate_goto_like(&loc, real_target)
             },
-            TerminatorKind::GeneratorDrop => {
-                return Err(TranslationError::UnsupportedFeature {
-                    description: format!("Unsupported terminator {:?}", term),
-                });
-            },
-            TerminatorKind::Yield { .. } => {
-                return Err(TranslationError::UnsupportedFeature {
-                    description: format!("Unsupported terminator {:?}", term),
-                });
-            },
-            TerminatorKind::Unreachable => {
-                res_stmt = radium::Stmt::Stuck;
-            },
-            TerminatorKind::InlineAsm { .. } => {
-                return Err(TranslationError::UnsupportedFeature {
-                    description: format!("Unsupported terminator {:?}", term),
-                });
-            },
-        };
 
-        Ok(res_stmt)
+            TerminatorKind::Unreachable => Ok(radium::Stmt::Stuck),
+
+            TerminatorKind::UnwindResume => Err(TranslationError::Unimplemented {
+                description: "implement UnwindResume".to_string(),
+            }),
+
+            TerminatorKind::UnwindTerminate(_) => Err(TranslationError::Unimplemented {
+                description: "implement UnwindTerminate".to_string(),
+            }),
+
+            TerminatorKind::GeneratorDrop
+            | TerminatorKind::InlineAsm { .. }
+            | TerminatorKind::Yield { .. } => Err(TranslationError::UnsupportedFeature {
+                description: format!(
+                    "RefinedRust does currently not support this kind of terminator (got: {:?})",
+                    term
+                ),
+            }),
+        }
     }
 
     /// Prepend endlft annotations for dying loans to a statement.
@@ -2456,13 +2454,16 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // before executing the assignment, first enforce dynamic inclusions
         info!("Generating dynamic inclusions {:?}", incls);
         let mut stmt_annots = Vec::new();
+
         for (r1, r2, p) in &incls {
-            if !incls.contains(&(*r2, *r1, *p)) {
-                self.generate_dyn_inclusion(&mut stmt_annots, *r1, *r2, *p);
-            } else {
+            if incls.contains(&(*r2, *r1, *p)) {
                 warn!("Skipping impossible dynamic inclusion {:?} ⊑ {:?} at {:?}", r1, r2, p);
+                continue;
             }
+
+            self.generate_dyn_inclusion(&mut stmt_annots, *r1, *r2, *p);
         }
+
         stmt_annots
     }
 
@@ -2796,72 +2797,71 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         );
                     }
                 },
+
+                StatementKind::Deinit(_) => {
+                    // TODO: find out where this is emitted
+                    return Err(TranslationError::UnsupportedFeature {
+                        description: "RefinedRust does currently not support Deinit".to_string(),
+                    });
+                },
+
                 StatementKind::FakeRead(b) => {
                     // we can probably ignore this, but I'm not sure
                     info!("Ignoring FakeRead: {:?}", b);
                 },
+
+                StatementKind::Intrinsic(_intrinsic) => {
+                    return Err(TranslationError::UnsupportedFeature {
+                        description: "RefinedRust does currently not support Intrinsic".to_string(),
+                    });
+                },
+
+                StatementKind::PlaceMention(place) => {
+                    // TODO: this is missed UB
+                    info!("Ignoring PlaceMention: {:?}", place);
+                },
+
                 StatementKind::SetDiscriminant {
                     place: _place,
                     variant_index: _variant_index,
                 } => {
                     // TODO
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "TODO: implement SetDiscriminant".to_string(),
+                        description: "RefinedRust does currently not support SetDiscriminant".to_string(),
                     });
                 },
-                StatementKind::PlaceMention(place) => {
-                    // TODO: this is missed UB
-                    info!("Ignoring PlaceMention: {:?}", place);
-                },
-                StatementKind::Intrinsic(_intrinsic) => {
-                    return Err(TranslationError::UnsupportedFeature {
-                        description: "TODO: implement Intrinsic".to_string(),
-                    });
-                },
-                StatementKind::ConstEvalCounter => {
-                    // no-op
-                },
-                StatementKind::StorageLive(_) => {
-                    // just ignore
-                },
-                StatementKind::StorageDead(_) => {
-                    // just ignore
-                },
-                StatementKind::Deinit(_) => {
-                    // TODO: find out where this is emitted
-                    return Err(TranslationError::UnsupportedFeature {
-                        description: "Unsupported statement: Deinit".to_string(),
-                    });
-                },
-                StatementKind::Retag(_, _) => {
-                    // just ignore retags
-                },
-                StatementKind::AscribeUserType(_, _) => {
-                    // don't need that info
-                },
-                StatementKind::Coverage(_) => {
-                    // don't need that
-                },
-                StatementKind::Nop => {
-                    // ignore
-                },
+
+                // don't need that info
+                | StatementKind::AscribeUserType(_, _)
+                // don't need that
+                | StatementKind::Coverage(_)
+                // no-op
+                | StatementKind::ConstEvalCounter
+                // ignore
+                | StatementKind::Nop
+                // just ignore
+                | StatementKind::StorageLive(_)
+                // just ignore
+                | StatementKind::StorageDead(_)
+                // just ignore retags
+                | StatementKind::Retag(_, _) => (),
             }
+
             cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.into_iter());
         }
 
         Ok(cont_stmt)
     }
 
-    /// Translate a BorrowKind.
+    /// Translate a `BorrowKind`.
     fn translate_borrow_kind(&self, kind: &BorrowKind) -> Result<radium::BorKind, TranslationError> {
         match kind {
             BorrowKind::Shared => Ok(radium::BorKind::Shared),
-            BorrowKind::Shallow =>
-            // TODO: figure out what to do with this
-            // arises in match lowering
-            {
+            BorrowKind::Shallow => {
+                // TODO: figure out what to do with this
+                // arises in match lowering
                 Err(TranslationError::UnsupportedFeature {
-                    description: "Do not support Shallow borrows currently".to_string(),
+                    description: "RefinedRust does currently not support shallow borrows".to_string(),
                 })
             },
             BorrowKind::Mut { .. } => {
@@ -2881,10 +2881,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Get the inner type of a type to which we can apply the offset operator.
     fn get_offset_ty(&self, ty: Ty<'tcx>) -> Result<Ty<'tcx>, TranslationError> {
         match ty.kind() {
-            TyKind::Array(t, _) => Ok(*t),
-            TyKind::Slice(t) => Ok(*t),
+            TyKind::Array(t, _) | TyKind::Slice(t) | TyKind::Ref(_, t, _) => Ok(*t),
             TyKind::RawPtr(tm) => Ok(tm.ty),
-            TyKind::Ref(_, t, _) => Ok(*t),
             _ => Err(TranslationError::UnknownError(format!("cannot take offset of {}", ty))),
         }
     }
@@ -2899,27 +2897,25 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         _e2: &Operand<'tcx>,
     ) -> Result<radium::Binop, TranslationError> {
         match op {
-            BinOp::AddUnchecked => Ok(radium::Binop::AddOp),
-            BinOp::SubUnchecked => Ok(radium::Binop::SubOp),
-            BinOp::MulUnchecked => Ok(radium::Binop::MulOp),
-            BinOp::ShlUnchecked => Ok(radium::Binop::ShlOp),
-            BinOp::ShrUnchecked => Ok(radium::Binop::ShrOp),
-            BinOp::Add => Ok(radium::Binop::AddOp),
-            BinOp::Sub => Ok(radium::Binop::SubOp),
-            BinOp::Mul => Ok(radium::Binop::MulOp),
+            BinOp::Add | BinOp::AddUnchecked => Ok(radium::Binop::AddOp),
+            BinOp::Sub | BinOp::SubUnchecked => Ok(radium::Binop::SubOp),
+            BinOp::Mul | BinOp::MulUnchecked => Ok(radium::Binop::MulOp),
             BinOp::Div => Ok(radium::Binop::DivOp),
             BinOp::Rem => Ok(radium::Binop::ModOp),
+
             BinOp::BitXor => Ok(radium::Binop::BitXorOp),
             BinOp::BitAnd => Ok(radium::Binop::BitAndOp),
             BinOp::BitOr => Ok(radium::Binop::BitOrOp),
-            BinOp::Shl => Ok(radium::Binop::ShlOp),
-            BinOp::Shr => Ok(radium::Binop::ShrOp),
+            BinOp::Shl | BinOp::ShlUnchecked => Ok(radium::Binop::ShlOp),
+            BinOp::Shr | BinOp::ShrUnchecked => Ok(radium::Binop::ShrOp),
+
             BinOp::Eq => Ok(radium::Binop::EqOp),
             BinOp::Lt => Ok(radium::Binop::LtOp),
             BinOp::Le => Ok(radium::Binop::LeOp),
             BinOp::Ne => Ok(radium::Binop::NeOp),
             BinOp::Ge => Ok(radium::Binop::GeOp),
             BinOp::Gt => Ok(radium::Binop::GtOp),
+
             BinOp::Offset => {
                 // we need to get the layout of the thing we're offsetting
                 // try to get the type of e1.
@@ -2941,10 +2937,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             BinOp::Sub => Ok(radium::Binop::CheckedSubOp),
             BinOp::Mul => Ok(radium::Binop::CheckedMulOp),
             BinOp::Shl => Err(TranslationError::UnsupportedFeature {
-                description: "checked Shl is not currently supported".to_string(),
+                description: "RefinedRust does currently not support checked Shl".to_string(),
             }),
             BinOp::Shr => Err(TranslationError::UnsupportedFeature {
-                description: "checked Shr is not currently supported".to_string(),
+                description: "RefinedRust does currently not support checked Shr".to_string(),
             }),
             _ => Err(TranslationError::UnknownError(
                 "unexpected checked binop that is not Add, Sub, Mul, Shl, or Shr".to_string(),
@@ -2957,8 +2953,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         match op {
             UnOp::Not => match ty.kind() {
                 ty::TyKind::Bool => Ok(radium::Unop::NotBoolOp),
-                ty::TyKind::Int(_) => Ok(radium::Unop::NotIntOp),
-                ty::TyKind::Uint(_) => Ok(radium::Unop::NotIntOp),
+                ty::TyKind::Int(_) | ty::TyKind::Uint(_) => Ok(radium::Unop::NotIntOp),
                 _ => Err(TranslationError::UnknownError(
                     "application of UnOp::Not to non-{Int, Bool}".to_string(),
                 )),
@@ -2973,15 +2968,17 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         bk: BorrowKind,
         pl: &Place<'tcx>,
     ) -> Result<Option<radium::RustType>, TranslationError> {
-        if let BorrowKind::Mut { .. } = bk {
-            let ty = self.get_type_of_place(pl)?;
-            // For borrows, we can safely ignore the downcast type -- we cannot borrow a particularly variant
-            let translated_ty = self.ty_translator.translate_type(&ty.ty)?;
-            let annot_ty = radium::RustType::of_type(&translated_ty, &[]);
-            Ok(Some(annot_ty))
-        } else {
-            Ok(None)
-        }
+        let BorrowKind::Mut { .. } = bk else {
+            return Ok(None);
+        };
+
+        let ty = self.get_type_of_place(pl)?;
+
+        // For borrows, we can safely ignore the downcast type -- we cannot borrow a particularly variant
+        let translated_ty = self.ty_translator.translate_type(&ty.ty)?;
+        let annot_ty = radium::RustType::of_type(&translated_ty, &[]);
+
+        Ok(Some(annot_ty))
     }
 
     /// Translates an Rvalue.
@@ -3098,7 +3095,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             Rvalue::NullaryOp(op, _ty) => {
                 // TODO: SizeOf
                 Err(TranslationError::UnsupportedFeature {
-                    description: "nullary ops (AlignOf, Sizeof) are not supported currently".to_string(),
+                    description: "RefinedRust does currently not support nullary ops (AlignOf, Sizeof)"
+                        .to_string(),
                 })
             },
 
@@ -3110,7 +3108,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let ty::TyKind::Adt(adt_def, args) = ty.ty.kind() else {
                     return Err(TranslationError::UnsupportedFeature {
                         description: format!(
-                            "We do not support discriminant accesses on non-enum types: {:?}; got type {:?}",
+                            "RefinedRust does currently not support discriminant accesses on non-enum types ({:?}, got {:?})",
                             rval, ty.ty
                         ),
                     });
@@ -3236,7 +3234,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         // TODO
                         Err(TranslationError::UnsupportedFeature {
                             description: format!(
-                                "TODO: implement Aggregate rvalue for other adts: {:?}",
+                                "RefinedRust does currently not support aggregate rvalue for other ADTs (got: {:?})",
                                 rval
                             ),
                         })
@@ -3266,7 +3264,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     _ => {
                         // TODO
                         Err(TranslationError::UnsupportedFeature {
-                            description: format!("TODO: implement Aggregate rvalue: {:?}", rval),
+                            description: format!(
+                                "RefinedRust does currently not support this kind of aggregate rvalue (got: {:?})",
+                                rval
+                            ),
                         })
                     },
                 }
@@ -3277,69 +3278,49 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let translated_op = self.translate_operand(op, true)?;
 
                 match kind {
-                    mir::CastKind::PointerExposeAddress => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported rvalue: {:?}", rval),
-                    }),
-
-                    mir::CastKind::PointerFromExposedAddress => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported rvalue: {:?}", rval),
-                    }),
-
                     mir::CastKind::PointerCoercion(x) => {
                         match x {
                             ty::adjustment::PointerCoercion::MutToConstPointer => {
                                 // this is a NOP in our model
                                 Ok(translated_op)
                             },
-                            ty::adjustment::PointerCoercion::ArrayToPointer => {
+
+                            ty::adjustment::PointerCoercion::ArrayToPointer
+                            | ty::adjustment::PointerCoercion::ClosureFnPointer(_)
+                            | ty::adjustment::PointerCoercion::ReifyFnPointer
+                            | ty::adjustment::PointerCoercion::UnsafeFnPointer
+                            | ty::adjustment::PointerCoercion::Unsize => {
                                 Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval),
-                                })
-                            },
-                            ty::adjustment::PointerCoercion::ClosureFnPointer(_) => {
-                                Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval),
-                                })
-                            },
-                            ty::adjustment::PointerCoercion::ReifyFnPointer => {
-                                Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval),
-                                })
-                            },
-                            ty::adjustment::PointerCoercion::UnsafeFnPointer => {
-                                Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval),
-                                })
-                            },
-                            ty::adjustment::PointerCoercion::Unsize => {
-                                Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported rvalue: {:?}", rval),
+                                    description: format!(
+                                        "RefinedRust does currently not support this kind of pointer coercion (got: {:?})",
+                                        rval
+                                    ),
                                 })
                             },
                         }
                     },
 
                     mir::CastKind::DynStar => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported dyn* cast"),
+                        description: "RefinedRust does currently not support dyn* cast".to_string(),
                     }),
 
                     mir::CastKind::IntToInt => {
                         // TODO
                         Err(TranslationError::Unimplemented {
-                            description: format!("unsupported int-to-int cast"),
+                            description: "RefinedRust does currently not support int-to-int cast".to_string(),
                         })
                     },
 
                     mir::CastKind::IntToFloat => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported int-to-float cast"),
+                        description: "RefinedRust does currently not support int-to-float cast".to_string(),
                     }),
 
                     mir::CastKind::FloatToInt => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported float-to-int cast"),
+                        description: "RefinedRust does currently not support float-to-int cast".to_string(),
                     }),
 
                     mir::CastKind::FloatToFloat => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported float-to-float cast"),
+                        description: "RefinedRust does currently not support float-to-float cast".to_string(),
                     }),
 
                     mir::CastKind::PtrToPtr => {
@@ -3348,43 +3329,53 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 // Casts between raw pointers are NOPs for us
                                 Ok(translated_op)
                             },
+
                             _ => {
                                 // TODO: any other cases we should handle?
                                 Err(TranslationError::UnsupportedFeature {
-                                    description: format!("unsupported ptr-to-ptr cast: {:?}", rval),
+                                    description: format!(
+                                        "RefinedRust does currently not support ptr-to-ptr cast (got: {:?})",
+                                        rval
+                                    ),
                                 })
                             },
                         }
                     },
 
                     mir::CastKind::FnPtrToPtr => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported fnptr-to-ptr cast: {:?}", rval),
+                        description: format!(
+                            "RefinedRust does currently not support fnptr-to-ptr cast (got: {:?})",
+                            rval
+                        ),
                     }),
 
                     mir::CastKind::Transmute => Err(TranslationError::UnsupportedFeature {
-                        description: format!("unsupported transmute cast: {:?}", rval),
+                        description: format!(
+                            "RefinedRust does currently not support transmute cast (got: {:?})",
+                            rval
+                        ),
                     }),
+
+                    mir::CastKind::PointerExposeAddress | mir::CastKind::PointerFromExposedAddress => {
+                        Err(TranslationError::UnsupportedFeature {
+                            description: format!(
+                                "RefinedRust does currently not support this kind of cast (got: {:?})",
+                                rval
+                            ),
+                        })
+                    },
                 }
             },
 
-            Rvalue::Len(..) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval),
-            }),
-
-            Rvalue::Repeat(..) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval),
-            }),
-
-            Rvalue::ThreadLocalRef(..) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval),
-            }),
-
-            Rvalue::ShallowInitBox(_, _) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval),
-            }),
-
-            Rvalue::CopyForDeref(_) => Err(TranslationError::UnsupportedFeature {
-                description: format!("unsupported rvalue: {:?}", rval),
+            Rvalue::CopyForDeref(_)
+            | Rvalue::Len(..)
+            | Rvalue::Repeat(..)
+            | Rvalue::ThreadLocalRef(..)
+            | Rvalue::ShallowInitBox(_, _) => Err(TranslationError::UnsupportedFeature {
+                description: format!(
+                    "RefinedRust does currently not support this kind of rvalue (got: {:?})",
+                    rval
+                ),
             }),
         }
     }
@@ -3460,55 +3451,53 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     fn translate_fn_def_use(&mut self, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
-        match ty.kind() {
-            TyKind::FnDef(defid, params) => {
-                let key: ty::ParamEnv<'tcx> = self.env.tcx().param_env(self.proc.get_id());
-                if self.env.tcx().trait_of_item(*defid).is_some() {
-                    if let Some((resolved_did, resolved_params, kind)) =
-                        crate::traits::resolve_assoc_item(self.env.tcx(), key, *defid, params)
-                    {
-                        info!(
-                            "Resolved trait method {:?} as {:?} with substs {:?} and kind {:?}",
-                            defid, resolved_did, resolved_params, kind
-                        );
-                        match kind {
-                            crate::traits::TraitResolutionKind::UserDefined => {
-                                let param_name =
-                                    self.register_use_procedure(&resolved_did, resolved_params)?;
-                                Ok(radium::Expr::MetaParam(param_name))
-                            },
-                            crate::traits::TraitResolutionKind::Param => {
-                                Err(TranslationError::Unimplemented {
-                                    description: format!("Implement trait invocation for Param"),
-                                })
-                            },
-                            crate::traits::TraitResolutionKind::Closure => {
-                                // TODO: here, we should first generate an instance of the trait
-                                //self.env.tcx().
-                                // mir_shims(rustc_middle::ty::InstanceDef::Item(resolved_did));
-                                // the args are just the closure args. We can ignore them.
-                                let _clos_args = resolved_params.as_closure();
-                                let param_name =
-                                    self.register_use_procedure(&resolved_did, ty::List::empty())?;
-                                Ok(radium::Expr::MetaParam(param_name))
-                                //Err(TranslationError::Unimplemented { description: format!("Implement trait
-                                // invocation for Closure") })
-                            },
-                        }
-                    } else {
-                        Err(TranslationError::TraitResolution(format!("Could not resolve trait {:?}", defid)))
-                    }
-                } else {
-                    // track that we are using this function and generate the Coq location name
-                    let param_name = self.register_use_procedure(defid, params)?;
-                    Ok(radium::Expr::MetaParam(param_name))
-                }
+        let TyKind::FnDef(defid, params) = ty.kind() else {
+            return Err(TranslationError::UnknownError("not a FnDef type".to_string()));
+        };
+
+        let key: ty::ParamEnv<'tcx> = self.env.tcx().param_env(self.proc.get_id());
+        if self.env.tcx().trait_of_item(*defid).is_none() {
+            // track that we are using this function and generate the Coq location name
+            let param_name = self.register_use_procedure(defid, params)?;
+            return Ok(radium::Expr::MetaParam(param_name));
+        }
+
+        let Some((resolved_did, resolved_params, kind)) =
+            crate::traits::resolve_assoc_item(self.env.tcx(), key, *defid, params)
+        else {
+            return Err(TranslationError::TraitResolution(format!("Could not resolve trait {:?}", defid)));
+        };
+
+        info!(
+            "Resolved trait method {:?} as {:?} with substs {:?} and kind {:?}",
+            defid, resolved_did, resolved_params, kind
+        );
+
+        match kind {
+            crate::traits::TraitResolutionKind::UserDefined => {
+                let param_name = self.register_use_procedure(&resolved_did, resolved_params)?;
+                Ok(radium::Expr::MetaParam(param_name))
             },
-            _ => Err(TranslationError::UnknownError("not a FnDef type".to_string())),
+
+            crate::traits::TraitResolutionKind::Param => Err(TranslationError::Unimplemented {
+                description: format!("Implement trait invocation for Param"),
+            }),
+
+            crate::traits::TraitResolutionKind::Closure => {
+                // TODO: here, we should first generate an instance of the trait
+                //self.env.tcx().
+                // mir_shims(rustc_middle::ty::InstanceDef::Item(resolved_did));
+                // the args are just the closure args. We can ignore them.
+                let _clos_args = resolved_params.as_closure();
+                let param_name = self.register_use_procedure(&resolved_did, ty::List::empty())?;
+                Ok(radium::Expr::MetaParam(param_name))
+                //Err(TranslationError::Unimplemented { description: format!("Implement trait
+                // invocation for Closure") })
+            },
         }
     }
 
-    /// Translate a scalar at a specific type to a radium::Expr.
+    /// Translate a scalar at a specific type to a `radium::Expr`.
     // TODO: Use `TryFrom` instead
     fn translate_scalar(&mut self, sc: &Scalar, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
         // TODO: Use `TryFrom` instead
@@ -3520,51 +3509,48 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
 
         match ty.kind() {
-            TyKind::Int(it) => {
-                match it {
-                    ty::IntTy::I8 => translate_literal(sc.to_i8(), radium::Literal::LitI8),
-                    ty::IntTy::I16 => translate_literal(sc.to_i16(), radium::Literal::LitI16),
-                    ty::IntTy::I32 => translate_literal(sc.to_i32(), radium::Literal::LitI32),
-                    ty::IntTy::I64 => translate_literal(sc.to_i64(), radium::Literal::LitI64),
-                    ty::IntTy::I128 => translate_literal(sc.to_i128(), radium::Literal::LitI128),
-                    // for radium, the pointer size is 8 bytes
-                    ty::IntTy::Isize => translate_literal(sc.to_i64(), radium::Literal::LitI64),
-                }
-            },
-
-            TyKind::Uint(it) => {
-                match it {
-                    ty::UintTy::U8 => translate_literal(sc.to_u8(), radium::Literal::LitU8),
-                    ty::UintTy::U16 => translate_literal(sc.to_u16(), radium::Literal::LitU16),
-                    ty::UintTy::U32 => translate_literal(sc.to_u32(), radium::Literal::LitU32),
-                    ty::UintTy::U64 => translate_literal(sc.to_u64(), radium::Literal::LitU64),
-                    ty::UintTy::U128 => translate_literal(sc.to_u128(), radium::Literal::LitU128),
-                    // for radium, the pointer size is 8 bytes
-                    ty::UintTy::Usize => translate_literal(sc.to_u64(), radium::Literal::LitU64),
-                }
-            },
-
             TyKind::Bool => translate_literal(sc.to_bool(), radium::Literal::LitBool),
+
+            TyKind::Int(it) => match it {
+                ty::IntTy::I8 => translate_literal(sc.to_i8(), radium::Literal::LitI8),
+                ty::IntTy::I16 => translate_literal(sc.to_i16(), radium::Literal::LitI16),
+                ty::IntTy::I32 => translate_literal(sc.to_i32(), radium::Literal::LitI32),
+                ty::IntTy::I128 => translate_literal(sc.to_i128(), radium::Literal::LitI128),
+
+                // For Radium, the pointer size is 8 bytes
+                ty::IntTy::I64 | ty::IntTy::Isize => translate_literal(sc.to_i64(), radium::Literal::LitI64),
+            },
+
+            TyKind::Uint(it) => match it {
+                ty::UintTy::U8 => translate_literal(sc.to_u8(), radium::Literal::LitU8),
+                ty::UintTy::U16 => translate_literal(sc.to_u16(), radium::Literal::LitU16),
+                ty::UintTy::U32 => translate_literal(sc.to_u32(), radium::Literal::LitU32),
+                ty::UintTy::U128 => translate_literal(sc.to_u128(), radium::Literal::LitU128),
+
+                // For Radium, the pointer is 8 bytes
+                ty::UintTy::U64 | ty::UintTy::Usize => {
+                    translate_literal(sc.to_u64(), radium::Literal::LitU64)
+                },
+            },
 
             TyKind::FnDef(_, _) => self.translate_fn_def_use(ty),
 
             TyKind::Tuple(tys) => {
                 if tys.is_empty() {
-                    Ok(radium::Expr::Literal(radium::Literal::LitZST))
-                } else {
-                    Err(TranslationError::UnsupportedFeature {
-                        description: format!(
-                            "Currently do not support compound construction of tuples using literals: {:?}",
-                            ty
-                        ),
-                    })
+                    return Ok(radium::Expr::Literal(radium::Literal::LitZST));
                 }
+
+                Err(TranslationError::UnsupportedFeature {
+                    description: format!(
+                        "RefinedRust does currently not support compound construction of tuples using literals (got: {:?})",
+                        ty
+                    ),
+                })
             },
 
             TyKind::Ref(_, _, _) => match sc {
-                Scalar::Int(_) => {
-                    unreachable!();
-                },
+                Scalar::Int(_) => unreachable!(),
+
                 Scalar::Ptr(pointer, _) => {
                     let glob_alloc = self.env.tcx().global_alloc(pointer.provenance);
                     match glob_alloc {
@@ -3573,20 +3559,21 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 "Found static GlobalAlloc {:?} for Ref scalar {:?} at type {:?}",
                                 did, sc, ty
                             );
-                            match self.const_registry.statics.get(&did) {
-                                None => Err(TranslationError::UnknownError(format!(
+
+                            let Some(s) = self.const_registry.statics.get(&did) else {
+                                return Err(TranslationError::UnknownError(format!(
                                     "Did not find a registered static for GlobalAlloc {:?} for scalar {:?} at type {:?}; registered: {:?}",
                                     glob_alloc, sc, ty, self.const_registry.statics
-                                ))),
-                                Some(s) => {
-                                    self.collected_statics.insert(did);
-                                    Ok(radium::Expr::Literal(radium::Literal::LitLoc(s.loc_name.clone())))
-                                },
-                            }
+                                )));
+                            };
+
+                            self.collected_statics.insert(did);
+                            Ok(radium::Expr::Literal(radium::Literal::LitLoc(s.loc_name.clone())))
                         },
+
                         _ => Err(TranslationError::UnsupportedFeature {
                             description: format!(
-                                "Unsupported GlobalAlloc {:?} for scalar {:?} at type {:?}",
+                                "RefinedRust does currently not support GlobalAlloc {:?} for scalar {:?} at type {:?}",
                                 glob_alloc, sc, ty
                             ),
                         }),
@@ -3595,12 +3582,15 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             },
 
             _ => Err(TranslationError::UnsupportedFeature {
-                description: format!("Unsupported layout for const value: {:?}", ty),
+                description: format!(
+                    "RefinedRust does currently not support layout for const value: (got: {:?})",
+                    ty
+                ),
             }),
         }
     }
 
-    /// Translate a Constant to a radium::Expr.
+    /// Translate a Constant to a `radium::Expr`.
     fn translate_constant(&mut self, constant: &Constant<'tcx>) -> Result<radium::Expr, TranslationError> {
         match constant.literal {
             ConstantKind::Ty(v) => {
@@ -3755,7 +3745,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             .local_decls
             .get(*local)
             .map(|decl| decl.ty)
-            .ok_or_else(|| TranslationError::UnknownVar("".to_string()))
+            .ok_or_else(|| TranslationError::UnknownVar(String::new()))
     }
 
     /// Get the type of a place expression.
@@ -3767,8 +3757,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     fn get_type_of_const(&self, cst: &Constant<'tcx>) -> Result<Ty<'tcx>, TranslationError> {
         match cst.literal {
             ConstantKind::Ty(cst) => Ok(cst.ty()),
-            ConstantKind::Val(_, ty) => Ok(ty),
-            ConstantKind::Unevaluated(_, ty) => Ok(ty),
+            ConstantKind::Val(_, ty) | ConstantKind::Unevaluated(_, ty) => Ok(ty),
         }
     }
 

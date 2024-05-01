@@ -187,7 +187,7 @@ impl<'tcx> PlaceSet<'tcx> {
     /// have a place and its descendants in the set.
     pub fn union(place_set1: &PlaceSet<'tcx>, place_set2: &PlaceSet<'tcx>) -> PlaceSet<'tcx> {
         let mut places = place_set1.places.clone();
-        places.extend(place_set2.iter().cloned());
+        places.extend(place_set2.iter().copied());
         Self { places }
     }
 }

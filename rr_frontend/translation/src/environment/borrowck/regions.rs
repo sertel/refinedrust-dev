@@ -44,7 +44,7 @@ impl PlaceRegions {
     /// Tuples cannot be nested inside other tuples.
     pub fn for_place(&self, place: mir::Place) -> Result<Option<facts::Region>, PlaceRegionsError> {
         let (local, fields) = Self::translate_place(place)?;
-        Ok(self.0.get(&(local, fields)).cloned())
+        Ok(self.0.get(&(local, fields)).copied())
     }
 
     /// Translates a place like _3.0.3.1 into a local (here _3) and a list of field projections like (here [0,

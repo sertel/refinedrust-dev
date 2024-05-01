@@ -30,9 +30,8 @@ pub trait SplitAggregateAssignment<'tcx> {
 
 impl<'tcx> SplitAggregateAssignment<'tcx> for mir::Statement<'tcx> {
     fn split_assignment(self, tcx: ty::TyCtxt<'tcx>, mir: &mir::Body<'tcx>) -> Vec<mir::Statement<'tcx>> {
-        let (lhs, rhs) = match self.kind {
-            mir::StatementKind::Assign(box (lhs, rhs)) => (lhs, rhs),
-            _ => return vec![self],
+        let mir::StatementKind::Assign(box (lhs, rhs)) = self.kind else {
+            return vec![self];
         };
 
         let atomic_assignments = match rhs {

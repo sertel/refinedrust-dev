@@ -308,7 +308,7 @@ impl<'tcx> Environment<'tcx> {
     pub fn get_assoc_item(&self, id: DefId, name: Symbol) -> Option<ty::AssocItem> {
         // FIXME: Probably we should use https://doc.rust-lang.org/nightly/nightly-rustc/rustc_middle/ty/struct.AssociatedItems.html#method.find_by_name_and_namespace
         // instead.
-        self.tcx().associated_items(id).filter_by_name_unhygienic(name).next().cloned()
+        self.tcx().associated_items(id).filter_by_name_unhygienic(name).next().copied()
     }
 
     /// Get a trait method declaration by name for type.

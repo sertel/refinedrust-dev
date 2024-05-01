@@ -12,7 +12,7 @@ use crate::spec_parsers::parse_utils::str_err;
 
 /// Parse attributes on a const.
 /// Permitted attributes:
-/// - rr::name("x"), which will introduce the name x to refer to the const in other specs
+/// - `rr::name("x`"), which will introduce the name x to refer to the const in other specs
 pub trait ConstAttrParser {
     fn parse_const_attrs<'a>(
         &'a mut self,

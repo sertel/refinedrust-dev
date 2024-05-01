@@ -10,7 +10,7 @@ use attribute_parse as parse;
 use parse::{MToken, Parse};
 use rustc_ast::ast::AttrItem;
 
-/// For parsing of RustPaths
+/// For parsing of `RustPaths`
 pub struct RustPath {
     path: Vec<String>,
 }
@@ -57,17 +57,20 @@ where
         let pos = input.pos().unwrap();
         let args: parse::Punctuated<parse::LitStr, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
+
         if args.len() != 2 {
-            Err(parse::ParseError::OtherErr(pos, "Expected exactly two arguments to rr::shim".to_string()))
-        } else {
-            let args: Vec<_> = args.into_iter().collect();
-            let x = args[0].value();
-            let y = args[1].value();
-            Ok(Self {
-                code_name: x,
-                spec_name: y,
-            })
+            return Err(parse::ParseError::OtherErr(
+                pos,
+                "Expected exactly two arguments to rr::shim".to_string(),
+            ));
         }
+
+        let args: Vec<_> = args.into_iter().collect();
+
+        Ok(Self {
+            code_name: args[0].value(),
+            spec_name: args[1].value(),
+        })
     }
 }
 

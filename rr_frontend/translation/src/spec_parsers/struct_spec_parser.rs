@@ -5,7 +5,7 @@
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
 use attribute_parse as parse;
-/// Parsing of RefinedRust struct specifications.
+/// Parsing of `RefinedRust` struct specifications.
 use log::info;
 use parse::{Parse, Peek};
 use radium::specs;
@@ -19,13 +19,13 @@ pub trait InvariantSpecParser {
     /// `params` are the type parameters of the surrounded type.
     ///
     /// Supported attributes on the invariant definition (outer):
-    /// - rr::refined_by
-    /// - rr::exists
-    /// - rr::invariant
-    /// - rr::refines for the inner refinement
-    /// - rr::context for context items that are required to be available in the definition
+    /// - `rr::refined_by`
+    /// - `rr::exists`
+    /// - `rr::invariant`
+    /// - `rr::refines` for the inner refinement
+    /// - `rr::context` for context items that are required to be available in the definition
     ///
-    /// Returns whether a Boolean stating whether a rr::refines attribute was included.
+    /// Returns whether a Boolean stating whether a `rr::refines` attribute was included.
     fn parse_invariant_spec<'a>(
         &'a mut self,
         ty_name: &str,
@@ -65,7 +65,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
     }
 }
 
-/// Representation of the IProps that can appear in an invariant clause.
+/// Representation of the `IProps` that can appear in an invariant clause.
 enum MetaIProp {
     /// #[rr::invariant("..")] or #[rr::invariant("H" : "..")]
     Pure(String, Option<String>),
@@ -306,7 +306,8 @@ pub struct StructFieldSpec<'def> {
 pub trait StructFieldSpecParser<'def> {
     /// Parse attributes on a struct field as a type specification.
     /// Supported attributes:
-    /// - rr::field([r @ ] type)
+    /// - `rr::field(r)`
+    /// - `rr::field(r @ type)`
     fn parse_field_spec<'a>(
         &'a mut self,
         field_name: &str,

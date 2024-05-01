@@ -81,7 +81,7 @@ pub fn dump() -> String {
     format!("{:#?}", SETTINGS.read().unwrap())
 }
 
-/// Makes the path absolute with respect to the work_dir.
+/// Makes the path absolute with respect to the `work_dir`.
 fn make_path_absolute(path: &str) -> PathBuf {
     // read the base path we set
     let base_path: String = work_dir();
@@ -145,7 +145,7 @@ pub fn log_dir() -> PathBuf {
     make_path_absolute(&read_setting::<String>("log_dir"))
 }
 
-/// Get the paths in which to search for RefinedRust library declarations.
+/// Get the paths in which to search for `RefinedRust` library declarations.
 pub fn lib_load_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let s = read_setting::<Vec<String>>("lib_load_paths");

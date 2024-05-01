@@ -95,40 +95,35 @@ pub enum FlatType {
 impl FlatType {
     /// Try to convert a flat type to a type.
     pub fn to_type<'tcx>(&self, tcx: ty::TyCtxt<'tcx>) -> Option<ty::Ty<'tcx>> {
-        match self {
-            Self::Adt(path_with_args) => {
-                let (did, flat_args) = path_with_args.to_item(tcx)?;
-                let ty: ty::EarlyBinder<ty::Ty<'tcx>> = tcx.type_of(did);
+        let Self::Adt(path_with_args) = self;
+        let (did, flat_args) = path_with_args.to_item(tcx)?;
 
-                let args = if let ty::TyKind::Adt(_, adt_args) = ty.skip_binder().kind() {
-                    adt_args
-                } else {
-                    return None;
-                };
+        let ty: ty::EarlyBinder<ty::Ty<'tcx>> = tcx.type_of(did);
+        let ty::TyKind::Adt(_, args) = ty.skip_binder().kind() else {
+            return None;
+        };
 
-                // build substitution
-                let mut substs = Vec::new();
-                for (ty_arg, flat_arg) in args.iter().zip(flat_args.into_iter()) {
-                    match ty_arg.unpack() {
-                        ty::GenericArgKind::Type(_ty) => {
-                            if let Some(flat_arg) = flat_arg {
-                                substs.push(flat_arg);
-                            }
-                        },
-                        _ => {
-                            substs.push(ty_arg);
-                        },
+        // build substitution
+        let mut substs = Vec::new();
+        for (ty_arg, flat_arg) in args.iter().zip(flat_args.into_iter()) {
+            match ty_arg.unpack() {
+                ty::GenericArgKind::Type(_) => {
+                    if let Some(flat_arg) = flat_arg {
+                        substs.push(flat_arg);
                     }
-                }
-
-                // substitute
-                info!("substituting {:?} with {:?}", ty, substs);
-                let subst_ty =
-                    if substs.is_empty() { ty.instantiate_identity() } else { ty.instantiate(tcx, &substs) };
-
-                Some(subst_ty)
-            },
+                },
+                _ => {
+                    substs.push(ty_arg);
+                },
+            }
         }
+
+        // substitute
+        info!("substituting {:?} with {:?}", ty, substs);
+        let subst_ty =
+            if substs.is_empty() { ty.instantiate_identity() } else { ty.instantiate(tcx, &substs) };
+
+        Some(subst_ty)
     }
 }
 
@@ -204,7 +199,7 @@ pub fn get_export_path_for_did(env: &Environment, did: DefId) -> Vec<String> {
 }
 
 /// Gets an instance for a path.
-/// Taken from Miri https://github.com/rust-lang/miri/blob/31fb32e49f42df19b45baccb6aa80c3d726ed6d5/src/helpers.rs#L48.
+/// Taken from Miri <https://github.com/rust-lang/miri/blob/31fb32e49f42df19b45baccb6aa80c3d726ed6d5/src/helpers.rs#L48>.
 pub fn try_resolve_did_direct<T>(tcx: TyCtxt<'_>, path: &[T]) -> Option<DefId>
 where
     T: AsRef<str>,
@@ -297,7 +292,7 @@ fn args_match_types<'tcx>(
 //tcx.implementations_of_trait
 //tcx.trait_impls_of
 //tcx.trait_impls_in_crate
-/// Try to resolve the DefId of a method in an implementation of a trait for a particular type.
+/// Try to resolve the `DefId` of a method in an implementation of a trait for a particular type.
 /// Note that this does not, in general, find a unique solution, in case there are complex things
 /// with different where clauses going on.
 pub fn try_resolve_trait_method_did<'tcx>(
@@ -607,7 +602,6 @@ pub fn collapse<'tcx>(
     places: &mut FxHashSet<mir::Place<'tcx>>,
     guide_place: &mir::Place<'tcx>,
 ) {
-    let guide_place = *guide_place;
     fn recurse<'tcx>(
         mir: &mir::Body<'tcx>,
         tcx: TyCtxt<'tcx>,
@@ -615,19 +609,24 @@ pub fn collapse<'tcx>(
         current_place: mir::Place<'tcx>,
         guide_place: mir::Place<'tcx>,
     ) {
-        if current_place != guide_place {
-            let (new_current_place, mut expansion) = expand_one_level(mir, tcx, current_place, guide_place);
-            recurse(mir, tcx, places, new_current_place, guide_place);
-            expansion.push(new_current_place);
-            if expansion.iter().all(|place| places.contains(place)) {
-                for place in expansion {
-                    places.remove(&place);
-                }
-                places.insert(current_place);
+        if current_place == guide_place {
+            return;
+        }
+
+        let (new_current_place, mut expansion) = expand_one_level(mir, tcx, current_place, guide_place);
+
+        recurse(mir, tcx, places, new_current_place, guide_place);
+        expansion.push(new_current_place);
+
+        if expansion.iter().all(|place| places.contains(place)) {
+            for place in expansion {
+                places.remove(&place);
             }
+            places.insert(current_place);
         }
     }
-    recurse(mir, tcx, places, guide_place.local.into(), guide_place);
+
+    recurse(mir, tcx, places, guide_place.local.into(), *guide_place);
 }
 
 #[derive(Debug)]

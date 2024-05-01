@@ -73,6 +73,7 @@ pub enum CoqName {
     Named(String),
     Unnamed,
 }
+
 impl Display for CoqName {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
@@ -124,22 +125,33 @@ pub enum CoqType {
     /// a plist with a given type constructor over a list of types
     PList(String, Vec<CoqType>),
 }
+
 impl Display for CoqType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         match self {
-            Self::Infer => write!(f, "_"),
-            Self::Literal(s) => write!(f, "{}", s),
-            Self::Lft => write!(f, "lft"),
-            Self::Loc => write!(f, "loc"),
-            Self::Layout => write!(f, "layout"),
-            Self::SynType => write!(f, "syn_type"),
-            Self::StructLayout => write!(f, "struct_layout"),
-            Self::Type => write!(f, "Type"),
-            Self::Ttype(box t) => write!(f, "(type {})", t),
-            Self::Rtype => write!(f, "rtype"),
-            Self::Unit => write!(f, "unit"),
-            Self::Z => write!(f, "Z"),
             Self::Bool => write!(f, "bool"),
+            Self::Z => write!(f, "Z"),
+            Self::Unit => write!(f, "unit"),
+
+            Self::Gname => write!(f, "gname"),
+            Self::Infer => write!(f, "_"),
+            Self::Layout => write!(f, "layout"),
+            Self::Lft => write!(f, "lft"),
+            Self::Literal(s) => write!(f, "{}", s),
+            Self::Loc => write!(f, "loc"),
+            Self::Rtype => write!(f, "rtype"),
+            Self::StructLayout => write!(f, "struct_layout"),
+            Self::SynType => write!(f, "syn_type"),
+            Self::Type => write!(f, "Type"),
+
+            Self::PList(cons, tys) => {
+                write!(f, "plist {} [", cons)?;
+                write_list!(f, tys, "; ", "{} : Type")?;
+                write!(f, "]")
+            },
+
+            Self::PlaceRfn(box t) => write!(f, "(place_rfn {})", t),
+
             Self::Prod(v) => match v.len() {
                 0 => write!(f, "unit"),
                 1 => write!(f, "{}", v[0]),
@@ -149,40 +161,41 @@ impl Display for CoqType {
                     write!(f, ")%type")
                 },
             },
-            Self::PlaceRfn(box t) => write!(f, "(place_rfn {})", t),
-            Self::Gname => write!(f, "gname"),
+
+            Self::Ttype(box t) => write!(f, "(type {})", t),
+
             Self::Var(i) => write!(f, "#{}", i),
-            Self::PList(cons, tys) => {
-                write!(f, "plist {} [", cons)?;
-                write_list!(f, tys, "; ", "{} : Type")?;
-                write!(f, "]")
-            },
         }
     }
 }
 
 impl CoqType {
-    /// Check if the CoqType contains a free variable `Var(i)`.
+    /// Check if the `CoqType` contains a free variable `Var(i)`.
     pub fn is_closed(&self) -> bool {
         match self {
-            Self::Var(_) => false,
-            Self::Prod(v) => v.iter().all(|t| t.is_closed()),
+            Self::Bool
+            | Self::Z
+            | Self::Unit
+            | Self::Gname
+            | Self::Infer
+            | Self::Layout
+            | Self::Lft
+            | Self::Literal(..)
+            | Self::Loc
+            | Self::Rtype
+            | Self::StructLayout
+            | Self::SynType
+            | Self::Type => true,
+
             Self::PList(_, tys) => tys.iter().all(|t| t.is_closed()),
-            Self::Ttype(box ty) => ty.is_closed(),
+
             Self::PlaceRfn(t) => t.is_closed(),
-            Self::Literal(..) => true,
-            Self::Infer => true,
-            Self::Lft => true,
-            Self::Loc => true,
-            Self::Layout => true,
-            Self::SynType => true,
-            Self::StructLayout => true,
-            Self::Type => true,
-            Self::Rtype => true,
-            Self::Unit => true,
-            Self::Z => true,
-            Self::Bool => true,
-            Self::Gname => true,
+
+            Self::Prod(v) => v.iter().all(|t| t.is_closed()),
+
+            Self::Ttype(box ty) => ty.is_closed(),
+
+            Self::Var(_) => false,
         }
     }
 
@@ -192,39 +205,44 @@ impl CoqType {
     /// operation is capture-incurring!
     pub fn subst(&mut self, substi: &Vec<Self>) {
         match self {
-            Self::Ttype(box t) => t.subst(substi),
-            Self::Prod(v) => {
-                for t in v.iter_mut() {
-                    t.subst(substi);
-                }
-            },
+            Self::Bool
+            | Self::Z
+            | Self::Unit
+            | Self::Gname
+            | Self::Infer
+            | Self::Layout
+            | Self::Lft
+            | Self::Literal(..)
+            | Self::Loc
+            | Self::Rtype
+            | Self::StructLayout
+            | Self::SynType
+            | Self::Type => (),
+
             Self::PList(_, tys) => {
                 for t in tys.iter_mut() {
                     t.subst(substi);
                 }
             },
+
             Self::PlaceRfn(box t) => {
                 t.subst(substi);
             },
-            Self::Gname => (),
+
+            Self::Prod(v) => {
+                for t in v.iter_mut() {
+                    t.subst(substi);
+                }
+            },
+
+            Self::Ttype(box t) => t.subst(substi),
+
             Self::Var(i) => {
                 if let Some(ta) = substi.get(*i) {
                     assert!(ta.is_closed());
                     *self = ta.clone();
                 }
             },
-            Self::Literal(..) => (),
-            Self::Infer => (),
-            Self::Lft => (),
-            Self::Loc => (),
-            Self::Layout => (),
-            Self::SynType => (),
-            Self::StructLayout => (),
-            Self::Type => (),
-            Self::Rtype => (),
-            Self::Unit => (),
-            Self::Z => (),
-            Self::Bool => (),
         }
     }
 }

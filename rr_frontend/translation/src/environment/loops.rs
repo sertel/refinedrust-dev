@@ -94,32 +94,39 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
         context: mir::visit::PlaceContext,
         location: mir::Location,
     ) {
+        use rustc_middle::mir::visit::PlaceContext::*;
+
         // TODO: using `location`, skip the places that are used for typechecking
         // because that part of the generated code contains closures.
-        if self.body.contains(&location.block) && context.is_use() {
-            trace!("visit_place(place={:?}, context={:?}, location={:?})", place, context, location);
-            use rustc_middle::mir::visit::PlaceContext::*;
-            let access_kind = match context {
-                MutatingUse(mir::visit::MutatingUseContext::Store) => PlaceAccessKind::Store,
-                MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
-                MutatingUse(mir::visit::MutatingUseContext::Borrow) => PlaceAccessKind::MutableBorrow,
-                MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
-                NonMutatingUse(mir::visit::NonMutatingUseContext::Copy) => PlaceAccessKind::Read,
-                NonMutatingUse(mir::visit::NonMutatingUseContext::Move) => PlaceAccessKind::Move,
-                NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => PlaceAccessKind::Read,
-                NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => {
-                    PlaceAccessKind::SharedBorrow
-                },
-                NonUse(_) => unreachable!(),
-                x => unimplemented!("{:?}", x),
-            };
-            let access = PlaceAccess {
-                location,
-                place: *place,
-                kind: access_kind,
-            };
-            self.accessed_places.push(access);
+        if !(self.body.contains(&location.block) && context.is_use()) {
+            return;
         }
+
+        trace!("visit_place(place={:?}, context={:?}, location={:?})", place, context, location);
+
+        #[allow(clippy::unnested_or_patterns)]
+        let access_kind = match context {
+            MutatingUse(mir::visit::MutatingUseContext::Store)
+            | MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
+
+            NonMutatingUse(mir::visit::NonMutatingUseContext::Move)
+            | MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
+
+            NonMutatingUse(mir::visit::NonMutatingUseContext::Copy)
+            | NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => PlaceAccessKind::Read,
+
+            MutatingUse(mir::visit::MutatingUseContext::Borrow) => PlaceAccessKind::MutableBorrow,
+            NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => PlaceAccessKind::SharedBorrow,
+
+            NonUse(_) => unreachable!(),
+            x => unimplemented!("{:?}", x),
+        };
+
+        self.accessed_places.push(PlaceAccess {
+            location,
+            place: *place,
+            kind: access_kind,
+        });
     }
 }
 
@@ -130,12 +137,6 @@ fn order_basic_blocks(
     back_edges: &HashSet<(BasicBlockIndex, BasicBlockIndex)>,
     loop_depth: &dyn Fn(BasicBlockIndex) -> usize,
 ) -> Vec<BasicBlockIndex> {
-    let basic_blocks = &mir.basic_blocks;
-    let mut sorted_blocks = Vec::new();
-    let mut permanent_mark = IndexVec::<BasicBlockIndex, bool>::from_elem_n(false, basic_blocks.len());
-    let mut temporary_mark = permanent_mark.clone();
-
-    #[allow(clippy::too_many_arguments)]
     fn visit(
         real_edges: &RealEdges,
         back_edges: &HashSet<(BasicBlockIndex, BasicBlockIndex)>,
@@ -148,25 +149,17 @@ fn order_basic_blocks(
         if permanent_mark[current] {
             return;
         }
+
         assert!(!temporary_mark[current], "Not a DAG!");
         temporary_mark[current] = true;
+
         let curr_depth = loop_depth(current);
+
         // We want to order the loop body before exit edges
-        let successors_groups: Vec<Vec<_>> = vec![
-            real_edges
-                .successors(current)
-                .iter()
-                .filter(|&&bb| loop_depth(bb) < curr_depth)
-                .cloned()
-                .collect(),
-            real_edges
-                .successors(current)
-                .iter()
-                .filter(|&&bb| loop_depth(bb) >= curr_depth)
-                .cloned()
-                .collect(),
-        ];
-        for group in &successors_groups {
+        let successors: (Vec<_>, Vec<_>) =
+            real_edges.successors(current).iter().partition(|&&bb| loop_depth(bb) < curr_depth);
+
+        for group in <[_; 2]>::from(successors) {
             for &successor in group {
                 if back_edges.contains(&(current, successor)) {
                     continue;
@@ -182,9 +175,16 @@ fn order_basic_blocks(
                 );
             }
         }
+
         permanent_mark[current] = true;
+
         sorted_blocks.push(current);
     }
+
+    let basic_blocks = &mir.basic_blocks;
+    let mut sorted_blocks = Vec::new();
+    let mut permanent_mark = IndexVec::<BasicBlockIndex, bool>::from_elem_n(false, basic_blocks.len());
+    let mut temporary_mark = permanent_mark.clone();
 
     while let Some(index) = permanent_mark.iter().position(|x| !*x) {
         let index = BasicBlockIndex::new(index);
@@ -198,6 +198,7 @@ fn order_basic_blocks(
             &mut temporary_mark,
         );
     }
+
     sorted_blocks.reverse();
     sorted_blocks
 }
@@ -263,7 +264,7 @@ impl ProcedureLoops {
 
         let mut enclosing_loop_heads = HashMap::new();
         for (&block, loop_heads) in &enclosing_loop_heads_set {
-            let mut heads: Vec<BasicBlockIndex> = loop_heads.iter().cloned().collect();
+            let mut heads: Vec<BasicBlockIndex> = loop_heads.iter().copied().collect();
             heads.sort_by_key(|bbi| loop_head_depths[bbi]);
             enclosing_loop_heads.insert(block, heads);
         }
@@ -272,18 +273,17 @@ impl ProcedureLoops {
             enclosing_loop_heads
                 .get(&bb)
                 .and_then(|heads| heads.last())
-                .map(|bb_head| loop_head_depths[bb_head])
-                .unwrap_or(0)
+                .map_or(0, |bb_head| loop_head_depths[bb_head])
         };
 
         let ordered_blocks = order_basic_blocks(mir, real_edges, &back_edges, &get_loop_depth);
         let block_order: HashMap<BasicBlockIndex, usize> =
-            ordered_blocks.iter().cloned().enumerate().map(|(i, v)| (v, i)).collect();
+            ordered_blocks.iter().copied().enumerate().map(|(i, v)| (v, i)).collect();
         debug!("ordered_blocks: {:?}", ordered_blocks);
 
         let mut ordered_loop_bodies = HashMap::new();
         for (&loop_head, loop_body) in &loop_bodies {
-            let mut ordered_body: Vec<_> = loop_body.iter().cloned().collect();
+            let mut ordered_body: Vec<_> = loop_body.iter().copied().collect();
             ordered_body.sort_by_key(|bb| block_order[bb]);
             debug_assert_eq!(loop_head, ordered_body[0]);
             ordered_loop_bodies.insert(loop_head, ordered_body);
@@ -364,7 +364,7 @@ impl ProcedureLoops {
     }
 
     pub fn max_loop_nesting(&self) -> usize {
-        self.loop_head_depths.values().max().cloned().unwrap_or(0)
+        self.loop_head_depths.values().max().copied().unwrap_or(0)
     }
 
     pub fn is_loop_head(&self, bbi: BasicBlockIndex) -> bool {
@@ -388,7 +388,7 @@ impl ProcedureLoops {
     /// Get the loop head, if any
     /// Note: a loop head **is** loop head of itself
     pub fn get_loop_head(&self, bbi: BasicBlockIndex) -> Option<BasicBlockIndex> {
-        self.enclosing_loop_heads.get(&bbi).and_then(|heads| heads.last()).cloned()
+        self.enclosing_loop_heads.get(&bbi).and_then(|heads| heads.last()).copied()
     }
 
     /// Get the depth of a loop head, starting from one for a simple loop
@@ -399,7 +399,7 @@ impl ProcedureLoops {
 
     /// Get the loop-depth of a block (zero if it's not in a loop).
     pub fn get_loop_depth(&self, bbi: BasicBlockIndex) -> usize {
-        self.get_loop_head(bbi).map(|x| self.get_loop_head_depth(x)).unwrap_or(0)
+        self.get_loop_head(bbi).map_or(0, |x| self.get_loop_head_depth(x))
     }
 
     /// Get the (topologically ordered) body of a loop, given a loop head
@@ -410,19 +410,19 @@ impl ProcedureLoops {
 
     /// Does this edge exit a loop?
     pub fn is_out_edge(&self, from: BasicBlockIndex, to: BasicBlockIndex) -> bool {
-        if let Some(from_loop_head) = self.get_loop_head(from) {
-            if let Some(to_loop_head) = self.get_loop_head(to) {
-                if from_loop_head == to_loop_head || to == to_loop_head {
-                    false
-                } else {
-                    !self.enclosing_loop_heads[&to].contains(&from_loop_head)
-                }
-            } else {
-                true
-            }
-        } else {
-            false
-        }
+        let Some(from_loop_head) = self.get_loop_head(from) else {
+            return false;
+        };
+
+        let Some(to_loop_head) = self.get_loop_head(to) else {
+            return true;
+        };
+
+        if from_loop_head == to_loop_head || to == to_loop_head {
+            return false;
+        };
+
+        !self.enclosing_loop_heads[&to].contains(&from_loop_head)
     }
 
     /// Check if ``block`` is inside a given loop.
