@@ -38,8 +38,7 @@ where
 impl ToString for IdentOrTerm {
     fn to_string(&self) -> String {
         match self {
-            Self::Ident(s) => s.to_string(),
-            Self::Term(s) => s.to_string(),
+            Self::Ident(s) | Self::Term(s) => s.to_string(),
         }
     }
 }

@@ -73,10 +73,7 @@ impl AtomicRegion {
 
     pub const fn get_region(&self) -> facts::Region {
         match self {
-            Self::Loan(_, r) => *r,
-            Self::Universal(_, r) => *r,
-            Self::PlaceRegion(r) => *r,
-            Self::Unknown(r) => *r,
+            Self::Loan(_, r) | Self::Universal(_, r) | Self::PlaceRegion(r) | Self::Unknown(r) => *r,
         }
     }
 }

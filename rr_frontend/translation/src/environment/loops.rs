@@ -104,15 +104,20 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
 
         trace!("visit_place(place={:?}, context={:?}, location={:?})", place, context, location);
 
+        #[allow(clippy::unnested_or_patterns)]
         let access_kind = match context {
-            MutatingUse(mir::visit::MutatingUseContext::Store) => PlaceAccessKind::Store,
-            MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
+            MutatingUse(mir::visit::MutatingUseContext::Store)
+            | MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
+
+            NonMutatingUse(mir::visit::NonMutatingUseContext::Move)
+            | MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
+
+            NonMutatingUse(mir::visit::NonMutatingUseContext::Copy)
+            | NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => PlaceAccessKind::Read,
+
             MutatingUse(mir::visit::MutatingUseContext::Borrow) => PlaceAccessKind::MutableBorrow,
-            MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
-            NonMutatingUse(mir::visit::NonMutatingUseContext::Copy) => PlaceAccessKind::Read,
-            NonMutatingUse(mir::visit::NonMutatingUseContext::Move) => PlaceAccessKind::Move,
-            NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => PlaceAccessKind::Read,
             NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => PlaceAccessKind::SharedBorrow,
+
             NonUse(_) => unreachable!(),
             x => unimplemented!("{:?}", x),
         };

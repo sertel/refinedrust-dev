@@ -507,10 +507,7 @@ impl fmt::Display for Annotation {
 
 impl Annotation {
     pub(crate) const fn needs_laters(&self) -> u32 {
-        match self {
-            Self::ShortenLft { .. } => 0,
-            _ => 0,
-        }
+        0
     }
 }
 
