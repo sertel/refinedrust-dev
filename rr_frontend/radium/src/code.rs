@@ -1348,7 +1348,7 @@ impl<'def> FunctionBuilder<'def> {
 
     /// Add a manual tactic used for a sidecondition proof.
     pub fn add_manual_tactic(&mut self, tac: &str) {
-        self.tactics.push(tac.to_string())
+        self.tactics.push(tac.to_string());
     }
 
     /// Add a generic type used by this function.

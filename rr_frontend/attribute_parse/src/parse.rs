@@ -150,7 +150,7 @@ impl ParseBuffer {
     }
 
     pub fn advance(&self, n: usize) {
-        self.index.set(self.index.get() + n)
+        self.index.set(self.index.get() + n);
     }
 
     pub fn advance_get(&self) -> ParseResult<&TokenTree> {

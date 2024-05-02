@@ -42,24 +42,21 @@ pub fn resolve_impl_source<'tcx>(
     let substs = tcx.normalize_erasing_regions(param_env, substs);
 
     // Check if the `did` is an associated item
-    let trait_ref;
-    if let Some(item) = tcx.opt_associated_item(did) {
+    let trait_ref = if let Some(item) = tcx.opt_associated_item(did) {
         match item.container {
-            AssocItemContainer::TraitContainer =>
-            // this is part of a trait declaration
-            {
-                trait_ref = TraitRef::new(tcx, item.container_id(tcx), substs)
+            AssocItemContainer::TraitContainer => {
+                // this is part of a trait declaration
+                TraitRef::new(tcx, item.container_id(tcx), substs)
             },
-            AssocItemContainer::ImplContainer =>
-            // this is part of an implementation of a trait
-            {
-                trait_ref = tcx.impl_trait_ref(item.container_id(tcx))?.instantiate(tcx, substs)
+            AssocItemContainer::ImplContainer => {
+                // this is part of an implementation of a trait
+                tcx.impl_trait_ref(item.container_id(tcx))?.instantiate(tcx, substs)
             },
         }
     } else {
         // Otherwise, check if it's a reference to a trait itself
         if tcx.is_trait(did) {
-            trait_ref = TraitRef::new(tcx, did, substs)
+            TraitRef::new(tcx, did, substs)
         } else {
             return None;
         }

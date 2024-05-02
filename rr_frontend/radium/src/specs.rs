@@ -653,7 +653,7 @@ impl<'def> Type<'def> {
 
             Self::MutRef(box ty, lft) | Self::ShrRef(box ty, lft) => {
                 s.insert(lft.to_string());
-                ty.get_ty_lfts(s)
+                ty.get_ty_lfts(s);
             },
 
             Self::BoxType(box ty) => ty.get_ty_lfts(s),
@@ -684,7 +684,7 @@ impl<'def> Type<'def> {
             | Self::RawPtr => (),
 
             Self::MutRef(box ty, _) | Self::ShrRef(box ty, _) | Self::BoxType(box ty) => {
-                ty.get_ty_wf_elctx(s)
+                ty.get_ty_wf_elctx(s);
             },
 
             Self::Literal(lit) => lit.get_ty_wf_elctx(s),
@@ -718,16 +718,19 @@ impl<'def> Type<'def> {
     {
         match self {
             Self::MutRef(box t, _) | Self::ShrRef(box t, _) | Self::BoxType(box t) => {
-                t.subst_core(substi, to_type)
+                t.subst_core(substi, to_type);
             },
+
             Self::Struct(s) => {
                 // the struct def itself should be closed, but the arguments to it may contain
                 // further variables
                 s.ty_params.iter_mut().map(|a| a.subst_core(substi, to_type)).count();
             },
+
             Self::Enum(s) => {
                 s.ty_params.iter_mut().map(|a| a.subst_core(substi, to_type)).count();
             },
+
             Self::Var(i) => {
                 if let Some(Some(ta)) = substi.get(*i) {
                     let ta_ty: Type<'def> = to_type(ta);
@@ -735,6 +738,7 @@ impl<'def> Type<'def> {
                     *self = ta_ty;
                 }
             },
+
             _ => (),
         }
     }
@@ -744,12 +748,12 @@ impl<'def> Type<'def> {
     /// The types in `substi` should not contain variables themselves, as this substitution
     /// operation is capture-incurring!
     pub fn subst(&mut self, substi: &[Option<Type<'def>>]) {
-        self.subst_core(substi, &Clone::clone)
+        self.subst_core(substi, &Clone::clone);
     }
 
     /// Substitute variables `Var` with `substi`. See `subst` for documentation.
     pub fn subst_params(&mut self, substi: &[Option<LiteralTyParam>]) {
-        self.subst_core(substi, &|x| Type::LiteralParam(x.clone()))
+        self.subst_core(substi, &|x| Type::LiteralParam(x.clone()));
     }
 }
 

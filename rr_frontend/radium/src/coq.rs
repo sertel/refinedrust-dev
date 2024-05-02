@@ -473,7 +473,7 @@ impl CoqTopLevelAssertions {
     }
 
     pub fn push(&mut self, a: CoqTopLevelAssertion) {
-        self.0.push(a)
+        self.0.push(a);
     }
 }
 

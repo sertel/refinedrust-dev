@@ -109,7 +109,7 @@ fn extract_region(place_regions: &mut PlaceRegions, local: mir::Local, ty: ty::T
             for (i, ty) in types.iter().enumerate() {
                 match ty.kind() {
                     ty::TyKind::Ref(region, _, _) => {
-                        place_regions.add(local, vec![i], extract_region_id(region))
+                        place_regions.add(local, vec![i], extract_region_id(region));
                     },
                     _ => {
                         // TODO descend into nested types (nested tuples/structs) ?
