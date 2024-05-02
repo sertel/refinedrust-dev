@@ -77,6 +77,7 @@ impl<'tcx> Procedure<'tcx> {
 
     /// Returns all the types used in the procedure, and any types reachable from them
     #[must_use]
+    #[allow(clippy::unused_self)]
     pub fn get_declared_types(&self) -> Vec<Ty<'tcx>> {
         let _types: HashSet<Ty> = HashSet::new();
         // for var in &self.mir.local_decls {

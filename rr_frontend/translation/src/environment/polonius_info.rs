@@ -832,16 +832,18 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         region: facts::Region,
     ) -> (Vec<facts::Loan>, Vec<facts::Loan>) {
         let mut loans =
-            self.get_loans_kept_alive_by(point, region, &self.borrowck_out_facts.origin_contains_loan_at);
+            Self::get_loans_kept_alive_by(point, region, &self.borrowck_out_facts.origin_contains_loan_at);
+
         let zombie_loans =
-            self.get_loans_kept_alive_by(point, region, &self.additional_facts.zombie_requires);
+            Self::get_loans_kept_alive_by(point, region, &self.additional_facts.zombie_requires);
+
         loans.extend(zombie_loans.iter().copied());
+
         (loans, zombie_loans)
     }
 
     /// Get loans that are kept alive by the given region.
     fn get_loans_kept_alive_by(
-        &self,
         point: facts::PointIndex,
         region: facts::Region,
         restricts_map: &FxHashMap<facts::PointIndex, BTreeMap<facts::Region, BTreeSet<facts::Loan>>>,
@@ -1244,6 +1246,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
 
     /// Find a variable that has the given region in its type.
     #[must_use]
+    #[allow(clippy::unused_self)]
     pub const fn find_variable(&self, _region: facts::Region) -> Option<mir::Local> {
         // TODO
         None

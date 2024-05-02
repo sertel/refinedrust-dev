@@ -1074,6 +1074,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         initial_arg_mapping
     }
 
+    #[allow(clippy::unused_self)]
     fn get_initial_universal_arg_constraints2(
         &mut self,
         sig_args: &[Ty<'tcx>],
@@ -1742,6 +1743,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Registers a drop shim for a particular type for the translation.
+    #[allow(clippy::unused_self)]
     const fn register_drop_shim_for(&self, _ty: Ty<'tcx>) {
         // TODO!
         //let drop_in_place_did: DefId = crate::utils::try_resolve_did(self.env.tcx(), &["std", "ptr",
@@ -2400,7 +2402,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             .and_then(|m| if m.is_ignore() { Some(*did) } else { None }))
     }
 
-    fn region_to_region_vid(&self, r: ty::Region<'tcx>) -> facts::Region {
+    fn region_to_region_vid(r: ty::Region<'tcx>) -> facts::Region {
         match r.kind() {
             ty::RegionKind::ReVar(vid) => vid,
             _ => panic!(),
@@ -2497,7 +2499,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             // However, we still need to track the region created for the reborrow in an
             // annotation.
 
-            let region = self.region_to_region_vid(*region);
+            let region = BodyTranslator::region_to_region_vid(*region);
 
             // find inclusion ?r1 ⊑ region -- we will actually enforce region = r1
             let new_constrs: Vec<(facts::Region, facts::Region)> =
@@ -2843,7 +2845,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate a `BorrowKind`.
-    fn translate_borrow_kind(&self, kind: BorrowKind) -> Result<radium::BorKind, TranslationError> {
+    fn translate_borrow_kind(kind: BorrowKind) -> Result<radium::BorKind, TranslationError> {
         match kind {
             BorrowKind::Shared => Ok(radium::BorKind::Shared),
             BorrowKind::Shallow => {
@@ -2860,7 +2862,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    const fn translate_mutability(&self, mt: Mutability) -> radium::Mutability {
+    const fn translate_mutability(mt: Mutability) -> radium::Mutability {
         match mt {
             Mutability::Mut => radium::Mutability::Mut,
             Mutability::Not => radium::Mutability::Shared,
@@ -2868,7 +2870,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Get the inner type of a type to which we can apply the offset operator.
-    fn get_offset_ty(&self, ty: Ty<'tcx>) -> Result<Ty<'tcx>, TranslationError> {
+    fn get_offset_ty(ty: Ty<'tcx>) -> Result<Ty<'tcx>, TranslationError> {
         match ty.kind() {
             TyKind::Array(t, _) | TyKind::Slice(t) | TyKind::Ref(_, t, _) => Ok(*t),
             TyKind::RawPtr(tm) => Ok(tm.ty),
@@ -2909,7 +2911,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // we need to get the layout of the thing we're offsetting
                 // try to get the type of e1.
                 let e1_ty = self.get_type_of_operand(e1);
-                let off_ty = self.get_offset_ty(e1_ty)?;
+                let off_ty = BodyTranslator::get_offset_ty(e1_ty)?;
                 let st = self.ty_translator.translate_type_to_syn_type(off_ty)?;
                 let ly = self.ty_translator.translate_syn_type_to_layout(&st);
                 Ok(radium::Binop::PtrOffsetOp(ly))
@@ -2920,7 +2922,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Translate checked binary operators.
     /// We need access to the operands, too, to handle the offset operator and get the right
     /// Caesium layout annotation.
-    fn translate_checked_binop(&self, op: BinOp) -> Result<radium::Binop, TranslationError> {
+    fn translate_checked_binop(op: BinOp) -> Result<radium::Binop, TranslationError> {
         match op {
             BinOp::Add => Ok(radium::Binop::CheckedAddOp),
             BinOp::Sub => Ok(radium::Binop::CheckedSubOp),
@@ -2938,7 +2940,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate unary operators.
-    fn translate_unop(&self, op: UnOp, ty: Ty<'tcx>) -> Result<radium::Unop, TranslationError> {
+    fn translate_unop(op: UnOp, ty: Ty<'tcx>) -> Result<radium::Unop, TranslationError> {
         match op {
             UnOp::Not => match ty.kind() {
                 ty::TyKind::Bool => Ok(radium::Unop::NotBoolOp),
@@ -2984,7 +2986,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
             Rvalue::Ref(region, bk, pl) => {
                 let translated_pl = self.translate_place(pl)?;
-                let translated_bk = self.translate_borrow_kind(*bk)?;
+                let translated_bk = BodyTranslator::translate_borrow_kind(*bk)?;
                 let ty_annot = self.get_type_annotation_for_borrow(*bk, pl)?;
 
                 if let Some(loan) = self.info.get_optional_loan_at_location(loc) {
@@ -2998,7 +3000,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     })
                 } else {
                     info!("Didn't find loan at {:?}: {:?}; region {:?}", loc, rval, region);
-                    let region = self.region_to_region_vid(*region);
+                    let region = BodyTranslator::region_to_region_vid(*region);
                     let lft = self.format_region(region);
 
                     Ok(radium::Expr::Borrow {
@@ -3012,7 +3014,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
             Rvalue::AddressOf(mt, pl) => {
                 let translated_pl = self.translate_place(pl)?;
-                let translated_mt = self.translate_mutability(*mt);
+                let translated_mt = BodyTranslator::translate_mutability(*mt);
 
                 Ok(radium::Expr::AddressOf {
                     mt: translated_mt,
@@ -3057,7 +3059,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 let translated_e1 = self.translate_operand(e1, true)?;
                 let translated_e2 = self.translate_operand(e2, true)?;
-                let translated_op = self.translate_checked_binop(*op)?;
+                let translated_op = BodyTranslator::translate_checked_binop(*op)?;
 
                 Ok(radium::Expr::BinOp {
                     o: translated_op,
@@ -3073,7 +3075,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let e1_ty = self.get_type_of_operand(operand);
                 let e1_st = self.ty_translator.translate_type_to_syn_type(e1_ty)?;
                 let e1_ot = self.ty_translator.translate_syn_type_to_op_type(&e1_st);
-                let translated_op = self.translate_unop(*op, e1_ty)?;
+                let translated_op = BodyTranslator::translate_unop(*op, e1_ty)?;
 
                 Ok(radium::Expr::UnOp {
                     o: translated_op,
@@ -3695,8 +3697,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             let enum_use = self.ty_translator.generate_enum_use(*def, args.iter())?;
                             let els = enum_use.generate_raw_syn_type_term();
 
-                            let variant_name =
-                                self.ty_translator.translator.get_variant_name_of(cur_ty.ty, *variant_idx)?;
+                            let variant_name = TypeTranslator::get_variant_name_of(cur_ty.ty, *variant_idx)?;
 
                             acc_expr = radium::Expr::EnumData {
                                 els: els.to_string(),
@@ -3743,7 +3744,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Get the type of a const.
-    fn get_type_of_const(&self, cst: &Constant<'tcx>) -> Ty<'tcx> {
+    fn get_type_of_const(cst: &Constant<'tcx>) -> Ty<'tcx> {
         match cst.literal {
             ConstantKind::Ty(cst) => cst.ty(),
             ConstantKind::Val(_, ty) | ConstantKind::Unevaluated(_, ty) => ty,

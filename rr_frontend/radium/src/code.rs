@@ -508,6 +508,7 @@ impl fmt::Display for Annotation {
 }
 
 impl Annotation {
+    #[allow(clippy::unused_self)]
     pub(crate) const fn needs_laters(&self) -> u32 {
         0
     }

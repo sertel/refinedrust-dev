@@ -1743,11 +1743,13 @@ impl<'def> AbstractStructUse<'def> {
     }
 
     /// Add the lifetimes appearing in this type to `s`.
+    #[allow(clippy::unused_self)]
     pub fn get_ty_lfts(&self, _s: &mut HashSet<Lft>) {
         // TODO
     }
 
     /// Add the lifetime constraints in this type to `s`.
+    #[allow(clippy::unused_self)]
     pub fn get_ty_wf_elctx(&self, _s: &mut HashSet<String>) {
         // TODO
     }
@@ -2364,11 +2366,13 @@ impl<'def> AbstractEnumUse<'def> {
     }
 
     /// Add the lifetimes appearing in this type to `s`.
+    #[allow(clippy::unused_self)]
     pub fn get_ty_lfts(&self, _s: &mut HashSet<Lft>) {
         // TODO
     }
 
     /// Add the lifetime constraints in this type to `s`.
+    #[allow(clippy::unused_self)]
     pub fn get_ty_wf_elctx(&self, _s: &mut HashSet<String>) {
         // TODO
     }

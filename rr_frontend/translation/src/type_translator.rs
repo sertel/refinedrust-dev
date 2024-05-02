@@ -384,7 +384,6 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Try to translate a region to a Caesium lifetime.
     /// Note: This relies on all the regions being `ReVar` inference variables.
     fn translate_region<'a, 'b>(
-        &self,
         translation_state: TranslationState<'a, 'b, 'def>,
         region: ty::Region<'tcx>,
     ) -> Option<radium::Lft> {
@@ -1210,7 +1209,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             // get the type of the discriminant
             let it = def.repr().discr_type();
-            let translated_it = self.translate_integer_type(it);
+            let translated_it = TypeTranslator::translate_integer_type(it);
 
             // build the discriminant map
             let discrs = self.build_discriminant_map(def)?;
@@ -1362,7 +1361,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 let translated_ty = self.translate_type_with_deps(*ty, &mut *state)?;
 
                 // in case this isn't a universal region, we usually won't care about it.
-                let lft = if let Some(lft) = self.translate_region(&mut *state, *region) {
+                let lft = if let Some(lft) = TypeTranslator::translate_region(&mut *state, *region) {
                     lft
                 } else {
                     warn!("Failed to translate region {:?}", region);
@@ -1515,7 +1514,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
-    const fn translate_int_type(&self, it: rustc_attr::IntType) -> radium::IntType {
+    const fn translate_int_type(it: rustc_attr::IntType) -> radium::IntType {
         match it {
             rustc_attr::IntType::SignedInt(it) => match it {
                 rustc_ast::IntTy::I8 => radium::IntType::I8,
@@ -1537,7 +1536,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
-    const fn translate_integer_type(&self, it: rustc_abi::IntegerType) -> radium::IntType {
+    const fn translate_integer_type(it: rustc_abi::IntegerType) -> radium::IntType {
         match it {
             rustc_abi::IntegerType::Fixed(size, sign) => {
                 if sign {
@@ -1610,7 +1609,6 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
     /// Get the name of a variant of an enum.
     pub fn get_variant_name_of(
-        &self,
         ty: Ty<'tcx>,
         variant: rustc_target::abi::VariantIdx,
     ) -> Result<String, TranslationError> {

@@ -31,9 +31,6 @@ rustflags = [
     "-Aclippy::option_if_let_else",
     "-Aclippy::string_lit_as_bytes",
 
-    # clippy::pedantic
-    "-Aclippy::unused_self",
-
     # clippy::restriction
     "-Aclippy::create_dir",
     "-Aclippy::empty_structs_with_brackets",

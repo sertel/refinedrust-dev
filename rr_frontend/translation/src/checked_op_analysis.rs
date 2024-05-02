@@ -32,13 +32,13 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
         }
     }
 
-    const fn is_checked_op(&self, val: &Rvalue<'tcx>) -> bool {
+    const fn is_checked_op(val: &Rvalue<'tcx>) -> bool {
         matches!(*val, Rvalue::CheckedBinaryOp(_, _))
     }
 
     /// Get the type of a checked-op result.
     /// We discard the second component of the tuple.
-    fn get_checked_op_result_type(&self, ty: Ty<'tcx>) -> Ty<'tcx> {
+    fn get_checked_op_result_type(ty: Ty<'tcx>) -> Ty<'tcx> {
         let fields = ty.tuple_fields();
         *fields.get(0).unwrap()
     }
@@ -49,7 +49,7 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
     }
 
     /// Get all successors of the basic block (ignoring unwinding).
-    fn successors_of_bb(&self, bb: &BasicBlockData<'tcx>) -> Vec<BasicBlock> {
+    fn successors_of_bb(bb: &BasicBlockData<'tcx>) -> Vec<BasicBlock> {
         let mut v = Vec::new();
 
         let Some(ref term) = bb.terminator else {
@@ -122,18 +122,18 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
             let (plc, val) = b.as_ref();
 
             // if this is a checked op, be sure to remember it
-            if self.is_checked_op(val) {
+            if Self::is_checked_op(val) {
                 // this should be a temporary
                 assert!(plc.projection.is_empty());
 
                 // just use the RHS ty
                 let ty = self.get_type_of_place(plc);
-                let ty = self.get_checked_op_result_type(ty.ty);
+                let ty = Self::get_checked_op_result_type(ty.ty);
 
                 self.result.insert(plc.local, ty);
             }
         }
 
-        self.bb_queue.append(&mut self.successors_of_bb(bb));
+        self.bb_queue.append(&mut Self::successors_of_bb(bb));
     }
 }
