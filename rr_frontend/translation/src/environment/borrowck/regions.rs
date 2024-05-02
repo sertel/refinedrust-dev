@@ -124,7 +124,7 @@ fn extract_region(place_regions: &mut PlaceRegions, local: mir::Local, ty: ty::T
     }
 }
 
-pub fn load_place_regions(body: &mir::Body<'_>) -> io::Result<PlaceRegions> {
+pub fn load_place_regions(body: &mir::Body<'_>) -> PlaceRegions {
     trace!("[enter] load_place_regions()");
     let mut place_regions = PlaceRegions::new();
 
@@ -135,5 +135,5 @@ pub fn load_place_regions(body: &mir::Body<'_>) -> io::Result<PlaceRegions> {
     }
 
     trace!("[exit] load_place_regions");
-    Ok(place_regions)
+    place_regions
 }

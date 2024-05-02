@@ -475,7 +475,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         //         def_path.to_filename_friendly_no_crate()
         //     ));
         // debug!("Renumber path: {:?}", renumber_path);
-        let place_regions = regions::load_place_regions(mir).unwrap();
+        let place_regions = regions::load_place_regions(mir);
 
         let interner = facts::Interner::new(facts.location_table.take().unwrap());
         let mut all_facts = facts.input_facts.take().unwrap();

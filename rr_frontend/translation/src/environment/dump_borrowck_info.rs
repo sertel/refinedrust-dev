@@ -893,6 +893,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 /// Maybe blocking analysis.
 impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
     /// Print the subset relation at a given program point.
+    #[allow(clippy::unnecessary_wraps)]
     fn print_subset_at_start(&self, location: mir::Location) -> Result<(), io::Error> {
         let point = self.get_point(location, facts::PointType::Start);
         let subset_map = &self.polonius_info.borrowck_out_facts.subset;

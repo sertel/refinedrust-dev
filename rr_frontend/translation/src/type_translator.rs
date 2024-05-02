@@ -1036,7 +1036,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Get the spec for a built-in enum like `std::option::Option`.
-    fn get_builtin_enum_spec(&self, did: DefId) -> Result<Option<radium::EnumSpec>, TranslationError> {
+    fn get_builtin_enum_spec(&self, did: DefId) -> Option<radium::EnumSpec> {
         let option_spec = radium::EnumSpec {
             rfn_type: radium::CoqType::Literal("_".to_string()),
             variant_patterns: vec![
@@ -1044,6 +1044,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 ("Some".to_string(), vec!["x".to_string()], "-[x]".to_string()),
             ],
         };
+
         let enum_spec = radium::EnumSpec {
             rfn_type: radium::CoqType::Literal("_".to_string()),
             variant_patterns: vec![
@@ -1056,16 +1057,16 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         if self.does_did_match(did, &["std", "option", "Option"])
             || self.does_did_match(did, &["core", "option", "Option"])
         {
-            return Ok(Some(option_spec));
+            return Some(option_spec);
         }
 
         if self.does_did_match(did, &["std", "result", "Result"])
             || self.does_did_match(did, &["core", "result", "Result"])
         {
-            return Ok(Some(enum_spec));
+            return Some(enum_spec);
         }
 
-        Ok(None)
+        None
     }
 
     /// Given a Rust enum which has already been registered and whose fields have been translated, generate a
@@ -1209,7 +1210,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             // get the type of the discriminant
             let it = def.repr().discr_type();
-            let translated_it = self.translate_integer_type(it)?;
+            let translated_it = self.translate_integer_type(it);
 
             // build the discriminant map
             let discrs = self.build_discriminant_map(def)?;
@@ -1220,7 +1221,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             // parse annotations for enum type
             let enum_spec;
             let mut inductive_decl = None;
-            let builtin_spec = self.get_builtin_enum_spec(def.did())?;
+
+            let builtin_spec = self.get_builtin_enum_spec(def.did());
             if let Some(spec) = builtin_spec {
                 enum_spec = spec;
             } else if self.env.has_tool_attribute(def.did(), "refined_by") {
@@ -1513,57 +1515,54 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
-    const fn translate_int_type(&self, it: rustc_attr::IntType) -> Result<radium::IntType, TranslationError> {
+    const fn translate_int_type(&self, it: rustc_attr::IntType) -> radium::IntType {
         match it {
-            rustc_attr::IntType::SignedInt(it) => Ok(match it {
+            rustc_attr::IntType::SignedInt(it) => match it {
                 rustc_ast::IntTy::I8 => radium::IntType::I8,
                 rustc_ast::IntTy::I16 => radium::IntType::I16,
                 rustc_ast::IntTy::I32 => radium::IntType::I32,
                 rustc_ast::IntTy::I64 => radium::IntType::I64,
                 rustc_ast::IntTy::I128 => radium::IntType::I128,
                 rustc_ast::IntTy::Isize => radium::IntType::ISize,
-            }),
-            rustc_attr::IntType::UnsignedInt(it) => Ok(match it {
+            },
+            rustc_attr::IntType::UnsignedInt(it) => match it {
                 rustc_ast::UintTy::U8 => radium::IntType::U8,
                 rustc_ast::UintTy::U16 => radium::IntType::U16,
                 rustc_ast::UintTy::U32 => radium::IntType::U32,
                 rustc_ast::UintTy::U64 => radium::IntType::U64,
                 rustc_ast::UintTy::U128 => radium::IntType::U128,
                 rustc_ast::UintTy::Usize => radium::IntType::USize,
-            }),
+            },
         }
     }
 
     /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
-    const fn translate_integer_type(
-        &self,
-        it: rustc_abi::IntegerType,
-    ) -> Result<radium::IntType, TranslationError> {
+    const fn translate_integer_type(&self, it: rustc_abi::IntegerType) -> radium::IntType {
         match it {
             rustc_abi::IntegerType::Fixed(size, sign) => {
                 if sign {
-                    Ok(match size {
+                    match size {
                         rustc_abi::Integer::I8 => radium::IntType::I8,
                         rustc_abi::Integer::I16 => radium::IntType::I16,
                         rustc_abi::Integer::I32 => radium::IntType::I32,
                         rustc_abi::Integer::I64 => radium::IntType::I64,
                         rustc_abi::Integer::I128 => radium::IntType::I128,
-                    })
+                    }
                 } else {
-                    Ok(match size {
+                    match size {
                         rustc_abi::Integer::I8 => radium::IntType::U8,
                         rustc_abi::Integer::I16 => radium::IntType::U16,
                         rustc_abi::Integer::I32 => radium::IntType::U32,
                         rustc_abi::Integer::I64 => radium::IntType::U64,
                         rustc_abi::Integer::I128 => radium::IntType::U128,
-                    })
+                    }
                 }
             },
             rustc_abi::IntegerType::Pointer(sign) => {
                 if sign {
-                    Ok(radium::IntType::ISize)
+                    radium::IntType::ISize
                 } else {
-                    Ok(radium::IntType::USize)
+                    radium::IntType::USize
                 }
             },
         }

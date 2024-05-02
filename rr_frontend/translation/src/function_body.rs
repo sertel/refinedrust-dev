@@ -847,8 +847,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translation that only generates a specification.
-    pub fn generate_spec(self) -> Result<radium::FunctionSpec<'def>, TranslationError> {
-        Ok(self.translated_fn.into())
+    pub fn generate_spec(self) -> radium::FunctionSpec<'def> {
+        self.translated_fn.into()
     }
 
     /// Generate a string identifier for a Local.
@@ -1705,40 +1705,40 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Check if a call goes to `std::rt::begin_panic`
-    fn is_call_destination_panic(&mut self, func: &Operand) -> Result<bool, TranslationError> {
-        match func {
-            Operand::Constant(box c) => match c.literal {
-                ConstantKind::Val(_, ty) => match ty.kind() {
-                    TyKind::FnDef(did, _) => {
-                        if let Some(panic_id1) = crate::utils::try_resolve_did(self.env.tcx(), &[
-                            "std",
-                            "panicking",
-                            "begin_panic",
-                        ]) {
-                            if panic_id1 == *did {
-                                return Ok(true);
-                            }
-                        } else {
-                            warn!("Failed to determine DefId of std::panicking::begin_panic");
-                        }
+    fn is_call_destination_panic(&mut self, func: &Operand) -> bool {
+        let Operand::Constant(box c) = func else {
+            return false;
+        };
 
-                        if let Some(panic_id2) =
-                            crate::utils::try_resolve_did(self.env.tcx(), &["core", "panicking", "panic"])
-                        {
-                            if panic_id2 == *did {
-                                return Ok(true);
-                            }
-                        } else {
-                            warn!("Failed to determine DefId of core::panicking::panic");
-                        }
-                        Ok(false)
-                    },
-                    _ => Ok(false),
-                },
-                _ => Ok(false),
-            },
-            _ => Ok(false),
+        let ConstantKind::Val(_, ty) = c.literal else {
+            return false;
+        };
+
+        let TyKind::FnDef(did, _) = ty.kind() else {
+            return false;
+        };
+
+        if let Some(panic_id_std) =
+            crate::utils::try_resolve_did(self.env.tcx(), &["std", "panicking", "begin_panic"])
+        {
+            if panic_id_std == *did {
+                return true;
+            }
+        } else {
+            warn!("Failed to determine DefId of std::panicking::begin_panic");
         }
+
+        if let Some(panic_id_core) =
+            crate::utils::try_resolve_did(self.env.tcx(), &["core", "panicking", "panic"])
+        {
+            if panic_id_core == *did {
+                return true;
+            }
+        } else {
+            warn!("Failed to determine DefId of core::panicking::panic");
+        }
+
+        false
     }
 
     /// Registers a drop shim for a particular type for the translation.
@@ -1995,7 +1995,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 // compute the resulting annotations
                 let (rhs_annots, pre_stmt_annots, post_stmt_annots) =
-                    self.get_assignment_annots(loc, destination, output_ty)?;
+                    self.get_assignment_annots(loc, destination, output_ty);
                 info!(
                     "assignment annots after call: expr: {:?}, pre-stmt: {:?}, post-stmt: {:?}",
                     rhs_annots, pre_stmt_annots, post_stmt_annots
@@ -2008,7 +2008,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 );
 
                 // assign stmt with call; then jump to bb
-                let place_ty = self.get_type_of_place(destination)?;
+                let place_ty = self.get_type_of_place(destination);
                 let place_st = self.ty_translator.translate_type_to_syn_type(place_ty.ty)?;
                 let place_expr = self.translate_place(destination)?;
 
@@ -2095,7 +2095,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 ..
             } => {
                 trace!("translating Call {:?}", term);
-                if self.is_call_destination_panic(func)? {
+                if self.is_call_destination_panic(func) {
                     info!("Replacing call to std::panicking::begin_panic with Stuck");
                     return Ok(radium::Stmt::Stuck);
                 }
@@ -2130,7 +2130,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let operand = self.translate_operand(discr, true)?;
                 let all_targets: &[BasicBlock] = targets.all_targets();
 
-                if self.get_type_of_operand(discr)?.is_bool() {
+                if self.get_type_of_operand(discr).is_bool() {
                     // we currently special-case this as Caesium has a built-in if and this is more
                     // convenient to handle for the type-checker
 
@@ -2155,7 +2155,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 //info!("switchint: {:?}", term.kind);
                 let operand = self.translate_operand(discr, true)?;
-                let ty = self.get_type_of_operand(discr)?;
+                let ty = self.get_type_of_operand(discr);
 
                 let mut target_map: HashMap<u128, usize> = HashMap::new();
                 let mut translated_targets: Vec<radium::Stmt> = Vec::new();
@@ -2217,7 +2217,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             TerminatorKind::Drop {
                 ref place, target, ..
             } => {
-                let ty = self.get_type_of_place(place)?;
+                let ty = self.get_type_of_place(place);
                 self.register_drop_shim_for(ty.ty);
 
                 let place_translated = self.translate_place(place)?;
@@ -2463,11 +2463,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Get the annotations due to borrows appearing on the RHS of an assignment.
-    fn get_assignment_loan_annots(
-        &mut self,
-        loc: Location,
-        rhs: &Rvalue<'tcx>,
-    ) -> Result<Vec<radium::Annotation>, TranslationError> {
+    fn get_assignment_loan_annots(&mut self, loc: Location, rhs: &Rvalue<'tcx>) -> Vec<radium::Annotation> {
         let mut stmt_annots = Vec::new();
 
         // if we create a new loan here, start a new lifetime for it
@@ -2533,7 +2529,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     .push(radium::Annotation::StartLft(self.format_region(region), inferred_constrained));
             }
         }
-        Ok(stmt_annots)
+
+        stmt_annots
     }
 
     /// Compute the annotations for an assignment: an annotation for the rhs value, and a list of
@@ -2544,13 +2541,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         loc: Location,
         lhs: &Place<'tcx>,
         _rhs_ty: Ty<'tcx>,
-    ) -> Result<
-        (Option<radium::Annotation>, Vec<radium::Annotation>, Vec<radium::Annotation>),
-        TranslationError,
-    > {
+    ) -> (Option<radium::Annotation>, Vec<radium::Annotation>, Vec<radium::Annotation>) {
         // check if the place is strongly writeable
         let strongly_writeable = !self.check_place_below_reference(lhs);
-        let plc_ty = self.get_type_of_place(lhs)?;
+        let plc_ty = self.get_type_of_place(lhs);
 
         let new_dyn_inclusions;
         let expr_annot;
@@ -2605,7 +2599,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         // First enforce the new inclusions, then do the other annotations
         let new_dyn_inclusions = self.generate_dyn_inclusions(&new_dyn_inclusions);
-        Ok((expr_annot, new_dyn_inclusions, stmt_annot))
+        (expr_annot, new_dyn_inclusions, stmt_annot)
     }
 
     /// Get the regions appearing in a type.
@@ -2745,12 +2739,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             s: Box::new(cont_stmt),
                         };
                     } else {
-                        let plc_ty = self.get_type_of_place(plc)?;
+                        let plc_ty = self.get_type_of_place(plc);
                         let rhs_ty = val.ty(&self.proc.get_mir().local_decls, self.env.tcx());
 
-                        let borrow_annots = self.get_assignment_loan_annots(loc, val)?;
+                        let borrow_annots = self.get_assignment_loan_annots(loc, val);
                         let (expr_annot, pre_stmt_annots, post_stmt_annots) =
-                            self.get_assignment_annots(loc, plc, rhs_ty)?;
+                            self.get_assignment_annots(loc, plc, rhs_ty);
 
                         // TODO; maybe move this to rvalue
                         let composite_annots = self.get_composite_rvalue_creation_annots(loc, rhs_ty);
@@ -2866,10 +2860,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    const fn translate_mutability(&self, mt: Mutability) -> Result<radium::Mutability, TranslationError> {
+    const fn translate_mutability(&self, mt: Mutability) -> radium::Mutability {
         match mt {
-            Mutability::Mut => Ok(radium::Mutability::Mut),
-            Mutability::Not => Ok(radium::Mutability::Shared),
+            Mutability::Mut => radium::Mutability::Mut,
+            Mutability::Not => radium::Mutability::Shared,
         }
     }
 
@@ -2914,7 +2908,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             BinOp::Offset => {
                 // we need to get the layout of the thing we're offsetting
                 // try to get the type of e1.
-                let e1_ty = self.get_type_of_operand(e1)?;
+                let e1_ty = self.get_type_of_operand(e1);
                 let off_ty = self.get_offset_ty(e1_ty)?;
                 let st = self.ty_translator.translate_type_to_syn_type(off_ty)?;
                 let ly = self.ty_translator.translate_syn_type_to_layout(&st);
@@ -2967,7 +2961,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             return Ok(None);
         };
 
-        let ty = self.get_type_of_place(pl)?;
+        let ty = self.get_type_of_place(pl);
 
         // For borrows, we can safely ignore the downcast type -- we cannot borrow a particularly variant
         let translated_ty = self.ty_translator.translate_type(ty.ty)?;
@@ -3018,7 +3012,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
             Rvalue::AddressOf(mt, pl) => {
                 let translated_pl = self.translate_place(pl)?;
-                let translated_mt = self.translate_mutability(*mt)?;
+                let translated_mt = self.translate_mutability(*mt);
 
                 Ok(radium::Expr::AddressOf {
                     mt: translated_mt,
@@ -3030,8 +3024,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let e1 = &operands.as_ref().0;
                 let e2 = &operands.as_ref().1;
 
-                let e1_ty = self.get_type_of_operand(e1)?;
-                let e2_ty = self.get_type_of_operand(e2)?;
+                let e1_ty = self.get_type_of_operand(e1);
+                let e2_ty = self.get_type_of_operand(e2);
                 let e1_st = self.ty_translator.translate_type_to_syn_type(e1_ty)?;
                 let e2_st = self.ty_translator.translate_type_to_syn_type(e2_ty)?;
                 let e1_ot = self.ty_translator.translate_syn_type_to_op_type(&e1_st);
@@ -3054,8 +3048,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let e1 = &operands.as_ref().0;
                 let e2 = &operands.as_ref().1;
 
-                let e1_ty = self.get_type_of_operand(e1)?;
-                let e2_ty = self.get_type_of_operand(e2)?;
+                let e1_ty = self.get_type_of_operand(e1);
+                let e2_ty = self.get_type_of_operand(e2);
                 let e1_st = self.ty_translator.translate_type_to_syn_type(e1_ty)?;
                 let e2_st = self.ty_translator.translate_type_to_syn_type(e2_ty)?;
                 let e1_ot = self.ty_translator.translate_syn_type_to_op_type(&e1_st);
@@ -3076,7 +3070,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
             Rvalue::UnaryOp(op, operand) => {
                 let translated_e1 = self.translate_operand(operand, true)?;
-                let e1_ty = self.get_type_of_operand(operand)?;
+                let e1_ty = self.get_type_of_operand(operand);
                 let e1_st = self.ty_translator.translate_type_to_syn_type(e1_ty)?;
                 let e1_ot = self.ty_translator.translate_syn_type_to_op_type(&e1_st);
                 let translated_op = self.translate_unop(*op, e1_ty)?;
@@ -3097,7 +3091,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             },
 
             Rvalue::Discriminant(pl) => {
-                let ty = self.get_type_of_place(pl)?;
+                let ty = self.get_type_of_place(pl);
                 let translated_pl = self.translate_place(pl)?;
                 info!("getting discriminant of {:?} at type {:?}", pl, ty);
 
@@ -3144,7 +3138,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 for o in op {
                     let translated_o = self.translate_operand(o, true)?;
-                    let type_of_o = self.get_type_of_operand(o)?;
+                    let type_of_o = self.get_type_of_operand(o);
                     translated_ops.push(translated_o);
                     operand_types.push(type_of_o);
                 }
@@ -3270,7 +3264,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             },
 
             Rvalue::Cast(kind, op, ty) => {
-                let op_ty = self.get_type_of_operand(op)?;
+                let op_ty = self.get_type_of_operand(op);
                 let translated_op = self.translate_operand(op, true)?;
 
                 match kind {
@@ -3409,7 +3403,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 // access to the result of the op
                                 let new_place = self.make_local_place(place.local);
                                 translated_place = self.translate_place(&new_place)?;
-                                ty = self.get_type_of_place(place)?;
+                                ty = self.get_type_of_place(place);
                             } else {
                                 // make this a constant false -- our semantics directly checks for overflows
                                 // and otherwise throws UB.
@@ -3422,7 +3416,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     }
                 } else {
                     translated_place = self.translate_place(place)?;
-                    ty = self.get_type_of_place(place)?;
+                    ty = self.get_type_of_place(place);
                 }
 
                 let st = self.ty_translator.translate_type_to_syn_type(ty.ty)?;
@@ -3744,20 +3738,20 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Get the type of a place expression.
-    fn get_type_of_place(&self, pl: &Place<'tcx>) -> Result<PlaceTy<'tcx>, TranslationError> {
-        Ok(pl.ty(&self.proc.get_mir().local_decls, self.env.tcx()))
+    fn get_type_of_place(&self, pl: &Place<'tcx>) -> PlaceTy<'tcx> {
+        pl.ty(&self.proc.get_mir().local_decls, self.env.tcx())
     }
 
     /// Get the type of a const.
-    fn get_type_of_const(&self, cst: &Constant<'tcx>) -> Result<Ty<'tcx>, TranslationError> {
+    fn get_type_of_const(&self, cst: &Constant<'tcx>) -> Ty<'tcx> {
         match cst.literal {
-            ConstantKind::Ty(cst) => Ok(cst.ty()),
-            ConstantKind::Val(_, ty) | ConstantKind::Unevaluated(_, ty) => Ok(ty),
+            ConstantKind::Ty(cst) => cst.ty(),
+            ConstantKind::Val(_, ty) | ConstantKind::Unevaluated(_, ty) => ty,
         }
     }
 
     /// Get the type of an operand.
-    fn get_type_of_operand(&self, op: &Operand<'tcx>) -> Result<Ty<'tcx>, TranslationError> {
-        Ok(op.ty(&self.proc.get_mir().local_decls, self.env.tcx()))
+    fn get_type_of_operand(&self, op: &Operand<'tcx>) -> Ty<'tcx> {
+        op.ty(&self.proc.get_mir().local_decls, self.env.tcx())
     }
 }

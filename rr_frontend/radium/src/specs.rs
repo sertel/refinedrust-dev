@@ -2984,48 +2984,47 @@ impl<'def> FunctionSpecBuilder<'def> {
     }
 
     /// Add a new function argument.
-    pub fn add_arg(&mut self, arg: TypeWithRef<'def>) -> Result<(), String> {
+    pub fn add_arg(&mut self, arg: TypeWithRef<'def>) {
         self.args.push(arg);
-        Ok(())
     }
 
     /// Prepend a precondition. This will be the new precondition to be inserted first.
     /// Use only when the position of the precondition absolutely matters.
-    pub fn prepend_precondition(&mut self, pre: IProp) -> Result<(), String> {
-        if let IProp::Sep(v) = &mut self.pre {
-            v.insert(0, pre);
-        } else {
-            //self.pre  = IProp::Sep(vec![self.pre, pre]);
-            panic!();
-        }
-        Ok(())
+    pub fn prepend_precondition(&mut self, pre: IProp) {
+        assert!(matches!(self.pre, IProp::Sep(_)));
+
+        let IProp::Sep(v) = &mut self.pre else {
+            unreachable!("An incorrect parameter has been given");
+        };
+
+        v.insert(0, pre);
     }
 
     /// Add a new (separating) conjunct to the function's precondition.
-    pub fn add_precondition(&mut self, pre: IProp) -> Result<(), String> {
+    pub fn add_precondition(&mut self, pre: IProp) {
+        assert!(matches!(pre, IProp::Linktime(_)) || matches!(self.pre, IProp::Sep(_)));
+
         if let IProp::Linktime(p) = pre {
             self.extra_link_assum.push(p);
-            return Ok(());
+            return;
         }
 
-        if let IProp::Sep(v) = &mut self.pre {
-            v.push(pre);
-        } else {
-            //self.pre  = IProp::Sep(vec![self.pre, pre]);
-            panic!();
-        }
-        Ok(())
+        let IProp::Sep(v) = &mut self.pre else {
+            unreachable!("An incorrect parameter has been given");
+        };
+
+        v.push(pre);
     }
 
     /// Add a new (separating) conjunct to the function's postcondition.
-    pub fn add_postcondition(&mut self, post: IProp) -> Result<(), String> {
-        if let IProp::Sep(v) = &mut self.post {
-            v.push(post);
-        } else {
-            //self.post  = IProp::Sep(vec![self.post, post]);
-            panic!();
-        }
-        Ok(())
+    pub fn add_postcondition(&mut self, post: IProp) {
+        assert!(matches!(self.post, IProp::Sep(_)));
+
+        let IProp::Sep(v) = &mut self.post else {
+            unreachable!("An incorrect parameter has been given");
+        };
+
+        v.push(post);
     }
 
     /// Set the return type of the function

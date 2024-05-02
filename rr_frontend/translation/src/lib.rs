@@ -1048,7 +1048,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
 
         if mode.is_only_spec() {
             // Only generate a spec
-            match translator.and_then(FunctionTranslator::generate_spec) {
+            match translator.map(FunctionTranslator::generate_spec) {
                 Ok(spec) => {
                     println!("Successfully generated spec for {}", fname);
                     vcx.procedure_registry.provide_specced_function(f.to_def_id(), spec);

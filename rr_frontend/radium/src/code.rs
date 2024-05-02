@@ -1412,15 +1412,15 @@ impl<'def> FunctionBuilder<'def> {
             let st_precond = IProp::Pure(format!("ty_syn_type {} = {}", names.type_term, names.syn_type));
             // We prepend these conditions so that this information can already be used to simplify
             // the other assumptions.
-            self.spec.prepend_precondition(st_precond).unwrap();
+            self.spec.prepend_precondition(st_precond);
 
             // add assumptions that reads/writes to the generic are allowed
             let write_precond = IProp::Pure(format!("ty_allows_writes {}", names.type_term));
             let read_precond = IProp::Pure(format!("ty_allows_reads {}", names.type_term));
             let sc_precond = IProp::Atom(format!("ty_sidecond {}", names.type_term));
-            self.spec.add_precondition(write_precond).unwrap();
-            self.spec.add_precondition(read_precond).unwrap();
-            self.spec.add_precondition(sc_precond).unwrap();
+            self.spec.add_precondition(write_precond);
+            self.spec.add_precondition(read_precond);
+            self.spec.add_precondition(sc_precond);
         }
     }
 }
