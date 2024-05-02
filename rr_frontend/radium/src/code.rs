@@ -627,7 +627,7 @@ impl Stmt {
 
     /// Annotate a statement with a list of annotations
     #[must_use]
-    pub fn with_annotations(mut s: Self, a: Vec<Annotation>, why: Option<String>) -> Self {
+    pub fn with_annotations(mut s: Self, a: Vec<Annotation>, why: &Option<String>) -> Self {
         for annot in a {
             s = Self::Annot {
                 a: annot,
@@ -732,9 +732,9 @@ pub struct FunctionCode {
     required_parameters: Vec<(CoqName, CoqType)>,
 }
 
-fn make_map_string(sep0: &str, sep: &str, els: Vec<(String, String)>) -> String {
+fn make_map_string(sep0: &str, sep: &str, els: &Vec<(String, String)>) -> String {
     let mut out = String::with_capacity(100);
-    for (key, value) in &els {
+    for (key, value) in els {
         out.push_str(sep);
 
         out.push_str(format!("<[{sep}\"{}\" :={}{}{}]>%E $", key, sep0, value, sep).as_str());
@@ -744,9 +744,9 @@ fn make_map_string(sep0: &str, sep: &str, els: Vec<(String, String)>) -> String 
     out
 }
 
-fn make_lft_map_string(els: Vec<(String, String)>) -> String {
+fn make_lft_map_string(els: &Vec<(String, String)>) -> String {
     let mut out = String::with_capacity(100);
-    for (key, value) in &els {
+    for (key, value) in els {
         out.push_str(format!("named_lft_update \"{}\" {} $ ", key, value).as_str());
     }
     out.push('∅');
@@ -799,7 +799,8 @@ impl FunctionCode {
         let formatted_bb = make_map_string(
             "\n",
             format!("\n{}", make_indent(2).as_str()).as_str(),
-            self.basic_blocks
+            &self
+                .basic_blocks
                 .iter()
                 .map(|(name, bb)| (format!("_bb{name}"), bb.caesium_fmt(3)))
                 .collect(),
@@ -1187,15 +1188,17 @@ impl<'def> Function<'def> {
         write!(f, " );\n")?;
 
         // initialize lifetimes
-        let formatted_lifetimes =
-            make_lft_map_string(self.spec.lifetimes.iter().map(|n| (n.to_string(), n.to_string())).collect());
+        let formatted_lifetimes = make_lft_map_string(
+            &self.spec.lifetimes.iter().map(|n| (n.to_string(), n.to_string())).collect(),
+        );
         write!(f, "init_lfts ({} );\n", formatted_lifetimes.as_str())?;
 
         // initialize tyvars
         let formatted_tyvars = make_map_string(
             " ",
             " ",
-            self.generic_types
+            &self
+                .generic_types
                 .iter()
                 .map(|names| (names.rust_name.to_string(), format!("existT _ ({})", names.type_term)))
                 .collect(),

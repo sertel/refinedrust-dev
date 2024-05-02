@@ -268,7 +268,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Register a shim for an ADT.
-    pub fn register_adt_shim(&self, did: DefId, lit: radium::LiteralType) -> Result<(), String> {
+    pub fn register_adt_shim(&self, did: DefId, lit: &radium::LiteralType) -> Result<(), String> {
         let lit_ref = self.intern_literal(lit.clone());
         let mut shims = self.adt_shims.borrow_mut();
         if let Some(old) = shims.insert(did, lit_ref) {

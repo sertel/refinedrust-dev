@@ -158,7 +158,7 @@ pub fn get_cleaned_def_path(tcx: TyCtxt<'_>, did: DefId) -> Vec<String> {
 
 // Alternative implementation of `get_cleaned_def_path`, but this doesn't always yield a rooted
 // path (but only a suffix of the full path)
-fn extract_def_path(path: rustc_hir::definitions::DefPath) -> Vec<String> {
+fn extract_def_path(path: &rustc_hir::definitions::DefPath) -> Vec<String> {
     let mut components = Vec::new();
     for p in &path.data {
         if let Some(name) = p.data.get_opt_name() {

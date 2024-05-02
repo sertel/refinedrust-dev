@@ -237,6 +237,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RRCoqContextItem {
 pub struct RRGlobalCoqContextItem {
     pub item: String,
 }
+
 impl<U> parse::Parse<U> for RRGlobalCoqContextItem {
     fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
         let item: parse::LitStr = input.parse(meta)?;
@@ -245,6 +246,7 @@ impl<U> parse::Parse<U> for RRGlobalCoqContextItem {
     }
 }
 
+#[allow(clippy::needless_pass_by_value)]
 pub fn str_err(e: parse::ParseError) -> String {
     format!("{:?}", e)
 }

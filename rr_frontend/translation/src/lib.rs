@@ -68,11 +68,11 @@ use topological_sort::TopologicalSort;
 use type_translator::{normalize_in_function, TypeTranslator};
 
 /// Order ADT definitions topologically.
-fn order_adt_defs(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
+fn order_adt_defs(deps: &HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
     let mut topo = TopologicalSort::new();
     let mut defs = HashSet::new();
 
-    for (did, referenced_dids) in &deps {
+    for (did, referenced_dids) in deps {
         defs.insert(did);
         topo.insert(*did);
         for did2 in referenced_dids {
@@ -391,7 +391,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let enum_defs = self.type_translator.get_enum_defs();
         let adt_deps = self.type_translator.get_adt_deps();
 
-        let ordered = order_adt_defs(adt_deps);
+        let ordered = order_adt_defs(&adt_deps);
         info!("ordered ADT defns: {:?}", ordered);
 
         for did in &ordered {
@@ -839,66 +839,72 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
     }
 
     for shim in vcx.shim_registry.get_adt_shims() {
-        if let Some(did) = utils::try_resolve_did(vcx.env.tcx(), &shim.path) {
-            let lit = radium::LiteralType {
-                rust_name: None,
-                type_term: shim.sem_type.clone(),
-                syn_type: radium::SynType::Literal(shim.syn_type.clone()),
-                refinement_type: radium::CoqType::Literal(shim.refinement_type.clone()),
-            };
-            if let Err(e) = vcx.type_translator.register_adt_shim(did, lit) {
-                println!("Warning: {}", e);
-            }
-            info!("Resolved ADT shim {:?} as {:?} did", shim, did);
-        } else {
+        let Some(did) = utils::try_resolve_did(vcx.env.tcx(), &shim.path) else {
             println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
+            continue;
+        };
+
+        let lit = radium::LiteralType {
+            rust_name: None,
+            type_term: shim.sem_type.clone(),
+            syn_type: radium::SynType::Literal(shim.syn_type.clone()),
+            refinement_type: radium::CoqType::Literal(shim.refinement_type.clone()),
+        };
+
+        if let Err(e) = vcx.type_translator.register_adt_shim(did, &lit) {
+            println!("Warning: {}", e);
         }
+
+        info!("Resolved ADT shim {:?} as {:?} did", shim, did);
     }
 
     for shim in vcx.shim_registry.get_trait_method_shims() {
         // resolve the trait
-        if let Some((trait_did, args)) = shim.trait_path.to_item(vcx.env.tcx()) {
-            if !vcx.env.tcx().is_trait(trait_did) {
-                println!("Warning: This is not a trait: {:?}", shim.trait_path);
-                continue;
-            }
-            // resolve the type
-            if let Some(for_type) = shim.for_type.to_type(vcx.env.tcx()) {
-                let trait_method_did = utils::try_resolve_trait_method_did(
-                    vcx.env.tcx(),
-                    trait_did,
-                    &args,
-                    &shim.method_ident,
-                    for_type,
-                );
-
-                match trait_method_did {
-                    Some(did) => {
-                        // register as usual in the procedure registry
-                        info!(
-                            "registering shim for implementation of {:?}::{:?} for {:?}, using method {:?}",
-                            shim.trait_path, shim.method_ident, for_type, trait_method_did
-                        );
-                        let meta = function_body::ProcedureMeta::new(
-                            shim.spec_name.to_string(),
-                            shim.name.to_string(),
-                            function_body::ProcedureMode::Shim,
-                        );
-                        vcx.procedure_registry.register_function(&did, meta)?;
-                    },
-                    _ => {
-                        println!(
-                            "Warning: cannot find defid for implementation of {:?}::{:?} for {:?}",
-                            shim.trait_path, shim.method_ident, for_type
-                        );
-                    },
-                }
-            } else {
-                println!("Warning: cannot resolve {:?} as a type, skipping shim", shim.for_type);
-            }
-        } else {
+        let Some((trait_did, args)) = shim.trait_path.to_item(vcx.env.tcx()) else {
             println!("Warning: cannot resolve {:?} as a trait, skipping shim", shim.trait_path);
+            continue;
+        };
+
+        if !vcx.env.tcx().is_trait(trait_did) {
+            println!("Warning: This is not a trait: {:?}", shim.trait_path);
+            continue;
         }
+
+        // resolve the type
+        let Some(for_type) = shim.for_type.to_type(vcx.env.tcx()) else {
+            println!("Warning: cannot resolve {:?} as a type, skipping shim", shim.for_type);
+            continue;
+        };
+
+        let trait_method_did = utils::try_resolve_trait_method_did(
+            vcx.env.tcx(),
+            trait_did,
+            &args,
+            &shim.method_ident,
+            for_type,
+        );
+
+        let Some(did) = trait_method_did else {
+            println!(
+                "Warning: cannot find defid for implementation of {:?}::{:?} for {:?}",
+                shim.trait_path, shim.method_ident, for_type
+            );
+            continue;
+        };
+
+        // register as usual in the procedure registry
+        info!(
+            "registering shim for implementation of {:?}::{:?} for {:?}, using method {:?}",
+            shim.trait_path, shim.method_ident, for_type, trait_method_did
+        );
+
+        let meta = function_body::ProcedureMeta::new(
+            shim.spec_name.to_string(),
+            shim.name.to_string(),
+            function_body::ProcedureMode::Shim,
+        );
+
+        vcx.procedure_registry.register_function(&did, meta)?;
     }
 
     // add the extra imports
@@ -914,25 +920,27 @@ fn get_most_restrictive_function_mode(
     vcx: &VerificationCtxt<'_, '_>,
     did: DefId,
 ) -> function_body::ProcedureMode {
-    let mut mode = function_body::ProcedureMode::Prove;
-
     let attrs = get_attributes_of_function(vcx.env, did);
 
     // check if this is a purely spec function; if so, skip.
     if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
-        mode = function_body::ProcedureMode::Shim;
+        return function_body::ProcedureMode::Shim;
     }
 
     if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "trust_me") {
-        mode = function_body::ProcedureMode::TrustMe;
-    } else if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "only_spec") {
-        mode = function_body::ProcedureMode::OnlySpec;
-    } else if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "ignore") {
-        info!("Function {:?} will be ignored", did);
-        mode = function_body::ProcedureMode::Ignore;
+        return function_body::ProcedureMode::TrustMe;
     }
 
-    mode
+    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "only_spec") {
+        return function_body::ProcedureMode::OnlySpec;
+    }
+
+    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "ignore") {
+        info!("Function {:?} will be ignored", did);
+        return function_body::ProcedureMode::Ignore;
+    }
+
+    function_body::ProcedureMode::Prove
 }
 
 /// Register functions of the crate in the procedure registry.
@@ -1026,7 +1034,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         let translator = match ty.kind() {
             ty::TyKind::FnDef(_def, _args) => FunctionTranslator::new(
                 vcx.env,
-                meta,
+                &meta,
                 proc,
                 &filtered_attrs,
                 vcx.type_translator,
@@ -1035,7 +1043,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             ),
             ty::TyKind::Closure(_, _) => FunctionTranslator::new_closure(
                 vcx.env,
-                meta,
+                &meta,
                 proc,
                 &filtered_attrs,
                 vcx.type_translator,

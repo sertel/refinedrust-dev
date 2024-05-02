@@ -39,7 +39,7 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for ArgFolder<'a, 'tcx> {
 
         #[cold]
         #[inline(never)]
-        fn region_param_invalid(data: ty::EarlyBoundRegion, other: GenericArgKind<'_>) -> ! {
+        fn region_param_invalid(data: ty::EarlyBoundRegion, other: &GenericArgKind<'_>) -> ! {
             panic!(
                 "Unexpected parameter {:?} when substituting in region {} (index={})",
                 other, data.name, data.index
@@ -56,10 +56,11 @@ impl<'a, 'tcx> TypeFolder<TyCtxt<'tcx>> for ArgFolder<'a, 'tcx> {
                 let rk = self.args.get(data.index as usize).map(|k| k.unpack());
                 match rk {
                     Some(GenericArgKind::Lifetime(lt)) => self.shift_region_through_binders(lt),
-                    Some(other) => region_param_invalid(data, other),
+                    Some(other) => region_param_invalid(data, &other),
                     None => region_param_out_of_range(data, self.args),
                 }
             },
+
             ty::ReLateBound(..)
             | ty::ReFree(_)
             | ty::ReStatic
@@ -96,7 +97,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
         let opt_ty = self.args.get(p.index as usize).map(|k| k.unpack());
         let ty = match opt_ty {
             Some(GenericArgKind::Type(ty)) => ty,
-            Some(kind) => self.type_param_expected(p, source_ty, kind),
+            Some(kind) => self.type_param_expected(p, source_ty, &kind),
             None => self.type_param_out_of_range(p, source_ty),
         };
 
@@ -105,7 +106,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
 
     #[cold]
     #[inline(never)]
-    fn type_param_expected(&self, p: ty::ParamTy, ty: Ty<'tcx>, kind: GenericArgKind<'tcx>) -> ! {
+    fn type_param_expected(&self, p: ty::ParamTy, ty: Ty<'tcx>, kind: &GenericArgKind<'tcx>) -> ! {
         panic!(
             "expected type for `{:?}` ({:?}/{}) but found {:?} when substituting, args={:?}",
             p, ty, p.index, kind, self.args,
@@ -126,7 +127,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
         let opt_ct = self.args.get(p.index as usize).map(|k| k.unpack());
         let ct = match opt_ct {
             Some(GenericArgKind::Const(ct)) => ct,
-            Some(kind) => self.const_param_expected(p, source_ct, kind),
+            Some(kind) => self.const_param_expected(p, source_ct, &kind),
             None => self.const_param_out_of_range(p, source_ct),
         };
 
@@ -135,7 +136,7 @@ impl<'a, 'tcx> ArgFolder<'a, 'tcx> {
 
     #[cold]
     #[inline(never)]
-    fn const_param_expected(&self, p: ty::ParamConst, ct: ty::Const<'tcx>, kind: GenericArgKind<'tcx>) -> ! {
+    fn const_param_expected(&self, p: ty::ParamConst, ct: ty::Const<'tcx>, kind: &GenericArgKind<'tcx>) -> ! {
         panic!(
             "expected const for `{:?}` ({:?}/{}) but found {:?} when substituting args={:?}",
             p, ct, p.index, kind, self.args,

@@ -32,7 +32,6 @@ rustflags = [
     "-Aclippy::string_lit_as_bytes",
 
     # clippy::pedantic
-    "-Aclippy::needless_pass_by_value",
     "-Aclippy::redundant_closure_for_method_calls",
     "-Aclippy::return-self-not-must-use",
     "-Aclippy::ref_binding_to_reference",

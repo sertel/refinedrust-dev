@@ -165,10 +165,11 @@ impl ParseBuffer {
     }
 
     /// Check if the next symbol is a token matching the given kind.
-    pub fn peek_token(&self, token: TokenKind) -> bool {
+    pub fn peek_token(&self, token: &TokenKind) -> bool {
         let tok = self.peek(0);
+
         match tok {
-            Ok(TokenTree::Token(tok, _)) => tok.kind == token,
+            Ok(TokenTree::Token(tok, _)) => tok.kind == *token,
             _ => false,
         }
     }
@@ -319,7 +320,7 @@ macro_rules! define_punctuation {
 
             impl Peek for $name {
                 fn peek(input: ParseStream) -> bool {
-                    input.peek_token($tk)
+                    input.peek_token(&$tk)
                 }
 
                 //fn display() -> &'static str {

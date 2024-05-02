@@ -338,7 +338,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     /// Create a translation instance for a closure.
     pub fn new_closure(
         env: &'def Environment<'tcx>,
-        meta: ProcedureMeta,
+        meta: &ProcedureMeta,
         proc: Procedure<'tcx>,
         attrs: &'a [&'a rustc_ast::ast::AttrItem],
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
@@ -589,7 +589,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     /// Translate the body of a function.
     pub fn new(
         env: &'def Environment<'tcx>,
-        meta: ProcedureMeta,
+        meta: &ProcedureMeta,
         proc: Procedure<'tcx>,
         attrs: &'a [&'a rustc_ast::ast::AttrItem],
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
@@ -1024,7 +1024,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             const_registry: self.const_registry,
             collected_statics: HashSet::new(),
         };
-        translator.translate(initial_constraints)
+        translator.translate(&initial_constraints)
     }
 
     /// Determine initial constraints between universal regions and local place regions.
@@ -1159,7 +1159,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// if successful.
     pub fn translate(
         mut self,
-        initial_constraints: Vec<(info::AtomicRegion, info::AtomicRegion)>,
+        initial_constraints: &Vec<(info::AtomicRegion, info::AtomicRegion)>,
     ) -> Result<radium::Function<'def>, TranslationError> {
         // add loop info
         let loop_info = self.proc.loop_info();
@@ -1176,7 +1176,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         if let Some(bb) = basic_blocks.get(initial_bb_idx) {
             let mut translated_bb = self.translate_basic_block(initial_bb_idx, bb)?;
             // push annotation for initial constraints that relate argument's place regions to universals
-            for (r1, r2) in &initial_constraints {
+            for (r1, r2) in initial_constraints {
                 translated_bb = radium::Stmt::Annot {
                     a: radium::Annotation::CopyLftName(
                         self.format_atomic_region(r1),
@@ -2008,7 +2008,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let cont_stmt = radium::Stmt::with_annotations(
                     cont_stmt,
                     post_stmt_annots,
-                    Some("post_function_call".to_string()),
+                    &Some("post_function_call".to_string()),
                 );
 
                 // assign stmt with call; then jump to bb
@@ -2032,7 +2032,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 radium::Stmt::with_annotations(
                     assign_stmt,
                     pre_stmt_annots,
-                    Some("function_call".to_string()),
+                    &Some("function_call".to_string()),
                 )
             },
             None => {
@@ -2075,7 +2075,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             }
         }
 
-        let stmt = radium::Stmt::with_annotations(stmt, stmt_annots, Some("function_call".to_string()));
+        let stmt = radium::Stmt::with_annotations(stmt, stmt_annots, &Some("function_call".to_string()));
         Ok(stmt)
     }
 
@@ -2449,13 +2449,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Skips mutual inclusions -- we cannot interpret these.
     fn generate_dyn_inclusions(
         &mut self,
-        incls: HashSet<(Region, Region, PointIndex)>,
+        incls: &HashSet<(Region, Region, PointIndex)>,
     ) -> Vec<radium::Annotation> {
         // before executing the assignment, first enforce dynamic inclusions
         info!("Generating dynamic inclusions {:?}", incls);
         let mut stmt_annots = Vec::new();
 
-        for (r1, r2, p) in &incls {
+        for (r1, r2, p) in incls {
             if incls.contains(&(*r2, *r1, *p)) {
                 warn!("Skipping impossible dynamic inclusion {:?} ⊑ {:?} at {:?}", r1, r2, p);
                 continue;
@@ -2609,7 +2609,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
 
         // First enforce the new inclusions, then do the other annotations
-        let new_dyn_inclusions = self.generate_dyn_inclusions(new_dyn_inclusions);
+        let new_dyn_inclusions = self.generate_dyn_inclusions(&new_dyn_inclusions);
         Ok((expr_annot, new_dyn_inclusions, stmt_annot))
     }
 
@@ -2763,7 +2763,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         cont_stmt = radium::Stmt::with_annotations(
                             cont_stmt,
                             post_stmt_annots,
-                            Some("post-assignment".to_string()),
+                            &Some("post-assignment".to_string()),
                         );
 
                         let translated_val = radium::Expr::with_optional_annotation(
@@ -2783,17 +2783,17 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         cont_stmt = radium::Stmt::with_annotations(
                             cont_stmt,
                             pre_stmt_annots,
-                            Some("assignment".to_string()),
+                            &Some("assignment".to_string()),
                         );
                         cont_stmt = radium::Stmt::with_annotations(
                             cont_stmt,
                             borrow_annots,
-                            Some("borrow".to_string()),
+                            &Some("borrow".to_string()),
                         );
                         cont_stmt = radium::Stmt::with_annotations(
                             cont_stmt,
                             composite_annots,
-                            Some("composite".to_string()),
+                            &Some("composite".to_string()),
                         );
                     }
                 },
