@@ -70,11 +70,13 @@ impl<'tcx> Procedure<'tcx> {
         }
     }
 
+    #[must_use]
     pub const fn loop_info(&self) -> &loops::ProcedureLoops {
         &self.loop_info
     }
 
     /// Returns all the types used in the procedure, and any types reachable from them
+    #[must_use]
     pub fn get_declared_types(&self) -> Vec<Ty<'tcx>> {
         let _types: HashSet<Ty> = HashSet::new();
         // for var in &self.mir.local_decls {
@@ -90,26 +92,31 @@ impl<'tcx> Procedure<'tcx> {
     }
 
     /// Get definition ID of the procedure.
+    #[must_use]
     pub const fn get_id(&self) -> ProcedureDefId {
         self.proc_def_id
     }
 
     /// Get the MIR of the procedure
+    #[must_use]
     pub fn get_mir(&self) -> &Mir<'tcx> {
         &self.mir
     }
 
     /// Get the typing context.
+    #[must_use]
     pub const fn get_tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
     }
 
     /// Get the type parameters of this procedure.
+    #[must_use]
     pub const fn get_type_params(&self) -> ty::GenericArgsRef<'tcx> {
         self.ty_params
     }
 
     /// Get an absolute `def_path`. Note: not preserved across compilations!
+    #[must_use]
     pub fn get_def_path(&self) -> String {
         let def_path = self.tcx.def_path(self.proc_def_id);
         let mut crate_name = self.tcx.crate_name(def_path.krate).to_string();
@@ -128,21 +135,25 @@ impl<'tcx> Procedure<'tcx> {
     // }
 
     /// Get the span of the procedure
+    #[must_use]
     pub fn get_span(&self) -> Span {
         self.mir.span
     }
 
     /// Get the first CFG block
+    #[must_use]
     pub fn get_first_cfg_block(&self) -> BasicBlock {
         self.mir.basic_blocks.indices().next().unwrap()
     }
 
     /// Iterate over all CFG basic blocks
+    #[must_use]
     pub fn get_all_cfg_blocks(&self) -> Vec<BasicBlock> {
         self.loop_info.ordered_blocks.clone()
     }
 
     /// Iterate over all reachable CFG basic blocks
+    #[must_use]
     pub fn get_reachable_cfg_blocks(&self) -> Vec<BasicBlock> {
         self.get_all_cfg_blocks()
             .into_iter()
@@ -168,10 +179,12 @@ impl<'tcx> Procedure<'tcx> {
     */
 
     /// Check whether the block is reachable
+    #[must_use]
     pub fn is_reachable_block(&self, bbi: BasicBlockIndex) -> bool {
         self.reachable_basic_blocks.contains(&bbi)
     }
 
+    #[must_use]
     pub fn is_panic_block(&self, bbi: BasicBlockIndex) -> bool {
         if let TerminatorKind::Call {
             args: ref _args,
@@ -199,11 +212,13 @@ impl<'tcx> Procedure<'tcx> {
     }
 
     /// Get the successors of a basic block.
+    #[must_use]
     pub fn successors(&self, bbi: mir::BasicBlock) -> &[mir::BasicBlock] {
         self.real_edges.successors(bbi)
     }
 
     /// Get the predecessors of a basic block.
+    #[must_use]
     pub fn predecessors(&self, bbi: mir::BasicBlock) -> &[mir::BasicBlock] {
         self.real_edges.predecessors(bbi)
     }

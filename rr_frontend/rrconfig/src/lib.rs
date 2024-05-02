@@ -77,6 +77,7 @@ lazy_static! {
 }
 
 /// Generate a dump of the settings
+#[must_use]
 pub fn dump() -> String {
     format!("{:#?}", SETTINGS.read().unwrap())
 }
@@ -121,31 +122,37 @@ fn write_setting<T: Into<config::Value>>(key: &'static str, value: T) {
         .unwrap_or_else(|e| panic!("Failed to write setting {key} due to {e}"));
 }
 
+#[must_use]
 pub fn work_dir() -> String {
     read_setting("work_dir")
 }
 
+#[must_use]
 pub fn absolute_work_dir() -> PathBuf {
     let s = work_dir();
     make_path_absolute(&s)
 }
 
 /// Should we dump debug files?
+#[must_use]
 pub fn dump_debug_info() -> bool {
     read_setting("dump_debug_info")
 }
 
 /// Should we dump borrowck info?
+#[must_use]
 pub fn dump_borrowck_info() -> bool {
     read_setting("dump_borrowck_info")
 }
 
 /// In which folder should we store log/dumps?
+#[must_use]
 pub fn log_dir() -> PathBuf {
     make_path_absolute(&read_setting::<String>("log_dir"))
 }
 
 /// Get the paths in which to search for `RefinedRust` library declarations.
+#[must_use]
 pub fn lib_load_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
     let s = read_setting::<Vec<String>>("lib_load_paths");
@@ -156,89 +163,107 @@ pub fn lib_load_paths() -> Vec<PathBuf> {
 }
 
 /// The hotword with which specification attributes should begin.
+#[must_use]
 pub fn spec_hotword() -> String {
     read_setting("spec_hotword")
 }
 
 /// Should we hide user messages?
+#[must_use]
 pub fn quiet() -> bool {
     read_setting("quiet")
 }
 
 /// Skip features that are unsupported or partially supported
+#[must_use]
 pub fn skip_unsupported_features() -> bool {
     read_setting("skip_unsupported_features")
 }
 
 /// Whether to generate a dune-project file for this project
+#[must_use]
 pub fn generate_dune_project() -> bool {
     read_setting("generate_dune_project")
 }
 
 /// Which attribute parser to use? Currently, only the "verbose" parser is supported.
+#[must_use]
 pub fn attribute_parser() -> String {
     read_setting("attribute_parser")
 }
 
 /// Which directory to write the generated Coq files to?
+#[must_use]
 pub fn output_dir() -> Option<PathBuf> {
     read_optional_setting("output_dir").map(|s: String| make_path_absolute(&s))
 }
 
 /// Whether to admit proofs of functions instead of running Qed.
+#[must_use]
 pub fn admit_proofs() -> bool {
     read_setting("admit_proofs")
 }
 
 /// Post-generation hook
+#[must_use]
 pub fn post_generation_hook() -> Option<String> {
     read_optional_setting("post_generation_hook")
 }
 
 /// Which file to read shims from?
+#[must_use]
 pub fn shim_file() -> Option<PathBuf> {
     read_optional_setting("shims").map(|s: String| make_path_absolute(&s))
 }
 
 /// Which file should we read extra specs from?
+#[must_use]
 pub fn extra_specs_file() -> Option<PathBuf> {
     read_optional_setting("extra_specs").map(|s: String| make_path_absolute(&s))
 }
 
 /// Run the proof checker after generating the Coq code?
+#[must_use]
 pub fn check_proofs() -> bool {
     read_setting("run_check")
 }
 
 /// Which cargo to use?
+#[must_use]
 pub fn cargo_path() -> String {
     read_setting("cargo_path")
 }
 
 /// Which cargo command should cargo-refinedrust hook into?
+#[must_use]
 pub fn cargo_command() -> String {
     read_setting("cargo_command")
 }
 
 /// Should refinedrust-rustc behave like rustc?
+#[must_use]
 pub fn be_rustc() -> bool {
     read_setting("be_rustc")
 }
 
 /// Should also dependencies be verified?
+#[must_use]
 pub fn verify_deps() -> bool {
     read_setting("verify_deps")
 }
 
 /// Should verification be skipped?
+#[must_use]
 pub fn no_verify() -> bool {
     read_setting("no_verify")
 }
+
 pub fn set_no_verify(value: bool) {
     write_setting("no_verify", value);
 }
 
 /// Should we check for overflows?
+#[must_use]
 pub fn check_overflows() -> bool {
     read_setting("check_overflows")
 }

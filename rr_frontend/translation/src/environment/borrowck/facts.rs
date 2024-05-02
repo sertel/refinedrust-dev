@@ -86,10 +86,12 @@ pub struct Interner {
 }
 
 impl Interner {
+    #[must_use]
     pub const fn new(location_table: LocationTable) -> Self {
         Self { location_table }
     }
 
+    #[must_use]
     pub fn get_point_index(&self, point: &Point) -> PointIndex {
         // self.points.get_index(point)
         match point.typ {
@@ -98,6 +100,7 @@ impl Interner {
         }
     }
 
+    #[must_use]
     pub fn get_point(&self, index: PointIndex) -> Point {
         // self.points.get_element(index)
         match self.location_table.to_location(index) {
@@ -112,6 +115,7 @@ impl Interner {
         }
     }
 
+    #[must_use]
     pub fn get_location(&self, index: PointIndex) -> mir::Location {
         // self.points.get_element(index)
         match self.location_table.to_location(index) {

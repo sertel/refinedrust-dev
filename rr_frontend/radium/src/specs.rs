@@ -26,18 +26,22 @@ impl<'def> Display for TypeWithRef<'def> {
 }
 
 impl<'def> TypeWithRef<'def> {
+    #[must_use]
     pub const fn new(ty: Type<'def>, rfn: String) -> Self {
         TypeWithRef(ty, rfn)
     }
 
+    #[must_use]
     pub fn make_unit() -> Self {
         TypeWithRef(Type::Unit, "()".to_string())
     }
 
+    #[must_use]
     pub const fn ty(&self) -> &Type<'def> {
         &self.0
     }
 
+    #[must_use]
     pub fn rfn(&self) -> &str {
         self.1.as_str()
     }
@@ -106,6 +110,7 @@ impl Display for IntType {
 
 impl IntType {
     /// Get the size in bytes of the Caesium representation.
+    #[must_use]
     pub const fn size(&self) -> u32 {
         match self {
             Self::I8 | Self::U8 => 1,
@@ -117,6 +122,7 @@ impl IntType {
     }
 
     /// Get the alignment in bytes of the Caesium representation.
+    #[must_use]
     pub const fn alignment(&self) -> u32 {
         match self {
             Self::I8 | Self::U8 => 1,
@@ -245,11 +251,13 @@ impl SynType {
 
     /// Get a Coq term for the layout of this syntactic type.
     /// This may call the Coq-level layout algorithm that we assume.
+    #[must_use]
     pub fn layout_term_typaram(&self, env: &[Option<LiteralTyParam>]) -> Layout {
         self.layout_term_core(env, |x| Self::Literal(x.syn_type.clone()))
     }
 
     /// See `layout_term_typaram`.
+    #[must_use]
     pub fn layout_term(&self, env: &[Option<Self>]) -> Layout {
         self.layout_term_core(env, |x| x.clone())
     }
@@ -284,16 +292,19 @@ impl SynType {
     /// Determine the optype used to access a value of this syntactic type.
     /// Note that we may also always use `UntypedOp`, but this here computes the more specific
     /// `op_type` that triggers more UB on invalid values.
+    #[must_use]
     pub fn optype_typaram(&self, env: &[Option<LiteralTyParam>]) -> OpType {
         self.optype_core(env, |x| Self::Literal(x.syn_type.clone()))
     }
 
     /// See `optype_typaram`.
+    #[must_use]
     pub fn optype(&self, env: &[Option<Self>]) -> OpType {
         self.optype_core(env, |x| x.clone())
     }
 
     /// Check if the `SynType` contains a free variable `Var(i)`.
+    #[must_use]
     pub const fn is_closed(&self) -> bool {
         !matches!(self, Self::Var(_))
     }
@@ -328,10 +339,12 @@ pub struct TypeAnnotMeta {
 }
 
 impl TypeAnnotMeta {
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.escaped_lfts.is_empty() && self.escaped_tyvars.is_empty()
     }
 
+    #[must_use]
     pub fn empty() -> Self {
         Self {
             escaped_lfts: HashSet::new(),
@@ -339,6 +352,7 @@ impl TypeAnnotMeta {
         }
     }
 
+    #[must_use]
     pub const fn new(tyvars: HashSet<LiteralTyParam>, lfts: HashSet<Lft>) -> Self {
         Self {
             escaped_lfts: lfts,
@@ -381,6 +395,7 @@ pub struct LiteralTypeUse<'def> {
 
 impl<'def> LiteralTypeUse<'def> {
     /// `params` should not contain `Var`
+    #[must_use]
     pub fn new(s: LiteralTypeRef<'def>, params: Vec<Type<'def>>) -> Self {
         LiteralTypeUse {
             def: s,
@@ -390,6 +405,7 @@ impl<'def> LiteralTypeUse<'def> {
     }
 
     /// `params` should not contain `Var`
+    #[must_use]
     pub fn new_with_annot(s: LiteralTypeRef<'def>, params: Vec<Type<'def>>, annot: TypeAnnotMeta) -> Self {
         LiteralTypeUse {
             def: s,
@@ -412,6 +428,7 @@ impl<'def> LiteralTypeUse<'def> {
 
     /// Get the refinement type of a struct usage.
     /// This requires that all type parameters of the struct have been instantiated.
+    #[must_use]
     pub fn get_rfn_type(&self) -> String {
         let rfn_instantiations: Vec<String> =
             self.params.iter().map(|ty| ty.get_rfn_type(&[]).to_string()).collect();
@@ -422,6 +439,7 @@ impl<'def> LiteralTypeUse<'def> {
     }
 
     /// Get the `syn_type` term for this struct use.
+    #[must_use]
     pub fn generate_raw_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -433,6 +451,7 @@ impl<'def> LiteralTypeUse<'def> {
         SynType::Literal(specialized_spec.to_string())
     }
 
+    #[must_use]
     pub fn generate_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -445,6 +464,7 @@ impl<'def> LiteralTypeUse<'def> {
     }
 
     /// Generate a string representation of this struct use.
+    #[must_use]
     pub fn generate_type_term(&self) -> String {
         let mut param_tys = Vec::new();
         for p in &self.params {
@@ -469,6 +489,7 @@ pub struct LiteralTyParam {
 
 impl LiteralTyParam {
     /// Make a literal type for this type parameter and a given `st_name`.
+    #[must_use]
     pub fn make_literal_type(&self) -> LiteralType {
         LiteralType {
             rust_name: Some(self.rust_name.clone()),
@@ -549,6 +570,7 @@ impl<'def> Type<'def> {
 
     /// Determines the type this type is refined by.
     /// `env` gives the environment for `Var(i)` constructors.
+    #[must_use]
     pub fn get_rfn_type(&self, env: &[Option<CoqType>]) -> CoqType {
         match self {
             Self::Bool => CoqType::Bool,
@@ -595,6 +617,7 @@ impl<'def> Type<'def> {
     }
 
     /// Get the layout of a type.
+    #[must_use]
     pub fn get_syn_type(&self) -> SynType {
         match self {
             Self::Bool => SynType::Bool,
@@ -680,6 +703,7 @@ impl<'def> Type<'def> {
     }
 
     /// Check if the Type contains a free variable `Var(i)`.
+    #[must_use]
     pub fn is_closed(&self) -> bool {
         match self {
             Self::Var(_) => false,
@@ -742,6 +766,7 @@ pub struct TyOwnSpec {
 }
 
 impl TyOwnSpec {
+    #[must_use]
     pub const fn new(
         loc: String,
         rfn: String,
@@ -758,10 +783,12 @@ impl TyOwnSpec {
         }
     }
 
+    #[must_use]
     pub fn fmt_owned(&self, tid: &str) -> String {
         format!("{} ◁ₗ[{}, Owned {}] #({}) @ (◁ {})", self.loc, tid, self.with_later, self.rfn, self.ty)
     }
 
+    #[must_use]
     pub fn fmt_shared(&self, tid: &str, lft: &str) -> String {
         format!("{} ◁ₗ[{}, Shared {}] #({}) @ (◁ {})", self.loc, tid, lft, self.rfn, self.ty)
     }
@@ -814,6 +841,7 @@ pub struct InvariantSpec {
 }
 
 impl InvariantSpec {
+    #[must_use]
     pub fn new(
         type_name: String,
         flags: InvariantSpecFlags,
@@ -1143,6 +1171,7 @@ impl InvariantSpec {
         out
     }
 
+    #[must_use]
     pub fn rt_def_name(&self) -> String {
         format!("{}_rt", self.type_name)
     }
@@ -1202,6 +1231,7 @@ impl Display for UnionRepr {
 }
 
 /// Lookup a Rust-level type parameter identifier `name` in the given type parameter environment.
+#[must_use]
 pub fn lookup_ty_param<'a>(name: &'_ str, env: &'a [LiteralTyParam]) -> Option<&'a LiteralTyParam> {
     env.iter().find(|&names| names.rust_name == name)
 }
@@ -1234,11 +1264,13 @@ pub struct AbstractVariant<'def> {
 
 impl<'def> AbstractVariant<'def> {
     /// Get the name of this variant
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
     /// The core of generating the sls definition, without the section + context intro.
+    #[must_use]
     pub fn generate_coq_sls_def_core(&self, typarams: &[String], typarams_use: &[String]) -> String {
         let mut out = String::with_capacity(200);
         let indent = "  ";
@@ -1272,6 +1304,7 @@ impl<'def> AbstractVariant<'def> {
     }
 
     /// Generate a Coq definition for the struct layout spec.
+    #[must_use]
     pub fn generate_coq_sls_def(&self, ty_params: &[LiteralTyParam]) -> String {
         let mut out = String::with_capacity(200);
 
@@ -1295,6 +1328,7 @@ impl<'def> AbstractVariant<'def> {
         out
     }
 
+    #[must_use]
     pub fn generate_coq_type_term(&self, sls_app: Vec<String>) -> String {
         let mut out = String::with_capacity(200);
 
@@ -1305,6 +1339,7 @@ impl<'def> AbstractVariant<'def> {
         out
     }
 
+    #[must_use]
     pub fn generate_coq_type_def_core(
         &self,
         ty_params: &[LiteralTyParam],
@@ -1354,6 +1389,7 @@ impl<'def> AbstractVariant<'def> {
     /// Generate a Coq definition for the struct type alias.
     /// TODO: maybe we should also generate a separate alias def for the refinement type to make
     /// things more readable?
+    #[must_use]
     pub fn generate_coq_type_def(&self, ty_params: &[LiteralTyParam], extra_context: &[CoqParam]) -> String {
         let mut out = String::with_capacity(200);
         let indent = "  ";
@@ -1449,6 +1485,7 @@ pub struct AbstractStruct<'def> {
 }
 
 impl<'def> AbstractStruct<'def> {
+    #[must_use]
     pub fn new(variant_def: AbstractVariant<'def>, ty_params: Vec<LiteralTyParam>) -> Self {
         AbstractStruct {
             invariant: None,
@@ -1458,28 +1495,34 @@ impl<'def> AbstractStruct<'def> {
     }
 
     /// Check if the struct has type parameters.
+    #[must_use]
     pub fn has_type_params(&self) -> bool {
         !self.ty_params.is_empty()
     }
 
     /// Get the name of this struct
+    #[must_use]
     pub fn name(&self) -> &str {
         self.variant_def.name()
     }
 
+    #[must_use]
     pub fn sls_def_name(&self) -> &str {
         &self.variant_def.sls_def_name
     }
 
+    #[must_use]
     pub fn st_def_name(&self) -> &str {
         &self.variant_def.st_def_name
     }
 
+    #[must_use]
     pub fn plain_ty_name(&self) -> &str {
         &self.variant_def.plain_ty_name
     }
 
     /// Get the name of the struct, or an ADT defined on it, if available.
+    #[must_use]
     pub fn public_type_name(&self) -> &str {
         match self.invariant {
             Some(ref inv) => &inv.type_name,
@@ -1487,10 +1530,12 @@ impl<'def> AbstractStruct<'def> {
         }
     }
 
+    #[must_use]
     pub fn plain_rt_def_name(&self) -> &str {
         &self.variant_def.plain_rt_def_name
     }
 
+    #[must_use]
     pub fn public_rt_def_name(&self) -> String {
         match self.invariant {
             Some(ref inv) => inv.rt_def_name(),
@@ -1507,11 +1552,13 @@ impl<'def> AbstractStruct<'def> {
     }
 
     /// Generate a Coq definition for the struct layout spec.
+    #[must_use]
     pub fn generate_coq_sls_def(&self) -> String {
         self.variant_def.generate_coq_sls_def(&self.ty_params)
     }
 
     /// Generate a Coq definition for the struct type alias.
+    #[must_use]
     pub fn generate_coq_type_def(&self) -> String {
         let extra_context = if let Some(ref inv) = self.invariant { inv.coq_params.as_slice() } else { &[] };
 
@@ -1519,6 +1566,7 @@ impl<'def> AbstractStruct<'def> {
     }
 
     /// Generate an optional definition for the invariant of this type, if one has been specified.
+    #[must_use]
     pub fn generate_optional_invariant_def(&self) -> Option<String> {
         self.invariant.as_ref().map(|spec| {
             spec.generate_coq_type_def(self.plain_ty_name(), self.plain_rt_def_name(), &self.ty_params)
@@ -1526,6 +1574,7 @@ impl<'def> AbstractStruct<'def> {
     }
 
     /// Make a literal type.
+    #[must_use]
     pub fn make_literal_type(&self) -> LiteralType {
         LiteralType {
             rust_name: Some(self.name().to_string()),
@@ -1547,6 +1596,7 @@ pub struct VariantBuilder<'def> {
 }
 
 impl<'def> VariantBuilder<'def> {
+    #[must_use]
     pub fn finish(self, ty_params: &[LiteralTyParam]) -> AbstractVariant<'def> {
         let sls_def_name: String = format!("{}_sls", &self.name);
         let st_def_name: String = format!("{}_st", &self.name);
@@ -1586,6 +1636,7 @@ impl<'def> VariantBuilder<'def> {
     }
 
     /// Finish building the struct type and generate an abstract struct definition.
+    #[must_use]
     pub fn finish_as_struct(self, ty_params: Vec<LiteralTyParam>) -> AbstractStruct<'def> {
         let variant = self.finish(&ty_params);
         AbstractStruct {
@@ -1597,6 +1648,7 @@ impl<'def> VariantBuilder<'def> {
 
     /// Initialize a struct builder.
     /// `ty_params` are the user-facing type parameter names in the Rust code.
+    #[must_use]
     pub fn new(name: String, repr: StructRepr) -> VariantBuilder<'def> {
         VariantBuilder {
             fields: Vec::new(),
@@ -1612,6 +1664,7 @@ impl<'def> VariantBuilder<'def> {
 }
 
 /// Create a struct representation of a tuple with `num_fields`, all of which are generic.
+#[must_use]
 pub fn make_tuple_struct_repr<'def>(num_fields: usize) -> AbstractStruct<'def> {
     let name = format!("tuple{}", num_fields);
 
@@ -1661,6 +1714,7 @@ impl<'def> AbstractStructUse<'def> {
     }
 
     /// Creates a new use of unit.
+    #[must_use]
     pub const fn new_unit() -> Self {
         AbstractStructUse {
             def: None,
@@ -1670,10 +1724,12 @@ impl<'def> AbstractStructUse<'def> {
     }
 
     /// Returns true iff this is a use of unit.
+    #[must_use]
     pub const fn is_unit(&self) -> bool {
         self.def.is_none()
     }
 
+    #[must_use]
     pub fn is_raw(&self) -> bool {
         self.raw == TypeIsRaw::Yes
     }
@@ -1694,6 +1750,7 @@ impl<'def> AbstractStructUse<'def> {
 
     /// Get the refinement type of a struct usage.
     /// This requires that all type parameters of the struct have been instantiated.
+    #[must_use]
     pub fn get_rfn_type(&self) -> String {
         let Some(def) = self.def.as_ref() else {
             return CoqType::Unit.to_string();
@@ -1719,6 +1776,7 @@ impl<'def> AbstractStructUse<'def> {
     }
 
     /// Generate a term for the `struct_layout` (of type `struct_layout`)
+    #[must_use]
     pub fn generate_struct_layout_term(&self) -> String {
         let Some(def) = self.def.as_ref() else {
             return Layout::UnitLayout.to_string();
@@ -1737,6 +1795,7 @@ impl<'def> AbstractStructUse<'def> {
         CoqAppTerm::new("use_struct_layout_alg'".to_string(), vec![specialized_spec]).to_string()
     }
 
+    #[must_use]
     pub fn generate_struct_layout_spec_term(&self) -> String {
         let Some(def) = self.def.as_ref() else {
             panic!("unit has no sls");
@@ -1755,6 +1814,7 @@ impl<'def> AbstractStructUse<'def> {
     }
 
     /// Get the `syn_type` term for this struct use.
+    #[must_use]
     pub fn generate_syn_type_term(&self) -> SynType {
         let Some(def) = self.def.as_ref() else {
             return SynType::Unit;
@@ -1774,6 +1834,7 @@ impl<'def> AbstractStructUse<'def> {
     }
 
     /// Generate a string representation of this struct use.
+    #[must_use]
     pub fn generate_type_term(&self) -> String {
         let Some(def) = self.def.as_ref() else {
             return Type::Unit.to_string();
@@ -1844,37 +1905,45 @@ pub struct AbstractEnum<'def> {
 
 impl<'def> AbstractEnum<'def> {
     /// Check whether this enum has any type parameters.
+    #[must_use]
     pub fn has_type_params(&self) -> bool {
         !self.ty_params.is_empty()
     }
 
     /// Get the name of this enum.
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.name
     }
 
+    #[must_use]
     pub fn public_type_name(&self) -> &str {
         &self.plain_ty_name
     }
 
+    #[must_use]
     pub fn public_rt_def_name(&self) -> &str {
         &self.plain_rt_name
     }
 
+    #[must_use]
     pub fn els_def_name(&self) -> &str {
         &self.els_def_name
     }
 
+    #[must_use]
     pub fn st_def_name(&self) -> &str {
         &self.st_def_name
     }
 
+    #[must_use]
     pub fn get_variant(&self, i: usize) -> Option<&(String, AbstractStructRef<'def>, i128)> {
         self.variants.get(i)
     }
 
     /// Generate a Coq definition for the enum layout spec, and all the `struct_layout_specs` for the
     /// variants.
+    #[must_use]
     pub fn generate_coq_els_def(&self) -> String {
         let indent = "  ";
 
@@ -2057,6 +2126,7 @@ impl<'def> AbstractEnum<'def> {
         out
     }
 
+    #[must_use]
     pub fn generate_coq_type_def(&self) -> String {
         let mut out = String::with_capacity(200);
 
@@ -2192,6 +2262,7 @@ impl<'def> AbstractEnum<'def> {
     }
 
     /// Make a literal type.
+    #[must_use]
     pub fn make_literal_type(&self) -> LiteralType {
         LiteralType {
             rust_name: Some(self.name().to_string()),
@@ -2220,6 +2291,7 @@ pub struct EnumBuilder<'def> {
 
 impl<'def> EnumBuilder<'def> {
     /// Finish building the enum type and generate an abstract enum definition.
+    #[must_use]
     pub fn finish(self, optional_inductive_def: Option<CoqInductive>, spec: EnumSpec) -> AbstractEnum<'def> {
         let els_def_name: String = format!("{}_els", &self.name);
         let st_def_name: String = format!("{}_st", &self.name);
@@ -2245,6 +2317,7 @@ impl<'def> EnumBuilder<'def> {
 
     /// Initialize an enum builder.
     /// `ty_params` are the user-facing type parameter names in the Rust code.
+    #[must_use]
     pub fn new(
         name: String,
         ty_param_defs: Vec<LiteralTyParam>,
@@ -2298,6 +2371,7 @@ impl<'def> AbstractEnumUse<'def> {
 
     /// Get the refinement type of an enum usage.
     /// This requires that all type parameters of the enum have been instantiated.
+    #[must_use]
     pub fn get_rfn_type(&self) -> CoqType {
         let env = Vec::new(); // we use the empty environment per our assumption
         let rfn_instantiations: Vec<CoqType> =
@@ -2311,6 +2385,7 @@ impl<'def> AbstractEnumUse<'def> {
     }
 
     /// Generate a term for the enum layout (of type `struct_layout`)
+    #[must_use]
     pub fn generate_enum_layout_term(&self) -> String {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -2328,6 +2403,7 @@ impl<'def> AbstractEnumUse<'def> {
     }
 
     /// Generate a term for the enum layout spec (of type `enum_layout_spec`).
+    #[must_use]
     pub fn generate_enum_layout_spec_term(&self) -> String {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -2341,6 +2417,7 @@ impl<'def> AbstractEnumUse<'def> {
     }
 
     /// Get the `syn_type` term for this enum use.
+    #[must_use]
     pub fn generate_syn_type_term(&self) -> SynType {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
@@ -2356,6 +2433,7 @@ impl<'def> AbstractEnumUse<'def> {
     }
 
     /// Generate a string representation of this enum use.
+    #[must_use]
     pub fn generate_type_term(&self) -> String {
         let mut param_tys = Vec::new();
         for p in &self.ty_params {
@@ -2405,6 +2483,7 @@ impl Display for Layout {
 }
 
 impl Layout {
+    #[must_use]
     pub fn size(&self, env: &LayoutEnv) -> Option<u32> {
         match self {
             Self::UnitLayout => Some(0),
@@ -2423,6 +2502,7 @@ impl Layout {
         }
     }
 
+    #[must_use]
     pub fn alignment(&self, env: &LayoutEnv) -> Option<u32> {
         match self {
             Self::BoolLayout | Self::UnitLayout | Self::PadLayout(_) => Some(1),
@@ -2448,6 +2528,7 @@ impl Layout {
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CoqBinder(CoqName, CoqType);
 impl CoqBinder {
+    #[must_use]
     pub const fn new(n: CoqName, t: CoqType) -> Self {
         Self(n, t)
     }
@@ -2526,6 +2607,7 @@ pub struct IPropPredicate {
 }
 
 impl IPropPredicate {
+    #[must_use]
     pub fn new(binders: Vec<CoqBinder>, prop: IProp) -> Self {
         Self { binders, prop }
     }
@@ -2558,6 +2640,7 @@ pub struct CoqParam {
 }
 
 impl CoqParam {
+    #[must_use]
     pub fn new(name: CoqName, ty: CoqType, implicit: bool) -> Self {
         let depends_on_sigma = if let CoqType::Literal(ref lit) = ty { lit.contains('Σ') } else { false };
         Self {
@@ -2568,6 +2651,7 @@ impl CoqParam {
         }
     }
 
+    #[must_use]
     pub fn with_name(&self, name: String) -> Self {
         Self::new(CoqName::Named(name), self.ty.clone(), self.implicit)
     }
@@ -2662,6 +2746,7 @@ impl<'def> FunctionSpec<'def> {
         out
     }
 
+    #[must_use]
     pub const fn has_spec(&self) -> bool {
         self.has_spec
     }
@@ -2774,6 +2859,7 @@ pub struct FunctionSpecBuilder<'def> {
 }
 
 impl<'def> FunctionSpecBuilder<'def> {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             coq_params: Vec::new(),

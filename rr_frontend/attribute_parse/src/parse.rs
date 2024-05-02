@@ -119,6 +119,7 @@ pub struct ParseBuffer {
 }
 
 impl ParseBuffer {
+    #[must_use]
     pub fn new(stream: &rustc_ast::tokenstream::TokenStream) -> Self {
         // TODO; maybe avoid the cloning
         let trees: Vec<TokenTree> = stream.trees().cloned().collect();
@@ -441,6 +442,7 @@ pub struct LitStr {
 }
 
 impl LitStr {
+    #[must_use]
     pub fn value(&self) -> String {
         self.sym.to_string()
     }
@@ -478,6 +480,7 @@ where
 }
 
 impl Ident {
+    #[must_use]
     pub fn value(&self) -> String {
         self.sym.to_string()
     }
@@ -625,6 +628,7 @@ mod value {
     }
 }
 
+#[must_use]
 pub fn xid_ok(symbol: &str) -> bool {
     let mut chars = symbol.chars();
     let first = chars.next().unwrap();
@@ -647,6 +651,7 @@ pub struct BigInt {
 }
 
 impl BigInt {
+    #[must_use]
     pub const fn new() -> Self {
         Self { digits: Vec::new() }
     }
@@ -716,6 +721,7 @@ pub struct Punctuated<T, P> {
 
 impl<T, P> Punctuated<T, P> {
     /// Creates an empty punctuated sequence.
+    #[must_use]
     pub const fn new() -> Self {
         Self {
             inner: Vec::new(),
@@ -725,6 +731,7 @@ impl<T, P> Punctuated<T, P> {
 
     /// Determines whether this punctuated sequence is empty, meaning it
     /// contains no syntax tree nodes or punctuation.
+    #[must_use]
     pub fn is_empty(&self) -> bool {
         self.inner.len() == 0 && self.last.is_none()
     }
@@ -733,11 +740,13 @@ impl<T, P> Punctuated<T, P> {
     ///
     /// This is the number of nodes of type `T`, not counting the punctuation of
     /// type `P`.
+    #[must_use]
     pub fn len(&self) -> usize {
         self.inner.len() + usize::from(self.last.is_some())
     }
 
     /// Borrows the first element in this sequence.
+    #[must_use]
     pub fn first(&self) -> Option<&T> {
         self.iter().next()
     }
@@ -748,6 +757,7 @@ impl<T, P> Punctuated<T, P> {
     //}
 
     /// Borrows the last element in this sequence.
+    #[must_use]
     pub fn last(&self) -> Option<&T> {
         self.iter().next_back()
     }
@@ -850,6 +860,7 @@ impl<T, P> Punctuated<T, P> {
 
     /// Determines whether this punctuated sequence ends with a trailing
     /// punctuation.
+    #[must_use]
     pub fn trailing_punct(&self) -> bool {
         self.last.is_none() && !self.is_empty()
     }
@@ -858,6 +869,7 @@ impl<T, P> Punctuated<T, P> {
     /// punctuation.
     ///
     /// Equivalent to `punctuated.is_empty() || punctuated.trailing_punct()`.
+    #[must_use]
     pub const fn empty_or_trailing(&self) -> bool {
         self.last.is_none()
     }

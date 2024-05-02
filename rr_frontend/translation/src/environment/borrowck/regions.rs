@@ -36,6 +36,7 @@ impl PlaceRegions {
         self.0.insert((local, projections), rvid);
     }
 
+    #[must_use]
     pub fn for_local(&self, local: mir::Local) -> Option<facts::Region> {
         self.for_place(local.into()).unwrap()
     }

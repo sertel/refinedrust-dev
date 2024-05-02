@@ -58,6 +58,7 @@ pub struct Environment<'tcx> {
 
 impl<'tcx> Environment<'tcx> {
     /// Builds an environment given a compiler state.
+    #[must_use]
     pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         Environment {
             tcx,

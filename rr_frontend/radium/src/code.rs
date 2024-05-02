@@ -95,6 +95,7 @@ impl Display for RustType {
 }
 
 impl RustType {
+    #[must_use]
     pub fn of_type(ty: &Type<'_>, env: &[Option<LiteralTyParam>]) -> Self {
         info!("Translating rustType: {:?}", ty);
         match ty {
@@ -297,6 +298,7 @@ pub enum Expr {
 }
 
 impl Expr {
+    #[must_use]
     pub fn with_optional_annotation(e: Self, a: Option<Annotation>, why: Option<String>) -> Self {
         match a {
             Some(a) => Self::Annot {
@@ -624,6 +626,7 @@ impl Stmt {
     }
 
     /// Annotate a statement with a list of annotations
+    #[must_use]
     pub fn with_annotations(mut s: Self, a: Vec<Annotation>, why: Option<String>) -> Self {
         for annot in a {
             s = Self::Annot {
@@ -753,6 +756,7 @@ fn make_lft_map_string(els: Vec<(String, String)>) -> String {
 impl FunctionCode {
     const INITIAL_BB: usize = 0;
 
+    #[must_use]
     pub fn caesium_fmt(&self) -> String {
         // format args
         let format_stack_layout = |layout: std::slice::Iter<'_, (String, SynType)>| {
@@ -825,6 +829,7 @@ impl FunctionCode {
     }
 
     /// Get the number of arguments of the function.
+    #[must_use]
     pub fn get_argument_count(&self) -> usize {
         self.stack_layout.iter_args().len()
     }
@@ -840,6 +845,7 @@ pub struct StackMap {
 }
 
 impl StackMap {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             arg_map: Vec::new(),
@@ -866,6 +872,7 @@ impl StackMap {
         true
     }
 
+    #[must_use]
     pub fn lookup_binding(&self, name: &str) -> Option<&SynType> {
         if !self.used_names.contains(name) {
             return None;
@@ -899,6 +906,7 @@ pub struct FunctionCodeBuilder {
 }
 
 impl FunctionCodeBuilder {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             stack_layout: StackMap::new(),
@@ -956,6 +964,7 @@ pub struct Function<'def> {
 
 impl<'def> Function<'def> {
     /// Get the name of the function.
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.code.name
     }
@@ -1283,6 +1292,7 @@ pub struct FunctionBuilder<'def> {
 }
 
 impl<'def> FunctionBuilder<'def> {
+    #[must_use]
     pub fn new(name: &str, spec_name: &str) -> Self {
         let code_builder = FunctionCodeBuilder::new();
         let spec_builder = FunctionSpecBuilder::new();
@@ -1344,11 +1354,13 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Get the type parameters.
+    #[must_use]
     pub fn get_ty_params(&self) -> &[LiteralTyParam] {
         &self.generic_types
     }
 
     /// Get the universal lifetimes.
+    #[must_use]
     pub fn get_lfts(&self) -> Vec<(Option<String>, Lft)> {
         self.generic_lifetimes.clone()
     }

@@ -18,10 +18,12 @@ pub struct LocalSet {
 }
 
 impl LocalSet {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn contains_prefix_of(&self, place: mir::Place) -> bool {
         self.locals.contains(&place.local)
     }

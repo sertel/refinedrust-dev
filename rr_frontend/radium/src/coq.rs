@@ -171,6 +171,7 @@ impl Display for CoqType {
 
 impl CoqType {
     /// Check if the `CoqType` contains a free variable `Var(i)`.
+    #[must_use]
     pub fn is_closed(&self) -> bool {
         match self {
             Self::Bool
@@ -251,6 +252,7 @@ impl CoqType {
 pub struct CoqParamList(pub Vec<(CoqName, CoqType)>);
 
 impl CoqParamList {
+    #[must_use]
     pub const fn empty() -> Self {
         Self(vec![])
     }
@@ -397,10 +399,12 @@ pub struct CoqAttributes {
     attrs: Vec<CoqAttribute>,
 }
 impl CoqAttributes {
+    #[must_use]
     pub const fn empty() -> Self {
         Self { attrs: vec![] }
     }
 
+    #[must_use]
     pub fn new(attrs: Vec<CoqAttribute>) -> Self {
         Self { attrs }
     }
@@ -463,6 +467,7 @@ impl Display for CoqTopLevelAssertion {
 pub struct CoqTopLevelAssertions(pub Vec<CoqTopLevelAssertion>);
 
 impl CoqTopLevelAssertions {
+    #[must_use]
     pub const fn empty() -> Self {
         Self(vec![])
     }

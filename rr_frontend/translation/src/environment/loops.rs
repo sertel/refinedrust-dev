@@ -359,56 +359,67 @@ impl ProcedureLoops {
         }
     }
 
+    #[must_use]
     pub fn count_loop_heads(&self) -> usize {
         self.loop_heads.len()
     }
 
+    #[must_use]
     pub fn max_loop_nesting(&self) -> usize {
         self.loop_head_depths.values().max().copied().unwrap_or(0)
     }
 
+    #[must_use]
     pub fn is_loop_head(&self, bbi: BasicBlockIndex) -> bool {
         self.loop_heads.contains(&bbi)
     }
 
+    #[must_use]
     pub fn get_loop_exit_blocks(&self, bbi: BasicBlockIndex) -> &[BasicBlockIndex] {
         debug_assert!(self.is_loop_head(bbi));
         &self.loop_exit_blocks[&bbi]
     }
 
+    #[must_use]
     pub fn is_conditional_branch(&self, loop_head: BasicBlockIndex, bbi: BasicBlockIndex) -> bool {
         debug_assert!(self.is_loop_head(loop_head));
         !self.nonconditional_loop_blocks[&loop_head].contains(&bbi)
     }
 
+    #[must_use]
     pub fn get_enclosing_loop_heads(&self, bbi: BasicBlockIndex) -> &[BasicBlockIndex] {
         if let Some(heads) = self.enclosing_loop_heads.get(&bbi) { heads } else { &[] }
     }
 
     /// Get the loop head, if any
     /// Note: a loop head **is** loop head of itself
+    #[must_use]
     pub fn get_loop_head(&self, bbi: BasicBlockIndex) -> Option<BasicBlockIndex> {
         self.enclosing_loop_heads.get(&bbi).and_then(|heads| heads.last()).copied()
     }
 
     /// Get the depth of a loop head, starting from one for a simple loop
+    #[must_use]
     pub fn get_loop_head_depth(&self, bbi: BasicBlockIndex) -> usize {
         debug_assert!(self.is_loop_head(bbi));
         self.loop_head_depths[&bbi]
     }
 
     /// Get the loop-depth of a block (zero if it's not in a loop).
+    #[must_use]
     pub fn get_loop_depth(&self, bbi: BasicBlockIndex) -> usize {
         self.get_loop_head(bbi).map_or(0, |x| self.get_loop_head_depth(x))
     }
 
     /// Get the (topologically ordered) body of a loop, given a loop head
+    #[must_use]
     pub fn get_loop_body(&self, loop_head: BasicBlockIndex) -> &[BasicBlockIndex] {
         debug_assert!(self.is_loop_head(loop_head));
         &self.ordered_loop_bodies[&loop_head]
     }
 
     /// Does this edge exit a loop?
+    #[must_use]
     pub fn is_out_edge(&self, from: BasicBlockIndex, to: BasicBlockIndex) -> bool {
         let Some(from_loop_head) = self.get_loop_head(from) else {
             return false;
@@ -426,6 +437,7 @@ impl ProcedureLoops {
     }
 
     /// Check if ``block`` is inside a given loop.
+    #[must_use]
     pub fn is_block_in_loop(&self, loop_head: BasicBlockIndex, block: BasicBlockIndex) -> bool {
         self.dominators.dominates(loop_head, block)
     }

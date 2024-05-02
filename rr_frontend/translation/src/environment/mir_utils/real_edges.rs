@@ -32,10 +32,12 @@ impl RealEdges {
         }
     }
 
+    #[must_use]
     pub fn successors(&self, bb: mir::BasicBlock) -> &[mir::BasicBlock] {
         &self.successors[bb]
     }
 
+    #[must_use]
     pub fn predecessors(&self, bb: mir::BasicBlock) -> &[mir::BasicBlock] {
         &self.predecessors[bb]
     }
