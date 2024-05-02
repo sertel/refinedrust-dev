@@ -111,7 +111,7 @@ impl Display for IntType {
 impl IntType {
     /// Get the size in bytes of the Caesium representation.
     #[must_use]
-    pub const fn size(&self) -> u32 {
+    pub const fn size(self) -> u32 {
         match self {
             Self::I8 | Self::U8 => 1,
             Self::I16 | Self::U16 => 2,
@@ -123,7 +123,7 @@ impl IntType {
 
     /// Get the alignment in bytes of the Caesium representation.
     #[must_use]
-    pub const fn alignment(&self) -> u32 {
+    pub const fn alignment(self) -> u32 {
         match self {
             Self::I8 | Self::U8 => 1,
             Self::I16 | Self::U16 => 2,

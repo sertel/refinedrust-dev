@@ -1088,8 +1088,8 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
 
     /// Get the location at which a loan is created, if possible
     #[must_use]
-    pub fn get_loan_location(&self, loan: &facts::Loan) -> Option<mir::Location> {
-        self.loan_position.get(loan).copied()
+    pub fn get_loan_location(&self, loan: facts::Loan) -> Option<mir::Location> {
+        self.loan_position.get(&loan).copied()
     }
 
     /// Get the loan that gets created at a location.
@@ -1117,7 +1117,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     }
 
     /// Convert a `facts::Loan` to `LoanPlaces`<'tcx> (if possible)
-    pub fn get_loan_places(&self, loan: &facts::Loan) -> Result<Option<LoanPlaces<'tcx>>, PlaceRegionsError> {
+    pub fn get_loan_places(&self, loan: facts::Loan) -> Result<Option<LoanPlaces<'tcx>>, PlaceRegionsError> {
         // Implementing get_loan_places is a bit more complicated when there are tuples. This is
         // because an assignment like
         //   _3 = (move _4, move _5)
@@ -1129,13 +1129,13 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         // get_assignment_for_loan(L1) would be _3.1 = move _5. Using these atomic assignments, we
         // can simply read off the loan places as before.
 
-        let Some(assignment) = self.get_assignment_for_loan(*loan)? else {
+        let Some(assignment) = self.get_assignment_for_loan(loan)? else {
             return Ok(None);
         };
 
         let (dest, source) = assignment.as_assign().unwrap();
         let source = source.clone();
-        let location = self.loan_position[loan];
+        let location = self.loan_position[&loan];
 
         Ok(Some(LoanPlaces {
             dest,
@@ -1209,7 +1209,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     /// _1 = &'2rv 123;
     /// ```
     fn get_loan_issued_at_for_loan(&self, loan: facts::Loan) -> facts::Region {
-        let location = self.get_loan_location(&loan).unwrap();
+        let location = self.get_loan_location(loan).unwrap();
         let point = self.get_point(location, PointType::Mid);
         let regions = self
             .borrowck_in_facts

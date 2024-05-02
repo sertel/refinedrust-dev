@@ -58,8 +58,8 @@ pub enum PlaceAccessKind {
 
 impl PlaceAccessKind {
     /// Does the access write to the path?
-    const fn is_write_access(&self) -> bool {
-        match &self {
+    const fn is_write_access(self) -> bool {
+        match self {
             Self::Store | Self::Move => true,
             Self::Read | Self::MutableBorrow | Self::SharedBorrow => false,
         }

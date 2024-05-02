@@ -45,7 +45,7 @@ pub fn dump_borrowck_info(env: &Environment<'_>, procedures: &[ProcedureDefId]) 
 
 pub fn dump_borrowck_info<'a, 'tcx>(
     env: &'a Environment<'tcx>,
-    procedure: &ProcedureDefId,
+    procedure: ProcedureDefId,
     info: &'a PoloniusInfo<'a, 'tcx>,
 ) {
     trace!("[dump_borrowck_info] enter");
@@ -57,7 +57,7 @@ pub fn dump_borrowck_info<'a, 'tcx>(
     //intravisit::walk_crate(&mut printer, tcx.hir.krate());
     //tcx.hir.krate().visit_all_item_likes(&mut printer);
 
-    printer.print_info(*procedure, info);
+    printer.print_info(procedure, info);
 
     trace!("[dump_borrowck_info] exit");
 }
