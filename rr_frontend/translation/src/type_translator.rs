@@ -48,7 +48,7 @@ pub struct AdtUseKey {
 
 impl AdtUseKey {
     pub fn new(defid: DefId, params: &[radium::Type<'_>]) -> Self {
-        let generic_syntys: Vec<_> = params.iter().map(|ty| ty.get_syn_type()).collect();
+        let generic_syntys: Vec<_> = params.iter().map(radium::Type::get_syn_type).collect();
         Self {
             base_did: defid,
             generics: generic_syntys,
@@ -80,7 +80,7 @@ impl<'def> TypeTranslationScope<'def> {
     /// Lookup a universal region.
     pub fn lookup_universal_region(&self, lft: ty::RegionVid) -> Option<radium::Lft> {
         info!("Looking up universal lifetime {:?}", lft);
-        self.universal_lifetimes.get(&lft).map(|s| s.to_string())
+        self.universal_lifetimes.get(&lft).map(ToString::to_string)
     }
 
     /// Create a new empty scope for a function.
@@ -681,7 +681,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     {
         let tys = tys.into_iter();
 
-        let generic_args: Vec<_> = tys.into_iter().map(|ty| ty.into()).collect();
+        let generic_args: Vec<_> = tys.into_iter().map(Into::into).collect();
         let params = self.translate_generic_args(generic_args, &mut *state)?;
 
         let num_components = params.len();

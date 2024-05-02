@@ -131,17 +131,17 @@ impl<'def> ProcedureScope<'def> {
 
     /// Lookup the Coq spec name for a function.
     pub fn lookup_function_spec_name(&self, did: &DefId) -> Option<&str> {
-        self.name_map.get(did).map(|m| m.get_spec_name())
+        self.name_map.get(did).map(ProcedureMeta::get_spec_name)
     }
 
     /// Lookup the name for a function.
     pub fn lookup_function_mangled_name(&self, did: &DefId) -> Option<&str> {
-        self.name_map.get(did).map(|m| m.get_name())
+        self.name_map.get(did).map(ProcedureMeta::get_name)
     }
 
     /// Lookup the mode for a function.
     pub fn lookup_function_mode(&self, did: &DefId) -> Option<ProcedureMode> {
-        self.name_map.get(did).map(|m| m.get_mode())
+        self.name_map.get(did).map(ProcedureMeta::get_mode)
     }
 
     /// Register a function.
@@ -3673,7 +3673,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     let name = self.ty_translator.translator.get_field_name_of(
                         f,
                         cur_ty.ty,
-                        cur_ty.variant_index.map(|a| a.as_usize()),
+                        cur_ty.variant_index.map(rustc_abi::VariantIdx::as_usize),
                     )?;
 
                     acc_expr = radium::Expr::FieldOf {

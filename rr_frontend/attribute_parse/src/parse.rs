@@ -142,7 +142,7 @@ impl ParseBuffer {
     }
 
     pub fn pos(&self) -> Option<Span> {
-        self.trees.get(self.index.get()).map(|r| r.span())
+        self.trees.get(self.index.get()).map(TokenTree::span)
     }
 
     pub fn peek(&self, n: usize) -> ParseResult<&TokenTree> {

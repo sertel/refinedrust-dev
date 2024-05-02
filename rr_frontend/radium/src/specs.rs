@@ -259,7 +259,7 @@ impl SynType {
     /// See `layout_term_typaram`.
     #[must_use]
     pub fn layout_term(&self, env: &[Option<Self>]) -> Layout {
-        self.layout_term_core(env, |x| x.clone())
+        self.layout_term_core(env, Clone::clone)
     }
 
     fn optype_core<F, G>(&self, env: &[Option<F>], to_syntype: G) -> OpType
@@ -300,7 +300,7 @@ impl SynType {
     /// See `optype_typaram`.
     #[must_use]
     pub fn optype(&self, env: &[Option<Self>]) -> OpType {
-        self.optype_core(env, |x| x.clone())
+        self.optype_core(env, Clone::clone)
     }
 
     /// Check if the `SynType` contains a free variable `Var(i)`.
@@ -744,7 +744,7 @@ impl<'def> Type<'def> {
     /// The types in `substi` should not contain variables themselves, as this substitution
     /// operation is capture-incurring!
     pub fn subst(&mut self, substi: &[Option<Type<'def>>]) {
-        self.subst_core(substi, &|x| x.clone())
+        self.subst_core(substi, &Clone::clone)
     }
 
     /// Substitute variables `Var` with `substi`. See `subst` for documentation.

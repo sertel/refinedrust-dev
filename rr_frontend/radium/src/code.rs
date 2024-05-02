@@ -1043,7 +1043,7 @@ impl<'def> Function<'def> {
                     let st = p.get_syn_type();
                     gen_rfn_type_inst.push(format!("({})", st));
                 }
-                let arg_syntys: Vec<String> = sts.iter().map(|st| st.to_string()).collect();
+                let arg_syntys: Vec<String> = sts.iter().map(ToString::to_string).collect();
 
                 write!(
                     f,

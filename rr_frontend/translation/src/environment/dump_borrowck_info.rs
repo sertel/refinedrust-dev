@@ -346,7 +346,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             }
         }
         for (temp, var) in self.mir.local_decls.iter_enumerated() {
-            let name = var_names.get(&temp).map_or_else(String::new, |s| s.to_string());
+            let name = var_names.get(&temp).map_or_else(String::new, ToString::to_string);
 
             let region = self
                 .polonius_info

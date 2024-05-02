@@ -188,11 +188,11 @@ impl CoqType {
             | Self::SynType
             | Self::Type => true,
 
-            Self::PList(_, tys) => tys.iter().all(|t| t.is_closed()),
+            Self::PList(_, tys) => tys.iter().all(Self::is_closed),
 
             Self::PlaceRfn(t) => t.is_closed(),
 
-            Self::Prod(v) => v.iter().all(|t| t.is_closed()),
+            Self::Prod(v) => v.iter().all(Self::is_closed),
 
             Self::Ttype(box ty) => ty.is_closed(),
 
