@@ -606,7 +606,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 )
                 .unwrap();
 
-            fun.generate_proof(&mut proof_file).unwrap();
+            fun.generate_proof(&mut proof_file, rrconfig::admit_proofs()).unwrap();
 
             proof_file.write("End proof.".as_bytes()).unwrap();
         }

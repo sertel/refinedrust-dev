@@ -782,6 +782,7 @@ impl std::fmt::Display for InvariantMap {
 pub struct Function<'def> {
     pub code: FunctionCode,
     pub spec: FunctionSpec<'def>,
+
     /// Generic types in scope for this function
     generic_types: Vec<LiteralTyParam>,
 
@@ -1042,7 +1043,7 @@ impl<'def> Function<'def> {
         write!(f, "init_tyvars ({} ).\n", formatted_tyvars.as_str())
     }
 
-    pub fn generate_proof<F>(&self, f: &mut F) -> Result<(), io::Error>
+    pub fn generate_proof<F>(&self, f: &mut F, admit_proofs: bool) -> Result<(), io::Error>
     where
         F: io::Write,
     {
@@ -1081,7 +1082,7 @@ impl<'def> Function<'def> {
             write!(f, "Unshelve. all: print_remaining_sidecond.\n")?;
         }
 
-        if rrconfig::admit_proofs() {
+        if admit_proofs {
             write!(f, "Admitted. (* admitted due to admit_proofs config flag *)\n")?;
         } else {
             write!(f, "Qed.\n")?;
