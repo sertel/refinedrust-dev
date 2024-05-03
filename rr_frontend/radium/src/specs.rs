@@ -4,8 +4,8 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use std::cell::RefCell;
 /// Provides the Spec AST and utilities for interfacing with it.
+use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fmt::{Display, Formatter, Write};
@@ -1240,8 +1240,6 @@ pub fn lookup_ty_param<'a>(name: &'_ str, env: &'a [LiteralTyParam]) -> Option<&
     env.iter().find(|&names| names.rust_name == name)
 }
 
-pub type AbstractVariantRef<'def> = &'def RefCell<Option<AbstractVariant<'def>>>;
-
 /// Description of a variant of a struct or enum.
 #[derive(Clone, PartialEq, Debug)]
 pub struct AbstractVariant<'def> {
@@ -1468,8 +1466,6 @@ where
 
     Ok((context_names, depends_on_sigma))
 }
-
-pub type AbstractStructRef<'def> = &'def RefCell<Option<AbstractStruct<'def>>>;
 
 /// Description of a struct type.
 // TODO: mechanisms for resolving mutually recursive types.
@@ -1700,7 +1696,7 @@ pub fn make_tuple_struct_repr<'def>(num_fields: usize) -> AbstractStruct<'def> {
 #[derive(Clone, PartialEq, Debug)]
 pub struct AbstractStructUse<'def> {
     /// reference to the struct's definition, or None if unit
-    pub def: Option<AbstractStructRef<'def>>,
+    pub def: Option<&'def AbstractStruct<'def>>,
     /// Instantiations for type parameters. These should _not_ contain `Var` constructors.
     pub ty_params: Vec<Type<'def>>,
     /// does this refer to the raw type without invariants?
@@ -1709,9 +1705,10 @@ pub struct AbstractStructUse<'def> {
 
 impl<'def> AbstractStructUse<'def> {
     /// `params` should not contain `Var`
-    pub fn new(s: AbstractStructRef<'def>, params: Vec<Type<'def>>, raw: TypeIsRaw) -> Self {
+    #[must_use]
+    pub fn new(s: Option<&'def AbstractStruct<'def>>, params: Vec<Type<'def>>, raw: TypeIsRaw) -> Self {
         AbstractStructUse {
-            def: Some(s),
+            def: s,
             ty_params: params,
             raw,
         }
@@ -1765,17 +1762,14 @@ impl<'def> AbstractStructUse<'def> {
         let rfn_instantiations: Vec<String> =
             self.ty_params.iter().map(|ty| ty.get_rfn_type(&[]).to_string()).collect();
 
-        let def = def.borrow();
-        let def = def.as_ref();
-        let inv = &def.unwrap().invariant.as_ref();
+        let inv = &def.invariant;
 
         if self.is_raw() || inv.is_none() {
-            let rfn_type = def.unwrap().plain_rt_def_name().to_string();
+            let rfn_type = def.plain_rt_def_name().to_string();
             let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
             applied.to_string()
         } else {
-            let inv = inv.unwrap();
-            let rfn_type = inv.rt_def_name();
+            let rfn_type = inv.as_ref().unwrap().rt_def_name();
             let applied = CoqAppTerm::new(rfn_type, rfn_instantiations);
             applied.to_string()
         }
@@ -1796,8 +1790,7 @@ impl<'def> AbstractStructUse<'def> {
         }
 
         // use_struct_layout_alg' ([my_spec] [params])
-        let specialized_spec =
-            format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts));
+        let specialized_spec = format!("({})", CoqAppTerm::new(def.sls_def_name(), param_sts));
         CoqAppTerm::new("use_struct_layout_alg'".to_string(), vec![specialized_spec]).to_string()
     }
 
@@ -1816,7 +1809,7 @@ impl<'def> AbstractStructUse<'def> {
         // TODO generates too many apps
 
         // use_struct_layout_alg' ([my_spec] [params])
-        format!("({})", CoqAppTerm::new(def.borrow().as_ref().unwrap().sls_def_name(), param_sts))
+        format!("({})", CoqAppTerm::new(def.sls_def_name(), param_sts))
     }
 
     /// Get the `syn_type` term for this struct use.
@@ -1834,8 +1827,7 @@ impl<'def> AbstractStructUse<'def> {
         }
         // TODO generates too many apps
 
-        let specialized_spec =
-            CoqAppTerm::new(def.borrow().as_ref().unwrap().st_def_name().to_string(), param_sts);
+        let specialized_spec = CoqAppTerm::new(def.st_def_name().to_string(), param_sts);
         SynType::Literal(format!("{}", specialized_spec))
     }
 
@@ -1850,8 +1842,6 @@ impl<'def> AbstractStructUse<'def> {
         for p in &self.ty_params {
             param_tys.push(format!("({})", p));
         }
-        let def = def.borrow();
-        let def = def.as_ref().unwrap();
 
         if !self.is_raw() && def.invariant.is_some() {
             let Some(ref inv) = def.invariant else {
@@ -1881,7 +1871,7 @@ pub struct EnumSpec {
 pub struct AbstractEnum<'def> {
     /// variants of this enum: name, variant, a mask describing which of the type parameters it uses, and the
     /// discriminant
-    pub(crate) variants: Vec<(String, AbstractStructRef<'def>, i128)>,
+    pub(crate) variants: Vec<(String, Option<&'def AbstractStruct<'def>>, i128)>,
 
     /// specification
     spec: EnumSpec,
@@ -1943,7 +1933,7 @@ impl<'def> AbstractEnum<'def> {
     }
 
     #[must_use]
-    pub fn get_variant(&self, i: usize) -> Option<&(String, AbstractStructRef<'def>, i128)> {
+    pub fn get_variant(&self, i: usize) -> Option<&(String, Option<&'def AbstractStruct<'def>>, i128)> {
         self.variants.get(i)
     }
 
@@ -1972,8 +1962,7 @@ impl<'def> AbstractEnum<'def> {
 
         // generate all the component structs
         for (_, v, _) in &self.variants {
-            let vbor = v.borrow();
-            let vbor = vbor.as_ref().unwrap();
+            let vbor = v.unwrap();
 
             out.push_str(&vbor.variant_def.generate_coq_sls_def_core(&typarams, &typarams_use));
             out.push('\n');
@@ -1989,8 +1978,7 @@ impl<'def> AbstractEnum<'def> {
         ));
 
         push_str_list!(out, &self.variants, ";", |(name, var, _)| {
-            let vbor = var.borrow();
-            let vbor = vbor.as_ref().unwrap();
+            let vbor = var.unwrap();
 
             format!("\n{}{}(\"{}\", {} {})", indent, indent, name, vbor.st_def_name(), typarams.join(" "))
         });
@@ -2048,8 +2036,7 @@ impl<'def> AbstractEnum<'def> {
 
         write!(out, "λ rfn, match rfn with ").unwrap();
         for ((_name, var, _), (pat, apps, rfn)) in self.variants.iter().zip(spec.variant_patterns.iter()) {
-            let v = var.borrow();
-            let v = v.as_ref().unwrap();
+            let v = var.unwrap();
             // we can just use the plain name here, because we assume this is used in an
             // environment where all the type parametes are already instantiated.
             let ty = v.public_type_name();
@@ -2067,8 +2054,7 @@ impl<'def> AbstractEnum<'def> {
             .variants
             .iter()
             .map(|(name, var, _)| {
-                let v = var.borrow();
-                let v = v.as_ref().unwrap();
+                let v = var.unwrap();
                 let ty = v.public_type_name();
 
                 format!("if (decide (variant = \"{name}\")) then Some $ existT _ {ty}")
@@ -2112,9 +2098,8 @@ impl<'def> AbstractEnum<'def> {
                     .unwrap();
                 sls_app.push(ty.syn_type.clone());
             }
-            let s2 = s.borrow();
-            let s3 = s2.as_ref().unwrap();
-            let ty_def_term = s3.variant_def.generate_coq_type_term(sls_app);
+            let s = s.unwrap();
+            let ty_def_term = s.variant_def.generate_coq_type_term(sls_app);
 
             write!(
                 out,
@@ -2163,8 +2148,7 @@ impl<'def> AbstractEnum<'def> {
         // define types and type abstractions for all the component types.
         // TODO: we should actually use the abstracted types here.
         for (_name, variant, _) in &self.variants {
-            let v = variant.borrow();
-            let v = v.as_ref().unwrap();
+            let v = variant.unwrap();
             // TODO: might also need to handle extra context items
             write!(out, "{}\n", v.variant_def.generate_coq_type_def_core(&v.ty_params, &[])).unwrap();
 
@@ -2284,7 +2268,7 @@ pub type AbstractEnumRef<'def> = &'def RefCell<Option<AbstractEnum<'def>>>;
 /// A builder for plain enums without fancy invariants etc.
 pub struct EnumBuilder<'def> {
     /// the variants
-    variants: Vec<(String, AbstractStructRef<'def>, i128)>,
+    variants: Vec<(String, Option<&'def AbstractStruct<'def>>, i128)>,
     /// the enum's name
     name: String,
     /// names for the type parameters (for the Coq definitions)
@@ -2342,7 +2326,12 @@ impl<'def> EnumBuilder<'def> {
     /// Append a variant to the struct def.
     /// `name` is also the Coq constructor of the refinement type we use.
     /// `used_params` is a mask describing which type parameters are used by this variant.
-    pub fn add_variant(&mut self, name: &str, variant: AbstractStructRef<'def>, discriminant: i128) {
+    pub fn add_variant(
+        &mut self,
+        name: &str,
+        variant: Option<&'def AbstractStruct<'def>>,
+        discriminant: i128,
+    ) {
         self.variants.push((name.to_string(), variant, discriminant));
     }
 }

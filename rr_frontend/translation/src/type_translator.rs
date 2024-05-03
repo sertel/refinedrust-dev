@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use std::cell::RefCell;
+use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
@@ -203,7 +203,7 @@ pub struct TypeTranslator<'def, 'tcx> {
 
     /// arena for keeping ownership of structs
     /// during building, it will be None, afterwards it will always be Some
-    struct_arena: &'def Arena<RefCell<Option<radium::AbstractStruct<'def>>>>,
+    struct_arena: &'def Arena<OnceCell<radium::AbstractStruct<'def>>>,
     /// arena for keeping ownership of enums
     enum_arena: &'def Arena<RefCell<Option<radium::AbstractEnum<'def>>>>,
     /// arena for keeping ownership of shims
@@ -217,7 +217,7 @@ pub struct TypeTranslator<'def, 'tcx> {
             DefId,
             (
                 String,
-                radium::AbstractStructRef<'def>,
+                &'def OnceCell<radium::AbstractStruct<'def>>,
                 &'tcx ty::VariantDef,
                 bool,
                 Option<radium::LiteralTypeRef<'def>>,
@@ -233,7 +233,8 @@ pub struct TypeTranslator<'def, 'tcx> {
         >,
     >,
     /// a registry for abstract struct defs for tuples, indexed by the number of tuple fields
-    tuple_registry: RefCell<HashMap<usize, (radium::AbstractStructRef<'def>, radium::LiteralTypeRef<'def>)>>,
+    tuple_registry:
+        RefCell<HashMap<usize, (&'def radium::AbstractStruct<'def>, radium::LiteralTypeRef<'def>)>>,
 
     /// dependencies of one ADT definition on another ADT definition
     adt_deps: RefCell<HashMap<DefId, HashSet<DefId>>>,
@@ -245,7 +246,7 @@ pub struct TypeTranslator<'def, 'tcx> {
 impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     pub fn new(
         env: &'def Environment<'tcx>,
-        struct_arena: &'def Arena<RefCell<Option<radium::AbstractStruct<'def>>>>,
+        struct_arena: &'def Arena<OnceCell<radium::AbstractStruct<'def>>>,
         enum_arena: &'def Arena<RefCell<Option<radium::AbstractEnum<'def>>>>,
         shim_arena: &'def Arena<radium::LiteralType>,
     ) -> Self {
@@ -284,22 +285,22 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Get all the struct definitions that clients have used (excluding the variants of enums).
-    pub fn get_struct_defs(&self) -> HashMap<DefId, radium::AbstractStructRef<'def>> {
+    pub fn get_struct_defs(&self) -> HashMap<DefId, Option<&'def radium::AbstractStruct<'def>>> {
         let mut defs = HashMap::new();
         for (did, (_, su, _, is_of_enum, _)) in self.variant_registry.borrow().iter() {
             // skip structs belonging to enums
             if !is_of_enum {
-                defs.insert(*did, *su);
+                defs.insert(*did, su.get());
             }
         }
         defs
     }
 
     /// Get all the variant definitions that clients have used (including the variants of enums).
-    pub fn get_variant_defs(&self) -> HashMap<DefId, radium::AbstractStructRef<'def>> {
+    pub fn get_variant_defs(&self) -> HashMap<DefId, Option<&'def radium::AbstractStruct<'def>>> {
         let mut defs = HashMap::new();
         for (did, (_, su, _, _, _)) in self.variant_registry.borrow().iter() {
-            defs.insert(*did, *su);
+            defs.insert(*did, su.get());
         }
         defs
     }
@@ -430,10 +431,12 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     fn lookup_adt_variant(
         &self,
         did: DefId,
-    ) -> Result<(radium::AbstractStructRef<'def>, Option<radium::LiteralTypeRef<'def>>), TranslationError>
-    {
+    ) -> Result<
+        (Option<&'def radium::AbstractStruct<'def>>, Option<radium::LiteralTypeRef<'def>>),
+        TranslationError,
+    > {
         if let Some((_n, st, _, _, lit)) = self.variant_registry.borrow().get(&did) {
-            Ok((*st, *lit))
+            Ok((st.get(), *lit))
         } else {
             Err(TranslationError::UnknownError(format!("could not find type: {:?}", did)))
         }
@@ -674,7 +677,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let enum_ref = enum_ref.as_ref().unwrap();
 
         let (_, struct_ref, _) = enum_ref.get_variant(variant_idx).unwrap();
-        let struct_ref: radium::AbstractStructRef<'def> = *struct_ref;
+        let struct_ref: Option<&'def radium::AbstractStruct<'def>> = *struct_ref;
 
         // apply the generic parameters according to the mask
         let params = self.translate_generic_args(args, state)?;
@@ -719,7 +722,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     fn get_tuple_struct_ref(
         &self,
         num_components: usize,
-    ) -> (radium::AbstractStructRef<'def>, radium::LiteralTypeRef<'def>) {
+    ) -> (&'def radium::AbstractStruct<'def>, radium::LiteralTypeRef<'def>) {
         self.register_tuple(num_components);
         let registry = self.tuple_registry.borrow();
         let (struct_ref, lit) = registry.get(&num_components).unwrap();
@@ -731,11 +734,18 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         if self.tuple_registry.borrow().get(&num_components).is_some() {
             return;
         }
+
         info!("Generating a tuple type with {} components", num_components);
         let struct_def = radium::make_tuple_struct_repr(num_components);
         let literal = self.intern_literal(struct_def.make_literal_type());
-        let struct_def = self.struct_arena.alloc(RefCell::new(Some(struct_def)));
-        self.tuple_registry.borrow_mut().insert(num_components, (struct_def, literal));
+
+        let cell = OnceCell::new();
+        cell.get_or_init(|| struct_def);
+
+        let struct_def = self.struct_arena.alloc(cell);
+        let cell = struct_def.get().unwrap_or_else(|| panic!("OnceCell must be initialized"));
+
+        self.tuple_registry.borrow_mut().insert(num_components, (cell, literal));
     }
 
     /// Register an ADT that is being used by the program.
@@ -799,13 +809,14 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         // to account for recursive structs and enable establishing circular references,
         // we first generate a dummy struct (None)
-        let struct_def_init = self.struct_arena.alloc(RefCell::new(None));
+        let struct_def_init = self.struct_arena.alloc(OnceCell::new());
 
         let tcx = self.env.tcx();
         let struct_name = strip_coq_ident(&ty.ident(tcx).to_string());
+
         self.variant_registry
             .borrow_mut()
-            .insert(ty.def_id, (struct_name, &*struct_def_init, ty, false, None));
+            .insert(ty.def_id, (struct_name, struct_def_init, ty, false, None));
 
         let translate_adt = || {
             let struct_name = strip_coq_ident(&ty.ident(tcx).to_string());
@@ -826,8 +837,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 // finalize the definition
                 // TODO for generating the semtype definition, we will also need to track dependencies
                 // between structs so that we know when we need recursive types etc.
-                let mut struct_def_ref = struct_def_init.borrow_mut();
-                *struct_def_ref = Some(struct_def);
+                struct_def_init.set(struct_def).unwrap();
 
                 let mut deps_ref = self.adt_deps.borrow_mut();
                 deps_ref.insert(adt.did(), adt_deps);
@@ -1083,8 +1093,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         for v in def.variants() {
             let registry = self.variant_registry.borrow();
             let (variant_name, coq_def, variant_def, _, _) = registry.get(&v.def_id).unwrap();
-            let coq_def = coq_def.borrow();
-            let coq_def = coq_def.as_ref().unwrap();
+            let coq_def = coq_def.get().unwrap();
             let refinement_type = coq_def.plain_rt_def_name().to_string();
 
             // simple optimization: if the variant has no fields, also this constructor gets no arguments
@@ -1175,7 +1184,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let mut variant_attrs = Vec::new();
             for v in def.variants() {
                 // now generate the variant
-                let struct_def_init = self.struct_arena.alloc(RefCell::new(None));
+                let struct_def_init = self.struct_arena.alloc(OnceCell::new());
 
                 let struct_name = strip_coq_ident(format!("{}_{}", enum_name, v.ident(tcx)).as_str());
                 self.variant_registry
@@ -1198,8 +1207,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 // finalize the definition
                 {
                     let lit = self.intern_literal(struct_def.make_literal_type());
-                    let mut struct_def_ref = struct_def_init.borrow_mut();
-                    *struct_def_ref = Some(struct_def);
+                    let struct_def_ref = struct_def_init.set(struct_def);
 
                     let mut reg = self.variant_registry.borrow_mut();
                     let aref = reg.get_mut(&v.def_id).unwrap();

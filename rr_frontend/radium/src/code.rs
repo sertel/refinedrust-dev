@@ -85,56 +85,64 @@ impl RustType {
                 let ty = env.get(*var).unwrap().as_ref().unwrap();
                 Self::TyVar(ty.rust_name.clone())
             },
+
             Type::Int(it) => Self::Int(*it),
             Type::Bool => Self::Bool,
             Type::Char => Self::Char,
+
             Type::MutRef(ty, lft) => {
                 let ty = Self::of_type(ty, env);
                 Self::MutRef(Box::new(ty), lft.clone())
             },
+
             Type::ShrRef(ty, lft) => {
                 let ty = Self::of_type(ty, env);
                 Self::ShrRef(Box::new(ty), lft.clone())
             },
+
             Type::BoxType(ty) => {
                 let ty = Self::of_type(ty, env);
                 Self::PrimBox(Box::new(ty))
             },
+
             Type::Struct(as_use) => {
                 let is_raw = as_use.is_raw();
-                if let Some(def) = as_use.def {
-                    // translate type parameter instantiations
-                    let typarams: Vec<_> = as_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
-                    let def = def.borrow();
-                    let def = def.as_ref().unwrap();
-                    let ty_name = if is_raw {
-                        def.plain_ty_name().to_string()
-                    } else {
-                        def.public_type_name().to_string()
-                    };
-                    Self::Lit(vec![ty_name], typarams)
-                } else {
-                    Self::Unit
-                }
+
+                let Some(def) = as_use.def else {
+                    return Self::Unit;
+                };
+
+                // translate type parameter instantiations
+                let typarams: Vec<_> = as_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
+                let ty_name = if is_raw { def.plain_ty_name() } else { def.public_type_name() };
+
+                Self::Lit(vec![ty_name.to_string()], typarams)
             },
+
             Type::Enum(ae_use) => {
                 let typarams: Vec<_> = ae_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
                 let def = ae_use.def.borrow();
                 let def = def.as_ref().unwrap();
                 Self::Lit(vec![def.public_type_name().to_string()], typarams)
             },
+
             Type::LiteralParam(lit) => Self::TyVar(lit.rust_name.clone()),
+
             Type::Literal(lit) => {
                 let typarams: Vec<_> = lit.params.iter().map(|ty| Self::of_type(ty, env)).collect();
                 Self::Lit(vec![lit.def.type_term.clone()], typarams)
             },
+
             Type::Uninit(_) => {
                 panic!("RustType::of_type: uninit is not a Rust type");
             },
+
             Type::Unit => Self::Unit,
+
             Type::Never => {
                 panic!("RustType::of_type: cannot translate Never type");
             },
+
             Type::RawPtr => Self::Lit(vec!["alias_ptr_t".to_string()], vec![]),
         }
     }
@@ -526,7 +534,7 @@ pub enum Binop {
 impl Binop {
     fn caesium_fmt(&self, ot1: &OpType, ot2: &OpType) -> String {
         let format_prim = |st: &str| format!("{} {} , {} }}", st, ot1, ot2);
-        let format_bool = |st: &str| format!("{} {} , {} , {} }}", st, ot1, ot2, BOOL_REPR);
+        let format_bool = |st: &str| format!("{} {} , {} , {} }}", st, ot1, ot2, crate::BOOL_REPR);
 
         match self {
             Self::AddOp => format_prim("+{"),
