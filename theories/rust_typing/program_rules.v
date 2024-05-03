@@ -2240,15 +2240,13 @@ Section typing.
 
   (** [type_read_end] instance that does a copy *)
   Lemma type_read_ofty_copy E L {rt} π (T : typed_read_end_cont_t rt) b2 bmin br l (ty : type rt) r ot `{!Copyable ty}:
-    find_in_context FindNaOwn (λ '(π', mask),
-      ⌜π' = π⌝ ∗ ⌜shrE ⊆ mask⌝ ∗
-      (** We have to show that the type allows reads *)
-      (⌜ty_has_op_type ty ot MCCopy⌝ ∗ ⌜lctx_bor_kind_alive E L b2⌝ ∗
-        (** The place is left as-is *)
-        ∀ v, na_own π mask -∗ T L v rt ty r rt (◁ ty) (#r) (ResultWeak eq_refl)))
+    (** We have to show that the type allows reads *)
+    (⌜ty_has_op_type ty ot MCCopy⌝ ∗ ⌜lctx_bor_kind_alive E L b2⌝ ∗
+      (** The place is left as-is *)
+      ∀ v, T L v rt ty r rt (◁ ty) (#r) (ResultWeak eq_refl))
     ⊢ typed_read_end π E L l (◁ ty) (#r) b2 bmin br ot T.
   Proof.
-    iDestruct 1 as ([π' mask]) "(Hna & -> & %Heq & (%Hot & %Hal & Hs))".
+    iIntros "(%Hot & %Hal & Hs)".
     iIntros (F ???) "#CTX #HE HL".
 
     destruct b2 as [ wl | | ]; simpl.
@@ -2269,22 +2267,23 @@ Section typing.
       iR. iSplitR. { iApply typed_place_cond_refl. done. }
       by iApply "Hs".
 
-    - iIntros "Hincl0 #Hl".
+    - iIntros "_ #Hl".
       simpl in Hal.
+
       iPoseProof (ofty_ltype_acc_shared with "Hl") as "(%ly & %Halg & %Hly & Hlb & >Hl')"; first done.
-      iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
-      iMod (lctx_lft_alive_tok_noend κ with "HE HL") as (q') "(Htok & HL & Hclose)"; [solve_ndisj | done | ].
-      iMod (copy_shr_acc _ _ _ mask with "CTX Hl' [Hna] Htok") as "(>%Hly' & (%q'' & %v & Hna & (>Hll & #Hv) & Hclose_l))";
-        [solve_ndisj | solve_ndisj | | | ].
-      { etrans; last done. eapply shr_locsE_incl. }
-      { done. }
-      iDestruct (ty_own_val_has_layout with "Hv") as "#>%Hlyv"; first done.
-      iModIntro. iExists _, _, rt, _, _. iFrame "Hll Hv".
       assert (ly = ot_layout ot) as ->.
       { specialize (ty_op_type_stable Hot) as ?. eapply syn_type_has_layout_inj; done. }
+
+      iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
+      iMod (lctx_lft_alive_tok_noend κ with "HE HL") as (q') "(Htok & HL & Hclose)"; [solve_ndisj | done | ].
+      iMod (copy_shr_acc with "CTX Hl' Htok") as "(>%Hly' & (%q'' & %v & (>Hll & #Hv) & Hclose_l))";
+        [solve_ndisj.. | done | ].
+
+      iDestruct (ty_own_val_has_layout with "Hv") as "#>%Hlyv"; first done.
+      iModIntro. iExists _, _, rt, _, _. iFrame "Hll Hv".
       iSplitR; first done. iSplitR; first done.
       iApply logical_step_intro. iIntros (st) "Hll Hv'".
-      iMod ("Hclose_l" with "Hna [Hv Hll]") as "[Hna Htok]".
+      iMod ("Hclose_l" with "[Hv Hll]") as "Htok".
       { eauto with iFrame. }
       iMod ("Hclose" with "Htok HL") as "HL".
       iPoseProof ("HL_cl" with "HL") as "HL".
@@ -2294,14 +2293,13 @@ Section typing.
       iExists _, _, _, (ResultWeak eq_refl).
       iFrame "Hl". iR.
 
-      iSplitL "".
-      2: { iSpecialize ("Hs" with "[Hna]"); done. }
+      iSplitR "Hs"; last done.
 
       iSplit.
       { iApply typed_place_cond_ty_refl_ofty. }
       { iApply typed_place_cond_rfn_refl. }
 
-    - iIntros "Hincl0 Hl".
+    - iIntros "_ Hl".
       simpl in Hal.
       iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
       iMod (fupd_mask_subseteq lftE) as "HF_cl"; first done.
@@ -2324,8 +2322,7 @@ Section typing.
       iExists _, _, _, (ResultWeak eq_refl).
       iFrame; iR.
 
-      iSplitL "".
-      2: { by iSpecialize ("Hs" with "Hna"). }
+      iSplitR "Hs"; last done.
 
       iSplit.
       { iApply typed_place_cond_ty_refl_ofty. }

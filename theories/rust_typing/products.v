@@ -780,7 +780,6 @@ Section copy.
     length qs1 = length qs1' →
     length vs1 = length fields1 →
     rrust_ctx -∗
-    na_own π (F ∖ shr_locsE l (fields_size fields1)) -∗
     ([∗ list] i↦ty;q ∈ pad_struct fields2 tys2 struct_make_uninit_type; qs2,
       struct_own_el_shr π κ (length fields1 + i) all_fields l (projT2 ty).2 (projT2 ty).1 ∗ q.[κ]) -∗
 
@@ -789,10 +788,7 @@ Section copy.
     ) -∗
 
     ([∗ list] i ↦ v; '(q, q') ∈ vs1; (zip qs1 qs1'),
-    na_own π (F ∖ shr_locsE l (fields_size (take (S i) all_fields))) -∗
-      (▷ (l +ₗ offset_of_idx all_fields i) ↦{q'} v) ={E}=∗
-      na_own π (F ∖ shr_locsE l (fields_size (take i all_fields) )) ∗ q.[κ]
-    ) -∗
+      ▷ (l +ₗ offset_of_idx all_fields i) ↦{q'} v ={E}=∗ q.[κ]) -∗
 
     |={E}=> ∃ qs2' vs2,
     ⌜length qs2' = length qs2⌝ ∗ ⌜length vs2 = length qs2⌝ ∗
@@ -801,17 +797,13 @@ Section copy.
         struct_own_el_loc π q' v' i all_fields l (projT2 ty).2 (projT2 ty).1) ∗
     (* if we give back the components, we get back the na token and lifetime tokens *)
     ([∗ list] i ↦ v; '(q, q') ∈ vs1 ++ vs2; (zip (qs1 ++ qs2) (qs1' ++ qs2')),
-      na_own π (F ∖ shr_locsE l (fields_size (take (S i) all_fields))) -∗
-      (▷ (l +ₗ offset_of_idx all_fields i) ↦{q'} v) ={E}=∗
-      na_own π (F ∖ shr_locsE l (fields_size (take i all_fields))) ∗ q.[κ]
-    ) ∗
+      ▷ (l +ₗ offset_of_idx all_fields i) ↦{q'} v ={E}=∗ q.[κ]
+    ).
     (*(([∗ list] i ↦ ty; q ∈ pad_struct all_fields (tys1 ++ tys2) (λ ly : layout, existT (unit : Type) (uninit (UntypedSynType ly), # ())); qs1' ++ qs2',*)
       (*▷ (l +ₗ offset_of_idx all_fields i) ↦{q}: ty_own_val (projT2 ty).1 π (projT2 ty).2) -∗*)
-      (*na_own π (F ∖ shr_locsE l (fields_size all_fields)) ={E}=∗ na_own π F)*)
     (*∗*)
-    na_own π (F ∖ shr_locsE l (fields_size all_fields)).
   Proof.
-    iIntros (Hcopy ? Hf Hshr Hlen1 Hlen2 Hlen3 Hlen4 Hlen5) "#CTX Hna Hshr Hloc Hcl". subst all_fields.
+    iIntros (Hcopy ? Hf Hshr Hlen1 Hlen2 Hlen3 Hlen4 Hlen5) "#CTX Hshr Hloc Hcl". subst all_fields.
     iInduction fields2 as [ | field2 fields2] "IH" forall (tys2 fields1 tys1 vs1 qs1 qs1' qs2 Hshr Hlen1 Hlen2 Hlen3 Hlen4 Hlen5 Hcopy); simpl.
     { destruct qs2; last done. iModIntro.
       iExists [], []. simpl. destruct tys2; last done.
@@ -830,19 +822,10 @@ Section copy.
       { move: Hly1'. rewrite !lookup_app_r; [ | lia..].
         rewrite !right_id !Nat.sub_diag. simpl. intros [= ->]; done. }
 
-      iMod (copy_shr_acc with "CTX Hshr1 Hna Htok1") as "Ha".
+      iMod (copy_shr_acc with "CTX Hshr1 Htok1") as "Ha".
       { done. }
       { done. }
-      { simpl. rewrite right_id.
-        rewrite /offset_of_idx /fields_size.
-        rewrite -!fmap_take.
-        rewrite take_app.
-        eapply shr_locsE_offset; last done.
-        - lia.
-        - rewrite /fields_size !fmap_app !sum_list_with_app. simpl. lia.
-      }
-      iDestruct "Ha" as "(>%Hlyl & %q2' & %v1 & Hna & (Hl & Hv) & Hlcl)".
-      rewrite difference_difference_l_L.
+      iDestruct "Ha" as "(>%Hlyl & %q2' & %v1 & (Hl & Hv) & Hlcl)".
       set (fields1' := fields1 ++ [(Some n, ly)]).
       set (tys1' := tys1 ++ [ty2]).
       set (vs1' := vs1 ++ [v1]).
@@ -850,7 +833,7 @@ Section copy.
       set (qs1a' := qs1' ++ [q2']).
       iPoseProof (ty_own_val_has_layout with "Hv") as "#Ha"; first done.
       iDestruct "Ha" as ">%Hlyv".
-      iSpecialize ("IH" $! tys2 fields1' tys1' vs1' qs1a qs1a' qs2 with "[] [] [] [] [] [] [] [Hna] [Hshr] [Hloc Hl Hv Hrfn Hsc] [Hcl Hlcl]").
+      iSpecialize ("IH" $! tys2 fields1' tys1' vs1' qs1a qs1a' qs2 with "[] [] [] [] [] [] [] [Hshr] [Hloc Hl Hv Hrfn Hsc] [Hcl Hlcl]").
       { subst fields1'. rewrite -app_assoc. done. }
       { iPureIntro. simpl in *. lia. }
       { iPureIntro. simpl in *.  subst fields1' tys1'.
@@ -860,10 +843,6 @@ Section copy.
       { iPureIntro. subst qs1a qs1a'. rewrite !app_length/=. lia. }
       { iPureIntro. subst vs1' fields1'. rewrite !app_length/=. lia. }
       { done. }
-      { rewrite /fields1'.
-        iEval (rewrite /fields_size !fmap_app sum_list_with_app /= !Nat.add_0_r).
-        iEval (rewrite /offset_of_idx -!fmap_take Nat.add_0_r take_app) in "Hna".
-        rewrite shr_locsE_add. done. }
       { (* need to shift the indices etc *)
         iPoseProof (big_sepL2_length with "Hshr") as "%Hlen7".
         iApply (big_sepL2_wand with "Hshr"). iApply big_sepL2_intro; first done.
@@ -893,18 +872,11 @@ Section copy.
         subst fields1'. rewrite -!app_assoc.
         iApply (big_sepL2_app with "Hcl").
         simpl. iSplitL; last done.
-        iIntros "Hna Hl".
+        iIntros "Hl".
         rewrite Hlen5.
-        iMod ("Hlcl" with "[Hna] Hl") as "(Hna & $)".
-        - iEval (rewrite /fields_size (app_assoc _ [_]) Nat.add_0_r) in "Hna".
-          rewrite take_app'; first last. { rewrite app_length/=. lia. }
-          rewrite !fmap_app sum_list_with_app /= Nat.add_0_r.
-          rewrite shr_locsE_add.
-          iEval (rewrite /offset_of_idx Nat.add_0_r -!fmap_take take_app).
-          done.
-        - iModIntro. iEval (rewrite /fields_size Nat.add_0_r take_app). done.
+        by iMod ("Hlcl" with "Hl") as "$".
       }
-      { iMod "IH" as "(%qs2' & %vs2 & % & % & Hl & Hcl & Hna)".
+      { iMod "IH" as "(%qs2' & %vs2 & % & % & Hl & Hcl)".
         iModIntro. iExists (q2' :: qs2'), (v1 :: vs2).
         rewrite /vs1'/qs1a'/= -!app_assoc /=. iFrame.
         iPureIntro. split; lia.
@@ -919,19 +891,10 @@ Section copy.
       { move: Hly1'. rewrite !lookup_app_r; [ | lia..].
         rewrite !right_id !Nat.sub_diag. simpl. intros [= ->]; done. }
 
-      iMod (copy_shr_acc with "CTX Hshr1 Hna Htok1") as "Ha".
+      iMod (copy_shr_acc with "CTX Hshr1 Htok1") as "Ha".
       { done. }
       { done. }
-      { simpl. rewrite right_id.
-        rewrite /offset_of_idx /fields_size.
-        rewrite -!fmap_take.
-        rewrite take_app.
-        eapply shr_locsE_offset; last done.
-        - lia.
-        - rewrite /fields_size !fmap_app !sum_list_with_app. simpl. lia.
-      }
-      iDestruct "Ha" as "(>%Hlyl & %q2' & %v1 & Hna & (Hl & Hv) & Hlcl)".
-      rewrite difference_difference_l_L.
+      iDestruct "Ha" as "(>%Hlyl & %q2' & %v1 & (Hl & Hv) & Hlcl)".
       set (fields1' := fields1 ++ [(None, ly)]).
       (*set (tys1' := tys1 ++ [ty2]).*)
       set (vs1' := vs1 ++ [v1]).
@@ -939,7 +902,7 @@ Section copy.
       set (qs1a' := qs1' ++ [q2']).
       iPoseProof (ty_own_val_has_layout with "Hv") as "#Ha"; first done.
       iDestruct "Ha" as ">%Hlyv".
-      iSpecialize ("IH" $! tys2 fields1' tys1 vs1' qs1a qs1a' qs2 with "[] [] [] [] [] [] [] [Hna] [Hshr] [Hloc Hl Hv Hrfn Hsc] [Hcl Hlcl]").
+      iSpecialize ("IH" $! tys2 fields1' tys1 vs1' qs1a qs1a' qs2 with "[] [] [] [] [] [] [] [Hshr] [Hloc Hl Hv Hrfn Hsc] [Hcl Hlcl]").
       { subst fields1'. rewrite -app_assoc. done. }
       { iPureIntro. simpl in *. lia. }
       { iPureIntro. simpl in *.  subst fields1'.
@@ -949,10 +912,6 @@ Section copy.
       { iPureIntro. subst qs1a qs1a'. rewrite !app_length/=. lia. }
       { iPureIntro. subst vs1' fields1'. rewrite !app_length/=. lia. }
       { iPureIntro. done. }
-      { rewrite /fields1'.
-        iEval (rewrite /fields_size !fmap_app sum_list_with_app /= !Nat.add_0_r).
-        iEval (rewrite /offset_of_idx -!fmap_take Nat.add_0_r take_app) in "Hna".
-        rewrite shr_locsE_add. done. }
       { (* need to shift the indices etc *)
         iPoseProof (big_sepL2_length with "Hshr") as "%Hlen7".
         iApply (big_sepL2_wand with "Hshr"). iApply big_sepL2_intro; first done.
@@ -981,18 +940,11 @@ Section copy.
         subst fields1'. rewrite -!app_assoc.
         iApply (big_sepL2_app with "Hcl").
         simpl. iSplitL; last done.
-        iIntros "Hna Hl".
+        iIntros "Hl".
         rewrite Hlen5.
-        iMod ("Hlcl" with "[Hna] Hl") as "(Hna & $)".
-        - iEval (rewrite /fields_size (app_assoc _ [_]) Nat.add_0_r) in "Hna".
-          rewrite take_app'; first last. { rewrite app_length/=. lia. }
-          rewrite !fmap_app sum_list_with_app /= Nat.add_0_r.
-          rewrite shr_locsE_add.
-          iEval (rewrite /offset_of_idx Nat.add_0_r -!fmap_take take_app).
-          done.
-        - iModIntro. iEval (rewrite /fields_size Nat.add_0_r take_app). done.
+        by iMod ("Hlcl" with "Hl") as "$".
       }
-      { iMod "IH" as "(%qs2' & %vs2 & % & % & Hl & Hcl & Hna)".
+      { iMod "IH" as "(%qs2' & %vs2 & % & % & Hl & Hcl)".
         iModIntro. iExists (q2' :: qs2'), (v1 :: vs2).
         rewrite /vs1'/qs1a'/= -!app_assoc /=. iFrame.
         iPureIntro. split; lia.
@@ -1005,7 +957,6 @@ Section copy.
     shr_locsE l (fields_size fields + 1) ⊆ F →
     length (named_fields fields) = length tys →
     rrust_ctx -∗
-    na_own π F -∗
     ([∗ list] i↦ty;q ∈ pad_struct fields tys struct_make_uninit_type; qs,
       struct_own_el_shr π κ i fields l (projT2 ty).2 (projT2 ty).1 ∗ q.[κ]) -∗
     |={E}=> ∃ qs' vs,
@@ -1015,37 +966,18 @@ Section copy.
         struct_own_el_loc π q' v' i fields l (projT2 ty).2 (projT2 ty).1) ∗
     (* if we give back the components, we get back the na token and lifetime tokens *)
     ([∗ list] i ↦ v; '(q, q') ∈ vs; zip qs qs',
-      na_own π (F ∖ shr_locsE l (fields_size (take (S i) fields))) -∗
-      (▷ (l +ₗ offset_of_idx fields i) ↦{q'} v) ={E}=∗
-      na_own π (F ∖ shr_locsE l (fields_size (take i fields))) ∗ q.[κ]
-    ) ∗
-    na_own π (F ∖ shr_locsE l (fields_size fields)).
+      (▷ (l +ₗ offset_of_idx fields i) ↦{q'} v) ={E}=∗ q.[κ]).
   Proof.
-    iIntros (????) "CTX Hna Hloc".
-    iMod (struct_t_copy_ind _ [] qs [] [] [] tys [] fields fields  with "CTX [Hna] Hloc [] []") as "Ha".
-    { done. }
-    { done. }
-    { done. }
-    { done. }
-    { done. }
-    { done. }
-    { done. }
-    { done. }
-    { done. }
-    { simpl. rewrite difference_empty_L. done. }
-    { iNext. done. }
-    { done. }
-    simpl. done.
+    iIntros (????) "CTX Hloc".
+    iMod (struct_t_copy_ind _ [] qs [] [] [] tys [] fields fields  with "CTX Hloc [] []") as "Ha"; try done.
+    by iNext.
   Qed.
 
-
-  Lemma struct_t_copy_acc π (tys : list (sigT (λ rt, type rt * place_rfn rt)%type)) fields q κ l E F  :
+  Lemma struct_t_copy_acc π (tys : list (sigT (λ rt, type rt * place_rfn rt)%type)) fields q κ l E :
     Forall (λ ty, Copyable (projT2 ty).1) tys →
     lftE ∪ ↑shrN ⊆ E →
-    shr_locsE l (fields_size fields + 1) ⊆ F →
     length (named_fields fields) = length tys →
     rrust_ctx -∗
-    na_own π F -∗
     q.[κ] -∗
     ([∗ list] i↦ty ∈ pad_struct fields tys struct_make_uninit_type, struct_own_el_shr π κ i fields l (projT2 ty).2 (projT2 ty).1) -∗
     |={E}=> ∃ q' vs,
@@ -1054,14 +986,11 @@ Section copy.
     (▷ [∗ list] i ↦ ty; v' ∈ pad_struct fields tys struct_make_uninit_type; vs,
         struct_own_el_loc π q' v' i fields l (projT2 ty).2 (projT2 ty).1) ∗
     (* if we give back the components, we get back the na token and lifetime tokens *)
-    (([∗ list] i ↦ v ∈ vs, (▷ (l +ₗ offset_of_idx fields i) ↦{q'} v)) -∗
-     na_own π (F ∖ shr_locsE l (fields_size fields)) ={E}=∗
-     na_own π F ∗ q.[κ]) ∗
-    na_own π (F ∖ shr_locsE l (fields_size fields)).
+    (([∗ list] i ↦ v ∈ vs, (▷ (l +ₗ offset_of_idx fields i) ↦{q'} v)) ={E}=∗ q.[κ]).
   Proof.
-    iIntros (????) "#CTX Hna Htok Hloc".
+    iIntros (???) "#CTX Htok Hloc".
     iPoseProof (Fractional_split_big_sepL (λ q, q.[κ])%I (length fields) with "Htok") as "(%qs & %Hlen_eq & Htoks & Htoks_cl)".
-    iMod (struct_t_copy_ind' with "CTX Hna [Hloc Htoks]") as "(%qs' & %vs & %Hlen1 & %Hlen2 & Hloc & Hcl & Hna)"; [ done.. | | ].
+    iMod (struct_t_copy_ind' with "CTX [Hloc Htoks]") as "(%qs' & %vs & %Hlen1 & %Hlen2 & Hloc & Hcl)"; [ done.. | | ].
     { iApply big_sepL2_sep. iSplitL "Hloc".
       1: iApply big_sepL_extend_r; last done.
       2: iApply big_sepL_extend_l; last iApply "Htoks".
@@ -1097,8 +1026,7 @@ Section copy.
     iModIntro. iExists q', vs. iFrame.
     iSplitR. { iPureIntro. lia. }
 
-
-    iIntros "Hloc Hna".
+    iIntros "Hloc".
     iPoseProof (big_sepL2_length with "Hcl") as "%Hlen".
     rewrite zip_with_length in Hlen.
     iPoseProof (big_sepL2_to_zip with "Hcl") as "Hcl".
@@ -1117,30 +1045,28 @@ Section copy.
     iPoseProof (big_sepL2_to_zip with "Hloc") as "Hloc".
     iPoseProof (big_sepL_sep_2 with "Hcl Hloc") as "Hcl".
     rewrite zip_assoc_l big_sepL_fmap.
-    iAssert ([∗ list] i ↦ y ∈ qs, na_own π (F ∖ shr_locsE l (fields_size (take (S i) fields))) ={E}=∗ na_own π (F ∖ shr_locsE l (fields_size (take i fields))) ∗ (y).[κ])%I with "[Hcl]" as "Hcl".
+
+    iAssert ([∗ list] i ↦ y ∈ qs, True ={E}=∗ (y).[κ])%I with "[Hcl]" as "Hcl".
     { iApply big_sepL2_elim_l. iApply big_sepL2_from_zip; first last.
       { iApply (big_sepL2_elim_l). iApply big_sepL2_from_zip; first last.
         { iApply (big_sepL_wand with "Hcl").
           iApply big_sepL_intro. iModIntro. iIntros (k [v [q1' q1]] Hlook) "Ha Hna"; simpl.
           iDestruct "Ha" as "((Ha & Hcl) & Hl)".
           iPoseProof ("Hcl" with "Hl") as "Hl".
-          iApply ("Ha" with "Hna Hl"). }
+          iApply ("Ha" with "Hl"). }
         rewrite zip_with_length. lia. }
       lia. }
 
     (* now collapse the whole sequence *)
-    set (P i := (|={E}=> (na_own π (F ∖ shr_locsE l (fields_size (take i fields))) ∗ [∗ list] q ∈ (drop i qs), q.[κ]))%I).
-    iPoseProof (big_sepL_eliminate_sequence_rev P  with "Hcl [Hna] []") as "Ha".
-    { iModIntro. rewrite drop_all. iSplitL; last done.
-      assert (length qs = length fields) as -> by lia. rewrite firstn_all. iFrame.
+    set (P i := (|={E}=> ([∗ list] q ∈ (drop i qs), q.[κ]))%I).
+    iPoseProof (big_sepL_eliminate_sequence_rev P with "Hcl [] []") as "Ha".
+    { iModIntro. rewrite drop_all. done. }
+    { rewrite /P. iModIntro. iIntros (i q1 Hlook) ">Htoks Hvs".
+      erewrite (drop_S _ _ i); last done; simpl. iFrame.
+      by iApply "Hvs".
     }
-    { rewrite /P. iModIntro. iIntros (i q1 Hlook) ">(Hna & Htoks) Hvs".
-      iMod ("Hvs" with "Hna") as "(Hna & Htok)".
-      iFrame. erewrite (drop_S _ _ i); last done; simpl. by iFrame.
-    }
-    iMod "Ha" as "(Hna & Htoks)".
-    iPoseProof ("Htoks_cl" with "Htoks") as "$".
-    simpl. rewrite difference_empty_L. done.
+    iMod "Ha" as "Htoks".
+    by iPoseProof ("Htoks_cl" with "Htoks") as "$".
   Qed.
 
   Global Instance struct_t_copy {rts} (tys : hlist type rts) sls :
@@ -1148,21 +1074,20 @@ Section copy.
     Copyable (struct_t sls tys).
   Proof.
     iIntros (Hcopy). split; first apply _.
-    iIntros (κ π E F l ly r q ? Halg ?) "#CTX Hshr Hna Htok".
+    iIntros (κ π E l ly r q Halg ?) "#CTX Hshr Htok".
     rewrite /ty_shr /=.
     iDestruct "Hshr" as (sl) "(%Halg' & %Hlen & %Hly & #Hlb & #Hb)".
     simpl in Halg.
     specialize (use_struct_layout_alg_Some_inv _ _ Halg') as Halg2.
     assert (ly = sl) as -> by by eapply syn_type_has_layout_inj.
     iR.
-    iMod (struct_t_copy_acc _ (hpzipl rts tys r) (sl_members sl) with "CTX Hna Htok Hb") as "(%q' & %vs & % & Hs & Hcl & Hna)".
+    iMod (struct_t_copy_acc _ (hpzipl rts tys r) (sl_members sl) with "CTX Htok Hb") as "(%q' & %vs & % & Hs & Hcl)".
     { clear -Hcopy. induction rts as [ | rt rts IH] in tys, r, Hcopy |-*; simpl.
       - inv_hlist tys. destruct r. constructor.
       - inv_hlist tys => ty tys. destruct r as [r1 r].
         inversion 1. subst. repeat match goal with | H : existT _ _ = existT _ _ |- _ => apply existT_inj in H end. subst.
         econstructor; first done. by apply IH.
     }
-    { done. }
     { done. }
     { rewrite hpzipl_length. rewrite named_fields_field_names_length. erewrite struct_layout_spec_has_layout_fields_length; done. }
 
@@ -1186,8 +1111,8 @@ Section copy.
     { iModIntro. iNext. rewrite fst_zip; last lia. iFrame. iExists _. iR. iR.
       iSplitR. { iPureIntro. by apply mjoin_has_struct_layout. }
       done. }
-    iModIntro. iIntros "Hna Hpts".
-    iApply ("Hcl" with "[Hpts]"); last done.
+    iModIntro. iIntros "Hpts".
+    iApply ("Hcl" with "[Hpts]").
     iApply big_sepL_later. iNext. rewrite heap_mapsto_reshape_sl; last by apply mjoin_has_struct_layout.
     iDestruct "Hpts" as "(_ & Hpts)". rewrite reshape_join; first done.
     rewrite Forall2_fmap_r. eapply Forall2_impl; first done.
@@ -3854,4 +3779,3 @@ Section test.
 
    *)
 End test.
-

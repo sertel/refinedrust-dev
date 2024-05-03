@@ -433,32 +433,28 @@ Qed.
 Class Copyable `{!typeGS Σ} {rt} (ty : type rt) := {
   copy_own_persistent π r v : Persistent (ty.(ty_own_val) π r v);
   (* sharing predicates of copyable types should actually allow us to get a Copy out from below the reference *)
-  copy_shr_acc κ π E F l ly r q :
+  copy_shr_acc κ π E l ly r q :
     lftE ∪ ↑shrN ⊆ E →
     syn_type_has_layout ty.(ty_syn_type) ly →
-    shr_locsE l (ly.(ly_size) + 1) ⊆ F →
     rrust_ctx -∗
     ty.(ty_shr) κ π r l -∗
-    na_own π F -∗ q.[κ] ={E}=∗
+    q.[κ] ={E}=∗
     ▷ ⌜l `has_layout_loc` ly⌝ ∗
-    ∃ q' v, na_own π (F ∖ shr_locsE l ly.(ly_size)) ∗
-     ▷ (l ↦{q'} v ∗ ty.(ty_own_val) π r v) ∗
-     (na_own π (F ∖ shr_locsE l ly.(ly_size)) -∗ ▷l ↦{q'} v ={E}=∗ na_own π F ∗ q.[κ])
+    ∃ q' v, ▷ (l ↦{q'} v ∗ ty.(ty_own_val) π r v) ∗
+     (▷l ↦{q'} v ={E}=∗ q.[κ])
 }.
 #[export] Hint Mode Copyable - - + + : typeclass_instances.
 #[export] Existing Instance copy_own_persistent.
 
 #[export] Program Instance simple_type_copyable `{typeGS Σ} {rt} (st : simple_type rt) : Copyable st.
 Next Obligation.
-  iIntros (??? st κ π E F l ly r ? Hst ?). iIntros (?) "#(LFT & TIME & LLCTX) (%v & %ly' & Hf & #Hown & %Hst' & Hly) Htok Hlft".
+  iIntros (??? st κ π E l ly r ? Hst ?) "#(LFT & TIME & LLCTX) (%v & %ly' & Hf & #Hown & %Hst' & Hly) Hlft".
   have: (ly' = ly); first by eapply syn_type_has_layout_inj. move => ?; subst ly'.
-  iDestruct (na_own_acc with "Htok") as "[$ Htok]"; first solve_ndisj.
   iMod (frac_bor_acc with "LFT Hf Hlft") as (q') "[Hmt Hclose]"; first solve_ndisj.
   iModIntro. iFrame "Hly". iExists _. iDestruct "Hmt" as "[Hmt1 Hmt2]".
   iExists v.
   iSplitL "Hmt1"; first by auto with iFrame.
-  iIntros "Htok2 Hmt1".
-  iDestruct ("Htok" with "Htok2") as "$".
+  iIntros "Hmt1".
   iApply "Hclose". iModIntro. rewrite -{3}(Qp.div_2 q').
   iPoseProof (heap_mapsto_agree with "Hmt1 Hmt2") as "%Heq"; first done.
   rewrite heap_mapsto_fractional. iFrame.
@@ -970,6 +966,5 @@ Section subtyping.
     iPoseProof (Hsub1 with "HL HE") as "#$".
     iPoseProof (Hsub2 with "HL HE") as "#$".
   Qed.
-
 
 End subtyping.

@@ -1769,16 +1769,14 @@ Section shr_ref.
   Global Instance shr_ref_copyable κ : Copyable (shr_ref κ).
   Proof.
     constructor; first apply _.
-    iIntros (κ' π E  F l ly r ? ? Ha ?) "[LFT TIME] (%li & %ly' & %r' & %Hly' & % & % & #Hlb & #Hsc & #Hr & Hf & #Hown) Htok Hlft".
-    iDestruct (na_own_acc with "Htok") as "[$ Htok]"; first solve_ndisj.
+    iIntros (κ' π E l ly r ? ? Ha) "[LFT TIME] (%li & %ly' & %r' & %Hly' & % & % & #Hlb & #Hsc & #Hr & Hf & #Hown) Hlft".
     iMod (frac_bor_acc with "LFT Hf Hlft") as (q') "[Hmt Hclose]"; first solve_ndisj.
     iModIntro.
     assert (ly = void*) as ->. { injection Ha. done. }
     iSplitR; first done.
     iExists _, li. iDestruct "Hmt" as "[Hmt1 Hmt2]".
     iSplitL "Hmt1". { iNext. iFrame "Hmt1". iExists li, ly', r'. iFrame "#". eauto. }
-    iIntros "Htok2 Hmt1".
-    iDestruct ("Htok" with "Htok2") as "$".
+    iIntros "Hmt1".
     iApply "Hclose". iModIntro. rewrite -{3}(Qp.div_2 q').
     iPoseProof (heap_mapsto_agree with "Hmt1 Hmt2") as "%Heq"; first done.
     rewrite heap_mapsto_fractional. iFrame.
