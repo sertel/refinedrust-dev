@@ -317,7 +317,7 @@ where
                 }
                 for (arg, ty) in args.args.into_iter().zip(self.arg_types) {
                     let (ty, hint) = self.make_type_with_ref(&arg, ty);
-                    builder.spec.add_arg(ty)?;
+                    builder.spec.add_arg(ty);
                     if let Some(cty) = hint {
                         // potentially add a typing hint to the refinement
                         if let IdentOrTerm::Ident(ref i) = arg.rfn {
@@ -329,11 +329,11 @@ where
             },
             "requires" => {
                 let iprop = MetaIProp::parse(buffer, &meta).map_err(str_err)?;
-                builder.spec.add_precondition(iprop.into())?;
+                builder.spec.add_precondition(iprop.into());
             },
             "ensures" => {
                 let iprop = MetaIProp::parse(buffer, &meta).map_err(str_err)?;
-                builder.spec.add_postcondition(iprop.into())?;
+                builder.spec.add_postcondition(iprop.into());
             },
             "observe" => {
                 let m = || {
@@ -345,7 +345,7 @@ where
                     Ok(MetaIProp::Observe(gname.value(), term))
                 };
                 let m = m().map_err(str_err)?;
-                builder.spec.add_postcondition(m.into())?;
+                builder.spec.add_postcondition(m.into());
             },
             "returns" => {
                 let tr = LiteralTypeWithRef::parse(buffer, &meta).map_err(str_err)?;
@@ -512,7 +512,7 @@ where
 
         match meta.kind {
             ty::ClosureKind::FnOnce => {
-                builder.spec.add_arg(specs::TypeWithRef::new(tuple, pre_rfn))?;
+                builder.spec.add_arg(specs::TypeWithRef::new(tuple, pre_rfn));
 
                 // generate observations on all the mut-ref captures
                 for p in post_patterns {
@@ -522,7 +522,7 @@ where
                         },
                         CapturePostRfn::Mut(pat, gvar) => {
                             // add an observation on `gvar`
-                            builder.spec.add_postcondition(MetaIProp::Observe(gvar, pat).into())?;
+                            builder.spec.add_postcondition(MetaIProp::Observe(gvar, pat).into());
                         },
                     }
                 }
@@ -535,7 +535,7 @@ where
                 let ref_ty = specs::Type::ShrRef(Box::new(tuple), lft);
                 let ref_rfn = format!("#{}", pre_rfn);
 
-                builder.spec.add_arg(specs::TypeWithRef::new(ref_ty, ref_rfn))?;
+                builder.spec.add_arg(specs::TypeWithRef::new(ref_ty, ref_rfn));
             },
             ty::ClosureKind::FnMut => {
                 // wrap the argument in a mutable reference
@@ -549,7 +549,7 @@ where
                 let ref_ty = specs::Type::MutRef(Box::new(tuple), lft);
                 let ref_rfn = format!("(#({}), {})", pre_rfn, post_name);
 
-                builder.spec.add_arg(specs::TypeWithRef::new(ref_ty, ref_rfn))?;
+                builder.spec.add_arg(specs::TypeWithRef::new(ref_ty, ref_rfn));
 
                 // assemble a postcondition on the closure
                 // we observe on the outer mutable reference for the capture, not on the individual
@@ -565,7 +565,7 @@ where
 
                 builder
                     .spec
-                    .add_postcondition(MetaIProp::Observe(post_name.to_string(), post_term).into())?;
+                    .add_postcondition(MetaIProp::Observe(post_name.to_string(), post_term).into());
             },
         }
         Ok(())

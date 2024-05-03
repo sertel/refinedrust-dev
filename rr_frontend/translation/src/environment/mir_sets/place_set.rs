@@ -21,14 +21,17 @@ pub struct PlaceSet<'tcx> {
 }
 
 impl<'tcx> PlaceSet<'tcx> {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[must_use]
     pub fn contains(&self, place: mir::Place<'tcx>) -> bool {
         self.places.contains(&place)
     }
 
+    #[must_use]
     pub fn contains_prefix_of(&self, place: mir::Place<'tcx>) -> bool {
         self.places.iter().any(|potential_prefix| is_prefix(&place, potential_prefix))
     }
@@ -133,6 +136,7 @@ impl<'tcx> PlaceSet<'tcx> {
     }
 
     /// Compute the intersection of the two place sets.
+    #[must_use]
     pub fn merge(place_set1: &PlaceSet<'tcx>, place_set2: &PlaceSet<'tcx>) -> PlaceSet<'tcx> {
         place_set1.check_invariant();
         place_set2.check_invariant();
@@ -185,6 +189,7 @@ impl<'tcx> PlaceSet<'tcx> {
     ///
     /// Note that this function may break the invariant that we never
     /// have a place and its descendants in the set.
+    #[must_use]
     pub fn union(place_set1: &PlaceSet<'tcx>, place_set2: &PlaceSet<'tcx>) -> PlaceSet<'tcx> {
         let mut places = place_set1.places.clone();
         places.extend(place_set2.iter().copied());

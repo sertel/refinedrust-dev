@@ -25,6 +25,7 @@ impl<'env, 'tcx> CollectClosureDefsVisitor<'env, 'tcx> {
         self.result
     }
 
+    #[allow(clippy::unused_self)]
     pub fn run(&mut self) {}
 }
 
@@ -48,6 +49,6 @@ impl<'env, 'tcx> Visitor<'tcx> for CollectClosureDefsVisitor<'env, 'tcx> {
             self.result.push(*local_def_id);
         }
 
-        walk_expr(self, expr)
+        walk_expr(self, expr);
     }
 }

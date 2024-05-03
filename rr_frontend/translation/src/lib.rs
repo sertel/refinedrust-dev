@@ -68,11 +68,11 @@ use topological_sort::TopologicalSort;
 use type_translator::{normalize_in_function, TypeTranslator};
 
 /// Order ADT definitions topologically.
-fn order_adt_defs(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
+fn order_adt_defs(deps: &HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
     let mut topo = TopologicalSort::new();
     let mut defs = HashSet::new();
 
-    for (did, referenced_dids) in &deps {
+    for (did, referenced_dids) in deps {
         defs.insert(did);
         topo.insert(*did);
         for did2 in referenced_dids {
@@ -119,42 +119,35 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     }
 
     fn make_shim_function_entry(&self, did: DefId, spec_name: &str) -> Option<shim_registry::FunctionShim> {
-        let mut is_method = false;
-        if let Some(mode) = self.procedure_registry.lookup_function_mode(&did) {
-            if mode == ProcedureMode::Prove
-                || mode == ProcedureMode::OnlySpec
-                || mode == ProcedureMode::TrustMe
-            {
-                match self.env.tcx().visibility(did) {
-                    // only export public items
-                    ty::Visibility::Public => {
-                        if self.env.tcx().impl_of_method(did).is_some() {
-                            is_method = true;
-                        }
+        let Some(mode) = self.procedure_registry.lookup_function_mode(did) else {
+            return None;
+        };
 
-                        let interned_path = self.get_path_for_shim(did);
-
-                        let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
-                        info!(
-                            "Found function path {:?} for did {:?} with name {:?}",
-                            interned_path, did, name
-                        );
-
-                        let a = shim_registry::FunctionShim {
-                            path: interned_path,
-                            is_method,
-                            name,
-                            spec_name: spec_name.to_string(),
-                        };
-                        return Some(a);
-                    },
-                    ty::Visibility::Restricted(_) => {
-                        // don't  export
-                    },
-                }
-            }
+        if mode != ProcedureMode::Prove && mode != ProcedureMode::OnlySpec && mode != ProcedureMode::TrustMe {
+            return None;
         }
-        None
+
+        match self.env.tcx().visibility(did) {
+            // only export public items
+            ty::Visibility::Public => {
+                let is_method = self.env.tcx().impl_of_method(did).is_some();
+                let interned_path = self.get_path_for_shim(did);
+
+                let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
+                info!("Found function path {:?} for did {:?} with name {:?}", interned_path, did, name);
+
+                Some(shim_registry::FunctionShim {
+                    path: interned_path,
+                    is_method,
+                    name,
+                    spec_name: spec_name.to_string(),
+                })
+            },
+            ty::Visibility::Restricted(_) => {
+                // don't  export
+                None
+            },
+        }
     }
 
     fn make_shim_trait_method_entry(
@@ -164,7 +157,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     ) -> Option<shim_registry::TraitMethodImplShim> {
         trace!("enter make_shim_trait_method_entry; did={did:?}");
 
-        let Some(mode) = self.procedure_registry.lookup_function_mode(&did) else {
+        let Some(mode) = self.procedure_registry.lookup_function_mode(did) else {
             trace!("leave make_shim_trait_method_entry (failed)");
             return None;
         };
@@ -391,7 +384,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let enum_defs = self.type_translator.get_enum_defs();
         let adt_deps = self.type_translator.get_adt_deps();
 
-        let ordered = order_adt_defs(adt_deps);
+        let ordered = order_adt_defs(&adt_deps);
         info!("ordered ADT defns: {:?}", ordered);
 
         for did in &ordered {
@@ -512,7 +505,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             let path = file_path(fun.name());
             let mut template_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
 
-            let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
+            let mode = self.procedure_registry.lookup_function_mode(*did).unwrap();
 
             if fun.spec.has_spec() && mode.needs_proof() {
                 template_file
@@ -558,7 +551,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     }
 
     fn check_function_needs_proof(&self, did: DefId, fun: &radium::Function) -> bool {
-        let mode = self.procedure_registry.lookup_function_mode(&did).unwrap();
+        let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
         fun.spec.has_spec() && mode.needs_proof()
     }
 
@@ -830,7 +823,7 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
                     shim.name.to_string(),
                     function_body::ProcedureMode::Shim,
                 );
-                vcx.procedure_registry.register_function(&did, meta)?;
+                vcx.procedure_registry.register_function(did, meta)?;
             },
             _ => {
                 println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
@@ -839,66 +832,72 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
     }
 
     for shim in vcx.shim_registry.get_adt_shims() {
-        if let Some(did) = utils::try_resolve_did(vcx.env.tcx(), &shim.path) {
-            let lit = radium::LiteralType {
-                rust_name: None,
-                type_term: shim.sem_type.clone(),
-                syn_type: radium::SynType::Literal(shim.syn_type.clone()),
-                refinement_type: radium::CoqType::Literal(shim.refinement_type.clone()),
-            };
-            if let Err(e) = vcx.type_translator.register_adt_shim(did, lit) {
-                println!("Warning: {}", e);
-            }
-            info!("Resolved ADT shim {:?} as {:?} did", shim, did);
-        } else {
+        let Some(did) = utils::try_resolve_did(vcx.env.tcx(), &shim.path) else {
             println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
+            continue;
+        };
+
+        let lit = radium::LiteralType {
+            rust_name: None,
+            type_term: shim.sem_type.clone(),
+            syn_type: radium::SynType::Literal(shim.syn_type.clone()),
+            refinement_type: radium::CoqType::Literal(shim.refinement_type.clone()),
+        };
+
+        if let Err(e) = vcx.type_translator.register_adt_shim(did, &lit) {
+            println!("Warning: {}", e);
         }
+
+        info!("Resolved ADT shim {:?} as {:?} did", shim, did);
     }
 
     for shim in vcx.shim_registry.get_trait_method_shims() {
         // resolve the trait
-        if let Some((trait_did, args)) = shim.trait_path.to_item(vcx.env.tcx()) {
-            if !vcx.env.tcx().is_trait(trait_did) {
-                println!("Warning: This is not a trait: {:?}", shim.trait_path);
-                continue;
-            }
-            // resolve the type
-            if let Some(for_type) = shim.for_type.to_type(vcx.env.tcx()) {
-                let trait_method_did = utils::try_resolve_trait_method_did(
-                    vcx.env.tcx(),
-                    trait_did,
-                    &args,
-                    &shim.method_ident,
-                    for_type,
-                );
-
-                match trait_method_did {
-                    Some(did) => {
-                        // register as usual in the procedure registry
-                        info!(
-                            "registering shim for implementation of {:?}::{:?} for {:?}, using method {:?}",
-                            shim.trait_path, shim.method_ident, for_type, trait_method_did
-                        );
-                        let meta = function_body::ProcedureMeta::new(
-                            shim.spec_name.to_string(),
-                            shim.name.to_string(),
-                            function_body::ProcedureMode::Shim,
-                        );
-                        vcx.procedure_registry.register_function(&did, meta)?;
-                    },
-                    _ => {
-                        println!(
-                            "Warning: cannot find defid for implementation of {:?}::{:?} for {:?}",
-                            shim.trait_path, shim.method_ident, for_type
-                        );
-                    },
-                }
-            } else {
-                println!("Warning: cannot resolve {:?} as a type, skipping shim", shim.for_type);
-            }
-        } else {
+        let Some((trait_did, args)) = shim.trait_path.to_item(vcx.env.tcx()) else {
             println!("Warning: cannot resolve {:?} as a trait, skipping shim", shim.trait_path);
+            continue;
+        };
+
+        if !vcx.env.tcx().is_trait(trait_did) {
+            println!("Warning: This is not a trait: {:?}", shim.trait_path);
+            continue;
         }
+
+        // resolve the type
+        let Some(for_type) = shim.for_type.to_type(vcx.env.tcx()) else {
+            println!("Warning: cannot resolve {:?} as a type, skipping shim", shim.for_type);
+            continue;
+        };
+
+        let trait_method_did = utils::try_resolve_trait_method_did(
+            vcx.env.tcx(),
+            trait_did,
+            &args,
+            &shim.method_ident,
+            for_type,
+        );
+
+        let Some(did) = trait_method_did else {
+            println!(
+                "Warning: cannot find defid for implementation of {:?}::{:?} for {:?}",
+                shim.trait_path, shim.method_ident, for_type
+            );
+            continue;
+        };
+
+        // register as usual in the procedure registry
+        info!(
+            "registering shim for implementation of {:?}::{:?} for {:?}, using method {:?}",
+            shim.trait_path, shim.method_ident, for_type, trait_method_did
+        );
+
+        let meta = function_body::ProcedureMeta::new(
+            shim.spec_name.to_string(),
+            shim.name.to_string(),
+            function_body::ProcedureMode::Shim,
+        );
+
+        vcx.procedure_registry.register_function(did, meta)?;
     }
 
     // add the extra imports
@@ -914,25 +913,27 @@ fn get_most_restrictive_function_mode(
     vcx: &VerificationCtxt<'_, '_>,
     did: DefId,
 ) -> function_body::ProcedureMode {
-    let mut mode = function_body::ProcedureMode::Prove;
-
     let attrs = get_attributes_of_function(vcx.env, did);
 
     // check if this is a purely spec function; if so, skip.
     if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
-        mode = function_body::ProcedureMode::Shim;
+        return function_body::ProcedureMode::Shim;
     }
 
     if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "trust_me") {
-        mode = function_body::ProcedureMode::TrustMe;
-    } else if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "only_spec") {
-        mode = function_body::ProcedureMode::OnlySpec;
-    } else if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "ignore") {
-        info!("Function {:?} will be ignored", did);
-        mode = function_body::ProcedureMode::Ignore;
+        return function_body::ProcedureMode::TrustMe;
     }
 
-    mode
+    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "only_spec") {
+        return function_body::ProcedureMode::OnlySpec;
+    }
+
+    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "ignore") {
+        info!("Function {:?} will be ignored", did);
+        return function_body::ProcedureMode::Ignore;
+    }
+
+    function_body::ProcedureMode::Prove
 }
 
 /// Register functions of the crate in the procedure registry.
@@ -957,7 +958,7 @@ fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> 
                 annot.code_name,
                 function_body::ProcedureMode::Shim,
             );
-            vcx.procedure_registry.register_function(&f.to_def_id(), meta)?;
+            vcx.procedure_registry.register_function(f.to_def_id(), meta)?;
 
             continue;
         }
@@ -976,7 +977,7 @@ fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> 
 
         let meta = function_body::ProcedureMeta::new(spec_name, fname, mode);
 
-        vcx.procedure_registry.register_function(&f.to_def_id(), meta)?;
+        vcx.procedure_registry.register_function(f.to_def_id(), meta)?;
     }
     Ok(())
 }
@@ -1006,7 +1007,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     for &f in vcx.functions {
         let proc = vcx.env.get_procedure(f.to_def_id());
         let fname = vcx.env.get_item_name(f.to_def_id());
-        let meta = vcx.procedure_registry.lookup_function(&f.to_def_id()).unwrap();
+        let meta = vcx.procedure_registry.lookup_function(f.to_def_id()).unwrap();
 
         let filtered_attrs = get_attributes_of_function(vcx.env, f.to_def_id());
 
@@ -1026,7 +1027,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         let translator = match ty.kind() {
             ty::TyKind::FnDef(_def, _args) => FunctionTranslator::new(
                 vcx.env,
-                meta,
+                &meta,
                 proc,
                 &filtered_attrs,
                 vcx.type_translator,
@@ -1035,7 +1036,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             ),
             ty::TyKind::Closure(_, _) => FunctionTranslator::new_closure(
                 vcx.env,
-                meta,
+                &meta,
                 proc,
                 &filtered_attrs,
                 vcx.type_translator,
@@ -1047,10 +1048,10 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
 
         if mode.is_only_spec() {
             // Only generate a spec
-            match translator.and_then(|t| t.generate_spec()) {
+            match translator.map(FunctionTranslator::generate_spec) {
                 Ok(spec) => {
                     println!("Successfully generated spec for {}", fname);
-                    vcx.procedure_registry.provide_specced_function(&f.to_def_id(), spec);
+                    vcx.procedure_registry.provide_specced_function(f.to_def_id(), spec);
                 },
                 Err(function_body::TranslationError::FatalError(err)) => {
                     println!("Encountered fatal cross-function error in translation: {:?}", err);
@@ -1070,10 +1071,10 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
             }
         } else {
             // Fully translate the function
-            match translator.and_then(|t| t.translate()) {
+            match translator.and_then(FunctionTranslator::translate) {
                 Ok(fun) => {
                     println!("Successfully translated {}", fname);
-                    vcx.procedure_registry.provide_translated_function(&f.to_def_id(), fun);
+                    vcx.procedure_registry.provide_translated_function(f.to_def_id(), fun);
                 },
                 Err(function_body::TranslationError::FatalError(err)) => {
                     println!("Encountered fatal cross-function error in translation: {:?}", err);
@@ -1152,7 +1153,7 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
         }
 
         let ty = ty.skip_binder();
-        match vcx.type_translator.translate_type_in_empty_scope(&ty).map_err(|x| format!("{:?}", x)) {
+        match vcx.type_translator.translate_type_in_empty_scope(ty).map_err(|x| format!("{:?}", x)) {
             Ok(translated_ty) => {
                 let _full_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(s.to_def_id()));
 

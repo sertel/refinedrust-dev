@@ -389,10 +389,6 @@ where
         field_name: &str,
         attrs: &[&AttrItem],
     ) -> Result<StructFieldSpec<'def>, String> {
-        fn str_err(e: parse::ParseError) -> String {
-            format!("{:?}", e)
-        }
-
         info!("parsing attributes of field {:?}: {:?}", field_name, attrs);
 
         let meta = (self.params, self.lfts);
@@ -404,56 +400,46 @@ where
             let path_segs = &it.path.segments;
             let args = &it.args;
 
-            if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&args.inner_tokens());
-                match seg.ident.name.as_str() {
-                    "field" => {
-                        let mut expect_ty = false;
-                        if self.expect_rfn {
-                            let rfn: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                            let (rfn, _) = process_coq_literal(rfn.value().as_str(), meta);
-                            parsed_rfn = Some(rfn);
+            let Some(seg) = path_segs.get(1) else {
+                continue;
+            };
 
-                            if parse::At::peek(&buffer) {
-                                info!("expecting type");
-                                buffer.parse::<_, parse::MToken![@]>(&meta).map_err(str_err)?;
-                                expect_ty = true;
-                            }
-                        } else {
-                            expect_ty = true;
-                        }
+            let buffer = parse::ParseBuffer::new(&args.inner_tokens());
 
-                        if expect_ty {
-                            let ty = LiteralType::parse(&buffer, &meta).map_err(str_err)?;
-                            if field_type.is_none() {
-                                field_type = Some(self.make_type(ty, self.field_type));
-                            } else {
-                                return Err(format!(
-                                    "field attribute specified twice for field {:?}",
-                                    field_name
-                                ));
-                            }
-                        }
-                    },
-                    _ => {
-                        return Err(format!("unknown attribute for struct field specification: {:?}", args));
-                    },
+            if seg.ident.name.as_str() != "field" {
+                return Err(format!("unknown attribute for struct field specification: {:?}", args));
+            }
+
+            if self.expect_rfn {
+                let rfn: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                let (rfn, _) = process_coq_literal(rfn.value().as_str(), meta);
+                parsed_rfn = Some(rfn);
+
+                if parse::At::peek(&buffer) {
+                    info!("expecting type");
+                    buffer.parse::<_, parse::MToken![@]>(&meta).map_err(str_err)?;
+                } else {
+                    continue;
                 }
             }
+
+            let ty = LiteralType::parse(&buffer, &meta).map_err(str_err)?;
+
+            if field_type.is_some() {
+                return Err(format!("field attribute specified twice for field {:?}", field_name));
+            }
+
+            field_type = Some(self.make_type(ty, self.field_type));
         }
 
-        let spec;
-        if let Some(ty) = field_type {
-            spec = StructFieldSpec {
-                ty,
-                rfn: parsed_rfn,
-            };
-        } else {
-            spec = StructFieldSpec {
-                ty: self.field_type.clone(),
-                rfn: parsed_rfn,
-            };
-        }
-        Ok(spec)
+        let ty = match field_type {
+            Some(ty) => ty,
+            None => self.field_type.clone(),
+        };
+
+        Ok(StructFieldSpec {
+            ty,
+            rfn: parsed_rfn,
+        })
     }
 }

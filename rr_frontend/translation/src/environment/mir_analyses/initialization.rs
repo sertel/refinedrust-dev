@@ -36,6 +36,7 @@ pub struct AnalysisResult<T> {
 
 impl<T> AnalysisResult<T> {
     #[allow(clippy::new_without_default)]
+    #[must_use]
     pub fn new() -> Self {
         Self {
             before_block: FxHashMap::default(),
@@ -45,6 +46,7 @@ impl<T> AnalysisResult<T> {
 
     /// Get the initialization set before the first statement of the
     /// basic block.
+    #[must_use]
     pub fn get_before_block(&self, bb: mir::BasicBlock) -> &T {
         self.before_block
             .get(&bb)
@@ -54,6 +56,7 @@ impl<T> AnalysisResult<T> {
     /// Get the initialization set after the statement.
     /// If `location.statement_index` is equal to the number of statements,
     /// returns the initialization set after the terminator.
+    #[must_use]
     pub fn get_after_statement(&self, location: mir::Location) -> &T {
         self.after_statement
             .get(&location)

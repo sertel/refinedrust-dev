@@ -31,18 +31,6 @@ rustflags = [
     "-Aclippy::option_if_let_else",
     "-Aclippy::string_lit_as_bytes",
 
-    # clippy::pedantic
-    "-Aclippy::must_use_candidate",
-    "-Aclippy::needless_continue",
-    "-Aclippy::needless_pass_by_value",
-    "-Aclippy::redundant_closure_for_method_calls",
-    "-Aclippy::return-self-not-must-use",
-    "-Aclippy::ref_binding_to_reference",
-    "-Aclippy::semicolon_if_nothing_returned",
-    "-Aclippy::trivially_copy_pass_by_ref",
-    "-Aclippy::unnecessary_wraps",
-    "-Aclippy::unused_self",
-
     # clippy::restriction
     "-Aclippy::create_dir",
     "-Aclippy::empty_structs_with_brackets",

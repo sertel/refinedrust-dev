@@ -171,6 +171,7 @@ impl Display for CoqType {
 
 impl CoqType {
     /// Check if the `CoqType` contains a free variable `Var(i)`.
+    #[must_use]
     pub fn is_closed(&self) -> bool {
         match self {
             Self::Bool
@@ -187,11 +188,11 @@ impl CoqType {
             | Self::SynType
             | Self::Type => true,
 
-            Self::PList(_, tys) => tys.iter().all(|t| t.is_closed()),
+            Self::PList(_, tys) => tys.iter().all(Self::is_closed),
 
             Self::PlaceRfn(t) => t.is_closed(),
 
-            Self::Prod(v) => v.iter().all(|t| t.is_closed()),
+            Self::Prod(v) => v.iter().all(Self::is_closed),
 
             Self::Ttype(box ty) => ty.is_closed(),
 
@@ -251,6 +252,7 @@ impl CoqType {
 pub struct CoqParamList(pub Vec<(CoqName, CoqType)>);
 
 impl CoqParamList {
+    #[must_use]
     pub const fn empty() -> Self {
         Self(vec![])
     }
@@ -397,10 +399,12 @@ pub struct CoqAttributes {
     attrs: Vec<CoqAttribute>,
 }
 impl CoqAttributes {
+    #[must_use]
     pub const fn empty() -> Self {
         Self { attrs: vec![] }
     }
 
+    #[must_use]
     pub fn new(attrs: Vec<CoqAttribute>) -> Self {
         Self { attrs }
     }
@@ -463,12 +467,13 @@ impl Display for CoqTopLevelAssertion {
 pub struct CoqTopLevelAssertions(pub Vec<CoqTopLevelAssertion>);
 
 impl CoqTopLevelAssertions {
+    #[must_use]
     pub const fn empty() -> Self {
         Self(vec![])
     }
 
     pub fn push(&mut self, a: CoqTopLevelAssertion) {
-        self.0.push(a)
+        self.0.push(a);
     }
 }
 

@@ -36,6 +36,7 @@ impl PlaceRegions {
         self.0.insert((local, projections), rvid);
     }
 
+    #[must_use]
     pub fn for_local(&self, local: mir::Local) -> Option<facts::Region> {
         self.for_place(local.into()).unwrap()
     }
@@ -108,7 +109,7 @@ fn extract_region(place_regions: &mut PlaceRegions, local: mir::Local, ty: ty::T
             for (i, ty) in types.iter().enumerate() {
                 match ty.kind() {
                     ty::TyKind::Ref(region, _, _) => {
-                        place_regions.add(local, vec![i], extract_region_id(region))
+                        place_regions.add(local, vec![i], extract_region_id(region));
                     },
                     _ => {
                         // TODO descend into nested types (nested tuples/structs) ?
@@ -123,7 +124,7 @@ fn extract_region(place_regions: &mut PlaceRegions, local: mir::Local, ty: ty::T
     }
 }
 
-pub fn load_place_regions(body: &mir::Body<'_>) -> io::Result<PlaceRegions> {
+pub fn load_place_regions(body: &mir::Body<'_>) -> PlaceRegions {
     trace!("[enter] load_place_regions()");
     let mut place_regions = PlaceRegions::new();
 
@@ -134,5 +135,5 @@ pub fn load_place_regions(body: &mir::Body<'_>) -> io::Result<PlaceRegions> {
     }
 
     trace!("[exit] load_place_regions");
-    Ok(place_regions)
+    place_regions
 }

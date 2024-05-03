@@ -45,7 +45,7 @@ pub fn dump_borrowck_info(env: &Environment<'_>, procedures: &[ProcedureDefId]) 
 
 pub fn dump_borrowck_info<'a, 'tcx>(
     env: &'a Environment<'tcx>,
-    procedure: &ProcedureDefId,
+    procedure: ProcedureDefId,
     info: &'a PoloniusInfo<'a, 'tcx>,
 ) {
     trace!("[dump_borrowck_info] enter");
@@ -57,7 +57,7 @@ pub fn dump_borrowck_info<'a, 'tcx>(
     //intravisit::walk_crate(&mut printer, tcx.hir.krate());
     //tcx.hir.krate().visit_all_item_likes(&mut printer);
 
-    printer.print_info(*procedure, info);
+    printer.print_info(procedure, info);
 
     trace!("[dump_borrowck_info] exit");
 }
@@ -69,7 +69,6 @@ struct InfoPrinter<'a, 'tcx: 'a> {
 
 impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
     fn dump_borrowck_facts(
-        &self,
         info: &'a PoloniusInfo<'a, 'tcx>,
         writer: &mut BufWriter<File>,
     ) -> std::io::Result<()> {
@@ -198,7 +197,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         std::fs::create_dir_all(prefix).expect("Unable to create parent dir");
         let raw_file = File::create(raw_path).expect("Unable to create file");
         let mut raw = BufWriter::new(raw_file);
-        self.dump_borrowck_facts(info, &mut raw).unwrap();
+        Self::dump_borrowck_facts(info, &mut raw).unwrap();
 
         // write graphs
         let real_edges = RealEdges::new(mir);
@@ -323,7 +322,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
     }
 
     fn print_temp_variables(&self) -> Result<(), io::Error> {
-        if !self.show_temp_variables() {
+        if !Self::show_temp_variables() {
             return Ok(());
         }
 
@@ -346,7 +345,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             }
         }
         for (temp, var) in self.mir.local_decls.iter_enumerated() {
-            let name = var_names.get(&temp).map_or_else(String::new, |s| s.to_string());
+            let name = var_names.get(&temp).map_or_else(String::new, ToString::to_string);
 
             let region = self
                 .polonius_info
@@ -371,7 +370,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 
     /// Print the `origin_contains_loan_at` relation as a tree of loans.
     fn print_restricts(&self) -> Result<(), io::Error> {
-        if !self.show_restricts() {
+        if !Self::show_restricts() {
             return Ok(());
         }
         write_graph!(self, "subgraph cluster_restricts {{");
@@ -487,7 +486,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
     }
 
     fn print_borrow_regions(&self) -> Result<(), io::Error> {
-        if !self.show_borrow_regions() {
+        if !Self::show_borrow_regions() {
             return Ok(());
         }
 
@@ -536,7 +535,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         write_graph!(self, "</th>");
 
         write_graph!(self, "<th>");
-        if self.show_statement_indices() {
+        if Self::show_statement_indices() {
             write_graph!(self, "<td>Nr</td>");
         }
         write_graph!(self, "<td>statement</td>");
@@ -565,7 +564,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         let term_str = terminator.as_ref().map_or_else(String::new, |term| to_html!(term.kind));
 
         write_graph!(self, "<tr>");
-        if self.show_statement_indices() {
+        if Self::show_statement_indices() {
             write_graph!(self, "<td></td>");
         }
         write_graph!(self, "<td>{}</td>", term_str);
@@ -705,7 +704,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 
     fn visit_statement(&self, location: mir::Location, statement: &mir::Statement) -> Result<(), io::Error> {
         write_graph!(self, "<tr>");
-        if self.show_statement_indices() {
+        if Self::show_statement_indices() {
             write_graph!(self, "<td>{}</td>", location.statement_index);
         }
         write_graph!(self, "<td>{}</td>", to_html!(statement));
@@ -850,26 +849,26 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         Ok(())
     }
 
-    const fn show_statement_indices(&self) -> bool {
+    const fn show_statement_indices() -> bool {
         true
         //unimplemented!("Should use SETTINGS.");
         // get_config_option("PRUSTI_DUMP_SHOW_STATEMENT_INDICES", true)
     }
 
-    const fn show_temp_variables(&self) -> bool {
+    const fn show_temp_variables() -> bool {
         true
         //unimplemented!("Should use SETTINGS.");
         // get_config_option("PRUSTI_DUMP_SHOW_TEMP_VARIABLES", true)
     }
 
-    const fn show_borrow_regions(&self) -> bool {
+    const fn show_borrow_regions() -> bool {
         //true
         false
         //unimplemented!("Should use SETTINGS.");
         // get_config_option("PRUSTI_DUMP_SHOW_BORROW_REGIONS", false)
     }
 
-    const fn show_restricts(&self) -> bool {
+    const fn show_restricts() -> bool {
         //true
         false
         //unimplemented!("Should use SETTINGS.");
@@ -893,6 +892,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 /// Maybe blocking analysis.
 impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
     /// Print the subset relation at a given program point.
+    #[allow(clippy::unnecessary_wraps)]
     fn print_subset_at_start(&self, location: mir::Location) -> Result<(), io::Error> {
         let point = self.get_point(location, facts::PointType::Start);
         let subset_map = &self.polonius_info.borrowck_out_facts.subset;

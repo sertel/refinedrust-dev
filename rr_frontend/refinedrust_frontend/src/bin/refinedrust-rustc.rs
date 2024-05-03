@@ -198,7 +198,7 @@ fn main() {
     debug!("rustc arguments: {:?}", rustc_args);
 
     let exit_code = rustc_driver::catch_with_exit_code(move || {
-        if rustc_args.get(1).map(|s| s.as_ref()) == Some("-vV") {
+        if rustc_args.get(1) == Some(&"-vV".to_string()) {
             // When cargo queries the verbose rustc version,
             // also print the RR version to stdout.
             // This ensures that the cargo build cache is

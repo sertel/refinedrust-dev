@@ -95,6 +95,7 @@ impl Display for RustType {
 }
 
 impl RustType {
+    #[must_use]
     pub fn of_type(ty: &Type<'_>, env: &[Option<LiteralTyParam>]) -> Self {
         info!("Translating rustType: {:?}", ty);
         match ty {
@@ -297,6 +298,7 @@ pub enum Expr {
 }
 
 impl Expr {
+    #[must_use]
     pub fn with_optional_annotation(e: Self, a: Option<Annotation>, why: Option<String>) -> Self {
         match a {
             Some(a) => Self::Annot {
@@ -506,6 +508,7 @@ impl fmt::Display for Annotation {
 }
 
 impl Annotation {
+    #[allow(clippy::unused_self)]
     pub(crate) const fn needs_laters(&self) -> u32 {
         0
     }
@@ -624,7 +627,8 @@ impl Stmt {
     }
 
     /// Annotate a statement with a list of annotations
-    pub fn with_annotations(mut s: Self, a: Vec<Annotation>, why: Option<String>) -> Self {
+    #[must_use]
+    pub fn with_annotations(mut s: Self, a: Vec<Annotation>, why: &Option<String>) -> Self {
         for annot in a {
             s = Self::Annot {
                 a: annot,
@@ -729,9 +733,9 @@ pub struct FunctionCode {
     required_parameters: Vec<(CoqName, CoqType)>,
 }
 
-fn make_map_string(sep0: &str, sep: &str, els: Vec<(String, String)>) -> String {
+fn make_map_string(sep0: &str, sep: &str, els: &Vec<(String, String)>) -> String {
     let mut out = String::with_capacity(100);
-    for (key, value) in &els {
+    for (key, value) in els {
         out.push_str(sep);
 
         out.push_str(format!("<[{sep}\"{}\" :={}{}{}]>%E $", key, sep0, value, sep).as_str());
@@ -741,9 +745,9 @@ fn make_map_string(sep0: &str, sep: &str, els: Vec<(String, String)>) -> String 
     out
 }
 
-fn make_lft_map_string(els: Vec<(String, String)>) -> String {
+fn make_lft_map_string(els: &Vec<(String, String)>) -> String {
     let mut out = String::with_capacity(100);
-    for (key, value) in &els {
+    for (key, value) in els {
         out.push_str(format!("named_lft_update \"{}\" {} $ ", key, value).as_str());
     }
     out.push('∅');
@@ -753,6 +757,7 @@ fn make_lft_map_string(els: Vec<(String, String)>) -> String {
 impl FunctionCode {
     const INITIAL_BB: usize = 0;
 
+    #[must_use]
     pub fn caesium_fmt(&self) -> String {
         // format args
         let format_stack_layout = |layout: std::slice::Iter<'_, (String, SynType)>| {
@@ -795,7 +800,8 @@ impl FunctionCode {
         let formatted_bb = make_map_string(
             "\n",
             format!("\n{}", make_indent(2).as_str()).as_str(),
-            self.basic_blocks
+            &self
+                .basic_blocks
                 .iter()
                 .map(|(name, bb)| (format!("_bb{name}"), bb.caesium_fmt(3)))
                 .collect(),
@@ -825,6 +831,7 @@ impl FunctionCode {
     }
 
     /// Get the number of arguments of the function.
+    #[must_use]
     pub fn get_argument_count(&self) -> usize {
         self.stack_layout.iter_args().len()
     }
@@ -840,6 +847,7 @@ pub struct StackMap {
 }
 
 impl StackMap {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             arg_map: Vec::new(),
@@ -866,6 +874,7 @@ impl StackMap {
         true
     }
 
+    #[must_use]
     pub fn lookup_binding(&self, name: &str) -> Option<&SynType> {
         if !self.used_names.contains(name) {
             return None;
@@ -899,6 +908,7 @@ pub struct FunctionCodeBuilder {
 }
 
 impl FunctionCodeBuilder {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             stack_layout: StackMap::new(),
@@ -956,6 +966,7 @@ pub struct Function<'def> {
 
 impl<'def> Function<'def> {
     /// Get the name of the function.
+    #[must_use]
     pub fn name(&self) -> &str {
         &self.code.name
     }
@@ -1033,7 +1044,7 @@ impl<'def> Function<'def> {
                     let st = p.get_syn_type();
                     gen_rfn_type_inst.push(format!("({})", st));
                 }
-                let arg_syntys: Vec<String> = sts.iter().map(|st| st.to_string()).collect();
+                let arg_syntys: Vec<String> = sts.iter().map(ToString::to_string).collect();
 
                 write!(
                     f,
@@ -1178,15 +1189,17 @@ impl<'def> Function<'def> {
         write!(f, " );\n")?;
 
         // initialize lifetimes
-        let formatted_lifetimes =
-            make_lft_map_string(self.spec.lifetimes.iter().map(|n| (n.to_string(), n.to_string())).collect());
+        let formatted_lifetimes = make_lft_map_string(
+            &self.spec.lifetimes.iter().map(|n| (n.to_string(), n.to_string())).collect(),
+        );
         write!(f, "init_lfts ({} );\n", formatted_lifetimes.as_str())?;
 
         // initialize tyvars
         let formatted_tyvars = make_map_string(
             " ",
             " ",
-            self.generic_types
+            &self
+                .generic_types
                 .iter()
                 .map(|names| (names.rust_name.to_string(), format!("existT _ ({})", names.type_term)))
                 .collect(),
@@ -1283,6 +1296,7 @@ pub struct FunctionBuilder<'def> {
 }
 
 impl<'def> FunctionBuilder<'def> {
+    #[must_use]
     pub fn new(name: &str, spec_name: &str) -> Self {
         let code_builder = FunctionCodeBuilder::new();
         let spec_builder = FunctionSpecBuilder::new();
@@ -1335,7 +1349,7 @@ impl<'def> FunctionBuilder<'def> {
 
     /// Add a manual tactic used for a sidecondition proof.
     pub fn add_manual_tactic(&mut self, tac: &str) {
-        self.tactics.push(tac.to_string())
+        self.tactics.push(tac.to_string());
     }
 
     /// Add a generic type used by this function.
@@ -1344,11 +1358,13 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Get the type parameters.
+    #[must_use]
     pub fn get_ty_params(&self) -> &[LiteralTyParam] {
         &self.generic_types
     }
 
     /// Get the universal lifetimes.
+    #[must_use]
     pub fn get_lfts(&self) -> Vec<(Option<String>, Lft)> {
         self.generic_lifetimes.clone()
     }
@@ -1397,15 +1413,15 @@ impl<'def> FunctionBuilder<'def> {
             let st_precond = IProp::Pure(format!("ty_syn_type {} = {}", names.type_term, names.syn_type));
             // We prepend these conditions so that this information can already be used to simplify
             // the other assumptions.
-            self.spec.prepend_precondition(st_precond).unwrap();
+            self.spec.prepend_precondition(st_precond);
 
             // add assumptions that reads/writes to the generic are allowed
             let write_precond = IProp::Pure(format!("ty_allows_writes {}", names.type_term));
             let read_precond = IProp::Pure(format!("ty_allows_reads {}", names.type_term));
             let sc_precond = IProp::Atom(format!("ty_sidecond {}", names.type_term));
-            self.spec.add_precondition(write_precond).unwrap();
-            self.spec.add_precondition(read_precond).unwrap();
-            self.spec.add_precondition(sc_precond).unwrap();
+            self.spec.add_precondition(write_precond);
+            self.spec.add_precondition(read_precond);
+            self.spec.add_precondition(sc_precond);
         }
     }
 }

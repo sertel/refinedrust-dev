@@ -48,7 +48,7 @@ pub struct AdtUseKey {
 
 impl AdtUseKey {
     pub fn new(defid: DefId, params: &[radium::Type<'_>]) -> Self {
-        let generic_syntys: Vec<_> = params.iter().map(|ty| ty.get_syn_type()).collect();
+        let generic_syntys: Vec<_> = params.iter().map(radium::Type::get_syn_type).collect();
         Self {
             base_did: defid,
             generics: generic_syntys,
@@ -80,7 +80,7 @@ impl<'def> TypeTranslationScope<'def> {
     /// Lookup a universal region.
     pub fn lookup_universal_region(&self, lft: ty::RegionVid) -> Option<radium::Lft> {
         info!("Looking up universal lifetime {:?}", lft);
-        self.universal_lifetimes.get(&lft).map(|s| s.to_string())
+        self.universal_lifetimes.get(&lft).map(ToString::to_string)
     }
 
     /// Create a new empty scope for a function.
@@ -268,7 +268,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Register a shim for an ADT.
-    pub fn register_adt_shim(&self, did: DefId, lit: radium::LiteralType) -> Result<(), String> {
+    pub fn register_adt_shim(&self, did: DefId, lit: &radium::LiteralType) -> Result<(), String> {
         let lit_ref = self.intern_literal(lit.clone());
         let mut shims = self.adt_shims.borrow_mut();
         if let Some(old) = shims.insert(did, lit_ref) {
@@ -384,26 +384,29 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Try to translate a region to a Caesium lifetime.
     /// Note: This relies on all the regions being `ReVar` inference variables.
     fn translate_region<'a, 'b>(
-        &self,
         translation_state: TranslationState<'a, 'b, 'def>,
-        region: &ty::Region<'tcx>,
+        region: ty::Region<'tcx>,
     ) -> Option<radium::Lft> {
-        match **region {
+        match *region {
             ty::RegionKind::ReEarlyBound(early) => {
                 info!("Translating region: EarlyBound {:?}", early);
                 None
             },
+
             ty::RegionKind::ReLateBound(idx, r) => {
                 info!("Translating region: LateBound {:?} {:?}", idx, r);
                 None
             },
+
             ty::RegionKind::RePlaceholder(placeholder) => {
                 // TODO: not sure if any placeholders should remain at this stage.
                 info!("Translating region: Placeholder {:?}", placeholder);
                 None
             },
+
             ty::RegionKind::ReStatic => Some("static".to_string()),
             ty::RegionKind::ReErased => Some("erased".to_string()),
+
             ty::RegionKind::ReVar(v) => match translation_state {
                 TranslationStateInner::InFunction(ref scope) => {
                     let r = scope.lookup_universal_region(v);
@@ -415,6 +418,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     None
                 },
             },
+
             _ => {
                 info!("Translating region: {:?}", region);
                 None
@@ -441,12 +445,14 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         did: DefId,
     ) -> Result<radium::LiteralTypeRef<'def>, TranslationError> {
         if let Some(lit) = self.lookup_adt_shim(did) {
-            Ok(lit)
-        } else if let Some((_n, _, _, _, lit)) = self.variant_registry.borrow().get(&did) {
-            Ok(lit.unwrap())
-        } else {
-            Err(TranslationError::UnknownError(format!("could not find type: {:?}", did)))
+            return Ok(lit);
         }
+
+        if let Some((_n, _, _, _, lit)) = self.variant_registry.borrow().get(&did) {
+            return Ok(lit.unwrap());
+        }
+
+        Err(TranslationError::UnknownError(format!("could not find type: {:?}", did)))
     }
 
     /// Lookup an enum ADT and return a reference to its enum def.
@@ -477,7 +483,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Only for internal references as part of type translation.
     fn generate_structlike_use_internal<'a, 'b>(
         &self,
-        ty: &Ty<'tcx>,
+        ty: Ty<'tcx>,
         variant: Option<rustc_target::abi::VariantIdx>,
         adt_deps: TranslationState<'a, 'b, 'def>,
     ) -> Result<radium::Type<'def>, TranslationError> {
@@ -485,33 +491,46 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             TyKind::Adt(adt, args) => {
                 // Check if we have a shim
                 if self.lookup_adt_shim(adt.did()).is_some() {
-                    self.generate_adt_shim_use(adt, args, adt_deps)
-                } else if adt.is_box() {
+                    return self.generate_adt_shim_use(*adt, args, adt_deps);
+                }
+
+                if adt.is_box() {
                     // TODO: for now, Box gets a special treatment and is not accurately
                     // translated. Reconsider this later on
-                    Err(TranslationError::UnknownError("Box is not a proper structlike".to_string()))
-                } else if adt.is_struct() {
+                    return Err(TranslationError::UnknownError("Box is not a proper structlike".to_string()));
+                }
+
+                if adt.is_struct() {
                     info!("generating struct use for {:?}", adt.did());
                     // register the ADT, if necessary
                     self.register_adt(*adt)?;
-                    self.generate_struct_use_noshim(adt.did(), *args, adt_deps).map(radium::Type::Struct)
-                } else if adt.is_enum() {
-                    if let Some(variant) = variant {
-                        self.register_adt(*adt)?;
-                        self.generate_enum_variant_use_noshim(adt.did(), variant, args.iter(), adt_deps)
-                            .map(radium::Type::Struct)
-                    } else {
-                        Err(TranslationError::UnknownError(
-                            "a non-downcast enum is not a structlike".to_string(),
-                        ))
-                    }
-                } else {
-                    Err(TranslationError::UnsupportedType {
-                        description: "non-{enum, struct, tuple} ADTs are not supported".to_string(),
-                    })
+
+                    return self
+                        .generate_struct_use_noshim(adt.did(), *args, adt_deps)
+                        .map(radium::Type::Struct);
                 }
+
+                if adt.is_enum() {
+                    let Some(variant) = variant else {
+                        return Err(TranslationError::UnknownError(
+                            "a non-downcast enum is not a structlike".to_string(),
+                        ));
+                    };
+
+                    self.register_adt(*adt)?;
+
+                    return self
+                        .generate_enum_variant_use_noshim(adt.did(), variant, args.iter(), adt_deps)
+                        .map(radium::Type::Struct);
+                }
+
+                Err(TranslationError::UnsupportedType {
+                    description: "non-{enum, struct, tuple} ADTs are not supported".to_string(),
+                })
             },
+
             TyKind::Tuple(args) => self.generate_tuple_use(*args, adt_deps).map(radium::Type::Literal),
+
             _ => Err(TranslationError::UnknownError("not a structlike".to_string())),
         }
     }
@@ -582,11 +601,11 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             let translated_ty = match state {
                 TranslationStateInner::TranslateAdt(ref mut deps) => {
-                    self.translate_type_with_deps(&arg_ty, &mut TranslationStateInner::TranslateAdt(deps))?
+                    self.translate_type_with_deps(arg_ty, &mut TranslationStateInner::TranslateAdt(deps))?
                 },
                 TranslationStateInner::InFunction(ref mut scope) => {
-                    let mut translated_ty = self
-                        .translate_type_with_deps(&arg_ty, &mut TranslationStateInner::InFunction(scope))?;
+                    let mut translated_ty =
+                        self.translate_type_with_deps(arg_ty, &mut TranslationStateInner::InFunction(scope))?;
 
                     // we need to substitute in the variables according to the function scope
                     translated_ty.subst_params(scope.generic_scope.as_slice());
@@ -681,7 +700,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     {
         let tys = tys.into_iter();
 
-        let generic_args: Vec<_> = tys.into_iter().map(|ty| ty.into()).collect();
+        let generic_args: Vec<_> = tys.into_iter().map(Into::into).collect();
         let params = self.translate_generic_args(generic_args, &mut *state)?;
 
         let num_components = params.len();
@@ -881,7 +900,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
             let mut ty =
-                self.translate_type_with_deps(&f_ty, &mut TranslationStateInner::TranslateAdt(adt_deps))?;
+                self.translate_type_with_deps(f_ty, &mut TranslationStateInner::TranslateAdt(adt_deps))?;
 
             // substitute all the type parameters by literals
             ty.subst_params(&ty_env);
@@ -1016,7 +1035,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Get the spec for a built-in enum like `std::option::Option`.
-    fn get_builtin_enum_spec(&self, did: DefId) -> Result<Option<radium::EnumSpec>, TranslationError> {
+    fn get_builtin_enum_spec(&self, did: DefId) -> Option<radium::EnumSpec> {
         let option_spec = radium::EnumSpec {
             rfn_type: radium::CoqType::Literal("_".to_string()),
             variant_patterns: vec![
@@ -1024,6 +1043,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 ("Some".to_string(), vec!["x".to_string()], "-[x]".to_string()),
             ],
         };
+
         let enum_spec = radium::EnumSpec {
             rfn_type: radium::CoqType::Literal("_".to_string()),
             variant_patterns: vec![
@@ -1036,16 +1056,16 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         if self.does_did_match(did, &["std", "option", "Option"])
             || self.does_did_match(did, &["core", "option", "Option"])
         {
-            return Ok(Some(option_spec));
+            return Some(option_spec);
         }
 
         if self.does_did_match(did, &["std", "result", "Result"])
             || self.does_did_match(did, &["core", "result", "Result"])
         {
-            return Ok(Some(enum_spec));
+            return Some(enum_spec);
         }
 
-        Ok(None)
+        None
     }
 
     /// Given a Rust enum which has already been registered and whose fields have been translated, generate a
@@ -1189,7 +1209,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             // get the type of the discriminant
             let it = def.repr().discr_type();
-            let translated_it = self.translate_integer_type(it)?;
+            let translated_it = TypeTranslator::translate_integer_type(it);
 
             // build the discriminant map
             let discrs = self.build_discriminant_map(def)?;
@@ -1200,7 +1220,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             // parse annotations for enum type
             let enum_spec;
             let mut inductive_decl = None;
-            let builtin_spec = self.get_builtin_enum_spec(def.did())?;
+
+            let builtin_spec = self.get_builtin_enum_spec(def.did());
             if let Some(spec) = builtin_spec {
                 enum_spec = spec;
             } else if self.env.has_tool_attribute(def.did(), "refined_by") {
@@ -1260,28 +1281,28 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
     fn generate_adt_shim_use<'a, 'b>(
         &self,
-        adt: &ty::AdtDef<'tcx>,
+        adt: ty::AdtDef<'tcx>,
         substs: ty::GenericArgsRef<'tcx>,
         state: TranslationState<'a, 'b, 'def>,
     ) -> Result<radium::Type<'def>, TranslationError> {
-        if let Some(shim) = self.lookup_adt_shim(adt.did()) {
-            let params = self.translate_generic_args(substs.iter(), &mut *state)?;
-
-            let key = AdtUseKey::new(adt.did(), &params);
-            let shim_use = radium::LiteralTypeUse::new(shim, params);
-
-            if let TranslationStateInner::InFunction(ref mut scope) = state {
-                // track this shim use for the current function
-                scope.shim_uses.entry(key).or_insert_with(|| shim_use.clone());
-            }
-
-            Ok(radium::Type::Literal(shim_use))
-        } else {
-            Err(TranslationError::UnknownError(format!(
+        let Some(shim) = self.lookup_adt_shim(adt.did()) else {
+            return Err(TranslationError::UnknownError(format!(
                 "generate_adt_shim_use called for unknown adt shim {:?}",
                 adt.did()
-            )))
+            )));
+        };
+
+        let params = self.translate_generic_args(substs.iter(), &mut *state)?;
+
+        let key = AdtUseKey::new(adt.did(), &params);
+        let shim_use = radium::LiteralTypeUse::new(shim, params);
+
+        if let TranslationStateInner::InFunction(ref mut scope) = state {
+            // track this shim use for the current function
+            scope.shim_uses.entry(key).or_insert_with(|| shim_use.clone());
         }
+
+        Ok(radium::Type::Literal(shim_use))
     }
 
     // Okay, I don't know what the problem is.
@@ -1299,7 +1320,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// argument, if provided.
     pub fn translate_type_with_deps<'a, 'b>(
         &self,
-        ty: &Ty<'tcx>,
+        ty: Ty<'tcx>,
         state: TranslationState<'a, 'b, 'def>,
     ) -> Result<radium::Type<'def>, TranslationError> {
         match ty.kind() {
@@ -1337,10 +1358,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     return Ok(radium::Type::Unit);
                 }
 
-                let translated_ty = self.translate_type_with_deps(ty, &mut *state)?;
+                let translated_ty = self.translate_type_with_deps(*ty, &mut *state)?;
 
                 // in case this isn't a universal region, we usually won't care about it.
-                let lft = if let Some(lft) = self.translate_region(&mut *state, region) {
+                let lft = if let Some(lft) = TypeTranslator::translate_region(&mut *state, *region) {
                     lft
                 } else {
                     warn!("Failed to translate region {:?}", region);
@@ -1361,7 +1382,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     // the second parameter is the allocator, which we ignore for now
                     assert!(substs.len() == 2);
                     let ty = substs[0].expect_ty();
-                    let translated_ty = self.translate_type_with_deps(&ty, &mut *state)?;
+                    let translated_ty = self.translate_type_with_deps(ty, &mut *state)?;
                     return Ok(radium::Type::BoxType(Box::new(translated_ty)));
                 }
 
@@ -1375,7 +1396,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 }
 
                 if self.lookup_adt_shim(adt.did()).is_some() {
-                    return self.generate_adt_shim_use(adt, substs, &mut *state);
+                    return self.generate_adt_shim_use(*adt, substs, &mut *state);
                 }
 
                 if adt.is_struct() {
@@ -1396,7 +1417,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 let clos = closure_args.as_closure();
                 let upvar_tys = clos.tupled_upvars_ty();
 
-                self.translate_type_with_deps(&upvar_tys, &mut *state)
+                self.translate_type_with_deps(upvar_tys, &mut *state)
             },
 
             TyKind::Tuple(params) => {
@@ -1493,57 +1514,54 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
-    const fn translate_int_type(&self, it: rustc_attr::IntType) -> Result<radium::IntType, TranslationError> {
+    const fn translate_int_type(it: rustc_attr::IntType) -> radium::IntType {
         match it {
-            rustc_attr::IntType::SignedInt(it) => Ok(match it {
+            rustc_attr::IntType::SignedInt(it) => match it {
                 rustc_ast::IntTy::I8 => radium::IntType::I8,
                 rustc_ast::IntTy::I16 => radium::IntType::I16,
                 rustc_ast::IntTy::I32 => radium::IntType::I32,
                 rustc_ast::IntTy::I64 => radium::IntType::I64,
                 rustc_ast::IntTy::I128 => radium::IntType::I128,
                 rustc_ast::IntTy::Isize => radium::IntType::ISize,
-            }),
-            rustc_attr::IntType::UnsignedInt(it) => Ok(match it {
+            },
+            rustc_attr::IntType::UnsignedInt(it) => match it {
                 rustc_ast::UintTy::U8 => radium::IntType::U8,
                 rustc_ast::UintTy::U16 => radium::IntType::U16,
                 rustc_ast::UintTy::U32 => radium::IntType::U32,
                 rustc_ast::UintTy::U64 => radium::IntType::U64,
                 rustc_ast::UintTy::U128 => radium::IntType::U128,
                 rustc_ast::UintTy::Usize => radium::IntType::USize,
-            }),
+            },
         }
     }
 
     /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
-    const fn translate_integer_type(
-        &self,
-        it: rustc_abi::IntegerType,
-    ) -> Result<radium::IntType, TranslationError> {
+    const fn translate_integer_type(it: rustc_abi::IntegerType) -> radium::IntType {
         match it {
             rustc_abi::IntegerType::Fixed(size, sign) => {
                 if sign {
-                    Ok(match size {
+                    match size {
                         rustc_abi::Integer::I8 => radium::IntType::I8,
                         rustc_abi::Integer::I16 => radium::IntType::I16,
                         rustc_abi::Integer::I32 => radium::IntType::I32,
                         rustc_abi::Integer::I64 => radium::IntType::I64,
                         rustc_abi::Integer::I128 => radium::IntType::I128,
-                    })
+                    }
                 } else {
-                    Ok(match size {
+                    match size {
                         rustc_abi::Integer::I8 => radium::IntType::U8,
                         rustc_abi::Integer::I16 => radium::IntType::U16,
                         rustc_abi::Integer::I32 => radium::IntType::U32,
                         rustc_abi::Integer::I64 => radium::IntType::U64,
                         rustc_abi::Integer::I128 => radium::IntType::U128,
-                    })
+                    }
                 }
             },
             rustc_abi::IntegerType::Pointer(sign) => {
                 if sign {
-                    Ok(radium::IntType::ISize)
+                    radium::IntType::ISize
                 } else {
-                    Ok(radium::IntType::USize)
+                    radium::IntType::USize
                 }
             },
         }
@@ -1552,7 +1570,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Get the name for a field of an ADT or tuple type
     pub fn get_field_name_of(
         &self,
-        f: &rustc_target::abi::FieldIdx,
+        f: rustc_target::abi::FieldIdx,
         ty: Ty<'tcx>,
         variant: Option<usize>,
     ) -> Result<String, TranslationError> {
@@ -1562,13 +1580,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 info!("getting field name of {:?} at {} (variant {:?})", f, ty, variant);
                 if def.is_struct() {
                     let i = def.variants().get(rustc_target::abi::VariantIdx::from_usize(0)).unwrap();
-                    i.fields.get(*f).map(|f| f.ident(tcx).to_string()).ok_or_else(|| {
+                    i.fields.get(f).map(|f| f.ident(tcx).to_string()).ok_or_else(|| {
                         TranslationError::UnknownError(format!("could not get field {:?} of {}", f, ty))
                     })
                 } else if def.is_enum() {
                     let variant = variant.unwrap();
                     let i = def.variants().get(rustc_target::abi::VariantIdx::from_usize(variant)).unwrap();
-                    i.fields.get(*f).map(|f| f.ident(tcx).to_string()).ok_or_else(|| {
+                    i.fields.get(f).map(|f| f.ident(tcx).to_string()).ok_or_else(|| {
                         TranslationError::UnknownError(format!("could not get field {:?} of {}", f, ty))
                     })
                 } else {
@@ -1577,18 +1595,20 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     })
                 }
             },
+
             TyKind::Tuple(_) => Ok(f.index().to_string()),
+
             TyKind::Closure(_, _) => {
                 // treat as tuple of upvars
                 Ok(f.index().to_string())
             },
+
             _ => Err(TranslationError::InvalidLayout),
         }
     }
 
     /// Get the name of a variant of an enum.
     pub fn get_variant_name_of(
-        &self,
         ty: Ty<'tcx>,
         variant: rustc_target::abi::VariantIdx,
     ) -> Result<String, TranslationError> {
@@ -1609,7 +1629,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     /// substituting all generics.
     pub fn translate_type_to_syn_type(
         &self,
-        ty: &Ty<'tcx>,
+        ty: Ty<'tcx>,
         scope: InFunctionState<'_, 'def>,
     ) -> Result<radium::SynType, TranslationError> {
         // give an environment substituting in the generics
@@ -1622,7 +1642,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     /// Translate type in the scope of a function.
     pub fn translate_type(
         &self,
-        ty: &Ty<'tcx>,
+        ty: Ty<'tcx>,
         scope: InFunctionState<'_, 'def>,
     ) -> Result<radium::Type<'def>, TranslationError> {
         self.translate_type_with_deps(ty, &mut TranslationStateInner::InFunction(&mut *scope))
@@ -1631,7 +1651,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     /// Translate type in an empty scope.
     pub fn translate_type_in_empty_scope(
         &self,
-        ty: &Ty<'tcx>,
+        ty: Ty<'tcx>,
     ) -> Result<radium::Type<'def>, TranslationError> {
         let mut s = HashSet::new();
         self.translate_type_with_deps(ty, &mut TranslationStateInner::TranslateAdt(&mut s))
@@ -1641,7 +1661,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     /// registering a new ADT.
     pub fn generate_structlike_use<'a>(
         &self,
-        ty: &Ty<'tcx>,
+        ty: Ty<'tcx>,
         variant: Option<rustc_target::abi::VariantIdx>,
         scope: InFunctionState<'a, 'def>,
     ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError> {
@@ -1808,21 +1828,21 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
 
     /// Translate a MIR type to the Caesium syntactic type we need when storing an element of the type,
     /// substituting all generics.
-    pub fn translate_type_to_syn_type(&self, ty: &Ty<'tcx>) -> Result<radium::SynType, TranslationError> {
-        let ty = self.normalize(*ty)?;
+    pub fn translate_type_to_syn_type(&self, ty: Ty<'tcx>) -> Result<radium::SynType, TranslationError> {
+        let ty = self.normalize(ty)?;
         let mut scope = self.scope.borrow_mut();
-        self.translator.translate_type_to_syn_type(&ty, &mut scope)
+        self.translator.translate_type_to_syn_type(ty, &mut scope)
     }
 
     /// Translate type.
-    pub fn translate_type(&self, ty: &Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
-        let ty = self.normalize(*ty)?;
+    pub fn translate_type(&self, ty: Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
+        let ty = self.normalize(ty)?;
         let mut scope = self.scope.borrow_mut();
-        self.translator.translate_type(&ty, &mut scope)
+        self.translator.translate_type(ty, &mut scope)
     }
 
     /// Translate type without normalizing first.
-    pub fn translate_type_no_normalize(&self, ty: &Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
+    pub fn translate_type_no_normalize(&self, ty: Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
         let mut scope = self.scope.borrow_mut();
         self.translator.translate_type(ty, &mut scope)
     }
@@ -1831,7 +1851,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
     /// substituting all generics, without normalizing first.
     pub fn translate_type_to_syn_type_no_normalize(
         &self,
-        ty: &Ty<'tcx>,
+        ty: Ty<'tcx>,
     ) -> Result<radium::SynType, TranslationError> {
         let mut scope = self.scope.borrow_mut();
         self.translator.translate_type_to_syn_type(ty, &mut scope)
@@ -1841,7 +1861,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
     /// registering a new ADT.
     pub fn generate_structlike_use(
         &self,
-        ty: &Ty<'tcx>,
+        ty: Ty<'tcx>,
         variant: Option<rustc_target::abi::VariantIdx>,
     ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError> {
         let mut scope = self.scope.borrow_mut();
