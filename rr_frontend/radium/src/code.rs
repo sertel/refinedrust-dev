@@ -7,91 +7,72 @@
 /// Provides the Coq AST for code and specifications as well as utilities for
 /// constructing them.
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt::{Display, Formatter, Write as fWrite};
+use std::fmt::{Formatter, Write as fWrite};
 use std::io::Write;
 use std::{fmt, io};
 
+use derive_more::Display;
+use indent_write::indentable::Indentable;
 use indent_write::io::IndentWriter;
 use log::info;
 
 use crate::specs::*;
-use crate::{push_str_list, write_list};
+use crate::{display_list, push_str_list, write_list};
 
 fn make_indent(i: usize) -> String {
     " ".repeat(i)
 }
 
-fn fmt_option<H>(f: &mut Formatter<'_>, o: &Option<H>) -> fmt::Result
-where
-    H: Display,
-{
+fn fmt_comment(o: &Option<String>) -> String {
     match o {
-        Some(h) => write!(f, "Some ({})", h),
-        None => write!(f, "None"),
+        None => String::new(),
+        Some(comment) => format!(" (* {} *)", comment),
+    }
+}
+
+fn fmt_option<T: fmt::Display>(o: &Option<T>) -> String {
+    match o {
+        None => format!("None"),
+        Some(x) => format!("Some ({})", x),
     }
 }
 
 /// A representation of syntactic Rust types that we can use in annotations for the `RefinedRust`
 /// type system.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum RustType {
+    #[display("RSTLitType [{}] [{}]", display_list!(_0, "; ", "\"{}\""), display_list!(_1, "; "))]
     Lit(Vec<String>, Vec<RustType>),
-    TyVar(String),
-    Int(IntType),
-    Bool,
-    Char,
-    Unit,
-    MutRef(Box<RustType>, Lft),
-    ShrRef(Box<RustType>, Lft),
-    PrimBox(Box<RustType>),
-    Struct(String, Vec<RustType>),
-    Array(usize, Box<RustType>),
-}
 
-impl Display for RustType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Lit(path, rhs) => {
-                write!(f, "RSTLitType [")?;
-                write_list!(f, path, "; ", "\"{}\"")?;
-                write!(f, "] [")?;
-                write_list!(f, rhs, "; ")?;
-                write!(f, "]")
-            },
-            Self::TyVar(var) => {
-                write!(f, "RSTTyVar \"{}\"", var)
-            },
-            Self::Int(it) => {
-                write!(f, "RSTInt {}", it)
-            },
-            Self::Bool => {
-                write!(f, "RSTBool")
-            },
-            Self::Char => {
-                write!(f, "RSTChar")
-            },
-            Self::Unit => {
-                write!(f, "RSTUnit")
-            },
-            Self::MutRef(ty, lft) => {
-                write!(f, "RSTRef Mut \"{}\" ({})", lft, ty)
-            },
-            Self::ShrRef(ty, lft) => {
-                write!(f, "RSTRef Shr \"{}\" ({})", lft, ty)
-            },
-            Self::PrimBox(ty) => {
-                write!(f, "RSTBox ({})", ty)
-            },
-            Self::Struct(sls, tys) => {
-                write!(f, "RSTStruct ({}) [", sls)?;
-                write_list!(f, tys, "; ")?;
-                write!(f, "]")
-            },
-            Self::Array(len, ty) => {
-                write!(f, "RSTArray {} ({})", len, ty)
-            },
-        }
-    }
+    #[display("RSTTyVar \"{}\"", _0)]
+    TyVar(String),
+
+    #[display("RSTInt {}", _0)]
+    Int(IntType),
+
+    #[display("RSTBool")]
+    Bool,
+
+    #[display("RSTChar")]
+    Char,
+
+    #[display("RSTUnit")]
+    Unit,
+
+    #[display("RSTRef Mut \"{}\" ({})", _1, &_0)]
+    MutRef(Box<RustType>, Lft),
+
+    #[display("RSTRef Shr \"{}\" ({})", _1, &_0)]
+    ShrRef(Box<RustType>, Lft),
+
+    #[display("RSTBox ({})", &_0)]
+    PrimBox(Box<RustType>),
+
+    #[display("RSTStruct ({}) [{}]", _0, display_list!(_1, "; "))]
+    Struct(String, Vec<RustType>),
+
+    #[display("RSTArray {} ({})", _0, &_1)]
+    Array(usize, Box<RustType>),
 }
 
 impl RustType {
@@ -165,61 +146,70 @@ impl RustType {
  * This is much more constrained than the Coq version of values, as we do not need to represent
  * runtime values.
  */
-#[derive(Clone, Eq, PartialEq, Debug)]
+// TODO: add chars
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Literal {
+    #[display("I2v ({}) {}", _0, IntType::I8)]
     LitI8(i8),
-    LitI16(i16),
-    LitI32(i32),
-    LitI64(i64),
-    LitI128(i128),
-    LitU8(u8),
-    LitU16(u16),
-    LitU32(u32),
-    LitU64(u64),
-    LitU128(u128),
-    LitBool(bool),
-    // name of the loc
-    LitLoc(String),
-    // dummy literal for ZST values (e.g. ())
-    LitZST,
-    //TODO: add chars
-}
 
-impl Display for Literal {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        let mut format_int = |i: String, it: IntType| write!(f, "I2v ({}) {}", i.as_str(), it);
-        match self {
-            Self::LitI8(i) => format_int(i.to_string(), IntType::I8),
-            Self::LitI16(i) => format_int(i.to_string(), IntType::I16),
-            Self::LitI32(i) => format_int(i.to_string(), IntType::I32),
-            Self::LitI64(i) => format_int(i.to_string(), IntType::I64),
-            Self::LitI128(i) => format_int(i.to_string(), IntType::I128),
-            Self::LitU8(i) => format_int(i.to_string(), IntType::U8),
-            Self::LitU16(i) => format_int(i.to_string(), IntType::U16),
-            Self::LitU32(i) => format_int(i.to_string(), IntType::U32),
-            Self::LitU64(i) => format_int(i.to_string(), IntType::U64),
-            Self::LitU128(i) => format_int(i.to_string(), IntType::U128),
-            Self::LitBool(b) => write!(f, "val_of_bool {b}"),
-            Self::LitZST => write!(f, "zst_val"),
-            Self::LitLoc(name) => write!(f, "{name}"),
-        }
-    }
+    #[display("I2v ({}) {}", _0, IntType::I16)]
+    LitI16(i16),
+
+    #[display("I2v ({}) {}", _0, IntType::I32)]
+    LitI32(i32),
+
+    #[display("I2v ({}) {}", _0, IntType::I64)]
+    LitI64(i64),
+
+    #[display("I2v ({}) {}", _0, IntType::I128)]
+    LitI128(i128),
+
+    #[display("I2v ({}) {}", _0, IntType::U8)]
+    LitU8(u8),
+
+    #[display("I2v ({}) {}", _0, IntType::U16)]
+    LitU16(u16),
+
+    #[display("I2v ({}) {}", _0, IntType::U32)]
+    LitU32(u32),
+
+    #[display("I2v ({}) {}", _0, IntType::U64)]
+    LitU64(u64),
+
+    #[display("I2v ({}) {}", _0, IntType::U128)]
+    LitU128(u128),
+
+    #[display("val_of_bool {}", _0)]
+    LitBool(bool),
+
+    /// name of the loc
+    #[display("{}", _0)]
+    LitLoc(String),
+
+    /// dummy literal for ZST values (e.g. ())
+    #[display("zst_val")]
+    LitZST,
 }
 
 /**
  * Caesium expressions
  */
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Expr {
+    #[display("\"{}\"", _0)]
     Var(String),
+
     /// a Coq-level parameter with a given Coq name
+    #[display("{}", _0)]
     MetaParam(String),
+
+    #[display("{}", _0)]
     Literal(Literal),
-    UnOp {
-        o: Unop,
-        ot: OpType,
-        e: Box<Expr>,
-    },
+
+    #[display("UnOp ({}) ({}) ({})", o, ot, &e)]
+    UnOp { o: Unop, ot: OpType, e: Box<Expr> },
+
+    #[display("({}) {} ({})", &e1, o.caesium_fmt(ot1, ot2), &e2)]
     BinOp {
         o: Binop,
         ot1: OpType,
@@ -227,69 +217,85 @@ pub enum Expr {
         e1: Box<Expr>,
         e2: Box<Expr>,
     },
-    // dereference an lvalue
-    Deref {
-        ot: OpType,
-        e: Box<Expr>,
-    },
-    // lvalue to rvalue conversion
-    Use {
-        ot: OpType,
-        e: Box<Expr>,
-    },
-    // the borrow-operator to get a reference
+
+    /// dereference an lvalue
+    #[display("!{{ {} }} ( {} )", ot, &e)]
+    Deref { ot: OpType, e: Box<Expr> },
+
+    /// lvalue to rvalue conversion
+    #[display("use{{ {} }} ({})", ot, &e)]
+    Use { ot: OpType, e: Box<Expr> },
+
+    /// the borrow-operator to get a reference
+    #[display("&ref{{ {}, {}, \"{}\" }} ({})", bk, fmt_option(ty), lft, &e)]
     Borrow {
         lft: Lft,
         bk: BorKind,
         ty: Option<RustType>,
         e: Box<Expr>,
     },
-    // the address-of operator to get a raw pointer
-    AddressOf {
-        mt: Mutability,
-        e: Box<Expr>,
-    },
+
+    /// the address-of operator to get a raw pointer
+    #[display("&raw{{ {} }} ({})", mt, &e)]
+    AddressOf { mt: Mutability, e: Box<Expr> },
+
+    #[display("CallE {} [{}] [@{{expr}} {}]", &f, display_list!(lfts, "; ", "\"{}\""), display_list!(args, "; "))]
     Call {
         f: Box<Expr>,
         lfts: Vec<Lft>,
         args: Vec<Expr>,
     },
+
+    #[display("IfE ({}) ({}) ({}) ({})", ot, &e1, &e2, &e3)]
     If {
         ot: OpType,
         e1: Box<Expr>,
         e2: Box<Expr>,
         e3: Box<Expr>,
     },
+
+    #[display("({}) at{{ {} }} \"{}\"", &e, sls, name)]
     FieldOf {
         e: Box<Expr>,
         sls: String,
         name: String,
     },
+
     /// an annotated expression
+    #[display("AnnotExpr{} {} ({}) ({})", fmt_comment(why), a.needs_laters(), a, &e)]
     Annot {
         a: Annotation,
         why: Option<String>,
         e: Box<Expr>,
     },
+
+    #[display("StructInit {} [{}]", sls, display_list!(components, "; ", |(name, e)| format!("(\"{name}\", {e} : expr)")))]
     StructInitE {
         sls: CoqAppTerm<String>,
         components: Vec<(String, Expr)>,
     },
+
+    #[display("EnumInit {} \"{}\" ({}) ({})", els, variant, ty, &initializer)]
     EnumInitE {
         els: CoqAppTerm<String>,
         variant: String,
         ty: RustType,
         initializer: Box<Expr>,
     },
+
+    #[display("AnnotExpr 0 DropAnnot ({})", &_0)]
     DropE(Box<Expr>),
+
     /// a box expression for creating a box of a particular type
+    #[display("box{{{}}}", &_0)]
     BoxE(SynType),
+
     /// access the discriminant of an enum
-    EnumDiscriminant {
-        els: String,
-        e: Box<Expr>,
-    },
+    #[display("EnumDiscriminant ({}) ({})", els, &e)]
+    EnumDiscriminant { els: String, e: Box<Expr> },
+
     /// access to the data of an enum
+    #[display("EnumData ({}) \"{}\" ({})", els, variant, &e)]
     EnumData {
         els: String,
         variant: String,
@@ -311,200 +317,76 @@ impl Expr {
     }
 }
 
-impl Display for Expr {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Var(var) => write!(f, "\"{}\"", var),
-            Self::MetaParam(param) => write!(f, "{}", param),
-            Self::Literal(lit) => lit.fmt(f),
-            Self::Use { ot, e } => {
-                write!(f, "use{{ {} }} ({})", ot, e)
-            },
-            Self::Call { f: fe, lfts, args } => {
-                write!(f, "CallE {} [", fe.as_ref())?;
-                write_list!(f, lfts, "; ", "\"{}\"")?;
-                write!(f, "] [@{{expr}} ")?;
-                write_list!(f, args, "; ")?;
-                write!(f, "]")
-            },
-            Self::Deref { ot, e } => {
-                write!(f, "!{{ {} }} ( {} )", ot, e)
-            },
-            Self::Borrow { lft, bk, ty, e } => {
-                let formatted_bk = bk.caesium_fmt();
-                write!(f, "&ref{{ {}, ", formatted_bk)?;
-                fmt_option(f, ty)?;
-                write!(f, ", \"{}\" }} ({})", lft, e)
-            },
-            Self::AddressOf { mt, e } => {
-                let formatted_mt = mt.caesium_fmt();
-                write!(f, "&raw{{ {} }} ({})", formatted_mt, e)
-            },
-            Self::BinOp {
-                o,
-                ot1,
-                ot2,
-                e1,
-                e2,
-            } => {
-                let formatted_o = o.caesium_fmt(ot1, ot2);
-                write!(f, "({}) {} ({})", e1, formatted_o.as_str(), e2)
-            },
-            Self::UnOp { o, ot, e } => {
-                write!(f, "UnOp ({o}) ({ot}) ({e})")
-            },
-            Self::FieldOf { e, sls, name } => {
-                //let formatted_ly = ly.caesium_fmt();
-                write!(f, "({}) at{{ {} }} \"{}\"", e, sls, name)
-            },
-            Self::Annot { a, e, why } => {
-                let why_fmt = if let Some(why) = why { format!(" (* {why} *) ") } else { format!(" ") };
-                write!(f, "AnnotExpr{}{} ({}) ({})", why_fmt, a.needs_laters(), a, e)
-            },
-            Self::BoxE(ly) => {
-                write!(f, "box{{{}}}", ly)
-            },
-            Self::DropE(e) => {
-                write!(f, "AnnotExpr 0 DropAnnot ({})", e)
-            },
-            Self::StructInitE { sls, components } => {
-                write!(f, "StructInit {} [", sls)?;
-                write_list!(f, components, "; ", |(name, e)| format!("(\"{name}\", {e} : expr)"))?;
-                write!(f, "]")
-            },
-            Self::EnumInitE {
-                els,
-                variant,
-                ty,
-                initializer,
-            } => {
-                write!(f, "EnumInit {} \"{}\" ({}) ({})", els, variant, ty, initializer)
-            },
-            Self::EnumDiscriminant { els, e } => {
-                write!(f, "EnumDiscriminant ({els}) ({e})")
-            },
-            Self::EnumData { els, variant, e } => {
-                write!(f, "EnumData ({els}) \"{variant}\" ({e})")
-            },
-            Self::If { ot, e1, e2, e3 } => {
-                write!(f, "IfE ({ot}) ({e1}) ({e2}) ({e3})")
-            },
-        }
-    }
-}
-
 /// for unique/shared pointers
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Mutability {
+    #[display("Mut")]
     Mut,
+
+    #[display("Shr")]
     Shared,
-}
-impl Mutability {
-    fn caesium_fmt(&self) -> String {
-        match self {
-            Self::Mut => "Mut".to_string(),
-            Self::Shared => "Shr".to_string(),
-        }
-    }
 }
 
 /**
  * Borrows allowed in Caesium
  */
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum BorKind {
+    #[display("Mut")]
     Mutable,
+
+    #[display("Shr")]
     Shared,
 }
-impl BorKind {
-    fn caesium_fmt(&self) -> String {
-        match self {
-            Self::Mutable => "Mut".to_string(),
-            Self::Shared => "Shr".to_string(),
-        }
-    }
-}
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum LftNameTree {
+    #[display("LftNameTreeLeaf")]
     Leaf,
+
+    #[display("LftNameTreeRef \"{}\" ({})", _0, &_1)]
     Ref(Lft, Box<LftNameTree>),
     // TODO structs etc
 }
 
-impl fmt::Display for LftNameTree {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Leaf => {
-                write!(f, "LftNameTreeLeaf")
-            },
-            Self::Ref(lft, t) => {
-                write!(f, "LftNameTreeRef \"{}\" (", lft)?;
-                t.fmt(f)?;
-                write!(f, ")")
-            },
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Annotation {
     /// Start a lifetime as a sublifetime of the intersection of a few other lifetimes
+    #[display("StartLftAnnot \"{}\" [{}]", _0, display_list!(_1, "; ", "\"{}\""))]
     StartLft(Lft, Vec<Lft>),
+
     /// End this lifetime
+    #[display("EndLftAnnot \"{}\"", _0)]
     EndLft(Lft),
+
     /// Extend this lifetime by making the directly owned part static
+    #[display("ExtendLftAnnot \"{}\"", _0)]
     ExtendLft(Lft),
+
     /// Dynamically include a lifetime in another lifetime
+    #[display("DynIncludeLftAnnot \"{}\" \"{}\"", _0, _1)]
     DynIncludeLft(Lft, Lft),
+
     /// Shorten the lifetime of an object to the given lifetimes, according to the name map
+    #[display("ShortenLftAnnot ({})", _0)]
     ShortenLft(LftNameTree),
+
     /// add naming for the lifetimes in the type of the expression to the name context,
     /// at the given names
+    #[display("GetLftNamesAnnot ({})", _0)]
     GetLftNames(LftNameTree),
+
     /// Copy a lft name map entry from lft1 to lft2
+    #[display("CopyLftNameAnnot \"{}\" \"{}\"", _1, _0)]
     CopyLftName(Lft, Lft),
+
     /// Create an alias for an intersection of lifetimes
+    #[display("AliasLftAnnot \"{}\" [{}]", _0, display_list!(_1, "; ", "\"{}\""))]
     AliasLftIntersection(Lft, Vec<Lft>),
+
     /// The following Goto will enter a loop
+    #[display("EnterLoopAnnot")]
     EnterLoop,
-}
-impl fmt::Display for Annotation {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::StartLft(l, sup) => {
-                write!(f, "StartLftAnnot \"{}\" [", l)?;
-                write_list!(f, sup, "; ", "\"{}\"")?;
-                write!(f, "]")
-            },
-            Self::EndLft(l) => {
-                write!(f, "EndLftAnnot \"{}\"", l)
-            },
-            Self::ExtendLft(l) => {
-                write!(f, "ExtendLftAnnot \"{}\"", l)
-            },
-            Self::DynIncludeLft(l1, l2) => {
-                write!(f, "DynIncludeLftAnnot \"{}\" \"{}\"", l1, l2)
-            },
-            Self::ShortenLft(name) => {
-                write!(f, "ShortenLftAnnot ({})", name)
-            },
-            Self::GetLftNames(name) => {
-                write!(f, "GetLftNamesAnnot ({})", name)
-            },
-            Self::CopyLftName(lft1, lft2) => {
-                write!(f, "CopyLftNameAnnot \"{}\" \"{}\"", lft2, lft1)
-            },
-            Self::AliasLftIntersection(lft, lfts) => {
-                write!(f, "AliasLftAnnot \"{}\" [", lft)?;
-                write_list!(f, lfts, "; ", "\"{}\"")?;
-                write!(f, "]")
-            },
-            Self::EnterLoop => {
-                write!(f, "EnterLoopAnnot")
-            },
-        }
-    }
 }
 
 impl Annotation {
@@ -516,15 +398,36 @@ impl Annotation {
 
 type BlockLabel = usize;
 
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Stmt {
+    #[display("Goto \"_bb{}\"", _0)]
     GotoBlock(BlockLabel),
+
+    #[display("return ({})", _0)]
     Return(Expr),
+
+    #[display(
+        "if{{ {} }}: {} then\n{}\nelse\n{}",
+        ot,
+        e,
+        &s1.indented(&make_indent(1)),
+        &s2.indented(&make_indent(1))
+    )]
     If {
         ot: OpType,
         e: Expr,
         s1: Box<Stmt>,
         s2: Box<Stmt>,
     },
+
+    #[display(
+        "Switch ({}: int_type) ({}) ({}∅) ([{}]) ({})",
+        it,
+        e,
+        display_list!(index_map, "", |(k, v)| format!("<[ {k}%Z := {v}%nat ]> $ ")),
+        display_list!(bs, "; "),
+        &def
+    )]
     Switch {
         // e needs to evaluate to an integer/variant index used as index to bs
         e: Expr,
@@ -533,99 +436,33 @@ pub enum Stmt {
         bs: Vec<Stmt>,
         def: Box<Stmt>,
     },
+
+    #[display("{} <-{{ {} }} {};\n{}", e1, ot, e2, &s)]
     Assign {
         ot: OpType,
         e1: Expr,
         e2: Expr,
         s: Box<Stmt>,
     },
-    ExprS {
-        e: Expr,
-        s: Box<Stmt>,
-    },
-    AssertS {
-        e: Expr,
-        s: Box<Stmt>,
-    },
+
+    #[display("expr: {};\n{}", e, &s)]
+    ExprS { e: Expr, s: Box<Stmt> },
+
+    #[display("assert{{ {} }}: {};\n{}", OpType::BoolOp, e, &s)]
+    AssertS { e: Expr, s: Box<Stmt> },
+
+    #[display("annot: {};{}\n{}", a, fmt_comment(why), &s)]
     Annot {
         a: Annotation,
         s: Box<Stmt>,
         why: Option<String>,
     },
+
+    #[display("StuckS")]
     Stuck,
 }
 
 impl Stmt {
-    fn caesium_fmt(&self, indent: usize) -> String {
-        let ind = make_indent(indent);
-        let ind = ind.as_str();
-        match self {
-            Self::GotoBlock(block) => {
-                format!("{ind}Goto \"_bb{}\"", block)
-            },
-            Self::Return(e) => {
-                format!("{ind}return ({})", e)
-            },
-            Self::Assign { ot, e1, e2, s } => {
-                let formatted_s = s.caesium_fmt(indent);
-
-                format!("{ind}{} <-{{ {} }} {};\n{}", e1, ot, e2, formatted_s.as_str())
-            },
-            Self::ExprS { e, s } => {
-                let formatted_s = s.caesium_fmt(indent);
-                format!("{ind}expr: {};\n{}", e, formatted_s.as_str())
-            },
-            Self::Annot { a, s, why } => {
-                let formatted_s = s.caesium_fmt(indent);
-                let why_fmt = if let Some(why) = why { format!(" (* {why} *)") } else { format!("") };
-                format!("{ind}annot: {};{why_fmt}\n{}", a, formatted_s.as_str())
-            },
-            Self::If { ot, e, s1, s2 } => {
-                let formatted_s1 = s1.caesium_fmt(indent + 1);
-                let formatted_s2 = s2.caesium_fmt(indent + 1);
-                format!(
-                    "{ind}if{{ {} }}: {} then\n{}\n{ind}else\n{}",
-                    ot,
-                    e,
-                    formatted_s1.as_str(),
-                    formatted_s2.as_str()
-                )
-            },
-            Self::AssertS { e, s } => {
-                let formatted_s = s.caesium_fmt(indent);
-                format!("{ind}assert{{ {} }}: {};\n{}", OpType::BoolOp, e, formatted_s)
-            },
-            Self::Stuck => {
-                format!("{ind}StuckS")
-            },
-            Self::Switch {
-                e,
-                it,
-                index_map,
-                bs,
-                def,
-            } => {
-                let mut fmt_index_map = String::with_capacity(100);
-                for (k, v) in index_map {
-                    write!(fmt_index_map, "<[ {k}%Z := {v}%nat ]> $ ").unwrap();
-                }
-                write!(fmt_index_map, "∅").unwrap();
-
-                let mut fmt_targets = String::with_capacity(100);
-
-                fmt_targets.push('[');
-                push_str_list!(fmt_targets, bs, "; ", |tgt| tgt.caesium_fmt(0));
-                fmt_targets.push(']');
-
-                let fmt_default = def.caesium_fmt(0);
-
-                format!(
-                    "{ind}Switch ({it} : int_type) ({e}) ({fmt_index_map}) ({fmt_targets}) ({fmt_default})"
-                )
-            },
-        }
-    }
-
     /// Annotate a statement with a list of annotations
     #[must_use]
     pub fn with_annotations(mut s: Self, a: Vec<Annotation>, why: &Option<String>) -> Self {
@@ -640,20 +477,16 @@ impl Stmt {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Unop {
+    #[display("NegOp")]
     NegOp,
+
+    #[display("NotBoolOp")]
     NotBoolOp,
+
+    #[display("NotIntOp")]
     NotIntOp,
-}
-impl Display for Unop {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Self::NegOp => write!(f, "NegOp"),
-            Self::NotBoolOp => write!(f, "NotBoolOp"),
-            Self::NotIntOp => write!(f, "NotIntOp"),
-        }
-    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -689,6 +522,7 @@ pub enum Binop {
     CheckedSubOp,
     CheckedMulOp,
 }
+
 impl Binop {
     fn caesium_fmt(&self, ot1: &OpType, ot2: &OpType) -> String {
         let format_prim = |st: &str| format!("{} {} , {} }}", st, ot1, ot2);
@@ -803,7 +637,7 @@ impl FunctionCode {
             &self
                 .basic_blocks
                 .iter()
-                .map(|(name, bb)| (format!("_bb{name}"), bb.caesium_fmt(3)))
+                .map(|(name, bb)| (format!("_bb{name}"), bb.indented(&make_indent(3)).to_string()))
                 .collect(),
         );
 
@@ -932,7 +766,7 @@ impl FunctionCodeBuilder {
 #[derive(Clone, Debug)]
 struct InvariantMap(HashMap<usize, LoopSpec>);
 
-impl Display for InvariantMap {
+impl std::fmt::Display for InvariantMap {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
         // PolyCons (bb, wrap_inv inv) $ ... $ PolyNil
         write!(f, "(")?;

@@ -10,5 +10,6 @@ version.workspace = true
 [dependencies]
 rrconfig.workspace = true
 
+derive_more.workspace = true
 indent_write.workspace = true
 log.workspace = true

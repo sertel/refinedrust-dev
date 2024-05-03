@@ -135,7 +135,7 @@ impl IntType {
 }
 
 /// Representation of Caesium's optypes.
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum OpType {
     IntOp(IntType),
     BoolOp,
