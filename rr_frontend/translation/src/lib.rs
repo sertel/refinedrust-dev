@@ -433,7 +433,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             .unwrap();
 
         for (_, fun) in self.procedure_registry.iter_code() {
-            code_file.write(fun.code.caesium_fmt().as_bytes()).unwrap();
+            code_file.write(fun.code.to_string().as_bytes()).unwrap();
             code_file.write("\n\n".as_bytes()).unwrap();
         }
 

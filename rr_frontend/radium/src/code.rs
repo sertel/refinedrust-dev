@@ -14,6 +14,7 @@ use std::{fmt, io};
 use derive_more::Display;
 use indent_write::indentable::Indentable;
 use indent_write::io::IndentWriter;
+use indoc::{formatdoc, writedoc};
 use log::info;
 
 use crate::specs::*;
@@ -565,121 +566,10 @@ impl Binop {
     }
 }
 
-/// Representation of a Caesium function's source code
-pub struct FunctionCode {
-    name: String,
-    stack_layout: StackMap,
-    basic_blocks: BTreeMap<usize, Stmt>,
-
-    /// Coq parameters that the function is parameterized over
-    required_parameters: Vec<(CoqName, CoqType)>,
-}
-
-fn make_map_string(sep0: &str, sep: &str, els: &Vec<(String, String)>) -> String {
-    let mut out = String::with_capacity(100);
-    for (key, value) in els {
-        out.push_str(sep);
-
-        out.push_str(format!("<[{sep}\"{}\" :={}{}{}]>%E $", key, sep0, value, sep).as_str());
-    }
-    out.push_str(sep);
-    out.push('∅');
-    out
-}
-
-fn make_lft_map_string(els: &Vec<(String, String)>) -> String {
-    let mut out = String::with_capacity(100);
-    for (key, value) in els {
-        out.push_str(format!("named_lft_update \"{}\" {} $ ", key, value).as_str());
-    }
-    out.push('∅');
-    out
-}
-
-impl FunctionCode {
-    const INITIAL_BB: usize = 0;
-
-    #[must_use]
-    pub fn caesium_fmt(&self) -> String {
-        // format args
-        let format_stack_layout = |layout: &Vec<Variable>| {
-            let mut formatted_args: String = String::with_capacity(100);
-
-            formatted_args.push('[');
-
-            push_str_list!(formatted_args, layout, "; ", |Variable((ref name, ref st))| {
-                let ly = st.layout_term(&[]); //should be closed already
-                let indent = make_indent(2);
-
-                format!("\n{indent}(\"{name}\", {ly} : layout)")
-            });
-
-            formatted_args.push_str(format!("\n{}]", make_indent(1).as_str()).as_str());
-
-            formatted_args
-        };
-
-        let mut formatted_args = String::with_capacity(100);
-        formatted_args.push_str(
-            format!("{}f_args := {}", make_indent(1), format_stack_layout(&self.stack_layout.args).as_str())
-                .as_str(),
-        );
-
-        let mut formatted_locals = String::with_capacity(100);
-        formatted_locals.push_str(
-            format!(
-                "{}f_local_vars := {}",
-                make_indent(1),
-                format_stack_layout(&self.stack_layout.locals).as_str()
-            )
-            .as_str(),
-        );
-
-        let formatted_bb = make_map_string(
-            "\n",
-            format!("\n{}", make_indent(2).as_str()).as_str(),
-            &self
-                .basic_blocks
-                .iter()
-                .map(|(name, bb)| (format!("_bb{name}"), bb.indented(&make_indent(3)).to_string()))
-                .collect(),
-        );
-
-        if self.basic_blocks.is_empty() {
-            panic!("Function has no basic block");
-        }
-        let formatted_init = format!("{}f_init := \"_bb{}\"", make_indent(1).as_str(), Self::INITIAL_BB);
-
-        // format Coq parameters
-        let mut formatted_params = String::with_capacity(20);
-        for (ref name, ref ty) in &self.required_parameters {
-            formatted_params.push_str(format!(" ({} : {})", name, ty).as_str());
-        }
-
-        format!(
-            "Definition {}_def{} : function := {{|\n{};\n{};\n{}f_code := {};\n{};\n|}}.",
-            self.name.as_str(),
-            formatted_params.as_str(),
-            formatted_args.as_str(),
-            formatted_locals.as_str(),
-            make_indent(1).as_str(),
-            formatted_bb.as_str(),
-            formatted_init.as_str()
-        )
-    }
-
-    /// Get the number of arguments of the function.
-    #[must_use]
-    pub fn get_argument_count(&self) -> usize {
-        self.stack_layout.args.len()
-    }
-}
-
 /**
  * A variable in the Caesium code, composed of a name and a type.
  */
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("(\"{}\", {} : layout)", _0.0, _0.1.layout_term(&[]))]
+#[derive(Clone, Eq, PartialEq, Debug)]
 struct Variable((String, SynType));
 
 impl Variable {
@@ -745,6 +635,98 @@ impl StackMap {
         }
 
         panic!("StackMap: invariant violation");
+    }
+}
+
+/// Representation of a Caesium function's source code
+pub struct FunctionCode {
+    name: String,
+    stack_layout: StackMap,
+    basic_blocks: BTreeMap<usize, Stmt>,
+
+    /// Coq parameters that the function is parameterized over
+    required_parameters: Vec<(CoqName, CoqType)>,
+}
+
+fn make_map_string(sep0: &str, sep: &str, els: &Vec<(String, String)>) -> String {
+    let mut out = String::with_capacity(100);
+    for (key, value) in els {
+        out.push_str(sep);
+
+        out.push_str(format!("<[\n    \"{key}\" :=\n{value}\n    ]>%E $").as_str());
+    }
+    out.push_str(sep);
+    out.push('∅');
+    out
+}
+
+fn make_lft_map_string(els: &Vec<(String, String)>) -> String {
+    let mut out = String::with_capacity(100);
+    for (key, value) in els {
+        out.push_str(format!("named_lft_update \"{}\" {} $ ", key, value).as_str());
+    }
+    out.push('∅');
+    out
+}
+
+impl Display for FunctionCode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fn fmt_params((name, ty): &(CoqName, CoqType)) -> String {
+            format!("({} : {})", name, ty)
+        }
+
+        fn fmt_variable(Variable((name, ty)): &Variable) -> String {
+            format!("(\"{}\", {} : layout)", name, ty.layout_term(&[]))
+        }
+
+        fn fmt_blocks((name, bb): (&usize, &Stmt)) -> String {
+            formatdoc!(
+                r#"<[
+                   "_bb{}" :=
+                    {}
+                   ]>%E $"#,
+                name,
+                bb.indented_skip_initial(&make_indent(1))
+            )
+        }
+
+        if self.basic_blocks.is_empty() {
+            panic!("Function has no basic block");
+        }
+
+        let params = display_list!(&self.required_parameters, " ", fmt_params);
+        let args = display_list!(&self.stack_layout.args, ";\n", fmt_variable);
+        let locals = display_list!(&self.stack_layout.locals, ";\n", fmt_variable);
+        let blocks = display_list!(&self.basic_blocks, "\n", fmt_blocks);
+
+        writedoc!(
+            f,
+            r#"Definition {}_def {} : function := {{|
+                f_args := [
+                 {}
+                ];
+                f_local_vars := [
+                 {}
+                ];
+                f_code :=
+                 {}
+                 ∅;
+                f_init := "_bb0";
+               |}}."#,
+            self.name,
+            params,
+            args.indented_skip_initial(&make_indent(2)),
+            locals.indented_skip_initial(&make_indent(2)),
+            blocks.indented_skip_initial(&make_indent(2))
+        )
+    }
+}
+
+impl FunctionCode {
+    /// Get the number of arguments of the function.
+    #[must_use]
+    pub fn get_argument_count(&self) -> usize {
+        self.stack_layout.args.len()
     }
 }
 
