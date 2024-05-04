@@ -602,12 +602,12 @@ impl FunctionCode {
     #[must_use]
     pub fn caesium_fmt(&self) -> String {
         // format args
-        let format_stack_layout = |layout: std::slice::Iter<'_, (String, SynType)>| {
+        let format_stack_layout = |layout: &Vec<Variable>| {
             let mut formatted_args: String = String::with_capacity(100);
 
             formatted_args.push('[');
 
-            push_str_list!(formatted_args, layout, "; ", |(ref name, ref st)| {
+            push_str_list!(formatted_args, layout, "; ", |Variable((ref name, ref st))| {
                 let ly = st.layout_term(&[]); //should be closed already
                 let indent = make_indent(2);
 
@@ -621,12 +621,8 @@ impl FunctionCode {
 
         let mut formatted_args = String::with_capacity(100);
         formatted_args.push_str(
-            format!(
-                "{}f_args := {}",
-                make_indent(1),
-                format_stack_layout(self.stack_layout.iter_args()).as_str()
-            )
-            .as_str(),
+            format!("{}f_args := {}", make_indent(1), format_stack_layout(&self.stack_layout.args).as_str())
+                .as_str(),
         );
 
         let mut formatted_locals = String::with_capacity(100);
@@ -634,7 +630,7 @@ impl FunctionCode {
             format!(
                 "{}f_local_vars := {}",
                 make_indent(1),
-                format_stack_layout(self.stack_layout.iter_locals()).as_str()
+                format_stack_layout(&self.stack_layout.locals).as_str()
             )
             .as_str(),
         );
@@ -675,7 +671,21 @@ impl FunctionCode {
     /// Get the number of arguments of the function.
     #[must_use]
     pub fn get_argument_count(&self) -> usize {
-        self.stack_layout.iter_args().len()
+        self.stack_layout.args.len()
+    }
+}
+
+/**
+ * A variable in the Caesium code, composed of a name and a type.
+ */
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("(\"{}\", {} : layout)", _0.0, _0.1.layout_term(&[]))]
+struct Variable((String, SynType));
+
+impl Variable {
+    #[must_use]
+    pub const fn new(name: String, st: SynType) -> Self {
+        Self((name, st))
     }
 }
 
@@ -683,8 +693,8 @@ impl FunctionCode {
  * Maintain necessary info to map MIR places to Caesium stack variables.
  */
 pub struct StackMap {
-    arg_map: Vec<(String, SynType)>,
-    local_map: Vec<(String, SynType)>,
+    args: Vec<Variable>,
+    locals: Vec<Variable>,
     used_names: HashSet<String>,
 }
 
@@ -692,8 +702,8 @@ impl StackMap {
     #[must_use]
     pub fn new() -> Self {
         Self {
-            arg_map: Vec::new(),
-            local_map: Vec::new(),
+            args: Vec::new(),
+            locals: Vec::new(),
             used_names: HashSet::new(),
         }
     }
@@ -703,7 +713,7 @@ impl StackMap {
             return false;
         }
         self.used_names.insert(name.to_string());
-        self.local_map.push((name, st));
+        self.locals.push(Variable::new(name, st));
         true
     }
 
@@ -712,7 +722,7 @@ impl StackMap {
             return false;
         }
         self.used_names.insert(name.to_string());
-        self.arg_map.push((name, st));
+        self.args.push(Variable::new(name, st));
         true
     }
 
@@ -721,25 +731,20 @@ impl StackMap {
         if !self.used_names.contains(name) {
             return None;
         }
-        for (nm, st) in &self.local_map {
+
+        for Variable((nm, st)) in &self.locals {
             if nm == name {
                 return Some(st);
             }
         }
-        for (nm, st) in &self.arg_map {
+
+        for Variable((nm, st)) in &self.args {
             if nm == name {
                 return Some(st);
             }
         }
+
         panic!("StackMap: invariant violation");
-    }
-
-    pub fn iter_args(&self) -> std::slice::Iter<'_, (String, SynType)> {
-        self.arg_map.iter()
-    }
-
-    pub fn iter_locals(&self) -> std::slice::Iter<'_, (String, SynType)> {
-        self.local_map.iter()
     }
 }
 
@@ -918,7 +923,7 @@ impl<'def> Function<'def> {
 
         // write local syntypes
         write!(f, ") [")?;
-        write_list!(f, &self.code.stack_layout.local_map, "; ", |(_, st)| st.to_string())?;
+        write_list!(f, &self.code.stack_layout.locals, "; ", |Variable((_, st))| st.to_string())?;
         write!(f, "] (type_of_{} ", self.name())?;
 
         // write type args (passed to the type definition)
@@ -1016,12 +1021,15 @@ impl<'def> Function<'def> {
 
         // intro stack locations
         write!(f, "intros")?;
-        for (arg, _) in &self.code.stack_layout.arg_map {
+
+        for Variable((arg, _)) in &self.code.stack_layout.args {
             write!(f, " arg_{}", arg)?;
         }
-        for (local, _) in &self.code.stack_layout.local_map {
+
+        for Variable((local, _)) in &self.code.stack_layout.locals {
             write!(f, " local_{}", local)?;
         }
+
         write!(f, ";\n")?;
 
         // destruct function parameters
