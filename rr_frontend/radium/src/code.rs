@@ -7,8 +7,8 @@
 /// Provides the Coq AST for code and specifications as well as utilities for
 /// constructing them.
 use std::collections::{BTreeMap, HashMap, HashSet};
-use std::fmt::{Formatter, Write as fWrite};
-use std::io::Write;
+use std::fmt::Write as fmtWrite;
+use std::io::Write as ioWrite;
 use std::{fmt, io};
 
 use derive_more::Display;
@@ -18,11 +18,7 @@ use indoc::{formatdoc, writedoc};
 use log::info;
 
 use crate::specs::*;
-use crate::{display_list, push_str_list, write_list};
-
-fn make_indent(i: usize) -> String {
-    " ".repeat(i)
-}
+use crate::{display_list, make_indent, push_str_list, write_list};
 
 fn fmt_comment(o: &Option<String>) -> String {
     match o {
@@ -31,7 +27,7 @@ fn fmt_comment(o: &Option<String>) -> String {
     }
 }
 
-fn fmt_option<T: fmt::Display>(o: &Option<T>) -> String {
+fn fmt_option<T: Display>(o: &Option<T>) -> String {
     match o {
         None => format!("None"),
         Some(x) => format!("Some ({})", x),
@@ -758,19 +754,11 @@ impl FunctionCodeBuilder {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Display)]
+#[display("({}PolyNil)", display_list!(_0, "",
+    |(bb, spec)| format!("PolyCons ({}, wrap_inv ({})) $ ", bb, spec.func_predicate))
+)]
 struct InvariantMap(HashMap<usize, LoopSpec>);
-
-impl std::fmt::Display for InvariantMap {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        // PolyCons (bb, wrap_inv inv) $ ... $ PolyNil
-        write!(f, "(")?;
-        for (bb, spec) in &self.0 {
-            write!(f, "PolyCons  ({}, wrap_inv ({})) $ ", bb, spec.func_predicate)?;
-        }
-        write!(f, "PolyNil)")
-    }
-}
 
 /// A Caesium function bundles up the Caesium code itself as well as the generated specification
 /// for it.

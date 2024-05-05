@@ -9,6 +9,10 @@ pub use code::*;
 pub use coq::*;
 pub use specs::*;
 
+fn make_indent(i: usize) -> String {
+    " ".repeat(i)
+}
+
 /// Extend the `core::fmt::Display` trait to display a collection separated by a separator.
 ///
 /// The macro can take an optional fourth argument to customise the format string (default: `"{}"`).

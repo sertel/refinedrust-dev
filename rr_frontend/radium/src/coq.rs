@@ -5,11 +5,13 @@
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
 use std::fmt;
-use std::fmt::{Display, Formatter, Write};
+use std::fmt::Write as fmtWrite;
 
+use derive_more::Display;
 use indent_write::fmt::IndentWriter;
+use indent_write::indentable::Indentable;
 
-use crate::write_list;
+use crate::{display_list, make_indent, write_list};
 
 pub(crate) const BASE_INDENT: &str = "  ";
 
@@ -38,6 +40,18 @@ pub struct CoqAppTerm<T> {
     pub(crate) rhs: Vec<String>,
 }
 
+impl<T: Display> Display for CoqAppTerm<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.rhs.is_empty() {
+            return write!(f, "{}", self.lhs);
+        }
+
+        write!(f, "({}", self.lhs)?;
+        write_list!(f, &self.rhs, "", " ({})")?;
+        write!(f, ")")
+    }
+}
+
 impl<T> CoqAppTerm<T> {
     pub fn new(lhs: T, rhs: Vec<String>) -> Self {
         Self { lhs, rhs }
@@ -51,122 +65,99 @@ impl<T> CoqAppTerm<T> {
     }
 }
 
-impl<T> fmt::Display for CoqAppTerm<T>
-where
-    T: Display,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.rhs.is_empty() {
-            return write!(f, "{}", self.lhs);
-        }
-
-        write!(f, "({}", self.lhs)?;
-        for r in &self.rhs {
-            write!(f, " ({})", r)?;
-        }
-        write!(f, ")")
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum CoqName {
+    #[display("{}", _0)]
     Named(String),
-    Unnamed,
-}
 
-impl Display for CoqName {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Self::Named(s) => write!(f, "{}", s),
-            Self::Unnamed => write!(f, "_"),
-        }
-    }
+    #[display("_")]
+    Unnamed,
 }
 
 /// A Coq pattern, e.g., "x" or "'(x, y)".
 pub type CoqPattern = String;
 
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum CoqType {
-    /// free variable that is bound, e.g., by a surrounding struct definition
-    Var(usize),
-    /// literal types that are not contained in the grammar
-    Literal(String),
-    /// Placeholder that should be inferred by Coq if possible
-    Infer,
-    /// Coq type `lft`
-    Lft,
-    /// Coq type `loc`
-    Loc,
-    /// Coq type `layout`
-    Layout,
-    /// Coq type `syn_type`
-    SynType,
-    /// Coq type `struct_layout`
-    StructLayout,
-    /// Coq type `Type`
-    Type,
-    /// Coq type `type rt`
-    Ttype(Box<CoqType>),
-    /// Coq type `rtype`
-    Rtype,
-    /// the unit type
-    Unit,
-    /// the type of integers
-    Z,
-    /// the type of booleans
-    Bool,
-    /// product types
-    Prod(Vec<CoqType>),
-    /// place_rfn
-    PlaceRfn(Box<CoqType>),
-    /// gname
-    Gname,
-    /// a plist with a given type constructor over a list of types
-    PList(String, Vec<CoqType>),
+fn fmt_prod(v: &Vec<CoqType>) -> String {
+    match v.as_slice() {
+        [] => "unit".to_string(),
+        [t] => t.to_string(),
+        _ => format!("({})%type", display_list!(v, " * ")),
+    }
 }
 
-impl Display for CoqType {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
-        match self {
-            Self::Bool => write!(f, "bool"),
-            Self::Z => write!(f, "Z"),
-            Self::Unit => write!(f, "unit"),
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+pub enum CoqType {
+    /// free variable that is bound, e.g., by a surrounding struct definition
+    #[display("#{}", _0)]
+    Var(usize),
 
-            Self::Gname => write!(f, "gname"),
-            Self::Infer => write!(f, "_"),
-            Self::Layout => write!(f, "layout"),
-            Self::Lft => write!(f, "lft"),
-            Self::Literal(s) => write!(f, "{}", s),
-            Self::Loc => write!(f, "loc"),
-            Self::Rtype => write!(f, "rtype"),
-            Self::StructLayout => write!(f, "struct_layout"),
-            Self::SynType => write!(f, "syn_type"),
-            Self::Type => write!(f, "Type"),
+    /// literal types that are not contained in the grammar
+    #[display("{}", _0)]
+    Literal(String),
 
-            Self::PList(cons, tys) => {
-                write!(f, "plist {} [", cons)?;
-                write_list!(f, tys, "; ", "{} : Type")?;
-                write!(f, "]")
-            },
+    /// Placeholder that should be inferred by Coq if possible
+    #[display("_")]
+    Infer,
 
-            Self::PlaceRfn(box t) => write!(f, "(place_rfn {})", t),
+    /// Coq type `lft`
+    #[display("lft")]
+    Lft,
 
-            Self::Prod(v) => match v.len() {
-                0 => write!(f, "unit"),
-                1 => write!(f, "{}", v[0]),
-                _ => {
-                    write!(f, "(")?;
-                    write_list!(f, v, " * ")?;
-                    write!(f, ")%type")
-                },
-            },
+    /// Coq type `loc`
+    #[display("loc")]
+    Loc,
 
-            Self::Ttype(box t) => write!(f, "(type {})", t),
+    /// Coq type `layout`
+    #[display("layout")]
+    Layout,
 
-            Self::Var(i) => write!(f, "#{}", i),
-        }
-    }
+    /// Coq type `syn_type`
+    #[display("syn_type")]
+    SynType,
+
+    /// Coq type `struct_layout`
+    #[display("struct_layout")]
+    StructLayout,
+
+    /// Coq type `Type`
+    #[display("Type")]
+    Type,
+
+    /// Coq type `type rt`
+    #[display("(type {})", &_0)]
+    Ttype(Box<CoqType>),
+
+    /// Coq type `rtype`
+    #[display("rtype")]
+    Rtype,
+
+    /// the unit type
+    #[display("unit")]
+    Unit,
+
+    /// the type of integers
+    #[display("Z")]
+    Z,
+
+    /// the type of booleans
+    #[display("bool")]
+    Bool,
+
+    /// product types
+    #[display("{}", fmt_prod(_0))]
+    Prod(Vec<CoqType>),
+
+    /// place_rfn
+    #[display("(place_rfn {})", &_0)]
+    PlaceRfn(Box<CoqType>),
+
+    /// gname
+    #[display("gname")]
+    Gname,
+
+    /// a plist with a given type constructor over a list of types
+    #[display("plist {} [{}]", _0, display_list!(_1, "; ", "{} : Type"))]
+    PList(String, Vec<CoqType>),
 }
 
 impl CoqType {
@@ -248,7 +239,8 @@ impl CoqType {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("{}", display_list!(_0, " ", |(name, ty)| format!("({} : {})", name, ty)))]
 pub struct CoqParamList(pub Vec<(CoqName, CoqType)>);
 
 impl CoqParamList {
@@ -258,112 +250,67 @@ impl CoqParamList {
     }
 }
 
-impl Display for CoqParamList {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write_list!(f, &self.0, " ", |(name, ty)| format!("({name} : {ty})"))
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("{} {}", name, params)]
 pub struct CoqVariant {
     pub name: String,
     pub params: CoqParamList,
 }
 
-impl Display for CoqVariant {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.name, self.params)
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("Inductive {} {} :=\n{}\n.", name, parameters,
+    display_list!(variants, "\n| ").indented(&make_indent(1))
+)]
 pub struct CoqInductive {
     pub name: String,
     pub parameters: CoqParamList,
     pub variants: Vec<CoqVariant>,
 }
 
-impl Display for CoqInductive {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Inductive {} {} :=", self.name, self.parameters)?;
-        for v in &self.variants {
-            writeln!(f, "| {}", v)?;
-        }
-        write!(f, ".")
-    }
-}
-
 /// A single tactic call.
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum CoqProofItem {
+    #[display("{}.", _0)]
     Literal(String),
-}
-
-impl Display for CoqProofItem {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Literal(lit) => write!(f, "{}.", lit),
-        }
-    }
 }
 
 /// A Coq proof script.
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("{}\n", display_list!(_0, "\n"))]
 pub struct CoqProofScript(pub Vec<CoqProofItem>);
 
-impl Display for CoqProofScript {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        for it in &self.0 {
-            writeln!(f, "{}", it)?;
-        }
-        Ok(())
-    }
-}
-
 /// A Coq Gallina term.
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum GallinaTerm {
+    #[display("{}.", _0)]
     Literal(String),
 }
 
-impl Display for GallinaTerm {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Literal(lit) => {
-                write!(f, "{}", lit)
-            },
-        }
-    }
-}
-
 /// A terminator for a proof script
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum CoqProofScriptTerminator {
+    #[display("Qed")]
     Qed,
+
+    #[display("Defined")]
     Defined,
+
+    #[display("Admitted")]
     Admitted,
-}
-impl Display for CoqProofScriptTerminator {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Qed => write!(f, "Qed"),
-            Self::Defined => write!(f, "Defined"),
-            Self::Admitted => write!(f, "Admitted"),
-        }
-    }
 }
 
 /// A body of a Coq definition
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum CoqDefBody {
     /// a proof script invoking Ltac tactics
     Script(CoqProofScript, CoqProofScriptTerminator),
+
     /// a proof term
     Term(GallinaTerm),
 }
 
 impl Display for CoqDefBody {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Script(script, terminator) => {
                 write!(f, ".\n")?;
@@ -380,24 +327,25 @@ impl Display for CoqDefBody {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum CoqAttribute {
+    #[display("global")]
     Global,
+
+    #[display("local")]
     Local,
 }
-impl Display for CoqAttribute {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Global => write!(f, "global"),
-            Self::Local => write!(f, "local"),
-        }
-    }
-}
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("{}",
+    if attrs.is_empty() { String::new() } else {
+        format!("#[ {} ]", display_list!(attrs, ", "))
+    }
+)]
 pub struct CoqAttributes {
     attrs: Vec<CoqAttribute>,
 }
+
 impl CoqAttributes {
     #[must_use]
     pub const fn empty() -> Self {
@@ -409,20 +357,9 @@ impl CoqAttributes {
         Self { attrs }
     }
 }
-impl Display for CoqAttributes {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if self.attrs.is_empty() {
-            return Ok(());
-        }
-
-        write!(f, "#[ ")?;
-        write_list!(f, &self.attrs, ", ")?;
-        write!(f, "]")
-    }
-}
 
 /// A Coq typeclass instance declaration
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CoqInstanceDecl {
     pub attrs: CoqAttributes,
     pub name: Option<String>,
@@ -432,7 +369,7 @@ pub struct CoqInstanceDecl {
 }
 
 impl Display for CoqInstanceDecl {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.name {
             Some(ref name) => {
                 write!(f, "{} Instance {} {} : {}{}", self.attrs, name, self.params, self.ty, self.body)
@@ -442,28 +379,22 @@ impl Display for CoqInstanceDecl {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum CoqTopLevelAssertion {
     /// A declaration of a Coq Inductive
+    #[display("{}", _0)]
     InductiveDecl(CoqInductive),
+
     /// A declaration of a Coq instance
+    #[display("{}", _0)]
     InstanceDecl(CoqInstanceDecl),
+
     /// A Coq comment
+    #[display("(* {} *)", _0)]
     Comment(String),
 }
 
-impl Display for CoqTopLevelAssertion {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::InductiveDecl(inductive) => write!(f, "{inductive}")?,
-            Self::InstanceDecl(decl) => write!(f, "{decl}")?,
-            Self::Comment(comm) => write!(f, "(* {comm} *)")?,
-        }
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CoqTopLevelAssertions(pub Vec<CoqTopLevelAssertion>);
 
 impl CoqTopLevelAssertions {
@@ -478,7 +409,7 @@ impl CoqTopLevelAssertions {
 }
 
 impl Display for CoqTopLevelAssertions {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for a in &self.0 {
             writeln!(f, "{a}")?;
         }
