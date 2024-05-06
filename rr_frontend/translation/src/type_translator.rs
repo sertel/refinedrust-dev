@@ -1100,13 +1100,18 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let (variant_args, variant_arg_binders, variant_rfn) = if variant_def.fields.is_empty() {
                 (vec![], vec![], "-[]".to_string())
             } else {
-                let args = vec![(radium::CoqName::Unnamed, radium::CoqType::Literal(refinement_type))];
+                let args = vec![radium::CoqParam::new(
+                    radium::CoqName::Unnamed,
+                    radium::CoqType::Literal(refinement_type),
+                    false,
+                )];
+
                 (args, vec!["x".to_string()], "x".to_string())
             };
 
             let variant_def = radium::CoqVariant {
                 name: variant_name.to_string(),
-                params: radium::CoqParamList(variant_args),
+                params: radium::CoqParamList::new(variant_args),
             };
 
             variants.push(variant_def);
@@ -1116,7 +1121,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         // We assume the generated Inductive def is placed in a context where the generic types are in scope.
         let inductive = radium::CoqInductive {
             name: enum_name.to_string(),
-            parameters: radium::CoqParamList(vec![]),
+            parameters: radium::CoqParamList::new(vec![]),
             variants,
         };
 

@@ -240,13 +240,70 @@ impl CoqType {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("{}", display_list!(_0, " ", |(name, ty)| format!("({} : {})", name, ty)))]
-pub struct CoqParamList(pub Vec<(CoqName, CoqType)>);
+#[display("{}", self.format(true))]
+pub struct CoqParam {
+    /// the name
+    pub(crate) name: CoqName,
+
+    /// the type
+    pub(crate) ty: CoqType,
+
+    /// implicit or not?
+    pub(crate) implicit: bool,
+
+    /// does this depend on Σ?
+    pub(crate) depends_on_sigma: bool,
+}
+
+impl CoqParam {
+    #[must_use]
+    pub fn new(name: CoqName, ty: CoqType, implicit: bool) -> Self {
+        let depends_on_sigma = if let CoqType::Literal(ref lit) = ty { lit.contains('Σ') } else { false };
+
+        Self {
+            name,
+            ty,
+            implicit,
+            depends_on_sigma,
+        }
+    }
+
+    #[must_use]
+    pub fn with_name(&self, name: String) -> Self {
+        Self::new(CoqName::Named(name), self.ty.clone(), self.implicit)
+    }
+
+    #[allow(clippy::collapsible_else_if)]
+    #[must_use]
+    pub fn format(&self, make_implicits: bool) -> String {
+        if !self.implicit {
+            return format!("({} : {})", self.name, self.ty);
+        }
+
+        if make_implicits {
+            if let CoqName::Named(ref name) = self.name {
+                format!("`{{{} : !{}}}", name, self.ty)
+            } else {
+                format!("`{{!{}}}", self.ty)
+            }
+        } else {
+            if let CoqName::Named(ref name) = self.name {
+                format!("`({} : !{})", name, self.ty)
+            } else {
+                format!("`(!{})", self.ty)
+            }
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("{}", display_list!(_0, " "))]
+pub struct CoqParamList(Vec<CoqParam>);
 
 impl CoqParamList {
     #[must_use]
-    pub const fn empty() -> Self {
-        Self(vec![])
+    pub const fn new(params: Vec<CoqParam>) -> Self {
+        Self(params)
     }
 }
 

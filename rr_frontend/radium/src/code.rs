@@ -806,13 +806,7 @@ impl<'def> Function<'def> {
         if has_params {
             write!(f, "∀ ")?;
             for param in &self.spec.coq_params {
-                // TODO use CoqParam::format instead
-                if param.implicit {
-                    write!(f, "`({})", param.ty)?;
-                } else {
-                    write!(f, "({} : {})", param.name, param.ty)?;
-                }
-                write!(f, " ")?;
+                write!(f, "{} ", param)?;
             }
 
             // assume locations for other functions

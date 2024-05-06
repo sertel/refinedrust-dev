@@ -2177,7 +2177,7 @@ impl<'def> AbstractEnum<'def> {
             let instance_decl = CoqInstanceDecl {
                 attrs: CoqAttributes::new(vec![CoqAttribute::Global]),
                 name: None,
-                params: CoqParamList::empty(),
+                params: CoqParamList::new(vec![]),
                 ty: CoqType::Literal(format!("Inhabited {}", ind.name)),
                 body: CoqDefBody::Script(
                     CoqProofScript(vec![CoqProofItem::Literal(format!("solve_inhabited"))]),
@@ -2622,63 +2622,6 @@ impl Display for IPropPredicate {
 pub struct LoopSpec {
     /// the functional invariant as a predicate on the refinement of local variables.
     pub func_predicate: IPropPredicate,
-}
-
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub struct CoqParam {
-    /// the name
-    pub name: CoqName,
-    /// the type
-    pub ty: CoqType,
-    /// implicit or not?
-    pub implicit: bool,
-    /// does this depend on Σ?
-    pub depends_on_sigma: bool,
-}
-
-impl CoqParam {
-    #[must_use]
-    pub fn new(name: CoqName, ty: CoqType, implicit: bool) -> Self {
-        let depends_on_sigma = if let CoqType::Literal(ref lit) = ty { lit.contains('Σ') } else { false };
-        Self {
-            name,
-            ty,
-            implicit,
-            depends_on_sigma,
-        }
-    }
-
-    #[must_use]
-    pub fn with_name(&self, name: String) -> Self {
-        Self::new(CoqName::Named(name), self.ty.clone(), self.implicit)
-    }
-
-    #[allow(clippy::collapsible_else_if)]
-    pub fn format(&self, f: &mut Formatter, make_implicits: bool) -> fmt::Result {
-        if !self.implicit {
-            return write!(f, "({} : {})", self.name, self.ty);
-        }
-
-        if make_implicits {
-            if let CoqName::Named(ref name) = self.name {
-                write!(f, "`{{{} : !{}}}", name, self.ty)
-            } else {
-                write!(f, "`{{!{}}}", self.ty)
-            }
-        } else {
-            if let CoqName::Named(ref name) = self.name {
-                write!(f, "`({} : !{})", name, self.ty)
-            } else {
-                write!(f, "`(!{})", self.ty)
-            }
-        }
-    }
-}
-
-impl Display for CoqParam {
-    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        self.format(f, true)
-    }
 }
 
 /**
