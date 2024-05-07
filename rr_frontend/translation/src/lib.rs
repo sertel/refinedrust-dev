@@ -271,8 +271,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
         for (did, entry) in &enum_defs {
-            let entry = entry.borrow();
-            if let Some(entry) = entry.as_ref() {
+            if let Some(entry) = entry {
                 if let Some(shim) = self.make_adt_shim_entry(*did, entry.make_literal_type()) {
                     adt_shims.push(shim);
                 }
@@ -405,7 +404,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     spec_file.write("\n".as_bytes()).unwrap();
                 }
             } else {
-                let eu_ref = enum_defs.get(did).unwrap().borrow();
+                let eu_ref = enum_defs.get(did).unwrap();
                 info!("writing enum {:?}, {:?}", did, eu_ref);
                 let eu = eu_ref.as_ref().unwrap();
 

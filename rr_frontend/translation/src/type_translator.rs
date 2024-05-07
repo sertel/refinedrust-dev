@@ -205,7 +205,7 @@ pub struct TypeTranslator<'def, 'tcx> {
     /// during building, it will be None, afterwards it will always be Some
     struct_arena: &'def Arena<OnceCell<radium::AbstractStruct<'def>>>,
     /// arena for keeping ownership of enums
-    enum_arena: &'def Arena<RefCell<Option<radium::AbstractEnum<'def>>>>,
+    enum_arena: &'def Arena<OnceCell<radium::AbstractEnum<'def>>>,
     /// arena for keeping ownership of shims
     shim_arena: &'def Arena<radium::LiteralType>,
 
@@ -229,7 +229,12 @@ pub struct TypeTranslator<'def, 'tcx> {
     enum_registry: RefCell<
         HashMap<
             DefId,
-            (String, radium::AbstractEnumRef<'def>, ty::AdtDef<'tcx>, Option<radium::LiteralTypeRef<'def>>),
+            (
+                String,
+                &'def OnceCell<radium::AbstractEnum<'def>>,
+                ty::AdtDef<'tcx>,
+                Option<radium::LiteralTypeRef<'def>>,
+            ),
         >,
     >,
     /// a registry for abstract struct defs for tuples, indexed by the number of tuple fields
@@ -247,7 +252,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     pub fn new(
         env: &'def Environment<'tcx>,
         struct_arena: &'def Arena<OnceCell<radium::AbstractStruct<'def>>>,
-        enum_arena: &'def Arena<RefCell<Option<radium::AbstractEnum<'def>>>>,
+        enum_arena: &'def Arena<OnceCell<radium::AbstractEnum<'def>>>,
         shim_arena: &'def Arena<radium::LiteralType>,
     ) -> Self {
         TypeTranslator {
@@ -306,10 +311,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Get all the enum definitions that clients have used.
-    pub fn get_enum_defs(&self) -> HashMap<DefId, radium::AbstractEnumRef<'def>> {
+    pub fn get_enum_defs(&self) -> HashMap<DefId, Option<&'def radium::AbstractEnum<'def>>> {
         let mut defs = HashMap::new();
         for (did, (_, su, _, _)) in self.enum_registry.borrow().iter() {
-            defs.insert(*did, *su);
+            defs.insert(*did, su.get());
         }
         defs
     }
@@ -462,9 +467,12 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     fn lookup_enum(
         &self,
         did: DefId,
-    ) -> Result<(radium::AbstractEnumRef<'def>, Option<radium::LiteralTypeRef<'def>>), TranslationError> {
+    ) -> Result<
+        (Option<&'def radium::AbstractEnum<'def>>, Option<radium::LiteralTypeRef<'def>>),
+        TranslationError,
+    > {
         if let Some((_n, st, _, lit)) = self.enum_registry.borrow().get(&did) {
-            Ok((*st, *lit))
+            Ok((st.get(), *lit))
         } else {
             Err(TranslationError::UnknownError(format!("could not find type: {:?}", did)))
         }
@@ -565,8 +573,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 .or_insert_with(|| radium::LiteralTypeUse::new(lit_ref.unwrap(), params.clone()));
         }
 
-        let enum_use = radium::AbstractEnumUse::new(enum_ref, params);
-        Ok(enum_use)
+        Ok(radium::AbstractEnumUse::new(enum_ref.unwrap(), params))
     }
 
     /// Check if a variant given by a [`DefId`] is [`std::marker::PhantomData`].
@@ -673,8 +680,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         let variant_idx = variant_idx.as_usize();
         let (enum_ref, _lit_ref) = self.lookup_enum(adt_id)?;
-        let enum_ref = enum_ref.borrow();
-        let enum_ref = enum_ref.as_ref().unwrap();
+        let enum_ref = enum_ref.unwrap();
 
         let (_, struct_ref, _) = enum_ref.get_variant(variant_idx).unwrap();
         let struct_ref: Option<&'def radium::AbstractStruct<'def>> = *struct_ref;
@@ -1144,7 +1150,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         info!("Registering enum {:?}", def.did());
 
         // pre-register the enum for recursion
-        let enum_def_init = self.enum_arena.alloc(RefCell::new(None));
+        let enum_def_init = self.enum_arena.alloc(OnceCell::new());
         // gather the other ADTs this one depends on
         let mut adt_deps: HashSet<DefId> = HashSet::new();
 
@@ -1273,8 +1279,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 let lit = self.intern_literal(enum_def.make_literal_type());
 
                 // finalize the definition
-                let mut enum_def_ref = enum_def_init.borrow_mut();
-                *enum_def_ref = Some(enum_def);
+                enum_def_init.set(enum_def).unwrap();
 
                 let mut reg = self.enum_registry.borrow_mut();
                 let aref = reg.get_mut(&def.did()).unwrap();

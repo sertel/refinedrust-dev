@@ -118,9 +118,8 @@ impl RustType {
 
             Type::Enum(ae_use) => {
                 let typarams: Vec<_> = ae_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
-                let def = ae_use.def.borrow();
-                let def = def.as_ref().unwrap();
-                Self::Lit(vec![def.public_type_name().to_string()], typarams)
+
+                Self::Lit(vec![ae_use.def.public_type_name().to_string()], typarams)
             },
 
             Type::LiteralParam(lit) => Self::TyVar(lit.rust_name.clone()),

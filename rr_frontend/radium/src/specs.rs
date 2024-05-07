@@ -2263,8 +2263,6 @@ impl<'def> AbstractEnum<'def> {
     }
 }
 
-pub type AbstractEnumRef<'def> = &'def RefCell<Option<AbstractEnum<'def>>>;
-
 /// A builder for plain enums without fancy invariants etc.
 pub struct EnumBuilder<'def> {
     /// the variants
@@ -2340,14 +2338,15 @@ impl<'def> EnumBuilder<'def> {
 #[derive(Clone, PartialEq, Debug)]
 pub struct AbstractEnumUse<'def> {
     /// reference to the enum's definition
-    pub def: AbstractEnumRef<'def>,
+    pub def: &'def AbstractEnum<'def>,
     /// Instantiations for type parameters. These should _not_ contain `Var` constructors.
     pub ty_params: Vec<Type<'def>>,
 }
 
 impl<'def> AbstractEnumUse<'def> {
     /// `params` should not contain `Var`
-    pub fn new(s: AbstractEnumRef<'def>, params: Vec<Type<'def>>) -> Self {
+    #[must_use]
+    pub fn new(s: &'def AbstractEnum<'def>, params: Vec<Type<'def>>) -> Self {
         AbstractEnumUse {
             def: s,
             ty_params: params,
@@ -2374,7 +2373,7 @@ impl<'def> AbstractEnumUse<'def> {
         let rfn_instantiations: Vec<CoqType> =
             self.ty_params.iter().map(|ty| ty.get_rfn_type(&env)).collect();
 
-        let mut rfn_type = self.def.borrow().as_ref().unwrap().spec.rfn_type.clone();
+        let mut rfn_type = self.def.spec.rfn_type.clone();
         rfn_type.subst(&rfn_instantiations);
 
         assert!(rfn_type.is_closed());
@@ -2392,10 +2391,7 @@ impl<'def> AbstractEnumUse<'def> {
         }
 
         // use_struct_layout_alg' ([my_spec] [params])
-        let specialized_spec = format!(
-            "({})",
-            CoqAppTerm::new(self.def.borrow().as_ref().unwrap().els_def_name.clone(), param_sts)
-        );
+        let specialized_spec = format!("({})", CoqAppTerm::new(self.def.els_def_name.clone(), param_sts));
         CoqAppTerm::new("use_enum_layout_alg'".to_string(), vec![specialized_spec]).to_string()
     }
 
@@ -2410,7 +2406,7 @@ impl<'def> AbstractEnumUse<'def> {
         }
 
         // use_struct_layout_alg' ([my_spec] [params])
-        format!("({})", CoqAppTerm::new(self.def.borrow().as_ref().unwrap().els_def_name.clone(), param_sts))
+        format!("({})", CoqAppTerm::new(self.def.els_def_name.clone(), param_sts))
     }
 
     /// Get the `syn_type` term for this enum use.
@@ -2424,8 +2420,7 @@ impl<'def> AbstractEnumUse<'def> {
         }
 
         // [my_spec] [params]
-        let specialized_spec =
-            CoqAppTerm::new(self.def.borrow().as_ref().unwrap().st_def_name.clone(), param_sts);
+        let specialized_spec = CoqAppTerm::new(self.def.st_def_name.clone(), param_sts);
         SynType::Literal(format!("{}", specialized_spec))
     }
 
@@ -2436,9 +2431,7 @@ impl<'def> AbstractEnumUse<'def> {
         for p in &self.ty_params {
             param_tys.push(format!("({})", p));
         }
-        let def = self.def.borrow();
-        let def = def.as_ref().unwrap();
-        let term = CoqAppTerm::new(def.plain_ty_name.clone(), param_tys);
+        let term = CoqAppTerm::new(self.def.plain_ty_name.clone(), param_tys);
         term.to_string()
     }
 }
