@@ -302,6 +302,16 @@ Definition FindNaOwn `{!typeGS Σ} :=
   {| fic_A := thread_id * coPset; fic_Prop '(π, E) := na_own π E; |}.
 Global Typeclasses Opaque FindNaOwn.
 
+Definition FindOptNaOwn `{!typeGS Σ} :=
+  {| fic_A := option (thread_id * coPset);
+     fic_Prop a :=
+        match a with
+        | Some (π, E) => na_own π E
+        | _ => True%I
+        end
+  |}.
+Global Typeclasses Opaque FindOptNaOwn.
+
 (** find a lft dead token *)
 Definition FindOptLftDead `{!typeGS Σ} (κ : lft) :=
   {| fic_A := bool; fic_Prop b := (if b then [† κ] else True)%I; |}.
@@ -643,7 +653,28 @@ Section judgments.
   Global Instance introduce_with_hooks_atime_inst E L n : IntroduceWithHooks E L (atime n) | 10 :=
     λ T, i2p (introduce_with_hooks_atime E L n T).
 
-
+  (** non-atomic token related instances *)
+  Lemma introduce_with_hooks_na_own E L π mask T :
+    find_in_context (FindOptNaOwn) (λ res,
+      match res with
+      | None => na_own π mask -∗ T L
+      | Some (π', mask') =>
+          ⌜π = π'⌝ ∗ ⌜mask' ## mask⌝ ∗ (na_own π (mask' ∪ mask) -∗ T L)
+      end)
+    ⊢ introduce_with_hooks E L (na_own π mask) T.
+  Proof.
+    rewrite /FindOptNaOwn. iIntros "(%res & Ha)".
+    destruct res as [[π' mask']|]; simpl; iIntros (??) "#HE HL Hna".
+    - iDestruct "Ha" as "(Hna' & <- & % & HT)".
+      iExists _; iFrame.
+      iApply "HT".
+      by iApply na_own_union; [ done | iFrame ].
+    - iDestruct "Ha" as "(_ & HT)".
+      iExists _; iFrame.
+      by iApply "HT".
+  Qed.
+  Global Instance introduce_with_hooks_na_own_inst E L π mask : IntroduceWithHooks E L (na_own π mask) | 10 :=
+    λ T, i2p (introduce_with_hooks_na_own E L π mask T).
 
   (** *** Statements *)
   (* [fn]: the surrounding function,

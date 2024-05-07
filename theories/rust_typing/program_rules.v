@@ -206,6 +206,28 @@ Section typing.
     FindInContext (FindNaOwn) FICSyntactic | 1 :=
     λ T, i2p (find_in_context_na_own T).
 
+  Lemma find_in_context_opt_na_own_some T :
+    (∃ π E, na_own π E ∗ T (Some (π, E))) ⊢
+    find_in_context (FindOptNaOwn) T.
+  Proof.
+    iDestruct 1 as (π E) "[Hna HT]". iExists _. by iFrame.
+  Qed.
+  Global Instance find_in_context_opt_na_own_some_inst :
+    FindInContext (FindOptNaOwn) FICSyntactic | 1 :=
+    λ T, i2p (find_in_context_opt_na_own_some T).
+
+  Lemma find_in_context_opt_na_own_none T :
+    True ∗ T None
+    ⊢ find_in_context (FindOptNaOwn) T.
+  Proof.
+    iIntros "(_ & ?)".
+    iExists _; iFrame.
+    by rewrite /FindOptNaOwn.
+  Qed.
+  Global Instance find_in_context_opt_na_own_none_inst :
+    FindInContext (FindOptNaOwn) FICSyntactic | 2 :=
+    λ T, i2p (find_in_context_opt_na_own_none T).
+
   (** FindOptLftDead *)
   Lemma subsume_lft_dead κ1 κ2 T :
     ⌜κ1 = κ2⌝ ∗ T ⊢ subsume (Σ := Σ) ([† κ1]) ([† κ2]) T.
@@ -1919,7 +1941,7 @@ Section typing.
     TypedValue π v | 100 := λ T, i2p (type_val_context v π T).
 
   Lemma type_val E L v T :
-    find_in_context FindNaOwn (λ '(π, E),
+    find_in_context (FindNaOwn) (λ '(π, E),
       na_own π E -∗ typed_value π v (T L π v)) ⊢
     typed_val_expr E L (Val v) T.
   Proof.
