@@ -3,6 +3,41 @@ From refinedrust Require Import uninit int ltype_rules.
 From lrust.lifetime Require Import na_borrow.
 Set Default Proof Using "Type".
 
+Lemma difference_union_subseteq (E F H H': coPset):
+  E ⊆ F →
+  F ∖ H ∪ H' = F →
+  (F ∖ H ∖ E) ∪ H' ∪ E = F.
+Proof.
+  set_unfold.
+
+  intros ? Hcond x.
+  specialize Hcond with x.
+
+  split; first intuition.
+  destruct (decide (x ∈ E)); intuition.
+Qed.
+
+Lemma difference_union_subseteq' (E F: coPset):
+  E ⊆ F →
+  F ∖ E ∪ E = F.
+Proof.
+  set_unfold.
+  intros ? x.
+  split; first intuition.
+  destruct (decide (x ∈ E)); intuition.
+Qed.
+
+Lemma difference_union_comm (E E' A B: coPset):
+  A ∪ E' ∪ E = B →
+  A ∪ E ∪ E' = B.
+Proof.
+  set_solver.
+Qed.
+
+Global Hint Resolve difference_union_subseteq' | 30 : ndisj.
+Global Hint Resolve difference_union_subseteq | 50 : ndisj.
+Global Hint Resolve difference_union_comm | 80 : ndisj.
+
 Record na_ex_inv_def `{!typeGS Σ} (X : Type) (Y : Type) : Type := na_mk_ex_inv_def' {
   (* NOTE: Make persistent part (Timeless) + non-persistent part inside &na *)
   na_inv_P : thread_id → X → Y → iProp Σ;
@@ -138,7 +173,7 @@ End na_ex.
 Notation "'∃na;' P ',' τ" := (na_ex_plain_t _ _ P τ) (at level 40) : stdpp_scope.
 
 Section generated_code.
-  From refinedrust Require Import typing shims.
+  From refinedrust Require Import typing.
 
   Section UnsafeCell_sls.
     Context `{!typeGS Σ}.
@@ -673,11 +708,12 @@ Section generated_code.
       na_own π E -∗ na_own π E' ∗ na_own π (E ∖ E').
     Proof.
       iIntros (?) "Hna".
+      rewrite comm.
+
       iApply na_own_union.
       { set_solver. }
 
-      replace E with (E' ∪ (E ∖ E')) at 1; first done.
-      by apply union_difference_L in H.
+      replace E with ((E ∖ E') ∪ E') at 1; solve_ndisj.
     Qed.
 
     Lemma na_typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
@@ -690,8 +726,8 @@ Section generated_code.
               (P.(na_inv_P) π r x ∗
               l ◁ₗ[π, Owned false] (#r) @
                 (MagicLtype (◁ ty) (◁ ty)
-                    (λ rfn, P.(na_inv_P) π rfn x)
-                    (λ _, na_own π (↑shrN.@l) ∗ llft_elt_toks κs)) ∗
+                  (λ rfn, P.(na_inv_P) π rfn x)
+                  (λ _, na_own π (↑shrN.@l) ∗ llft_elt_toks κs)) ∗
               na_own π (mask ∖ ↑shrN.@l))
               (λ L3,
                 typed_place π E L3 l
@@ -826,6 +862,95 @@ Section generated_code.
       iSplitR; first done. iApply logical_step_intro. by iFrame.
     Qed.
 
+    Lemma stratify_ltype_magic_Owned {rt_cur rt_inner} π E L mu mdu ma {M} (ml : M) l
+        (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner)
+        (Cpre Cpost : rt_inner → iProp Σ) r wl (T : stratify_ltype_cont_t) :
+      stratify_ltype π E L mu mdu ma ml l lt_cur r (Owned false)
+        (λ L' R rt_cur' lt_cur' (r' : place_rfn rt_cur'),
+          if decide (ma = StratNoRefold)
+          then (* keep it open *)
+            T L' R _ (MagicLtype lt_cur' lt_inner Cpre Cpost) r'
+          else (* fold the invariant *)
+            ∃ ri,
+              (* show that the core of lt_cur' is a subtype of lt_inner and then fold to lt_full *)
+              weak_subltype E L' (Owned false) (r') (#ri) (ltype_core lt_cur') lt_inner (
+                (* re-establish the invariant *)
+                prove_with_subtype E L' true ProveDirect (Cpre ri)
+                  (λ L'' _ R2, T L'' (Cpost ri ∗ R2 ∗ R) unit (◁ (uninit (ltype_st lt_inner))) #tt)))
+      ⊢ stratify_ltype π E L mu mdu ma ml l (MagicLtype lt_cur lt_inner Cpre Cpost) r (Owned wl) T.
+    Proof.
+      rewrite /stratify_ltype /weak_subltype /prove_with_subtype.
+
+      iIntros "Hstrat" (F ??) "#CTX #HE HL Hl".
+      rewrite ltype_own_magic_unfold /magic_ltype_own.
+
+      iDestruct "Hl" as "(%ly & %Halg & %Hly & #Hlb & %Hst & Hl & Hcl)".
+      iMod ("Hstrat" with "[//] [//] CTX HE HL Hl") as "(%L2 & %R & %rt_cur' & %lt_cur' & %r' & HL & %Hst' & Hstep & HT)".
+
+      destruct (decide (ma = StratNoRefold)) as [-> | ].
+      - (* don't fold *)
+        iModIntro.
+        iExists _, _, _, _, _.
+        iFrame; iR.
+
+        iApply (logical_step_compose with "Hstep").
+        iApply logical_step_intro.
+        iIntros "(Hl & $)".
+
+        rewrite ltype_own_magic_unfold /magic_ltype_own.
+        iExists ly; iFrame.
+        rewrite -Hst'; do 3 iR.
+        done.
+
+      - (* fold it again *)
+        iDestruct "HT" as "(%ri & HT)".
+        iMod ("HT" with "[//] CTX HE HL") as "(Hincl & HL & HT)".
+        iMod ("HT" with "[//] [//] CTX HE HL") as "(%L3 & %κs & %R2 & Hstep' & HL & HT)".
+
+        iPoseProof (imp_unblockable_blocked_dead lt_cur') as "(_ & #Hb)".
+        set (κs' := ltype_blocked_lfts lt_cur').
+
+        destruct (decide (κs = [] ∧ κs' = [])) as [[-> ->] | ].
+        + iExists L3, _, _, _, _. iFrame.
+          iSplitR.
+          { by simp_ltypes. }
+
+          iApply logical_step_fupd.
+          iApply (logical_step_compose with "Hstep").
+          iPoseProof (logical_step_mask_mono with "Hcl") as "Hcl"; first done.
+          iApply (logical_step_compose with "Hcl").
+          iApply (logical_step_compose with "Hstep'").
+          iApply logical_step_intro.
+
+          iIntros "!> (Hpre & $) Hcl (Hl & $)".
+          iPoseProof ("Hb" with "[] Hl") as "Hl".
+          { by iApply big_sepL_nil. }
+
+          iMod (fupd_mask_mono with "Hl") as "Hl"; first done.
+          rewrite ltype_own_core_equiv.
+          iMod (ltype_incl_use with "Hincl Hl") as "Hl"; first done.
+
+          iPoseProof ("Hcl" with "Hpre Hl") as "Hvs".
+          admit.
+
+        + (* iAssert (T L3 (Cpost ri ∗ R2 ∗ R) rt_cur (CoreableLtype (κs' ++ κs) lt_cur) #rf)%I with "[HT]" as "HT". *)
+          (* { destruct κs, κs'; naive_solver. } *)
+
+          iExists L3, _, _, _, _. iFrame.
+          iSplitR.
+          { by simp_ltypes. }
+
+          iApply logical_step_fupd.
+          iApply (logical_step_compose with "Hstep").
+          iPoseProof (logical_step_mask_mono _ F with "Hcl") as "Hcl"; first done.
+          iApply (logical_step_compose with "Hcl").
+          iApply (logical_step_compose with "Hstep'").
+          iApply logical_step_intro.
+
+          iIntros "!> (Hpre & $) Hcl (Hl & $)".
+          iPoseProof ("Hcl" with "Hpre") as "Hvs".
+    Admitted.
+
   End na_subtype.
 
   (* === ^ TYPING RULES ^ === *)
@@ -902,6 +1027,7 @@ Section generated_code.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
+      unfold weak_subtype.
 
       all: print_remaining_goal.
       Unshelve. all: sidecond_solver.
@@ -918,6 +1044,8 @@ Section generated_code.
 
       iApply na_typed_place_ex_plain_t_shared.
 
+      (* NOTE: We don't have enough credit here *)
+      do 6 liRStep; liShow.
       repeat liRStep; liShow.
 
       iApply typed_place_alias_shared.
@@ -926,17 +1054,28 @@ Section generated_code.
 
       iApply typed_place_magic_owned.
 
-      rep <-1 liRStep; liShow.
+      do 22 liRStep; liShow. (* <<< This bug *)
+      do 10 liRStep; liShow.
+
+      do 100 liRStep; liShow.
+
+      (* NOTE: How do we catch up? *)
+      replace [arg_self; local___0] with [arg_self; local___0; l']; last admit.
+
+      rep <- 1 liRStep; liShow.
 
       iApply stratify_ltype_alias_shared.
 
-      repeat liRStep; liShow.
+      do 8 liRStep; liShow. (* <<< Will prevent a pattern match here *)
+      do 4 liRStep; liShow.
 
-      (* TODO: Stratify the context *)
+      iApply stratify_ltype_magic_Owned.
+
+      repeat liRStep; liShow.
 
       Unshelve. all: sidecond_solver.
       Unshelve. all: sidecond_hammer.
-      Unshelve. all: print_remaining_sidecond.
+      Unshelve. all: try solve_ndisj.
     Admitted.
   End proof.
 
