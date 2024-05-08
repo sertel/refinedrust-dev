@@ -18,7 +18,7 @@ use indoc::{formatdoc, writedoc};
 use log::info;
 
 use crate::specs::*;
-use crate::{display_list, make_indent, push_str_list, write_list};
+use crate::{coq, display_list, make_indent, push_str_list, write_list, BASE_INDENT};
 
 fn fmt_comment(o: &Option<String>) -> String {
     match o {
@@ -275,13 +275,13 @@ pub enum Expr {
 
     #[display("StructInit {} [{}]", sls, display_list!(components, "; ", |(name, e)| format!("(\"{name}\", {e} : expr)")))]
     StructInitE {
-        sls: CoqAppTerm<String>,
+        sls: coq::AppTerm<String>,
         components: Vec<(String, Expr)>,
     },
 
     #[display("EnumInit {} \"{}\" ({}) ({})", els, variant, ty, &initializer)]
     EnumInitE {
-        els: CoqAppTerm<String>,
+        els: coq::AppTerm<String>,
         variant: String,
         ty: RustType,
         initializer: Box<Expr>,
@@ -530,7 +530,7 @@ pub enum Binop {
 impl Binop {
     fn caesium_fmt(&self, ot1: &OpType, ot2: &OpType) -> String {
         let format_prim = |st: &str| format!("{} {} , {} }}", st, ot1, ot2);
-        let format_bool = |st: &str| format!("{} {} , {} , {} }}", st, ot1, ot2, crate::BOOL_REPR);
+        let format_bool = |st: &str| format!("{} {} , {} , {} }}", st, ot1, ot2, crate::specs::BOOL_REPR);
 
         match self {
             Self::AddOp => format_prim("+{"),
@@ -640,7 +640,7 @@ pub struct FunctionCode {
     basic_blocks: BTreeMap<usize, Stmt>,
 
     /// Coq parameters that the function is parameterized over
-    required_parameters: Vec<(CoqName, CoqType)>,
+    required_parameters: Vec<(coq::Name, coq::Type)>,
 }
 
 fn make_map_string(sep0: &str, sep: &str, els: &Vec<(String, String)>) -> String {
@@ -666,7 +666,7 @@ fn make_lft_map_string(els: &Vec<(String, String)>) -> String {
 
 impl Display for FunctionCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn fmt_params((name, ty): &(CoqName, CoqType)) -> String {
+        fn fmt_params((name, ty): &(coq::Name, coq::Type)) -> String {
             format!("({} : {})", name, ty)
         }
 
@@ -1203,22 +1203,22 @@ impl<'def> FunctionBuilder<'def> {
             // TODO(cleanup): this currently regenerates the names for ty + rt, instead of using
             // the existing names
             self.spec
-                .add_coq_param(CoqName::Named(names.refinement_type.to_string()), CoqType::Type, false)
+                .add_coq_param(coq::Name::Named(names.refinement_type.to_string()), coq::Type::Type, false)
                 .unwrap();
             self.spec
                 .add_coq_param(
-                    CoqName::Unnamed,
-                    CoqType::Literal(format!("Inhabited {}", names.refinement_type)),
+                    coq::Name::Unnamed,
+                    coq::Type::Literal(format!("Inhabited {}", names.refinement_type)),
                     true,
                 )
                 .unwrap();
             self.spec
-                .add_coq_param(CoqName::Named(names.syn_type.to_string()), CoqType::SynType, false)
+                .add_coq_param(coq::Name::Named(names.syn_type.to_string()), coq::Type::SynType, false)
                 .unwrap();
             self.spec
                 .add_ty_param(
-                    CoqName::Named(names.type_term.clone()),
-                    CoqType::Ttype(Box::new(CoqType::Literal(names.refinement_type.clone()))),
+                    coq::Name::Named(names.type_term.clone()),
+                    coq::Type::Ttype(Box::new(coq::Type::Literal(names.refinement_type.clone()))),
                 )
                 .unwrap();
 
@@ -1248,17 +1248,17 @@ impl<'def> From<FunctionBuilder<'def>> for Function<'def> {
         builder.used_statics.sort_by(|a, b| a.ident.cmp(&b.ident));
 
         // generate location parameters for other functions used by this one.
-        let mut parameters: Vec<(CoqName, CoqType)> = builder
+        let mut parameters: Vec<(coq::Name, coq::Type)> = builder
             .other_functions
             .iter()
-            .map(|f_inst| (CoqName::Named(f_inst.0.to_string()), CoqType::Loc))
+            .map(|f_inst| (coq::Name::Named(f_inst.0.to_string()), coq::Type::Loc))
             .collect();
 
         // generate location parameters for statics used by this function
         let mut statics_parameters = builder
             .used_statics
             .iter()
-            .map(|s| (CoqName::Named(s.loc_name.to_string()), CoqType::Loc))
+            .map(|s| (coq::Name::Named(s.loc_name.to_string()), coq::Type::Loc))
             .collect();
         parameters.append(&mut statics_parameters);
 
@@ -1266,7 +1266,7 @@ impl<'def> From<FunctionBuilder<'def>> for Function<'def> {
         let mut gen_st_parameters = builder
             .generic_types
             .iter()
-            .map(|names| (CoqName::Named(names.syn_type.to_string()), CoqType::SynType))
+            .map(|names| (coq::Name::Named(names.syn_type.to_string()), coq::Type::SynType))
             .collect();
         parameters.append(&mut gen_st_parameters);
 

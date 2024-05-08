@@ -6,7 +6,7 @@
 
 use attribute_parse as parse;
 use parse::Peek;
-use radium::specs;
+use radium::{coq, specs};
 use rustc_ast::ast::AttrItem;
 
 use crate::spec_parsers::parse_utils::*;
@@ -99,7 +99,7 @@ impl EnumSpecParser for VerboseEnumSpecParser {
                     "refined_by" => {
                         let ty: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
                         let (ty, _) = process_coq_literal(ty.value().as_str(), meta);
-                        rfn_type = Some(specs::CoqType::Literal(ty));
+                        rfn_type = Some(coq::Type::Literal(ty));
                     },
                     "export_as" => {},
                     _ => {

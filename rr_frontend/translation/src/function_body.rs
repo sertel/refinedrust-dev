@@ -7,6 +7,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use log::{info, trace, warn};
+use radium::coq;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::tcx::PlaceTy;
@@ -1495,14 +1496,14 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             // get the refinement type
             let mut rfn_ty = ty.get_rfn_type(&[]);
             // wrap it in place_rfn, since we reason about places
-            rfn_ty = radium::CoqType::PlaceRfn(Box::new(rfn_ty));
+            rfn_ty = coq::Type::PlaceRfn(Box::new(rfn_ty));
 
             // determine their initialization status
             //let initialized = true; // TODO
             // determine the actual refinement type for the current initialization status.
 
-            let rfn_name = radium::CoqName::Named(format!("r_{}", name));
-            rfn_binders.push(radium::CoqBinder::new(rfn_name, rfn_ty));
+            let rfn_name = coq::Name::Named(format!("r_{}", name));
+            rfn_binders.push(radium::specs::CoqBinder::new(rfn_name, rfn_ty));
         }
 
         // TODO what do we do about stuff connecting borrows?
@@ -3159,7 +3160,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
 
                         Ok(radium::Expr::StructInitE {
-                            sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
+                            sls: coq::AppTerm::new_lhs(sl.to_string()),
                             components: initializers,
                         })
                     },
@@ -3185,7 +3186,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 .collect();
 
                             return Ok(radium::Expr::StructInitE {
-                                sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
+                                sls: coq::AppTerm::new_lhs(sl.to_string()),
                                 components: initializers,
                             });
                         }
@@ -3204,7 +3205,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 .collect();
 
                             let variant_e = radium::Expr::StructInitE {
-                                sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
+                                sls: coq::AppTerm::new_lhs(sl.to_string()),
                                 components: initializers,
                             };
 
@@ -3216,7 +3217,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             let variant_name = variant_def.name.to_string();
 
                             return Ok(radium::Expr::EnumInitE {
-                                els: radium::CoqAppTerm::new_lhs(els.to_string()),
+                                els: coq::AppTerm::new_lhs(els.to_string()),
                                 variant: variant_name,
                                 ty,
                                 initializer: Box::new(variant_e),
@@ -3248,7 +3249,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
 
                         Ok(radium::Expr::StructInitE {
-                            sls: radium::CoqAppTerm::new_lhs(sl.to_string()),
+                            sls: coq::AppTerm::new_lhs(sl.to_string()),
                             components: initializers,
                         })
                     },

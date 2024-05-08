@@ -13,6 +13,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
 use log::info;
+use radium::coq;
 use serde::{Deserialize, Serialize};
 use typed_arena::Arena;
 
@@ -151,7 +152,7 @@ pub struct ShimRegistry<'a> {
     /// adt shims
     adt_shims: Vec<AdtShim<'a>>,
     /// extra imports
-    imports: Vec<radium::specs::CoqPath>,
+    imports: Vec<coq::Path>,
     /// extra module dependencies
     depends: Vec<String>,
 }
@@ -227,7 +228,7 @@ impl<'a> ShimRegistry<'a> {
                 let _name =
                     name.as_str().ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
 
-                let coq_path = radium::specs::CoqPath {
+                let coq_path = coq::Path {
                     path: Some(path.to_string()),
                     module: module.to_string(),
                 };
@@ -315,7 +316,7 @@ impl<'a> ShimRegistry<'a> {
         &self.adt_shims
     }
 
-    pub fn get_extra_imports(&self) -> &[radium::specs::CoqPath] {
+    pub fn get_extra_imports(&self) -> &[coq::Path] {
         &self.imports
     }
 

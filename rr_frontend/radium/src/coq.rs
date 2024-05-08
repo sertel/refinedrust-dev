@@ -4,6 +4,9 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
+/// A collection of types to represent and generate Rocq code.
+///
+/// These types are intended to be used for the purposes of this project.
 use std::fmt;
 use std::fmt::Write as fmtWrite;
 
@@ -11,19 +14,16 @@ use derive_more::Display;
 use indent_write::fmt::IndentWriter;
 use indent_write::indentable::Indentable;
 
-use crate::{display_list, make_indent, write_list};
+use crate::{display_list, make_indent, write_list, BASE_INDENT};
 
-pub(crate) const BASE_INDENT: &str = "  ";
-
-/// Represents a Coq path of the form
-/// `From A.B.C Import D`
+/// A Rocq path of the form `From A.B.C Require Import D`.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct CoqPath {
+pub struct Path {
     pub path: Option<String>,
     pub module: String,
 }
 
-impl fmt::Display for CoqPath {
+impl fmt::Display for Path {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.path {
             None => write!(f, "Require Export {}.\n", self.module),
@@ -35,12 +35,12 @@ impl fmt::Display for CoqPath {
 /// Represents an application of a term to an rhs.
 /// (commonly used for layouts and instantiating them with generics).
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct CoqAppTerm<T> {
+pub struct AppTerm<T> {
     pub(crate) lhs: T,
     pub(crate) rhs: Vec<String>,
 }
 
-impl<T: Display> Display for CoqAppTerm<T> {
+impl<T: Display> Display for AppTerm<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.rhs.is_empty() {
             return write!(f, "{}", self.lhs);
@@ -52,7 +52,7 @@ impl<T: Display> Display for CoqAppTerm<T> {
     }
 }
 
-impl<T> CoqAppTerm<T> {
+impl<T> AppTerm<T> {
     pub fn new(lhs: T, rhs: Vec<String>) -> Self {
         Self { lhs, rhs }
     }
@@ -66,7 +66,7 @@ impl<T> CoqAppTerm<T> {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum CoqName {
+pub enum Name {
     #[display("{}", _0)]
     Named(String),
 
@@ -75,9 +75,9 @@ pub enum CoqName {
 }
 
 /// A Coq pattern, e.g., "x" or "'(x, y)".
-pub type CoqPattern = String;
+pub type Pattern = String;
 
-fn fmt_prod(v: &Vec<CoqType>) -> String {
+fn fmt_prod(v: &Vec<Type>) -> String {
     match v.as_slice() {
         [] => "unit".to_string(),
         [t] => t.to_string(),
@@ -86,7 +86,7 @@ fn fmt_prod(v: &Vec<CoqType>) -> String {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum CoqType {
+pub enum Type {
     /// free variable that is bound, e.g., by a surrounding struct definition
     #[display("#{}", _0)]
     Var(usize),
@@ -125,7 +125,7 @@ pub enum CoqType {
 
     /// Coq type `type rt`
     #[display("(type {})", &_0)]
-    Ttype(Box<CoqType>),
+    Ttype(Box<Type>),
 
     /// Coq type `rtype`
     #[display("rtype")]
@@ -145,11 +145,11 @@ pub enum CoqType {
 
     /// product types
     #[display("{}", fmt_prod(_0))]
-    Prod(Vec<CoqType>),
+    Prod(Vec<Type>),
 
     /// place_rfn
     #[display("(place_rfn {})", &_0)]
-    PlaceRfn(Box<CoqType>),
+    PlaceRfn(Box<Type>),
 
     /// gname
     #[display("gname")]
@@ -157,10 +157,10 @@ pub enum CoqType {
 
     /// a plist with a given type constructor over a list of types
     #[display("plist {} [{}]", _0, display_list!(_1, "; ", "{} : Type"))]
-    PList(String, Vec<CoqType>),
+    PList(String, Vec<Type>),
 }
 
-impl CoqType {
+impl Type {
     /// Check if the `CoqType` contains a free variable `Var(i)`.
     #[must_use]
     pub fn is_closed(&self) -> bool {
@@ -241,12 +241,12 @@ impl CoqType {
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("{}", self.format(true))]
-pub struct CoqParam {
+pub struct Param {
     /// the name
-    pub(crate) name: CoqName,
+    pub(crate) name: Name,
 
     /// the type
-    pub(crate) ty: CoqType,
+    pub(crate) ty: Type,
 
     /// implicit or not?
     pub(crate) implicit: bool,
@@ -255,10 +255,10 @@ pub struct CoqParam {
     pub(crate) depends_on_sigma: bool,
 }
 
-impl CoqParam {
+impl Param {
     #[must_use]
-    pub fn new(name: CoqName, ty: CoqType, implicit: bool) -> Self {
-        let depends_on_sigma = if let CoqType::Literal(ref lit) = ty { lit.contains('Σ') } else { false };
+    pub fn new(name: Name, ty: Type, implicit: bool) -> Self {
+        let depends_on_sigma = if let Type::Literal(ref lit) = ty { lit.contains('Σ') } else { false };
 
         Self {
             name,
@@ -270,7 +270,7 @@ impl CoqParam {
 
     #[must_use]
     pub fn with_name(&self, name: String) -> Self {
-        Self::new(CoqName::Named(name), self.ty.clone(), self.implicit)
+        Self::new(Name::Named(name), self.ty.clone(), self.implicit)
     }
 
     #[allow(clippy::collapsible_else_if)]
@@ -281,13 +281,13 @@ impl CoqParam {
         }
 
         if make_implicits {
-            if let CoqName::Named(ref name) = self.name {
+            if let Name::Named(ref name) = self.name {
                 format!("`{{{} : !{}}}", name, self.ty)
             } else {
                 format!("`{{!{}}}", self.ty)
             }
         } else {
-            if let CoqName::Named(ref name) = self.name {
+            if let Name::Named(ref name) = self.name {
                 format!("`({} : !{})", name, self.ty)
             } else {
                 format!("`(!{})", self.ty)
@@ -298,35 +298,35 @@ impl CoqParam {
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("{}", display_list!(_0, " "))]
-pub struct CoqParamList(Vec<CoqParam>);
+pub struct ParamList(Vec<Param>);
 
-impl CoqParamList {
+impl ParamList {
     #[must_use]
-    pub const fn new(params: Vec<CoqParam>) -> Self {
+    pub const fn new(params: Vec<Param>) -> Self {
         Self(params)
     }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("{} {}", name, params)]
-pub struct CoqVariant {
+pub struct Variant {
     pub name: String,
-    pub params: CoqParamList,
+    pub params: ParamList,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("Inductive {} {} :=\n{}\n.", name, parameters,
     display_list!(variants, "\n| ").indented(&make_indent(1))
 )]
-pub struct CoqInductive {
+pub struct Inductive {
     pub name: String,
-    pub parameters: CoqParamList,
-    pub variants: Vec<CoqVariant>,
+    pub parameters: ParamList,
+    pub variants: Vec<Variant>,
 }
 
 /// A single tactic call.
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum CoqProofItem {
+pub enum ProofItem {
     #[display("{}.", _0)]
     Literal(String),
 }
@@ -334,7 +334,7 @@ pub enum CoqProofItem {
 /// A Coq proof script.
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("{}\n", display_list!(_0, "\n"))]
-pub struct CoqProofScript(pub Vec<CoqProofItem>);
+pub struct ProofScript(pub Vec<ProofItem>);
 
 /// A Coq Gallina term.
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
@@ -345,7 +345,7 @@ pub enum GallinaTerm {
 
 /// A terminator for a proof script
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum CoqProofScriptTerminator {
+pub enum ProofScriptTerminator {
     #[display("Qed")]
     Qed,
 
@@ -358,15 +358,15 @@ pub enum CoqProofScriptTerminator {
 
 /// A body of a Coq definition
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub enum CoqDefBody {
+pub enum DefBody {
     /// a proof script invoking Ltac tactics
-    Script(CoqProofScript, CoqProofScriptTerminator),
+    Script(ProofScript, ProofScriptTerminator),
 
     /// a proof term
     Term(GallinaTerm),
 }
 
-impl Display for CoqDefBody {
+impl Display for DefBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Script(script, terminator) => {
@@ -385,7 +385,7 @@ impl Display for CoqDefBody {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum CoqAttribute {
+pub enum Attribute {
     #[display("global")]
     Global,
 
@@ -399,33 +399,33 @@ pub enum CoqAttribute {
         format!("#[ {} ]", display_list!(attrs, ", "))
     }
 )]
-pub struct CoqAttributes {
-    attrs: Vec<CoqAttribute>,
+pub struct Attributes {
+    attrs: Vec<Attribute>,
 }
 
-impl CoqAttributes {
+impl Attributes {
     #[must_use]
     pub const fn empty() -> Self {
         Self { attrs: vec![] }
     }
 
     #[must_use]
-    pub fn new(attrs: Vec<CoqAttribute>) -> Self {
+    pub fn new(attrs: Vec<Attribute>) -> Self {
         Self { attrs }
     }
 }
 
 /// A Coq typeclass instance declaration
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct CoqInstanceDecl {
-    pub attrs: CoqAttributes,
+pub struct InstanceDecl {
+    pub attrs: Attributes,
     pub name: Option<String>,
-    pub params: CoqParamList,
-    pub ty: CoqType,
-    pub body: CoqDefBody,
+    pub params: ParamList,
+    pub ty: Type,
+    pub body: DefBody,
 }
 
-impl Display for CoqInstanceDecl {
+impl Display for InstanceDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.name {
             Some(ref name) => {
@@ -437,14 +437,14 @@ impl Display for CoqInstanceDecl {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum CoqTopLevelAssertion {
+pub enum TopLevelAssertion {
     /// A declaration of a Coq Inductive
     #[display("{}", _0)]
-    InductiveDecl(CoqInductive),
+    InductiveDecl(Inductive),
 
     /// A declaration of a Coq instance
     #[display("{}", _0)]
-    InstanceDecl(CoqInstanceDecl),
+    InstanceDecl(InstanceDecl),
 
     /// A Coq comment
     #[display("(* {} *)", _0)]
@@ -452,20 +452,20 @@ pub enum CoqTopLevelAssertion {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct CoqTopLevelAssertions(pub Vec<CoqTopLevelAssertion>);
+pub struct TopLevelAssertions(pub Vec<TopLevelAssertion>);
 
-impl CoqTopLevelAssertions {
+impl TopLevelAssertions {
     #[must_use]
     pub const fn empty() -> Self {
         Self(vec![])
     }
 
-    pub fn push(&mut self, a: CoqTopLevelAssertion) {
+    pub fn push(&mut self, a: TopLevelAssertion) {
         self.0.push(a);
     }
 }
 
-impl Display for CoqTopLevelAssertions {
+impl Display for TopLevelAssertions {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for a in &self.0 {
             writeln!(f, "{a}")?;

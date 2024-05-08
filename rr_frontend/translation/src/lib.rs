@@ -60,6 +60,7 @@ use crate_parser::CrateAttrParser;
 use environment::Environment;
 use function_body::{ConstScope, FunctionTranslator, ProcedureMode, ProcedureScope};
 use mod_parser::ModuleAttrParser;
+use radium::coq;
 use spec_parsers::{
     const_attr_parser as const_parser, crate_attr_parser as crate_parser, get_shim_attrs,
     module_attr_parser as mod_parser,
@@ -103,7 +104,7 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
     type_translator: &'rcx TypeTranslator<'rcx, 'tcx>,
     functions: &'rcx [LocalDefId],
     /// the second component determines whether to include it in the code file as well
-    extra_imports: HashSet<(radium::CoqPath, bool)>,
+    extra_imports: HashSet<(coq::Path, bool)>,
     /// extra Coq module dependencies
     extra_dependencies: HashSet<String>,
     coq_path_prefix: String,
@@ -838,7 +839,7 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
             rust_name: None,
             type_term: shim.sem_type.clone(),
             syn_type: radium::SynType::Literal(shim.syn_type.clone()),
-            refinement_type: radium::CoqType::Literal(shim.refinement_type.clone()),
+            refinement_type: coq::Type::Literal(shim.refinement_type.clone()),
         };
 
         if let Err(e) = vcx.type_translator.register_adt_shim(did, &lit) {
@@ -1255,7 +1256,7 @@ where
     let module_attrs = get_module_attributes(env)?;
 
     // process imports
-    let mut imports: HashSet<radium::CoqPath> = HashSet::new();
+    let mut imports: HashSet<coq::Path> = HashSet::new();
     crate_spec.imports.into_iter().map(|path| imports.insert(path)).count();
     module_attrs
         .values()

@@ -9,7 +9,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use log::{info, trace, warn};
-use radium::{self, push_str_list};
+use radium::{self, coq, push_str_list};
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty;
 use rustc_middle::ty::{IntTy, Ty, TyKind, UintTy};
@@ -1053,7 +1053,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Get the spec for a built-in enum like `std::option::Option`.
     fn get_builtin_enum_spec(&self, did: DefId) -> Option<radium::EnumSpec> {
         let option_spec = radium::EnumSpec {
-            rfn_type: radium::CoqType::Literal("_".to_string()),
+            rfn_type: coq::Type::Literal("_".to_string()),
             variant_patterns: vec![
                 ("None".to_string(), vec![], "-[]".to_string()),
                 ("Some".to_string(), vec!["x".to_string()], "-[x]".to_string()),
@@ -1061,7 +1061,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         };
 
         let enum_spec = radium::EnumSpec {
-            rfn_type: radium::CoqType::Literal("_".to_string()),
+            rfn_type: coq::Type::Literal("_".to_string()),
             variant_patterns: vec![
                 ("inl".to_string(), vec!["x".to_string()], "-[x]".to_string()),
                 ("inr".to_string(), vec!["x".to_string()], "-[x]".to_string()),
@@ -1090,10 +1090,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         def: ty::AdtDef<'tcx>,
         enum_name: &str,
-    ) -> (radium::CoqInductive, radium::EnumSpec) {
+    ) -> (coq::Inductive, radium::EnumSpec) {
         trace!("Generating Inductive for enum {:?}", def);
 
-        let mut variants: Vec<radium::CoqVariant> = Vec::new();
+        let mut variants: Vec<coq::Variant> = Vec::new();
         let mut variant_patterns = Vec::new();
 
         for v in def.variants() {
@@ -1106,18 +1106,15 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let (variant_args, variant_arg_binders, variant_rfn) = if variant_def.fields.is_empty() {
                 (vec![], vec![], "-[]".to_string())
             } else {
-                let args = vec![radium::CoqParam::new(
-                    radium::CoqName::Unnamed,
-                    radium::CoqType::Literal(refinement_type),
-                    false,
-                )];
+                let args =
+                    vec![coq::Param::new(coq::Name::Unnamed, coq::Type::Literal(refinement_type), false)];
 
                 (args, vec!["x".to_string()], "x".to_string())
             };
 
-            let variant_def = radium::CoqVariant {
+            let variant_def = coq::Variant {
                 name: variant_name.to_string(),
-                params: radium::CoqParamList::new(variant_args),
+                params: coq::ParamList::new(variant_args),
             };
 
             variants.push(variant_def);
@@ -1125,14 +1122,14 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         }
 
         // We assume the generated Inductive def is placed in a context where the generic types are in scope.
-        let inductive = radium::CoqInductive {
+        let inductive = coq::Inductive {
             name: enum_name.to_string(),
-            parameters: radium::CoqParamList::new(vec![]),
+            parameters: coq::ParamList::new(vec![]),
             variants,
         };
 
         let enum_spec = radium::EnumSpec {
-            rfn_type: radium::CoqType::Literal(enum_name.to_string()),
+            rfn_type: coq::Type::Literal(enum_name.to_string()),
             variant_patterns,
         };
 
