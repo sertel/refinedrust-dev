@@ -152,7 +152,7 @@ pub struct ShimRegistry<'a> {
     /// adt shims
     adt_shims: Vec<AdtShim<'a>>,
     /// extra imports
-    imports: Vec<coq::Path>,
+    imports: Vec<coq::Import>,
     /// extra module dependencies
     depends: Vec<String>,
 }
@@ -228,10 +228,7 @@ impl<'a> ShimRegistry<'a> {
                 let _name =
                     name.as_str().ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
 
-                let coq_path = coq::Path {
-                    path: Some(path.to_string()),
-                    module: module.to_string(),
-                };
+                let coq_path = coq::Import::new_with_path(module.to_string(), path.to_string());
                 self.imports.push(coq_path);
 
                 let depends = obj
@@ -316,7 +313,7 @@ impl<'a> ShimRegistry<'a> {
         &self.adt_shims
     }
 
-    pub fn get_extra_imports(&self) -> &[coq::Path] {
+    pub fn get_extra_imports(&self) -> &[coq::Import] {
         &self.imports
     }
 

@@ -24,7 +24,7 @@ pub trait ModuleAttrParser {
 
 #[derive(Clone, Debug)]
 pub struct ModuleAttrs {
-    pub imports: Vec<coq::Path>,
+    pub imports: Vec<coq::Import>,
     pub includes: Vec<String>,
     pub context_params: Vec<coq::Param>,
 }
@@ -44,7 +44,7 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
         attrs: &'a [&'a AttrItem],
     ) -> Result<ModuleAttrs, String> {
         let meta = ();
-        let mut imports: Vec<coq::Path> = Vec::new();
+        let mut imports: Vec<coq::Import> = Vec::new();
         let mut includes: Vec<String> = Vec::new();
         let mut context_params = Vec::new();
 

@@ -16,18 +16,35 @@ use indent_write::indentable::Indentable;
 
 use crate::{display_list, make_indent, write_list, BASE_INDENT};
 
-/// A Rocq path of the form `From A.B.C Require Import D`.
+/// A Rocq import of the form `From A.B.C Require Import D`.
+///
+/// If the `path` is empty, it is of the form `Require Import A`.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct Path {
+pub struct Import {
     pub path: Option<String>,
-    pub module: String,
+    module: String,
 }
 
-impl fmt::Display for Path {
+impl fmt::Display for Import {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.path {
-            None => write!(f, "Require Export {}.\n", self.module),
-            Some(ref path) => write!(f, "From {} Require Export {}.\n", path, self.module),
+            None => write!(f, "Require Import {}.\n", self.module),
+            Some(ref path) => write!(f, "From {} Require Import {}.\n", path, self.module),
+        }
+    }
+}
+
+impl Import {
+    #[must_use]
+    pub const fn new(module: String) -> Self {
+        Self { module, path: None }
+    }
+
+    #[must_use]
+    pub const fn new_with_path(module: String, path: String) -> Self {
+        Self {
+            module,
+            path: Some(path),
         }
     }
 }

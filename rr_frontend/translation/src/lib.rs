@@ -104,7 +104,7 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
     type_translator: &'rcx TypeTranslator<'rcx, 'tcx>,
     functions: &'rcx [LocalDefId],
     /// the second component determines whether to include it in the code file as well
-    extra_imports: HashSet<(coq::Path, bool)>,
+    extra_imports: HashSet<(coq::Import, bool)>,
     /// extra Coq module dependencies
     extra_dependencies: HashSet<String>,
     coq_path_prefix: String,
@@ -1256,7 +1256,7 @@ where
     let module_attrs = get_module_attributes(env)?;
 
     // process imports
-    let mut imports: HashSet<coq::Path> = HashSet::new();
+    let mut imports: HashSet<coq::Import> = HashSet::new();
     crate_spec.imports.into_iter().map(|path| imports.insert(path)).count();
     module_attrs
         .values()

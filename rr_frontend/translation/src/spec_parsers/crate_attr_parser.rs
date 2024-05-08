@@ -19,7 +19,7 @@ pub trait CrateAttrParser {
 
 #[derive(Clone, Debug)]
 pub struct CrateAttrs {
-    pub imports: Vec<coq::Path>,
+    pub imports: Vec<coq::Import>,
     pub prefix: Option<String>,
     pub includes: Vec<String>,
     pub package: Option<String>,
@@ -37,7 +37,7 @@ impl VerboseCrateAttrParser {
 impl CrateAttrParser for VerboseCrateAttrParser {
     fn parse_crate_attrs<'a>(&'a mut self, attrs: &'a [&'a AttrItem]) -> Result<CrateAttrs, String> {
         let meta = ();
-        let mut imports: Vec<coq::Path> = Vec::new();
+        let mut imports: Vec<coq::Import> = Vec::new();
         let mut includes: Vec<String> = Vec::new();
         let mut prefix: Option<String> = None;
         let mut package: Option<String> = None;
