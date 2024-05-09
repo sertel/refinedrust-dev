@@ -16,36 +16,91 @@ use indent_write::indentable::Indentable;
 
 use crate::{display_list, make_indent, write_list, BASE_INDENT};
 
-/// A Rocq import of the form `From A.B.C Require Import D`.
-///
-/// If the `path` is empty, it is of the form `Require Import A`.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct Import {
-    pub path: Option<String>,
-    module: String,
-}
+/// A Rocq path of the form `A.B.C`.
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Display)]
+#[display("{}", _0)]
+pub struct Path(String);
 
-impl fmt::Display for Import {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.path {
-            None => write!(f, "Require Import {}.\n", self.module),
-            Some(ref path) => write!(f, "From {} Require Import {}.\n", path, self.module),
-        }
+impl Path {
+    #[must_use]
+    pub const fn new(path: String) -> Self {
+        Self(path)
+    }
+
+    #[must_use]
+    pub fn new_from_segments(segments: &[String]) -> Self {
+        Self(segments.join("."))
     }
 }
 
-impl Import {
+/// A Rocq module that contains a path `A.B.C` and a module name `D`.
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct Module {
+    path: Option<Path>,
+    module: String,
+}
+
+impl Module {
     #[must_use]
     pub const fn new(module: String) -> Self {
         Self { module, path: None }
     }
 
     #[must_use]
-    pub const fn new_with_path(module: String, path: String) -> Self {
+    pub const fn new_with_path(module: String, path: Path) -> Self {
         Self {
             module,
             path: Some(path),
         }
+    }
+
+    #[must_use]
+    pub fn get_path(&self) -> Option<Path> {
+        self.path.as_ref().cloned()
+    }
+}
+
+/// A Rocq import of the form `From A.B.C Require Import D`.
+///
+/// If the `path` is empty, it is of the form `Require Import A`.
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct Import(pub Module);
+
+impl fmt::Display for Import {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.path {
+            None => write!(f, "Require Import {}.\n", self.0.module),
+            Some(ref path) => write!(f, "From {} Require Import {}.\n", path, self.0.module),
+        }
+    }
+}
+
+impl Import {
+    #[must_use]
+    pub const fn new(module: Module) -> Self {
+        Self(module)
+    }
+}
+
+/// A Rocq export of the form `From A.B.C Require Export D`.
+///
+/// If the `path` is empty, it is of the form `Require Export A`.
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct Export(pub Module);
+
+impl fmt::Display for Export {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self.0.path {
+            None => write!(f, "Require Export {}.\n", self.0.module),
+            Some(ref path) => write!(f, "From {} Require Export {}.\n", path, self.0.module),
+        }
+    }
+}
+
+impl Export {
+    #[must_use]
+    pub const fn new(module: Module) -> Self {
+        Self(module)
     }
 }
 

@@ -176,16 +176,16 @@ impl<'a> Parse<ParseMeta<'a>> for RRParams {
     }
 }
 
-pub struct CoqPath(coq::Import);
+pub struct CoqModule(coq::Module);
 
-impl From<CoqPath> for coq::Import {
-    fn from(path: CoqPath) -> Self {
+impl From<CoqModule> for coq::Module {
+    fn from(path: CoqModule) -> Self {
         path.0
     }
 }
 
-/// Parse a `CoqPath`.
-impl<U> Parse<U> for CoqPath {
+/// Parse a `CoqModule`.
+impl<U> Parse<U> for CoqModule {
     fn parse(input: ParseStream, meta: &U) -> ParseResult<Self> {
         let path_or_module: parse::LitStr = input.parse(meta)?;
         let path_or_module = path_or_module.value();
@@ -195,9 +195,9 @@ impl<U> Parse<U> for CoqPath {
             let module: parse::LitStr = input.parse(meta)?;
             let module = module.value();
 
-            Ok(Self(coq::Import::new_with_path(module, path_or_module)))
+            Ok(Self(coq::Module::new_with_path(module, coq::Path::new(path_or_module))))
         } else {
-            Ok(Self(coq::Import::new(path_or_module)))
+            Ok(Self(coq::Module::new(path_or_module)))
         }
     }
 }

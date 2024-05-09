@@ -103,10 +103,13 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
     const_registry: ConstScope<'rcx>,
     type_translator: &'rcx TypeTranslator<'rcx, 'tcx>,
     functions: &'rcx [LocalDefId],
+
     /// the second component determines whether to include it in the code file as well
-    extra_imports: HashSet<(coq::Import, bool)>,
+    extra_exports: HashSet<(coq::Export, bool)>,
+
     /// extra Coq module dependencies
-    extra_dependencies: HashSet<String>,
+    extra_dependencies: HashSet<coq::Path>,
+
     coq_path_prefix: String,
     dune_package: Option<String>,
     shim_registry: shim_registry::ShimRegistry<'rcx>,
@@ -316,8 +319,9 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
-        let mut module_dependencies: Vec<_> =
-            self.extra_imports.iter().filter_map(|(x, _)| x.path.clone()).collect();
+        let mut module_dependencies: Vec<coq::Path> =
+            self.extra_exports.iter().filter_map(|(export, _)| export.0.get_path()).collect();
+
         module_dependencies.extend(self.extra_dependencies.iter().cloned());
 
         info!("Generated module summary ADTs: {:?}", adt_shims);
@@ -353,9 +357,9 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 .as_bytes(),
             )
             .unwrap();
-        self.extra_imports
+        self.extra_exports
             .iter()
-            .map(|(path, _)| spec_file.write(format!("{}", path).as_bytes()).unwrap())
+            .map(|(export, _)| spec_file.write(export.to_string().as_bytes()).unwrap())
             .count();
         spec_file.write("\n".as_bytes()).unwrap();
 
@@ -368,11 +372,11 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 .as_bytes(),
             )
             .unwrap();
-        self.extra_imports
+        self.extra_exports
             .iter()
-            .map(|(path, include)| {
+            .map(|(export, include)| {
                 if *include {
-                    code_file.write(format!("{}", path).as_bytes()).unwrap();
+                    code_file.write(export.to_string().as_bytes()).unwrap();
                 }
             })
             .count();
@@ -518,10 +522,12 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                         .as_bytes(),
                     )
                     .unwrap();
-                self.extra_imports
+
+                self.extra_exports
                     .iter()
-                    .map(|(path, _)| template_file.write(format!("{}", path).as_bytes()).unwrap())
+                    .map(|(export, _)| template_file.write(export.to_string().as_bytes()).unwrap())
                     .count();
+
                 template_file.write("\n".as_bytes()).unwrap();
 
                 template_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
@@ -588,7 +594,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 fun.name()
             )
             .unwrap();
-            // Note: we do not import the self.extra_imports explicitly, as we rely on them
+            // Note: we do not export the self.extra_exports explicitly, as we rely on them
             // being re-exported from the template -- we want to be stable under changes of the
             // extras
             proof_file.write("\n".as_bytes()).unwrap();
@@ -719,10 +725,13 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write dune meta file
         let mut dune_file = io::BufWriter::new(fs::File::create(generated_dune_path.as_path()).unwrap());
-        let mut extra_theories: HashSet<_> =
-            self.extra_imports.iter().filter_map(|(path, _)| path.path.clone()).collect();
+
+        let mut extra_theories: HashSet<coq::Path> =
+            self.extra_exports.iter().filter_map(|(export, _)| export.0.get_path()).collect();
+
         extra_theories.extend(self.extra_dependencies.iter().cloned());
-        let extra_theories: Vec<_> = extra_theories.into_iter().collect();
+
+        let extra_theories: Vec<String> = extra_theories.into_iter().map(|x| x.to_string()).collect();
 
         let dune_package = if let Some(ref dune_package) = self.dune_package {
             format!("(package {dune_package})\n")
@@ -898,9 +907,9 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
         vcx.procedure_registry.register_function(did, meta)?;
     }
 
-    // add the extra imports
-    vcx.extra_imports
-        .extend(vcx.shim_registry.get_extra_imports().iter().map(|x| (x.clone(), true)));
+    // add the extra exports
+    vcx.extra_exports
+        .extend(vcx.shim_registry.get_extra_exports().iter().map(|export| (export.clone(), true)));
     // add the extra dependencies
     vcx.extra_dependencies.extend(vcx.shim_registry.get_extra_dependencies().iter().cloned());
 
@@ -1255,14 +1264,16 @@ where
     // get module attributes
     let module_attrs = get_module_attributes(env)?;
 
-    // process imports
-    let mut imports: HashSet<coq::Import> = HashSet::new();
-    crate_spec.imports.into_iter().map(|path| imports.insert(path)).count();
-    module_attrs
-        .values()
-        .map(|attrs| attrs.imports.iter().map(|path| imports.insert(path.clone())).count())
-        .count();
-    info!("Importing extra Coq files: {:?}", imports);
+    // process exports
+    let mut exports: HashSet<coq::Export> = HashSet::new();
+
+    exports.extend(crate_spec.exports);
+
+    for module_attr in module_attrs.values() {
+        exports.extend(module_attr.exports.clone());
+    }
+
+    info!("Exporting extra Coq files: {:?}", exports);
 
     // process includes
     let mut includes: HashSet<String> = HashSet::new();
@@ -1314,7 +1325,7 @@ where
         functions: functions.as_slice(),
         type_translator: &type_translator,
         procedure_registry,
-        extra_imports: imports.into_iter().map(|x| (x, false)).collect(),
+        extra_exports: exports.into_iter().map(|x| (x, false)).collect(),
         extra_dependencies: HashSet::new(),
         coq_path_prefix: path_prefix,
         shim_registry,
