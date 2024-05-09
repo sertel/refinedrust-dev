@@ -320,7 +320,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         }
 
         let mut module_dependencies: Vec<coq::Path> =
-            self.extra_exports.iter().filter_map(|(export, _)| export.0.get_path()).collect();
+            self.extra_exports.iter().filter_map(|(export, _)| export.get_path()).collect();
 
         module_dependencies.extend(self.extra_dependencies.iter().cloned());
 
@@ -342,44 +342,51 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
     /// Write specifications of a verification unit.
     fn write_specifications(&self, spec_path: &Path, code_path: &Path, stem: &str) {
+        let common_imports = vec![
+            coq::Import::new(coq::Module::new_with_path(
+                "lang".to_string(),
+                coq::Path::new("caesium".to_string()),
+            )),
+            coq::Import::new(coq::Module::new_with_path(
+                "notation".to_string(),
+                coq::Path::new("caesium".to_string()),
+            )),
+            coq::Import::new(coq::Module::new_with_path(
+                "typing".to_string(),
+                coq::Path::new("refinedrust".to_string()),
+            )),
+            coq::Import::new(coq::Module::new_with_path(
+                "shims".to_string(),
+                coq::Path::new("refinedrust".to_string()),
+            )),
+        ];
+
         let mut spec_file = io::BufWriter::new(fs::File::create(spec_path).unwrap());
         let mut code_file = io::BufWriter::new(fs::File::create(code_path).unwrap());
 
-        spec_file
-            .write(
-                format!(
-                    "\
-            From caesium Require Import lang notation.\n\
-            From refinedrust Require Import typing shims.\n\
-            From {}.{} Require Export generated_code_{}.\n",
-                    self.coq_path_prefix, stem, stem
-                )
-                .as_bytes(),
-            )
-            .unwrap();
-        self.extra_exports
-            .iter()
-            .map(|(export, _)| spec_file.write(export.to_string().as_bytes()).unwrap())
-            .count();
-        spec_file.write("\n".as_bytes()).unwrap();
+        {
+            let mut spec_exports = vec![coq::Export::new(coq::Module::new_with_path(
+                format!("generated_code_{stem}"),
+                coq::Path::new_from_segments(&[self.coq_path_prefix.clone(), stem.to_string()]),
+            ))];
 
-        code_file
-            .write(
-                "\
-            From caesium Require Import lang notation.\n\
-            From refinedrust Require Import typing shims.\n\
-            "
-                .as_bytes(),
-            )
-            .unwrap();
-        self.extra_exports
-            .iter()
-            .map(|(export, include)| {
-                if *include {
-                    code_file.write(export.to_string().as_bytes()).unwrap();
-                }
-            })
-            .count();
+            spec_exports.append(&mut self.extra_exports.iter().map(|(export, _)| export.clone()).collect());
+
+            write!(spec_file, "{}", coq::ImportList(&common_imports)).unwrap();
+            write!(spec_file, "{}", coq::ExportList(&spec_exports)).unwrap();
+        }
+
+        {
+            let code_exports = self
+                .extra_exports
+                .iter()
+                .filter(|(_, include)| *include)
+                .map(|(export, _)| export.clone())
+                .collect();
+
+            write!(code_file, "{}", coq::ImportList(&common_imports)).unwrap();
+            write!(code_file, "{}", coq::ExportList(&code_exports)).unwrap();
+        }
 
         // write structs and enums
         // we need to do a bit of work to order them right
@@ -501,6 +508,25 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     where
         F: Fn(&str) -> std::path::PathBuf,
     {
+        let common_imports = vec![
+            coq::Import::new(coq::Module::new_with_path(
+                "lang".to_string(),
+                coq::Path::new("caesium".to_string()),
+            )),
+            coq::Import::new(coq::Module::new_with_path(
+                "notation".to_string(),
+                coq::Path::new("caesium".to_string()),
+            )),
+            coq::Import::new(coq::Module::new_with_path(
+                "typing".to_string(),
+                coq::Path::new("refinedrust".to_string()),
+            )),
+            coq::Import::new(coq::Module::new_with_path(
+                "shims".to_string(),
+                coq::Path::new("refinedrust".to_string()),
+            )),
+        ];
+
         // write templates
         // each function gets a separate file in order to parallelize
         for (did, fun) in self.procedure_registry.iter_code() {
@@ -510,23 +536,23 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             let mode = self.procedure_registry.lookup_function_mode(*did).unwrap();
 
             if fun.spec.has_spec() && mode.needs_proof() {
-                template_file
-                    .write(
-                        format!(
-                            "\
-                    From caesium Require Import lang notation.\n\
-                    From refinedrust Require Import typing shims.\n\
-                    From {}.{stem} Require Import generated_code_{stem} generated_specs_{stem}.\n",
-                            self.coq_path_prefix
-                        )
-                        .as_bytes(),
-                    )
-                    .unwrap();
+                let mut imports = common_imports.clone();
 
-                self.extra_exports
-                    .iter()
-                    .map(|(export, _)| template_file.write(export.to_string().as_bytes()).unwrap())
-                    .count();
+                imports.append(&mut vec![
+                    coq::Import::new(coq::Module::new_with_path(
+                        format!("generated_code_{stem}"),
+                        coq::Path::new_from_segments(&[self.coq_path_prefix.clone(), stem.to_string()]),
+                    )),
+                    coq::Import::new(coq::Module::new_with_path(
+                        format!("generated_specs_{stem}"),
+                        coq::Path::new_from_segments(&[self.coq_path_prefix.clone(), stem.to_string()]),
+                    )),
+                ]);
+
+                let exports: Vec<_> = self.extra_exports.iter().map(|(export, _)| export.clone()).collect();
+
+                write!(template_file, "{}", coq::ImportList(&imports)).unwrap();
+                write!(template_file, "{}", coq::ExportList(&exports)).unwrap();
 
                 template_file.write("\n".as_bytes()).unwrap();
 
@@ -564,6 +590,25 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     where
         F: Fn(&str) -> std::path::PathBuf,
     {
+        let common_imports = vec![
+            coq::Import::new(coq::Module::new_with_path(
+                "lang".to_string(),
+                coq::Path::new("caesium".to_string()),
+            )),
+            coq::Import::new(coq::Module::new_with_path(
+                "notation".to_string(),
+                coq::Path::new("caesium".to_string()),
+            )),
+            coq::Import::new(coq::Module::new_with_path(
+                "typing".to_string(),
+                coq::Path::new("refinedrust".to_string()),
+            )),
+            coq::Import::new(coq::Module::new_with_path(
+                "shims".to_string(),
+                coq::Path::new("refinedrust".to_string()),
+            )),
+        ];
+
         // write proofs
         // each function gets a separate file in order to parallelize
         for (did, fun) in self.procedure_registry.iter_code() {
@@ -582,18 +627,37 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
             let mut proof_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
 
-            write!(
-                proof_file,
-                "\
-                    From caesium Require Import lang notation.\n\
-                From refinedrust Require Import typing shims.\n\
-                From {}.{stem}.generated Require Import generated_code_{stem} generated_specs_{stem}.\n\
-                From {}.{stem}.generated Require Import generated_template_{}.\n",
-                self.coq_path_prefix,
-                self.coq_path_prefix,
-                fun.name()
-            )
-            .unwrap();
+            let mut imports = common_imports.clone();
+
+            imports.append(&mut vec![
+                coq::Import::new(coq::Module::new_with_path(
+                    format!("generated_code_{stem}"),
+                    coq::Path::new_from_segments(&[
+                        self.coq_path_prefix.clone(),
+                        stem.to_string(),
+                        "generated".to_string(),
+                    ]),
+                )),
+                coq::Import::new(coq::Module::new_with_path(
+                    format!("generated_specs_{stem}"),
+                    coq::Path::new_from_segments(&[
+                        self.coq_path_prefix.clone(),
+                        stem.to_string(),
+                        "generated".to_string(),
+                    ]),
+                )),
+                coq::Import::new(coq::Module::new_with_path(
+                    format!("generated_template_{}", fun.name()),
+                    coq::Path::new_from_segments(&[
+                        self.coq_path_prefix.clone(),
+                        stem.to_string(),
+                        "generated".to_string(),
+                    ]),
+                )),
+            ]);
+
+            write!(proof_file, "{}", coq::ImportList(&imports)).unwrap();
+
             // Note: we do not export the self.extra_exports explicitly, as we rely on them
             // being re-exported from the template -- we want to be stable under changes of the
             // extras
@@ -727,7 +791,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let mut dune_file = io::BufWriter::new(fs::File::create(generated_dune_path.as_path()).unwrap());
 
         let mut extra_theories: HashSet<coq::Path> =
-            self.extra_exports.iter().filter_map(|(export, _)| export.0.get_path()).collect();
+            self.extra_exports.iter().filter_map(|(export, _)| export.get_path()).collect();
 
         extra_theories.extend(self.extra_dependencies.iter().cloned());
 

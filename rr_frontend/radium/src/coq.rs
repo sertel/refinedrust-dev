@@ -7,8 +7,10 @@
 /// A collection of types to represent and generate Rocq code.
 ///
 /// These types are intended to be used for the purposes of this project.
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write as fmtWrite;
+use std::ops::Deref;
 
 use derive_more::Display;
 use indent_write::fmt::IndentWriter;
@@ -37,19 +39,19 @@ impl Path {
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Module {
     path: Option<Path>,
-    module: String,
+    name: String,
 }
 
 impl Module {
     #[must_use]
-    pub const fn new(module: String) -> Self {
-        Self { module, path: None }
+    pub const fn new(name: String) -> Self {
+        Self { name, path: None }
     }
 
     #[must_use]
-    pub const fn new_with_path(module: String, path: Path) -> Self {
+    pub const fn new_with_path(name: String, path: Path) -> Self {
         Self {
-            module,
+            name,
             path: Some(path),
         }
     }
@@ -64,16 +66,7 @@ impl Module {
 ///
 /// If the `path` is empty, it is of the form `Require Import A`.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct Import(pub Module);
-
-impl fmt::Display for Import {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0.path {
-            None => write!(f, "Require Import {}.\n", self.0.module),
-            Some(ref path) => write!(f, "From {} Require Import {}.\n", path, self.0.module),
-        }
-    }
-}
+pub struct Import(Module);
 
 impl Import {
     #[must_use]
@@ -82,25 +75,88 @@ impl Import {
     }
 }
 
+impl Deref for Import {
+    type Target = Module;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
 /// A Rocq export of the form `From A.B.C Require Export D`.
 ///
 /// If the `path` is empty, it is of the form `Require Export A`.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct Export(pub Module);
-
-impl fmt::Display for Export {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.0.path {
-            None => write!(f, "Require Export {}.\n", self.0.module),
-            Some(ref path) => write!(f, "From {} Require Export {}.\n", path, self.0.module),
-        }
-    }
-}
+pub struct Export(Module);
 
 impl Export {
     #[must_use]
     pub const fn new(module: Module) -> Self {
         Self(module)
+    }
+}
+
+impl Deref for Export {
+    type Target = Module;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+fn get_modules_path(modules: &[&Module]) -> Vec<Path> {
+    let paths: Vec<_> = modules.iter().filter_map(|x| x.get_path()).collect();
+
+    let mut result = vec![];
+    for path in paths {
+        if !result.contains(&path) {
+            result.push(path);
+        }
+    }
+    result
+}
+
+fn fmt_modules(f: &mut fmt::Formatter<'_>, modules: &[&Module], kind: &str) -> fmt::Result {
+    fn is(module: &Module, path: Option<&Path>) -> Option<String> {
+        (module.get_path() == path.cloned()).then(|| module.name.clone())
+    }
+
+    for path in get_modules_path(modules) {
+        let modules: Vec<_> = modules.iter().filter_map(|x| is(x, Some(&path))).collect();
+
+        assert!(!modules.is_empty());
+
+        writeln!(f, "From {} Require {} {}.", path, kind, modules.join(" "))?;
+    }
+
+    let modules_no_path: Vec<_> = modules.iter().filter_map(|x| is(x, None)).collect();
+
+    if !modules_no_path.is_empty() {
+        writeln!(f, "Require {} {}.", kind, modules_no_path.join(" "))?;
+    }
+
+    Ok(())
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct ImportList<'a>(pub &'a Vec<Import>);
+
+impl Display for ImportList<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let modules: Vec<_> = self.0.iter().map(|x| &x.0).collect();
+
+        fmt_modules(f, &modules, "Import")
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+pub struct ExportList<'a>(pub &'a Vec<Export>);
+
+impl Display for ExportList<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let modules: Vec<_> = self.0.iter().map(|x| &x.0).collect();
+
+        fmt_modules(f, &modules, "Export")
     }
 }
 
@@ -543,5 +599,114 @@ impl Display for TopLevelAssertions {
             writeln!(f, "{a}")?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fmt::Write;
+
+    use indoc::indoc;
+
+    use super::*;
+
+    #[test]
+    fn modules_paths_none() {
+        let module_a = Module::new("A".to_string());
+        let module_b = Module::new("B".to_string());
+        let modules = vec![&module_a, &module_b];
+
+        assert_eq!(get_modules_path(&modules), vec![]);
+    }
+
+    #[test]
+    fn modules_paths_some_uniqueness() {
+        let module_a = Module::new_with_path("A".to_string(), Path::new("a.b.c".to_string()));
+        let module_b = Module::new_with_path("B".to_string(), Path::new("a.b.d".to_string()));
+        let modules = vec![&module_a, &module_b];
+
+        assert_eq!(get_modules_path(&modules), vec![
+            Path::new("a.b.c".to_string()),
+            Path::new("a.b.d".to_string())
+        ]);
+    }
+
+    #[test]
+    fn modules_paths_some_duplicate() {
+        let module_a = Module::new_with_path("A".to_string(), Path::new("a.b.c".to_string()));
+        let module_b = Module::new_with_path("B".to_string(), Path::new("a.b.c".to_string()));
+        let modules = vec![&module_a, &module_b];
+
+        assert_eq!(get_modules_path(&modules), vec![Path::new("a.b.c".to_string())]);
+    }
+
+    #[test]
+    fn modules_paths_all() {
+        let module_a = Module::new("A".to_string());
+        let module_b = Module::new_with_path("B".to_string(), Path::new("a.b.c".to_string()));
+        let module_c = Module::new_with_path("C".to_string(), Path::new("a.b.d".to_string()));
+        let module_d = Module::new_with_path("D".to_string(), Path::new("a.b.d".to_string()));
+        let modules = vec![&module_a, &module_b, &module_c, &module_d];
+
+        assert_eq!(get_modules_path(&modules), vec![
+            Path::new("a.b.c".to_string()),
+            Path::new("a.b.d".to_string())
+        ]);
+    }
+
+    #[test]
+    fn display_empty() {
+        let modules = vec![];
+
+        assert_eq!(ImportList(&modules).to_string(), "");
+    }
+
+    #[test]
+    fn display_none() {
+        let module_a = Import::new(Module::new("A".to_string()));
+        let module_b = Import::new(Module::new("B".to_string()));
+        let modules = vec![module_a, module_b];
+
+        assert_eq!(ImportList(&modules).to_string(), indoc! {"
+            Require Import A B.
+        "});
+    }
+
+    #[test]
+    fn display_some_uniqueness() {
+        let module_a = Import::new(Module::new_with_path("A".to_string(), Path::new("a.b.c".to_string())));
+        let module_b = Import::new(Module::new_with_path("B".to_string(), Path::new("a.b.d".to_string())));
+        let modules = vec![module_a, module_b];
+
+        assert_eq!(ImportList(&modules).to_string(), indoc! {"
+            From a.b.c Require Import A.
+            From a.b.d Require Import B.
+        "});
+    }
+
+    #[test]
+    fn display_some_duplicate() {
+        let module_a = Import::new(Module::new_with_path("A".to_string(), Path::new("a.b.c".to_string())));
+        let module_b = Import::new(Module::new_with_path("B".to_string(), Path::new("a.b.c".to_string())));
+        let modules = vec![module_a, module_b];
+
+        assert_eq!(ImportList(&modules).to_string(), indoc! {"
+            From a.b.c Require Import A B.
+        "});
+    }
+
+    #[test]
+    fn display_all() {
+        let module_a = Import::new(Module::new("A".to_string()));
+        let module_b = Import::new(Module::new_with_path("B".to_string(), Path::new("a.b.c".to_string())));
+        let module_c = Import::new(Module::new_with_path("C".to_string(), Path::new("a.b.d".to_string())));
+        let module_d = Import::new(Module::new_with_path("D".to_string(), Path::new("a.b.d".to_string())));
+        let modules = vec![module_a, module_b, module_c, module_d];
+
+        assert_eq!(ImportList(&modules).to_string(), indoc! {"
+            From a.b.c Require Import B.
+            From a.b.d Require Import C D.
+            Require Import A.
+        "});
     }
 }
