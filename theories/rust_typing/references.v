@@ -2495,7 +2495,8 @@ Section rules.
     GetLftNames (shr_ref ty κ) lfts (LftNameTreeRef name tree) (named_lft_update name κ lfts') := λ _, GLN.
 
   Lemma typed_place_shr_owned {rto} π κ (lt2 : ltype rto) P E L l r wl bmin0 (T : place_cont_t (place_rfn rto)) :
-    (∀ l', typed_place π E L l' lt2 r (Shared κ ⊓ₖ bmin0) (Shared κ) P
+    introduce_with_hooks E L (£1) (λ L1, 
+    ∀ l', typed_place π E L1 l' lt2 r (Shared κ ⊓ₖ bmin0) (Shared κ) P
         (λ L' κs l2 b2 bmin rti tyli ri strong weak,
           T L' (κs) l2 b2 bmin rti tyli ri
           (option_map (λ strong, mk_strong
@@ -2519,6 +2520,7 @@ Section rules.
     iNext. iIntros (st) "Hl Hcred Hc". iMod (fupd_mask_subseteq F) as "HclF"; first done.
     iMod "HclF" as "_". iExists l'.
     iSplitR. { iPureIntro. unfold mem_cast. rewrite val_to_of_loc. done. }
+    iMod ("HR" with "[] HE HL Hcred") as "(%L1 & HL & HR)"; first done.
     iApply ("HR" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hb"). { iApply bor_kind_min_incl_l. }
     iModIntro. iIntros (L' κs l2 b2 bmin rti tyli ri strong weak) "#Hincl1 Hb Hs".
     iApply ("HΦ" $! _ _ _ _ bmin _ _ _ _ _ with "Hincl1 Hb").
@@ -2546,7 +2548,8 @@ Section rules.
     TypedPlace E L π l (ShrLtype lt2 κ) (PlaceIn (r)) bmin0 (Owned wl) (DerefPCtx Na1Ord PtrOp true :: P) | 30 := λ T, i2p (typed_place_shr_owned π κ lt2 P E L l r wl bmin0 T).
 
   Lemma typed_place_shr_uniq {rto} π κ (lt2 : ltype rto) P E L l r κ' γ bmin0 (T : place_cont_t (place_rfn rto)) :
-    li_tactic (lctx_lft_alive_count_goal E L κ') (λ '(κs, L2),
+    li_tactic (lctx_lft_alive_count_goal E L κ') (λ '(κs, L1),
+      introduce_with_hooks E L1 (£1) (λ L2, 
     (∀ l', typed_place π E L2 l' lt2 r (Shared κ) (Shared κ) P
         (λ L3 κs' l2 b2 bmin rti tyli ri strong weak,
           T L3 (κs' ++ κs) l2 b2 bmin rti tyli ri
@@ -2565,7 +2568,7 @@ Section rules.
             weak.(weak_R)) weak)
                *)
               None
-        )))
+        ))))
     ⊢ typed_place π E L l (ShrLtype lt2 κ) (#r) bmin0 (Uniq κ' γ) (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     rewrite /lctx_lft_alive_count_goal.
@@ -2582,6 +2585,7 @@ Section rules.
     iNext. iIntros (st) "Hl Hcred Hc". iMod (fupd_mask_subseteq F) as "HclF"; first done.
     iMod "HclF" as "_". iExists l'.
     iSplitR. { iPureIntro. unfold mem_cast. rewrite val_to_of_loc. done. }
+    iMod ("HT" with "[] HE HL Hcred") as "(%L1 & HL & HT)"; first done.
     iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hb"). { iApply bor_kind_incl_refl. }
     iModIntro. iIntros (L' κs' l2 b2 bmin rti tyli ri strong weak) "#Hincl1 Hb Hs".
     iApply ("HΦ" $! _ _ _ _ bmin _ _ _ _ _ with "Hincl1 Hb").
@@ -2617,9 +2621,10 @@ Section rules.
 
   Lemma typed_place_shr_shared {rto} π E L (lt2 : ltype rto) P l r κ κ' bmin0 (T : place_cont_t (place_rfn rto)) :
     li_tactic (lctx_lft_alive_count_goal E L κ') (λ '(κs, L'),
-      (∀ l', typed_place π E L' l' lt2 r (Shared κ ⊓ₖ bmin0) (Shared κ) P
-        (λ L'' κs' l2 b2 bmin rti tyli ri strong weak,
-          T L'' (κs ++ κs') l2 b2 (Shared κ' ⊓ₖ bmin) rti tyli ri
+      introduce_with_hooks E L' (£1) (λ L1, 
+      (∀ l', typed_place π E L1 l' lt2 r (Shared κ ⊓ₖ bmin0) (Shared κ) P
+        (λ L2 κs' l2 b2 bmin rti tyli ri strong weak,
+          T L2 (κs ++ κs') l2 b2 (Shared κ' ⊓ₖ bmin) rti tyli ri
             (* strong branch: fold to ShadowedLtype *)
               None (* TODO *)
             (*(fmap (λ strong, mk_strong (λ rti, (place_rfn (strong.(strong_rt) rti) * gname)%type)*)
@@ -2628,7 +2633,7 @@ Section rules.
               (*(λ rti2 ri2, #((strong.(strong_rfn) _ ri2), γ))*)
               (*strong.(strong_R)) strong)*)
             (* weak branch: just keep the MutLtype *)
-            (fmap (λ weak, mk_weak (λ lti' ri', ShrLtype (weak.(weak_lt) lti' ri') κ) (λ (r : place_rfn rti), #(weak.(weak_rfn) r)) weak.(weak_R)) weak))))
+            (fmap (λ weak, mk_weak (λ lti' ri', ShrLtype (weak.(weak_lt) lti' ri') κ) (λ (r : place_rfn rti), #(weak.(weak_rfn) r)) weak.(weak_R)) weak)))))
     ⊢ typed_place π E L l (ShrLtype lt2 κ) #r bmin0 (Shared κ') (DerefPCtx Na1Ord PtrOp true :: P) T.
   Proof.
     rewrite /lctx_lft_alive_count_goal.
@@ -2640,11 +2645,13 @@ Section rules.
     iMod "HclF" as "_". iMod (fupd_mask_subseteq F) as "HclF"; first done.
     iPoseProof (shr_ltype_acc_shared F with "[$LFT $TIME $LLCTX] Hκ' HP") as "(%Hly & Hlb & Hb)"; [done.. | ].
     iMod "Hb" as "(%l' & %q' & Hl & >Hb & Hcl)". iMod "HclF" as "_".
-    iModIntro. iApply wp_fupd. iApply (wp_deref with "Hl") => //; [solve_ndisj | by apply val_to_of_loc | ].
+    iModIntro. iApply wp_fupd.
+    iApply (wp_deref with "Hl") => //; [solve_ndisj | by apply val_to_of_loc | ].
     iNext.
     iIntros (st) "Hl Hcred". iMod (fupd_mask_mono with "Hb") as "#Hb"; first done.
     iExists l'.
     iSplitR. { iPureIntro. unfold mem_cast. rewrite val_to_of_loc. done. }
+    iMod ("HT" with "[] HE HL Hcred") as "(%L1 & HL &HT)"; first done.
     iApply ("HT" with "[//] [//] [$LFT $TIME $LLCTX] HE HL [] Hb"). { iApply bor_kind_min_incl_l. }
     iModIntro. iIntros (L'' κs' l2 b2 bmin rti tyli ri strong weak) "#Hincl1 Hb' Hs".
     iApply ("HΦ" $! _ _ _ _ (Shared κ' ⊓ₖ bmin) _ _ _ _ _ with "[Hincl1] Hb'").
