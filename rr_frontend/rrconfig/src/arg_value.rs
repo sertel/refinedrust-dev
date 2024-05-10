@@ -10,10 +10,10 @@ use std::ops::Deref;
 
 /// If a command-line option matches `find_arg`, then apply the predicate `pred` on its value. If
 /// true, then return it. The parameter is assumed to be either `--arg=value` or `--arg value`.
-pub fn arg_value<'a, T: Deref<Target = str>>(
+pub fn arg_value<'a, T: Deref<Target = str>, F: Fn(&str) -> bool>(
     args: &'a [T],
     find_arg: &str,
-    pred: impl Fn(&str) -> bool,
+    pred: F,
 ) -> Option<&'a str> {
     let mut args = args.iter().map(Deref::deref);
     while let Some(arg) = args.next() {

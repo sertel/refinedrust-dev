@@ -32,7 +32,6 @@ rustflags = [
     "-Aclippy::string_lit_as_bytes",
 
     # clippy::restriction
-    "-Aclippy::impl_trait_in_params",
     "-Aclippy::mod_module_files",
     "-Aclippy::non_ascii_literal",
     "-Aclippy::panic_in_result_fn",
