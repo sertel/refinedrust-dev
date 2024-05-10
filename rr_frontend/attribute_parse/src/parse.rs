@@ -610,15 +610,14 @@ mod value {
         }
 
         let suffix = s;
-        if suffix.is_empty() || crate::parse::xid_ok(suffix) {
+
+        (suffix.is_empty() || crate::parse::xid_ok(suffix)).then(|| {
             let mut repr = value.to_string();
             if negative {
                 repr.insert(0, '-');
             }
-            Some((repr.into_boxed_str(), suffix.to_owned().into_boxed_str()))
-        } else {
-            None
-        }
+            (repr.into_boxed_str(), suffix.to_owned().into_boxed_str())
+        })
     }
 
     /// Get the byte at offset idx, or a default of `b'\0'` if we're looking

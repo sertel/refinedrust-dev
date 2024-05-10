@@ -603,7 +603,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             .borrowck_in_facts
             .loan_issued_at
             .iter()
-            .filter_map(|(r, loan, _)| if r == &region { Some(*loan) } else { None })
+            .filter_map(|(r, loan, _)| (r == &region).then_some(*loan))
             .collect();
 
         if !v.is_empty() {
@@ -1105,11 +1105,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     /// TODO: for aggregates, this only finds one loan
     #[must_use]
     pub fn get_optional_loan_at_location(&self, location: mir::Location) -> Option<facts::Loan> {
-        if self.loan_at_position.contains_key(&location) {
-            Some(self.loan_at_position[&location])
-        } else {
-            None
-        }
+        self.loan_at_position.contains_key(&location).then(|| self.loan_at_position[&location])
     }
 
     /// Get a map from loans to locations at which they were created.
@@ -1217,8 +1213,9 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             .borrowck_in_facts
             .loan_issued_at
             .iter()
-            .filter_map(|&(r, l, p)| if p == point && l == loan { Some(r) } else { None })
+            .filter_map(|&(r, l, p)| (p == point && l == loan).then_some(r))
             .collect::<Vec<_>>();
+
         if regions.len() == 1 {
             regions[0]
         } else {

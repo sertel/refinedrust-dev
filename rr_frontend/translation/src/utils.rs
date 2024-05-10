@@ -554,22 +554,23 @@ pub fn try_pop_one_level<'tcx>(
     tcx: TyCtxt<'tcx>,
     place: mir::Place<'tcx>,
 ) -> Option<(mir::PlaceElem<'tcx>, mir::Place<'tcx>)> {
-    if place.projection.len() > 0 {
-        let last_index = place.projection.len() - 1;
-        let new_place = mir::Place {
-            local: place.local,
-            projection: tcx.mk_place_elems(&place.projection[..last_index]),
-        };
-        Some((place.projection[last_index], new_place))
-    } else {
-        None
+    if place.projection.is_empty() {
+        return None;
     }
+
+    let last_index = place.projection.len() - 1;
+    let new_place = mir::Place {
+        local: place.local,
+        projection: tcx.mk_place_elems(&place.projection[..last_index]),
+    };
+
+    Some((place.projection[last_index], new_place))
 }
 
 /// Pop the last element from the place if it is a dereference.
 pub fn try_pop_deref<'tcx>(tcx: TyCtxt<'tcx>, place: mir::Place<'tcx>) -> Option<mir::Place<'tcx>> {
     try_pop_one_level(tcx, place)
-        .and_then(|(elem, base)| if elem == mir::ProjectionElem::Deref { Some(base) } else { None })
+        .and_then(|(elem, base)| (elem == mir::ProjectionElem::Deref).then_some(base))
 }
 
 /// Subtract the `subtrahend` place from the `minuend` place. The
@@ -724,7 +725,7 @@ pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
 
                 let seg = item.path.segments.get(0)?;
 
-                if seg.ident.name.as_str() == config::spec_hotword() { Some(item) } else { None }
+                (seg.ident.name.as_str() == config::spec_hotword()).then_some(item)
             },
             _ => None,
         })

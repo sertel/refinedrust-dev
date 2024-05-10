@@ -2325,7 +2325,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Generate an annotation on an expression needed to update the region name map.
     fn generate_strong_update_annot(&self, ty: PlaceTy<'tcx>) -> Option<radium::Annotation> {
         let (interesting, tree) = self.generate_strong_update_annot_rec(ty.ty);
-        if interesting { Some(radium::Annotation::GetLftNames(tree)) } else { None }
+        interesting.then(|| radium::Annotation::GetLftNames(tree))
     }
 
     /// Returns a tree for giving names to Coq lifetimes based on RR types.
@@ -2400,7 +2400,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         Ok(self
             .procedure_registry
             .lookup_function_mode(*did)
-            .and_then(|m| if m.is_ignore() { Some(*did) } else { None }))
+            .and_then(|m| m.is_ignore().then_some(*did)))
     }
 
     fn region_to_region_vid(r: ty::Region<'tcx>) -> facts::Region {
