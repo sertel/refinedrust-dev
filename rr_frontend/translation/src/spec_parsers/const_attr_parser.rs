@@ -26,7 +26,7 @@ pub struct ConstAttrs {
     pub name: String,
 }
 
-pub struct VerboseConstAttrParser {}
+pub struct VerboseConstAttrParser;
 
 impl VerboseConstAttrParser {
     pub const fn new() -> Self {

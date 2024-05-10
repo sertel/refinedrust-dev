@@ -167,7 +167,7 @@ impl<U> parse::Parse<U> for InvariantSpecFlags {
     }
 }
 
-pub struct VerboseInvariantSpecParser {}
+pub struct VerboseInvariantSpecParser;
 
 impl VerboseInvariantSpecParser {
     pub const fn new() -> Self {

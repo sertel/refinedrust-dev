@@ -26,7 +26,7 @@ pub struct CrateAttrs {
     pub context_params: Vec<coq::Param>,
 }
 
-pub struct VerboseCrateAttrParser {}
+pub struct VerboseCrateAttrParser;
 
 impl VerboseCrateAttrParser {
     pub const fn new() -> Self {

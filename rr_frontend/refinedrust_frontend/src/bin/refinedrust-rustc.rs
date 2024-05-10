@@ -40,7 +40,7 @@ fn get_rr_version_info() -> String {
 }
 
 /// Callbacks for the `RefinedRust` frontend.
-struct RRCompilerCalls {}
+struct RRCompilerCalls;
 
 // From Prusti.
 fn mir_borrowck(tcx: TyCtxt<'_>, def_id: LocalDefId) -> mir_borrowck::ProvidedValue<'_> {

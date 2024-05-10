@@ -29,7 +29,7 @@ pub struct ModuleAttrs {
     pub context_params: Vec<coq::Param>,
 }
 
-pub struct VerboseModuleAttrParser {}
+pub struct VerboseModuleAttrParser;
 
 impl VerboseModuleAttrParser {
     pub const fn new() -> Self {
