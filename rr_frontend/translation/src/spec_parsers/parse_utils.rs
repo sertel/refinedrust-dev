@@ -10,7 +10,7 @@ use attribute_parse as parse;
 use lazy_static::lazy_static;
 use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
 /// This provides some general utilities for RefinedRust-specific attribute parsing.
-use radium::specs;
+use radium::{coq, specs};
 use regex::{self, Captures, Regex};
 
 /// Parse either a literal string (a term/pattern) or an identifier, e.g.
@@ -136,25 +136,25 @@ impl<'a> Parse<ParseMeta<'a>> for IProp {
 /// `w : "(Z * Z)%type"`
 #[derive(Debug)]
 pub struct RRParam {
-    pub name: specs::CoqName,
-    pub ty: specs::CoqType,
+    pub name: coq::Name,
+    pub ty: coq::Type,
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for RRParam {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         let name: IdentOrTerm = input.parse(meta)?;
-        let name = specs::CoqName::Named(name.to_string());
+        let name = coq::Name::Named(name.to_string());
 
         if parse::Colon::peek(input) {
             input.parse::<_, parse::MToken![:]>(meta)?;
             let ty: parse::LitStr = input.parse(meta)?;
             let (ty, _) = process_coq_literal(&ty.value(), *meta);
-            let ty = specs::CoqType::Literal(ty);
+            let ty = coq::Type::Literal(ty);
             Ok(Self { name, ty })
         } else {
             Ok(Self {
                 name,
-                ty: specs::CoqType::Infer,
+                ty: coq::Type::Infer,
             })
         }
     }
@@ -176,16 +176,16 @@ impl<'a> Parse<ParseMeta<'a>> for RRParams {
     }
 }
 
-pub struct CoqPath(specs::CoqPath);
+pub struct CoqModule(coq::Module);
 
-impl From<CoqPath> for specs::CoqPath {
-    fn from(path: CoqPath) -> Self {
+impl From<CoqModule> for coq::Module {
+    fn from(path: CoqModule) -> Self {
         path.0
     }
 }
 
-/// Parse a `CoqPath`.
-impl<U> Parse<U> for CoqPath {
+/// Parse a `CoqModule`.
+impl<U> Parse<U> for CoqModule {
     fn parse(input: ParseStream, meta: &U) -> ParseResult<Self> {
         let path_or_module: parse::LitStr = input.parse(meta)?;
         let path_or_module = path_or_module.value();
@@ -195,15 +195,9 @@ impl<U> Parse<U> for CoqPath {
             let module: parse::LitStr = input.parse(meta)?;
             let module = module.value();
 
-            Ok(Self(specs::CoqPath {
-                path: Some(path_or_module),
-                module,
-            }))
+            Ok(Self(coq::Module::new_with_path(&module, coq::Path::new(&path_or_module))))
         } else {
-            Ok(Self(specs::CoqPath {
-                path: None,
-                module: path_or_module,
-            }))
+            Ok(Self(coq::Module::new(&path_or_module)))
         }
     }
 }

@@ -8,7 +8,7 @@ use attribute_parse as parse;
 /// Parsing of `RefinedRust` struct specifications.
 use log::info;
 use parse::{Parse, Peek};
-use radium::specs;
+use radium::{coq, specs};
 use rustc_ast::ast::AttrItem;
 
 use crate::spec_parsers::parse_utils::*;
@@ -38,8 +38,8 @@ pub trait InvariantSpecParser {
 /// Parse a binder pattern with an optional Coq type annotation, e.g.
 /// `"(x, y)" : "(Z * Z)%type"`
 struct RfnPattern {
-    rfn_pat: specs::CoqPattern,
-    rfn_type: Option<specs::CoqType>,
+    rfn_pat: coq::Pattern,
+    rfn_type: Option<coq::Type>,
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
@@ -54,7 +54,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
             let (ty, _) = process_coq_literal(ty.value().as_str(), *meta);
             Ok(Self {
                 rfn_pat: pat,
-                rfn_type: Some(specs::CoqType::Literal(ty)),
+                rfn_type: Some(coq::Type::Literal(ty)),
             })
         } else {
             Ok(Self {
@@ -194,14 +194,14 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
         let mut abstracted_refinement = None;
 
         let mut rfn_pat = "placeholder_pat".to_string();
-        let mut rfn_type = specs::CoqType::Infer;
+        let mut rfn_type = coq::Type::Infer;
 
         let mut existentials: Vec<RRParam> = Vec::new();
 
         // use Plain as the default
         let mut inv_flags = specs::InvariantSpecFlags::Plain;
 
-        let mut params: Vec<specs::CoqParam> = Vec::new();
+        let mut params: Vec<coq::Param> = Vec::new();
 
         for &it in attrs {
             let path_segs = &it.path.segments;
@@ -263,9 +263,9 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                     "context" => {
                         let param = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
 
-                        params.push(specs::CoqParam::new(
-                            specs::CoqName::Unnamed,
-                            specs::CoqType::Literal(param.item),
+                        params.push(coq::Param::new(
+                            coq::Name::Unnamed,
+                            coq::Type::Literal(param.item),
                             true,
                         ));
                     },
@@ -334,7 +334,7 @@ where
 
     make_literal: F,
     //ty_scope: &'a [Option<specs::Type<'def>>],
-    //rfnty_scope: &'a [Option<specs::CoqType>],
+    //rfnty_scope: &'a [Option<coq::Type>],
 }
 
 impl<'a, 'def, F> VerboseStructFieldSpecParser<'a, 'def, F>
@@ -370,7 +370,7 @@ where
         let lit_ty = specs::LiteralType {
             rust_name: None,
             type_term: lit.ty.to_string(),
-            refinement_type: specs::CoqType::Infer,
+            refinement_type: coq::Type::Infer,
             syn_type: st,
         };
         let lit_ref = (self.make_literal)(lit_ty);

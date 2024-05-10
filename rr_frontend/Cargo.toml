@@ -24,6 +24,7 @@ datafrog = "2"
 derive_more = { version = "1.0.0-beta.6", features = ["display"] }
 env_logger = "0.11"
 indent_write = "2"
+indoc = "2"
 lazy_static = "1"
 log = "0.4"
 path-clean = "1"

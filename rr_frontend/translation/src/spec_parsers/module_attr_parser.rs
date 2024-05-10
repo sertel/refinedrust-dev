@@ -5,7 +5,7 @@
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
 use attribute_parse as parse;
-use radium::specs;
+use radium::{coq, specs};
 use rustc_ast::ast::AttrItem;
 use rustc_hir::def_id::LocalDefId;
 
@@ -24,9 +24,9 @@ pub trait ModuleAttrParser {
 
 #[derive(Clone, Debug)]
 pub struct ModuleAttrs {
-    pub imports: Vec<specs::CoqPath>,
+    pub exports: Vec<coq::Export>,
     pub includes: Vec<String>,
-    pub context_params: Vec<specs::CoqParam>,
+    pub context_params: Vec<coq::Param>,
 }
 
 pub struct VerboseModuleAttrParser {}
@@ -44,7 +44,7 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
         attrs: &'a [&'a AttrItem],
     ) -> Result<ModuleAttrs, String> {
         let meta = ();
-        let mut imports: Vec<specs::CoqPath> = Vec::new();
+        let mut exports: Vec<coq::Export> = Vec::new();
         let mut includes: Vec<String> = Vec::new();
         let mut context_params = Vec::new();
 
@@ -56,8 +56,8 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
                 match seg.ident.name.as_str() {
                     "import" => {
-                        let path: parse_utils::CoqPath = buffer.parse(&meta).map_err(str_err)?;
-                        imports.push(path.into());
+                        let path: parse_utils::CoqModule = buffer.parse(&meta).map_err(str_err)?;
+                        exports.push(coq::Export::new(path.into()));
                     },
                     "include" => {
                         let name: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
@@ -66,9 +66,9 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
                     "context" => {
                         let param: parse_utils::RRGlobalCoqContextItem =
                             buffer.parse(&meta).map_err(str_err)?;
-                        context_params.push(specs::CoqParam::new(
-                            specs::CoqName::Unnamed,
-                            specs::CoqType::Literal(param.item),
+                        context_params.push(coq::Param::new(
+                            coq::Name::Unnamed,
+                            coq::Type::Literal(param.item),
                             true,
                         ));
                     },
@@ -79,7 +79,7 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
             }
         }
         Ok(ModuleAttrs {
-            imports,
+            exports,
             includes,
             context_params,
         })

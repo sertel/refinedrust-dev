@@ -6,12 +6,12 @@
 
 use std::collections::HashMap;
 
+use attribute_parse as parse;
 use log::{info, warn};
 use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
-use radium::{push_str_list, specs};
+use radium::{coq, push_str_list, specs};
 use rustc_ast::ast::AttrItem;
 use rustc_middle::ty;
-use {attribute_parse as parse, radium};
 
 use crate::spec_parsers::parse_utils::{ParseMeta, *};
 
@@ -249,7 +249,7 @@ where
         &self,
         lit: &LiteralTypeWithRef,
         ty: &specs::Type<'def>,
-    ) -> (specs::TypeWithRef<'def>, Option<specs::CoqType>) {
+    ) -> (specs::TypeWithRef<'def>, Option<coq::Type>) {
         if let Some(ref lit_ty) = lit.ty {
             // literal type given, we use this literal type as the RR semantic type
             // just use the syntype from the Rust type
@@ -261,7 +261,7 @@ where
             let lit_ty = specs::LiteralType {
                 rust_name: None,
                 type_term: lit_ty.to_string(),
-                refinement_type: specs::CoqType::Infer,
+                refinement_type: coq::Type::Infer,
                 syn_type: st,
             };
             let lit_ref = (self.make_literal)(lit_ty);
@@ -322,7 +322,7 @@ where
                         // potentially add a typing hint to the refinement
                         if let IdentOrTerm::Ident(ref i) = arg.rfn {
                             info!("Trying to add a typing hint for {}", i);
-                            builder.spec.add_param_type_annot(&specs::CoqName::Named(i.clone()), cty)?;
+                            builder.spec.add_param_type_annot(&coq::Name::Named(i.clone()), cty)?;
                         }
                     }
                 }
@@ -368,14 +368,14 @@ where
                 let context_item = RRCoqContextItem::parse(buffer, &meta).map_err(str_err)?;
                 if context_item.at_end {
                     builder.spec.add_late_coq_param(
-                        specs::CoqName::Unnamed,
-                        specs::CoqType::Literal(context_item.item),
+                        coq::Name::Unnamed,
+                        coq::Type::Literal(context_item.item),
                         true,
                     )?;
                 } else {
                     builder.spec.add_coq_param(
-                        specs::CoqName::Unnamed,
-                        specs::CoqType::Literal(context_item.item),
+                        coq::Name::Unnamed,
+                        coq::Type::Literal(context_item.item),
                         true,
                     )?;
                 }
@@ -492,7 +492,7 @@ where
 
         // push everything to the builder
         for x in new_ghost_vars {
-            builder.spec.add_param(radium::CoqName::Named(x), radium::CoqType::Gname).unwrap();
+            builder.spec.add_param(coq::Name::Named(x), coq::Type::Gname).unwrap();
         }
 
         // assemble a string for the closure arg
@@ -540,10 +540,7 @@ where
             ty::ClosureKind::FnMut => {
                 // wrap the argument in a mutable reference
                 let post_name = "__γclos";
-                builder
-                    .spec
-                    .add_param(radium::CoqName::Named(post_name.to_string()), radium::CoqType::Gname)
-                    .unwrap();
+                builder.spec.add_param(coq::Name::Named(post_name.to_string()), coq::Type::Gname).unwrap();
 
                 let lft = meta.closure_lifetime.unwrap();
                 let ref_ty = specs::Type::MutRef(Box::new(tuple), lft);

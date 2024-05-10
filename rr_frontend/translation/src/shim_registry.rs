@@ -13,6 +13,7 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
 use log::info;
+use radium::coq;
 use serde::{Deserialize, Serialize};
 use typed_arena::Arena;
 
@@ -144,16 +145,21 @@ pub struct ModuleSummary<'a> {
 /// code definition name and a spec name.
 pub struct ShimRegistry<'a> {
     arena: &'a Arena<String>,
+
     /// function/method shims
     function_shims: Vec<FunctionShim<'a>>,
+
     /// trait method implementation shims
     trait_method_shims: Vec<TraitMethodImplShim>,
+
     /// adt shims
     adt_shims: Vec<AdtShim<'a>>,
-    /// extra imports
-    imports: Vec<radium::specs::CoqPath>,
+
+    /// extra exports
+    exports: Vec<coq::Export>,
+
     /// extra module dependencies
-    depends: Vec<String>,
+    dependencies: Vec<coq::Path>,
 }
 
 impl<'a> ShimRegistry<'a> {
@@ -185,8 +191,8 @@ impl<'a> ShimRegistry<'a> {
             function_shims: Vec::new(),
             trait_method_shims: Vec::new(),
             adt_shims: Vec::new(),
-            imports: Vec::new(),
-            depends: Vec::new(),
+            exports: Vec::new(),
+            dependencies: Vec::new(),
         }
     }
 
@@ -211,44 +217,46 @@ impl<'a> ShimRegistry<'a> {
         // We support both directly giving the items array, or also specifying a path to import
         let v = match deser {
             serde_json::Value::Object(obj) => {
-                let path =
-                    obj.get("refinedrust_path").ok_or(format!("Missing attribute \"refinedrust_path\""))?;
-                let path =
-                    path.as_str().ok_or(format!("Expected string for \"refinedrust_path\" attribute"))?;
+                let path = obj
+                    .get("refinedrust_path")
+                    .ok_or(format!("Missing attribute \"refinedrust_path\""))?
+                    .as_str()
+                    .ok_or(format!("Expected string for \"refinedrust_path\" attribute"))?;
 
                 let module = obj
                     .get("refinedrust_module")
-                    .ok_or(format!("Missing attribute \"refinedrust_module\""))?;
-                let module =
-                    module.as_str().ok_or(format!("Expected string for \"refinedrust_module\" attribute"))?;
+                    .ok_or(format!("Missing attribute \"refinedrust_module\""))?
+                    .as_str()
+                    .ok_or(format!("Expected string for \"refinedrust_module\" attribute"))?;
 
-                let name =
-                    obj.get("refinedrust_name").ok_or(format!("Missing attribute \"refinedrust_name\""))?;
-                let _name =
-                    name.as_str().ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
+                let _ = obj
+                    .get("refinedrust_name")
+                    .ok_or(format!("Missing attribute \"refinedrust_name\""))?
+                    .as_str()
+                    .ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
 
-                let coq_path = radium::specs::CoqPath {
-                    path: Some(path.to_string()),
-                    module: module.to_string(),
-                };
-                self.imports.push(coq_path);
+                let module = coq::Module::new_with_path(module, coq::Path::new(path));
+                self.exports.push(coq::Export::new(module));
 
-                let depends = obj
+                let dependencies = obj
                     .get("module_dependencies")
-                    .ok_or(format!("Missing attribute \"module_dependencies\""))?;
-                let depends = depends
+                    .ok_or(format!("Missing attribute \"module_dependencies\""))?
                     .as_array()
                     .ok_or(format!("Expected array for \"module_dependencies\" attribute"))?;
-                for el in depends {
-                    let module = el
+
+                for dependency in dependencies {
+                    let path = dependency
                         .as_str()
                         .ok_or(format!("Expected string for element of \"module_dependencies\" array"))?;
-                    self.depends.push(module.to_string());
+
+                    self.dependencies.push(coq::Path::new(path));
                 }
 
-                let arr = obj.get("items").ok_or(format!("Missing attribute \"items\""))?;
-                let arr = arr.as_array().ok_or(format!("Expected array for \"items\" attribute"))?;
-                arr.clone()
+                obj.get("items")
+                    .ok_or(format!("Missing attribute \"items\""))?
+                    .as_array()
+                    .ok_or(format!("Expected array for \"items\" attribute"))?
+                    .clone()
             },
 
             serde_json::Value::Array(arr) => arr,
@@ -315,12 +323,12 @@ impl<'a> ShimRegistry<'a> {
         &self.adt_shims
     }
 
-    pub fn get_extra_imports(&self) -> &[radium::specs::CoqPath] {
-        &self.imports
+    pub fn get_extra_exports(&self) -> &[coq::Export] {
+        &self.exports
     }
 
-    pub fn get_extra_dependencies(&self) -> &[String] {
-        &self.depends
+    pub fn get_extra_dependencies(&self) -> &[coq::Path] {
+        &self.dependencies
     }
 }
 
@@ -330,7 +338,7 @@ pub fn write_shims<'a>(
     load_path: &str,
     load_module: &str,
     name: &str,
-    module_dependencies: &[String],
+    module_dependencies: &[coq::Path],
     adt_shims: Vec<AdtShim<'a>>,
     function_shims: Vec<FunctionShim<'a>>,
     trait_method_shims: Vec<TraitMethodImplShim>,
@@ -354,6 +362,8 @@ pub fn write_shims<'a>(
     let array_val = serde_json::Value::Array(values);
 
     info!("write_shims: writing entries {:?}", array_val);
+
+    let module_dependencies: Vec<_> = module_dependencies.iter().map(ToString::to_string).collect();
 
     let object = serde_json::json!({
         "refinedrust_path": load_path,
