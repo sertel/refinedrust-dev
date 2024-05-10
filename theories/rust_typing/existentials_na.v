@@ -127,7 +127,6 @@ Section na_ex.
 
     iApply fupd_logical_step; iApply logical_step_intro.
 
-    (* NOTE: Is there a simplier setoid_rewrite to do here ? *)
     iPoseProof (bor_iff _ _ (∃ x: X, l ↦: ty_own_val ty π x ∗ P.(na_inv_P) π x r) with "[] Hbor") as "Hbor".
     { iNext. iModIntro. iSplit; [iIntros "(% & % & ? & ? & ?)" | iIntros "(% & (% & ? & ?) & ?)"]; eauto with iFrame. }
 
@@ -178,7 +177,6 @@ Section generated_code.
   Section UnsafeCell_sls.
     Context `{!typeGS Σ}.
 
-    (* NOTE: Is StructReprTransparent ready? *)
     Definition UnsafeCell_sls : struct_layout_spec := mk_sls "UnsafeCell" [
       ("value", IntSynType I32)] StructReprTransparent.
     Definition UnsafeCell_st : syn_type := UnsafeCell_sls.
@@ -516,8 +514,8 @@ Section generated_code.
 
       (* Nothing has changed *)
       iIntros "HT".
-      iIntros (???) "#CTX #HE HL".
-      iMod ("HT" with "[//] [//] CTX HE HL") as "(%L2 & % & %R2 & >(Hinv & HR2) & HL & HT)".
+      iIntros (????) "#CTX #HE HL".
+      iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L2 & % & %R2 & >(Hinv & HR2) & HL & HT)".
       iExists L2. iFrame. iPoseProof ("HT" with "HR2") as "$". iModIntro.
       iSplitR; last iSplitR.
       - simpl. iPureIntro.
@@ -741,12 +739,12 @@ Section generated_code.
       iDestruct 1 as ([π' mask]) "(Hna & <- & % & HT) /=".
 
       rewrite /typed_place /introduce_with_hooks.
-      iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL ? Hl Hcont". (* NOTE: Hincl is not used. *)
+      iIntros (Φ ???) "#(LFT & TIME & LLCTX) #HE HL ? Hl Hcont".
 
       rewrite /prove_with_subtype.
       iApply fupd_place_to_wp.
 
-      iMod ("HT" with "[] [] [$LFT $TIME $LLCTX] HE HL")
+      iMod ("HT" with "[] [] [] [$LFT $TIME $LLCTX] HE HL")
           as "(% & % & % & >(Hcred & HR) & HL & HT)"; [ done.. |].
       iSpecialize ("HT" with "HR").
 
@@ -820,7 +818,6 @@ Section generated_code.
             (fmap (λ strong, mk_strong (λ _, _) (λ _ _ _, AliasLtype rt''' st l2) (λ _ _, r)
               (* give back ownership through R *)
               (λ rti2 ltyi2 ri2, l2 ◁ₗ[π, b2] strong.(strong_rfn) _ ri2 @ strong.(strong_lt) _ ltyi2 ri2 ∗ strong.(strong_R) _ ltyi2 ri2)) strong)
-            (* NOTE: Weak has been skipped here *)
             None))
       ⊢ typed_place π E L l (AliasLtype rt''' st l2) r bmin0 (Shared κ) P''' T.
     Proof.
@@ -838,7 +835,6 @@ Section generated_code.
 
       iSplit; last done.
 
-      (* strong *)
       destruct strong as [ strong |]; last done.
       iDestruct "Hcl" as "[Hcl _]"; simpl.
 
@@ -858,13 +854,13 @@ Section generated_code.
       unfold stratify_ltype.
 
       iIntros "HT".
-      iIntros (???) "#CTX #HE HL Hl". iModIntro. iExists _, _, _, _, _. iFrame.
+      iIntros (????) "#CTX #HE HL Hl". iModIntro. iExists _, _, _, _, _. iFrame.
       iSplitR; first done. iApply logical_step_intro. by iFrame.
     Qed.
 
     Lemma stratify_ltype_magic_Owned {rt_cur rt_inner} π E L mu mdu ma {M} (ml : M) l
         (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner)
-        (Cpre Cpost : rt_inner → iProp Σ) r wl (T : stratify_ltype_cont_t) :
+        (Cpre Cpost : rt_inner → iProp Σ) r (T : stratify_ltype_cont_t) :
       stratify_ltype π E L mu mdu ma ml l lt_cur r (Owned false)
         (λ L' R rt_cur' lt_cur' (r' : place_rfn rt_cur'),
           if decide (ma = StratNoRefold)
@@ -872,26 +868,25 @@ Section generated_code.
             T L' R _ (MagicLtype lt_cur' lt_inner Cpre Cpost) r'
           else (* fold the invariant *)
             ∃ ri,
-              (* show that the core of lt_cur' is a subtype of lt_inner and then fold to lt_full *)
-              weak_subltype E L' (Owned false) (r') (#ri) (ltype_core lt_cur') lt_inner (
+              (* show that the core of lt_cur' is a subtype of lt_inner *)
+              weak_subltype E L' (Owned false) (r') (#ri) lt_cur' lt_inner (
                 (* re-establish the invariant *)
                 prove_with_subtype E L' true ProveDirect (Cpre ri)
-                  (λ L'' _ R2, T L'' (Cpost ri ∗ R2 ∗ R) unit (◁ (uninit (ltype_st lt_inner))) #tt)))
-      ⊢ stratify_ltype π E L mu mdu ma ml l (MagicLtype lt_cur lt_inner Cpre Cpost) r (Owned wl) T.
+                  (λ L'' _ R2, T L'' (Cpost ri ∗ R2 ∗ R) unit (AliasLtype unit (ltype_st lt_inner) l) #tt)))
+      ⊢ stratify_ltype π E L mu mdu ma ml l (MagicLtype lt_cur lt_inner Cpre Cpost) r (Owned false) T.
     Proof.
       rewrite /stratify_ltype /weak_subltype /prove_with_subtype.
 
-      iIntros "Hstrat" (F ??) "#CTX #HE HL Hl".
+      iIntros "Hstrat" (F ???) "#CTX #HE HL Hl".
       rewrite ltype_own_magic_unfold /magic_ltype_own.
 
       iDestruct "Hl" as "(%ly & %Halg & %Hly & #Hlb & %Hst & Hl & Hcl)".
-      iMod ("Hstrat" with "[//] [//] CTX HE HL Hl") as "(%L2 & %R & %rt_cur' & %lt_cur' & %r' & HL & %Hst' & Hstep & HT)".
+      iMod ("Hstrat" with "[//] [//] [//] CTX HE HL Hl") as "(%L2 & %R & %rt_cur' & %lt_cur' & %r' & HL & %Hst' & Hstep & HT)".
 
       destruct (decide (ma = StratNoRefold)) as [-> | ].
       - (* don't fold *)
         iModIntro.
-        iExists _, _, _, _, _.
-        iFrame; iR.
+        iExists _, _, _, _, _; iFrame; iR.
 
         iApply (logical_step_compose with "Hstep").
         iApply logical_step_intro.
@@ -905,51 +900,32 @@ Section generated_code.
       - (* fold it again *)
         iDestruct "HT" as "(%ri & HT)".
         iMod ("HT" with "[//] CTX HE HL") as "(Hincl & HL & HT)".
-        iMod ("HT" with "[//] [//] CTX HE HL") as "(%L3 & %κs & %R2 & Hstep' & HL & HT)".
+        iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L3 & %κs & %R2 & Hstep' & HL & HT)".
 
-        iPoseProof (imp_unblockable_blocked_dead lt_cur') as "(_ & #Hb)".
-        set (κs' := ltype_blocked_lfts lt_cur').
+        iExists L3, _, _, _, _; iFrame.
+        iSplitR.
+        { by simp_ltypes. }
 
-        destruct (decide (κs = [] ∧ κs' = [])) as [[-> ->] | ].
-        + iExists L3, _, _, _, _. iFrame.
-          iSplitR.
-          { by simp_ltypes. }
+        iApply logical_step_fupd.
+        iApply (logical_step_compose with "Hstep").
+        iPoseProof (logical_step_mask_mono with "Hcl") as "Hcl"; first done.
+        iApply (logical_step_compose with "Hcl").
+        iApply (logical_step_compose with "Hstep'").
+        iApply logical_step_intro.
 
-          iApply logical_step_fupd.
-          iApply (logical_step_compose with "Hstep").
-          iPoseProof (logical_step_mask_mono with "Hcl") as "Hcl"; first done.
-          iApply (logical_step_compose with "Hcl").
-          iApply (logical_step_compose with "Hstep'").
-          iApply logical_step_intro.
+        iIntros "!> (Hpre & $) Hcl (Hl & $)".
+        iMod (ltype_incl_use with "Hincl Hl") as "Hl"; first done.
 
-          iIntros "!> (Hpre & $) Hcl (Hl & $)".
-          iPoseProof ("Hb" with "[] Hl") as "Hl".
-          { by iApply big_sepL_nil. }
+        iPoseProof ("Hcl" with "Hpre Hl") as "Hvs".
+        iSplitL "".
+        { rewrite ltype_own_alias_unfold /alias_lty_own.
+          rewrite -Hst.
 
-          iMod (fupd_mask_mono with "Hl") as "Hl"; first done.
-          rewrite ltype_own_core_equiv.
-          iMod (ltype_incl_use with "Hincl Hl") as "Hl"; first done.
+          by iExists ly; repeat iR. }
 
-          iPoseProof ("Hcl" with "Hpre Hl") as "Hvs".
-          admit.
-
-        + (* iAssert (T L3 (Cpost ri ∗ R2 ∗ R) rt_cur (CoreableLtype (κs' ++ κs) lt_cur) #rf)%I with "[HT]" as "HT". *)
-          (* { destruct κs, κs'; naive_solver. } *)
-
-          iExists L3, _, _, _, _. iFrame.
-          iSplitR.
-          { by simp_ltypes. }
-
-          iApply logical_step_fupd.
-          iApply (logical_step_compose with "Hstep").
-          iPoseProof (logical_step_mask_mono _ F with "Hcl") as "Hcl"; first done.
-          iApply (logical_step_compose with "Hcl").
-          iApply (logical_step_compose with "Hstep'").
-          iApply logical_step_intro.
-
-          iIntros "!> (Hpre & $) Hcl (Hl & $)".
-          iPoseProof ("Hcl" with "Hpre") as "Hvs".
-    Admitted.
+        iMod (fupd_mask_mono with "Hvs") as "Hvs"; first set_solver.
+        done.
+    Qed.
 
   End na_subtype.
 
@@ -1056,7 +1032,6 @@ Section generated_code.
       do 7 liRStep.
       do 100 liRStep; liShow.
 
-      (* NOTE: How do we catch up? *)
       replace [arg_self; local___0] with [arg_self; local___0; l']; last admit.
 
       rep <- 1 liRStep; liShow.
