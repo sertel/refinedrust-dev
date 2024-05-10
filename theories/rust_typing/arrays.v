@@ -1767,7 +1767,7 @@ Section rules.
     iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
     simpl. iIntros "Hv".
     iApply fupd_wp.
-    iMod ("HT" with "[] [] CTX HE HL Hv") as "(%L' & %R2 & >(Hi & R2) & HL & HT)"; [done.. | ].
+    iMod ("HT" with "[] [] [] CTX HE HL Hv") as "(%L' & %R2 & >(Hi & R2) & HL & HT)"; [done.. | ].
     iDestruct ("HT" with "R2") as "(% & % & HT)".
     iMod (fupd_mask_subseteq F) as "HclF"; first done.
     iPoseProof (array_ltype_acc_owned with "Hl") as "(%ly' & %Hst' & %Hly & %Hsz & #Hlb & >(Hb & Hcl))"; first done.
@@ -1855,7 +1855,7 @@ Section rules.
     iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
     simpl. iIntros "Hv".
     iApply fupd_wp.
-    iMod ("HT" with "[] [] CTX HE HL Hv") as "(%L' & %R2 & >(Hi & R2) & HL & HT)"; [done.. | ].
+    iMod ("HT" with "[] [] [] CTX HE HL Hv") as "(%L' & %R2 & >(Hi & R2) & HL & HT)"; [done.. | ].
     iDestruct ("HT" with "R2") as "(% & % & HT)".
     iDestruct "HT" as "(%κs & %L1 & %Hal & HT)".
     iMod (fupd_mask_subseteq lftE) as "HclF"; first done.
@@ -1947,7 +1947,7 @@ Section rules.
     iIntros (????) "#CTX #HE HL #Hincl Hl Hcont".
     simpl. iIntros "Hv".
     iApply fupd_wp.
-    iMod ("HT" with "[] [] CTX HE HL Hv") as "(%L' & %R2 & >(Hi & R2) & HL & HT)"; [done.. | ].
+    iMod ("HT" with "[] [] [] CTX HE HL Hv") as "(%L' & %R2 & >(Hi & R2) & HL & HT)"; [done.. | ].
     iDestruct ("HT" with "R2") as "(% & % & HT)".
     iMod (fupd_mask_subseteq F) as "HclF"; first done.
     iPoseProof (array_ltype_acc_shared with "Hl") as "(%ly' & %Hst' & %Hly & %Hsz & #Hlb & >(Hb & Hcl))"; first done.
@@ -2055,9 +2055,9 @@ Section rules.
       prove_with_subtype E L2 false pm (v2 ◁ᵥ{π} r2 @ array_t ty (len - length r1)) (λ L3 κs2 R3, T L3 (κs1 ++ κs2) (R2 ∗ R3)%I))
     ⊢ prove_with_subtype E L false pm ((v1 ++ v2) ◁ᵥ{π} r1 ++ r2 @ array_t ty len) T.
   Proof.
-    iIntros "(% & % & HT)" (???) "#CTX #HE HL".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L2 & %κs1 & %R2 & >(Hv1 & HR2) & HL & HT)".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L3 & %κs2 & %R3 & >(Hv2 & HR3) & HL & HT)".
+    iIntros "(% & % & HT)" (????) "#CTX #HE HL".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L2 & %κs1 & %R2 & >(Hv1 & HR2) & HL & HT)".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L3 & %κs2 & %R3 & >(Hv2 & HR3) & HL & HT)".
     iModIntro. iExists L3, _, _. iFrame.
     destruct pm.
     - iEval (replace len with ((length r1) + (len - length r1)) by lia).
@@ -2572,8 +2572,8 @@ Section rules.
   Proof.
     rewrite /compute_layout_goal.
     iIntros "(%ly1 & %Halg1 & %ly2 & %Halg2 & %Hszeq & HT)".
-    iIntros (???) "#CTX #HE HL".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L' & Hincl & ? & ?)".
+    iIntros (????) "#CTX #HE HL".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L' & Hincl & ? & ?)".
     iExists L'. iModIntro. iFrame.
     iAssert (owned_type_incl π (replicate len # ()) r2 (array_t (uninit (ty_syn_type ty)) len) (array_t ty len) -∗ owned_type_incl π () r2 (uninit st) (array_t ty len))%I as "Hw"; first last.
     { destruct pers.
@@ -2607,8 +2607,8 @@ Section rules.
   Proof.
     iIntros "(%r1' & %r2' & -> & -> & %Hly' & HT)".
     destruct Hly' as (ly' & Hst').
-    iIntros (???) "#CTX #HE HL".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L' & #Hincl & ? & ?)".
+    iIntros (????) "#CTX #HE HL".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L' & #Hincl & ? & ?)".
     iModIntro. iExists L'. iFrame.
     iApply bi.intuitionistically_intuitionistically_if. iModIntro.
     iDestruct "Hincl" as "(%Hszeq & Hsceq & Hv)".
@@ -2667,6 +2667,7 @@ Section rules.
   Definition stratify_ltype_array_iter (π : thread_id) (E : elctx) (L : llctx) (mu : StratifyMutabilityMode) (md : StratifyDescendUnfoldMode) (ma : StratifyAscendMode) {M} (m : M) (l : loc) (ig : list nat) {rt} (def : type rt) (len : nat) (iml : list (nat * ltype rt)) (rs : list (place_rfn rt)) (k : bor_kind) (T : stratify_ltype_array_iter_cont_t rt) : iProp Σ :=
     ∀ F, ⌜lftE ⊆ F⌝ -∗
     ⌜lft_userE ⊆ F⌝ -∗
+    ⌜shrE ⊆ F⌝ -∗
     rrust_ctx -∗
     elctx_interp E -∗
     llctx_interp L -∗
@@ -2685,7 +2686,7 @@ Section rules.
     T L True [] rs
     ⊢ stratify_ltype_array_iter π E L mu md ma m l ig def len [] rs k T.
   Proof.
-    iIntros "HT". iIntros (???) "#CTX #HE HL Hl".
+    iIntros "HT". iIntros (????) "#CTX #HE HL Hl".
     iModIntro. iExists L, True%I, [], rs.
     iFrame. simpl. iR. iApply logical_step_intro; eauto.
   Qed.
@@ -2710,7 +2711,7 @@ Section rules.
         end)))
     ⊢ stratify_ltype_array_iter π E L mu mdu ma m l ig def len ((j, lt) :: iml) rs k T.
   Proof.
-    iIntros "(%Hlen & HT)". iIntros (???) "#CTX #HE HL Hl".
+    iIntros "(%Hlen & HT)". iIntros (????) "#CTX #HE HL Hl".
     simpl.
     iPoseProof (big_sepL2_length with "Hl") as "%Hlen'".
     rewrite insert_length interpret_iml_length in Hlen'. subst len.
@@ -2722,7 +2723,7 @@ Section rules.
     { done. }
     iDestruct ("Ha" with "Hl") as "(Hl & Hl2)". iClear "Ha".
     simpl.
-    iMod ("HT" with "[//] [//] [//] CTX HE HL [Hl2]") as "(%L2' & %R2' & %iml2 & %rs2 & %Hleneq & Hstep & HL & HT)".
+    iMod ("HT" with "[//] [//] [//] [//] CTX HE HL [Hl2]") as "(%L2' & %R2' & %iml2 & %rs2 & %Hleneq & Hstep & HL & HT)".
     { iApply (big_sepL2_mono with "Hl2"). intros ? ? ? Hlook1 Hlook2.
       case_decide.
       { subst. iIntros "_". rewrite decide_False; first done. set_solver. }
@@ -2731,7 +2732,7 @@ Section rules.
       - rewrite decide_False; first done. set_solver. }
     unfold CanSolve in *. rewrite decide_True; last set_solver.
     iDestruct "Hl" as "(%Hst & Hl)".
-    iMod ("HT" with "[//] [//] CTX HE HL Hl") as "(%L3 & %R3 & %rt' & %lt' & %r' & HL & %Hst' & Hstep' & HT)".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL Hl") as "(%L3 & %R3 & %rt' & %lt' & %r' & HL & %Hst' & Hstep' & HT)".
     destruct (ltype_blocked_lfts lt') eqn:Hbl.
     - iDestruct "HT" as "(%r4 & HT)".
       iMod ("HT" with "[//] CTX HE HL") as "(#Hincl & HL & HT)".
@@ -2802,11 +2803,11 @@ Section rules.
     ⌜j < len⌝ ∗ stratify_ltype_array_iter π E L mu mdu ma m l (ig) def len iml rs k T
     ⊢ stratify_ltype_array_iter π E L mu mdu ma m l ig def len ((j, lt) :: iml) rs k T.
   Proof.
-    iIntros "(%Hlen & HT)". iIntros (???) "#CTX #HE HL Hl".
+    iIntros "(%Hlen & HT)". iIntros (????) "#CTX #HE HL Hl".
     unfold CanSolve in *.
     iPoseProof (big_sepL2_length with "Hl") as "%Hlen'".
     rewrite insert_length interpret_iml_length in Hlen'. subst len.
-    iMod ("HT" with "[//] [//] CTX HE HL [Hl]") as "(%L2 & %R2 & %iml2 & %rs2 & %Hleneq & Hstep & HL & HT)".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL [Hl]") as "(%L2 & %R2 & %iml2 & %rs2 & %Hleneq & Hstep & HL & HT)".
     { edestruct (lookup_lt_is_Some_2 rs j) as (r & Hlook). { lia. }
       rewrite -{2}(list_insert_id _ _ _ Hlook).
       simpl.
@@ -2829,11 +2830,11 @@ Section rules.
       T L2 R2 _ (ArrayLtype def len iml2) (#rs2))
     ⊢ stratify_ltype π E L mu mdu ma m l (ArrayLtype def len iml) (#rs) (Owned wl) T.
   Proof.
-    iIntros "HT". iIntros (???) "#CTX #HE HL Hl".
+    iIntros "HT". iIntros (????) "#CTX #HE HL Hl".
     rewrite ltype_own_array_unfold /array_ltype_own.
     iDestruct "Hl" as "(%ly & %Halg & %Hsz & %Hly & Hlb & Hcreds & %r' & <- & Hl)".
     iMod (maybe_use_credit with "Hcreds Hl") as "(Hcred & Hat & (%Hlen & Hl))"; first done. subst len.
-    iMod ("HT" with "[//] [//] CTX HE HL [Hl]") as "(%L2 & %R2 & %iml2 & %rs2 & %Hleneq & Hstep & HL & HT)".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL [Hl]") as "(%L2 & %R2 & %iml2 & %rs2 & %Hleneq & Hstep & HL & HT)".
     { iApply (big_sepL2_mono with "Hl"). intros ? ? ? HLook1 Hlook2.
       rewrite /OffsetLocSt /use_layout_alg' Halg/=. done. }
     iModIntro. iExists L2, R2, _, _, _. iFrame. simp_ltypes. iR.
@@ -3224,7 +3225,7 @@ Section offset_rules.
   (* TODO maybe we also generally want this to unblock/stratify first? *)
   Definition typed_array_access_cont_t : Type := llctx → ∀ (rt' : Type), type rt' → nat → list (nat * ltype rt') → list (place_rfn rt') → bor_kind → ∀ rte, ltype rte → place_rfn rte → iProp Σ.
   Definition typed_array_access (π : thread_id) (E : elctx) (L : llctx) (base : loc) (off : Z) (st : syn_type) {rt} (lt : ltype rt) (r : place_rfn rt) (k : bor_kind) (T : typed_array_access_cont_t) : iProp Σ :=
-    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
+    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗ ⌜shrE ⊆ F⌝ -∗
     rrust_ctx -∗
     elctx_interp E -∗
     llctx_interp L -∗
@@ -3243,10 +3244,10 @@ Section offset_rules.
     typed_array_access π E L base off st (ArrayLtype ty len []) rs k T
     ⊢ typed_array_access π E L base off st (◁ array_t ty len) rs k T.
   Proof.
-    iIntros "HT". iIntros (???) "#CTX #HE HL Hl".
+    iIntros "HT". iIntros (????) "#CTX #HE HL Hl".
     iPoseProof (array_t_unfold k ty len rs) as "((_ & HIncl & _) & _)".
     iMod (ltype_incl'_use with "HIncl Hl") as "Hl"; first done.
-    iApply ("HT" with "[//] [//] CTX HE HL Hl").
+    iApply ("HT" with "[//] [//] [//] CTX HE HL Hl").
   Qed.
   Global Instance typed_array_access_unfold_inst π E L base off st {rt} (ty : type rt) len rs k :
     TypedArrayAccess π E L base off st (◁ array_t ty len)%I rs k :=
@@ -3261,8 +3262,8 @@ Section offset_rules.
     ⊢ typed_array_access π E L base off st (ArrayLtype ty len iml) (#rs) (Owned wl) T.
   Proof.
     iIntros "(%Hoff & %Hoff' & %Hst & HT)".
-    iIntros (???) "#CTX #HE HL Hl".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L2 & %κs & %Q & >(HP & HQ) & HL & HT)".
+    iIntros (????) "#CTX #HE HL Hl".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L2 & %κs & %Q & >(HP & HQ) & HL & HT)".
     iPoseProof ("HT" with "HQ") as "HT".
     iAssert (|={F}=> base ◁ₗ[ π, Owned false] # rs @ ArrayLtype ty len iml ∗ maybe_creds wl)%I with "[Hl HP]" as "Ha".
     { destruct wl; last eauto with iFrame.
@@ -3331,7 +3332,7 @@ Section offset_rules.
     ⊢ typed_array_access π E L base off st (ArrayLtype ty len iml) (#rs) (Shared κ) T.
   Proof.
     iIntros "(%Hoff & %Hoff' & %Hst & HT)".
-    iIntros (???) "#CTX #HE HL Hl".
+    iIntros (????) "#CTX #HE HL Hl".
     iPoseProof (array_ltype_acc_shared with "Hl") as "(%ly & %Halg & % & % & Hlb & >(#Hb & Hcl))"; first done.
     iPoseProof (big_sepL2_length with "Hb") as "%Hlen".
     rewrite interpret_iml_length in Hlen.
@@ -3363,11 +3364,11 @@ Section offset_rules.
   Proof.
     rewrite /find_in_context.
     iDestruct 1 as ([rt' [[[lt' r'] k'] π']]) "(Hl & <- & Ha)". simpl.
-    iIntros (???) "#CTX #HE HL Hoffset".
-    iMod ("Ha" with "[//] [//] CTX HE HL Hl") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hb & Hl & HL & HT)".
+    iIntros (????) "#CTX #HE HL Hoffset".
+    iMod ("Ha" with "[//] [//] [//] CTX HE HL Hl") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hb & Hl & HL & HT)".
     iEval (rewrite /ty_own_val/=) in "Hoffset". iDestruct "Hoffset" as "%Heq".
     apply val_of_loc_inj in Heq. subst l.
-    iApply ("HT" with "Hb [//] [//] CTX HE HL Hl").
+    iApply ("HT" with "Hb [//] [//] [//] CTX HE HL Hl").
   Qed.
   Global Instance subsume_from_offset_ptr_t_inst π E L step (l : loc) base off st k {rt} (ty : type rt) r :
     SubsumeFull E L step (l ◁ᵥ{π} (base, off) @ offset_ptr_t st) (l ◁ₗ[π, k] r @ (◁ ty)%I) | 50 :=
@@ -3405,7 +3406,7 @@ Section offset_rules.
     iDestruct 1 as ([rt [[[lt r] b] π']]) "(Hbase & <- & HT)". simpl.
     iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
-    iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
+    iMod ("HT" with "[] [] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iApply (typed_place_ofty_access_val_owned with "[Hbase Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
     { rewrite ty_has_op_type_unfold. done. }
     iIntros (F' v ?) "Hoffset".
@@ -3436,7 +3437,7 @@ Section offset_rules.
     iDestruct 1 as ([rt [[[lt r] b] π']]) "(Hbase & <- & HT)". simpl.
     iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
-    iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
+    iMod ("HT" with "[] [] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iPoseProof ("HT" with "Hbase") as "(%Hal & HT)".
     iApply (typed_place_ofty_access_val_uniq  _ _ _ _ (offset_ptr_t st) with "[Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
     { rewrite ty_has_op_type_unfold. done. }
@@ -3467,7 +3468,7 @@ Section offset_rules.
     iDestruct 1 as ([rt [[[lt r] b] π']]) "(Hbase & <- & HT)". simpl.
     iIntros (????) "#CTX #HE HL Hincl Hl Hcont".
     iApply fupd_place_to_wp.
-    iMod ("HT" with "[] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
+    iMod ("HT" with "[] [] [] CTX HE HL Hbase") as "(%L2 & %k2 & %rt2 & %ty2 & %len2 & %iml2 & %rs2 & %rte & %re & %lte & Hbase & Hoff & HL & HT)"; [done.. | ].
     iPoseProof ("HT" with "Hbase") as "(%Hal & HT)".
     iApply (typed_place_ofty_access_val_shared with "[Hoff HT] [//] [//] CTX HE HL Hincl Hl Hcont").
     { rewrite ty_has_op_type_unfold. done. }
@@ -3486,7 +3487,7 @@ Section offset_rules.
     ⊢ owned_subtype π E L pers (l, offset) l2 (offset_ptr_t st) (alias_ptr_t) T.
   Proof.
     iIntros "(-> & HT)".
-    iIntros (???) "#CTX #HE HL". iExists L. iFrame.
+    iIntros (????) "#CTX #HE HL". iExists L. iFrame.
     iModIntro. iApply bi.intuitionistically_intuitionistically_if.
     iModIntro.
     iSplitR; last iSplitR.
@@ -3504,7 +3505,7 @@ Section offset_rules.
     ⊢ owned_subtype π E L pers l (l2, offset) (alias_ptr_t) (offset_ptr_t st) T.
   Proof.
     iIntros "(-> & -> & HT)".
-    iIntros (???) "#CTX #HE HL". iExists L. iFrame.
+    iIntros (????) "#CTX #HE HL". iExists L. iFrame.
     iModIntro. iApply bi.intuitionistically_intuitionistically_if.
     iModIntro.
     iSplitR; last iSplitR.

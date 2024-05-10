@@ -3091,6 +3091,7 @@ Section rules.
   Definition stratify_ltype_struct_iter (π : thread_id) (E : elctx) (L : llctx) (mu : StratifyMutabilityMode) (md : StratifyDescendUnfoldMode) (ma : StratifyAscendMode) {M} (m : M) (l : loc) (i0 : nat) (sls : struct_layout_spec) {rts} (ltys : hlist ltype rts) (rfns : plist place_rfn rts) (k : bor_kind) (T : stratify_ltype_struct_iter_cont_t) : iProp Σ :=
     ∀ F sl, ⌜lftE ⊆ F⌝ -∗
     ⌜lft_userE ⊆ F⌝ -∗
+    ⌜shrE ⊆ F⌝ -∗
     rrust_ctx -∗
     elctx_interp E -∗
     llctx_interp L -∗
@@ -3117,7 +3118,7 @@ Section rules.
     T L True [] +[] -[]
     ⊢ stratify_ltype_struct_iter π E L mu md ma m l i0 sls +[] -[] k T.
   Proof.
-    iIntros "HT". iIntros (????) "#CTX #HE HL ??? Hl".
+    iIntros "HT". iIntros (?????) "#CTX #HE HL ??? Hl".
     iModIntro. iExists L, True%I, [], +[], -[].
     iR. iFrame. simpl. iR. iApply logical_step_intro; eauto.
   Qed.
@@ -3130,15 +3131,15 @@ Section rules.
         T L3 (R3 ∗ R2) (rt3 :: rts2) (lty3 +:: ltys2) (r3 -:: rs2)))))
     ⊢ stratify_ltype_struct_iter π E L mu mdu ma m l i0 sls (lty +:: ltys) (rfns) k T.
   Proof.
-    iIntros "(%r &  %rfns0 & -> & HT)". iIntros (????) "#CTX #HE HL %Halg %Hlen %Hleneq Hl".
+    iIntros "(%r &  %rfns0 & -> & HT)". iIntros (?????) "#CTX #HE HL %Halg %Hlen %Hleneq Hl".
     simpl. iDestruct "Hl" as "(Hl & Hl2)". simpl in *.
-    iMod ("HT" with "[//] [//] CTX HE HL [//] [] [] [Hl2]") as "(%L2' & %R2' & %rts2' & %ltys2' & %rfns2' & %Hlen' & Hst & Hl2 & HL & HT)".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL [//] [] [] [Hl2]") as "(%L2' & %R2' & %rts2' & %ltys2' & %rfns2' & %Hlen' & Hst & Hl2 & HL & HT)".
     { rewrite -Hleneq. iPureIntro. lia. }
     { rewrite -Hleneq. iPureIntro. lia. }
     { iApply (big_sepL_mono with "Hl2"). intros ? [? []] ?. by rewrite Nat.add_succ_r. }
     iDestruct "Hl" as "(%name & %st & %Hlook & Hl)".
     (*edestruct (lookup_lt_is_Some_2 sls.(sls_fields) i0) as ([name ?] & Hlook); first by lia.*)
-    iMod ("HT" with "[//] [//] [//] CTX HE HL Hl") as "(%L3 & %R3 & %rt' & %lt' & %r' & HL & Hst1 & Hl & HT)".
+    iMod ("HT" with "[//] [//] [//] [//] CTX HE HL Hl") as "(%L3 & %R3 & %rt' & %lt' & %r' & HL & Hst1 & Hl & HT)".
     iModIntro. iExists L3, (R3 ∗ R2')%I, _, _, _. iFrame.
     iSplitR. { rewrite Hlen'. done. }
     iApply (logical_step_compose with "Hl2"). iApply (logical_step_wand with "Hl").
@@ -3201,12 +3202,12 @@ Section rules.
       T L2 R2 (plist place_rfn rts') (StructLtype lts' sls) (#rs'))
     ⊢ stratify_ltype π E L mu mdu ma m l (StructLtype lts sls) (#rs) (Owned wl) T.
   Proof.
-    iIntros "HT". iIntros (???) "#CTX #HE HL Hl".
+    iIntros "HT". iIntros (????) "#CTX #HE HL Hl".
     rewrite ltype_own_struct_unfold /struct_ltype_own.
     iDestruct "Hl" as "(%sl & %Halg & %Hlen & %Hly & Hlb & Hcreds & %r' & <- & Hl)".
     iMod (maybe_use_credit with "Hcreds Hl") as "(Hcred & Hat & Hl)"; first done.
     iPoseProof (struct_ltype_focus_components with "Hl") as "(Hl & Hlcl)"; [done | done | ].
-    iMod ("HT" with "[//] [//] CTX HE HL [//] [] [] [Hl]") as "(%L2 & %R2 & %rts' & %lts' & %rs' & %Hleneq & Hst & Hstep & HL & HT)".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL [//] [] [] [Hl]") as "(%L2 & %R2 & %rts' & %lts' & %rs' & %Hleneq & Hst & Hstep & HL & HT)".
     { iPureIntro. lia. }
     { rewrite Hlen.  done. }
     { iApply (big_sepL_mono with "Hl"). intros ? [? []] ?. rewrite Nat.add_0_r. done. }

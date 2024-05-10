@@ -229,9 +229,9 @@ Section call.
     iDestruct "HT" as ([π' mask]) "(Hna & -> & -> & HT) /=".
     iDestruct ("HT" with "Htys") as "(%Heq & %x & HP)". subst lfts.
     set (aκs := list_to_tup eκs).
-    iApply fupd_wp. iMod ("HP" with "[] [] CTX HE HL") as "(%L1 & % & %R2 & >(Hvl & R2) & HL & HT)"; [done.. | ].
+    iApply fupd_wp. iMod ("HP" with "[] [] [] CTX HE HL") as "(%L1 & % & %R2 & >(Hvl & R2) & HL & HT)"; [done.. | ].
     iDestruct ("HT" with "R2") as "(-> & HT)".
-    iMod ("HT" with "[] [] CTX HE HL") as "(%L2 & % & %R3 & Hstep & HL & HT)"; [done.. | ].
+    iMod ("HT" with "[] [] [] CTX HE HL") as "(%L2 & % & %R3 & Hstep & HL & HT)"; [done.. | ].
     iDestruct ("HT") as "(%Hal & %Hsat & Hr)".
     (* initialize the function's lifetime *)
     set (ϝ' := lft_intersect_list (L2.*1.*2)).
@@ -364,7 +364,7 @@ Section call.
         iApply ("IH" with "[//] [//] [//] [//] [$] [$] [$]").
       }
       iIntros (L5 v) "HL Hloc HT".
-      iMod ("HT" with "[] [] [] HE' HL") as "(%L3 & %κs1 & %R4 & Hp & HL & HT)"; [done.. |  | ].
+      iMod ("HT" with "[] [] [] [] HE' HL") as "(%L3 & %κs1 & %R4 & Hp & HL & HT)"; [done.. |  | ].
       { rewrite /rrust_ctx. iFrame "#". }
       iMod "Hp" as "(Hret & HR)".
       iMod ("HT" with "[] HE' HL HR") as "(%L6 & HL & HT)"; first done.

@@ -1010,10 +1010,10 @@ Section rules.
         else T L' R _ (BoxLtype lt') (PlaceIn r')))
     ⊢ stratify_ltype π E L mu mdu ma ml l (BoxLtype lt) (PlaceIn r) (Owned wl) T.
   Proof.
-    iIntros "Hs". iIntros (?? ?) "#(LFT & TIME & LLCTX) #HE HL Hb".
+    iIntros "Hs". iIntros (????) "#(LFT & TIME & LLCTX) #HE HL Hb".
     iPoseProof (box_ltype_acc_owned F with "Hb") as "Hb"; [done.. | ].
     iDestruct "Hb" as "(%Hly & #Hlb & >(%l' & Hl & Hb & Hcl))".
-    iPoseProof ("Hs" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hb") as "Hb".
+    iPoseProof ("Hs" with "[//] [//] [//] [$LFT $TIME $LLCTX] HE HL Hb") as "Hb".
     iMod "Hb" as "(%L' & %R & %rt' & %lt' & %r' & HL & %Hcond & Hstep & Hc)".
     destruct (decide (ma = StratRefoldFull)) as [Heq | ].
     - subst ma.
@@ -1069,7 +1069,7 @@ Section rules.
           end))))
     ⊢ stratify_ltype π E L mu mdu ma ml l (BoxLtype lt) (PlaceIn r) (Uniq κ' γ') T.
   Proof.
-    iIntros "Hs". iIntros (?? ?) "#(LFT & TIME & LLCTX) #HE HL Hb".
+    iIntros "Hs". iIntros (????) "#(LFT & TIME & LLCTX) #HE HL Hb".
     rewrite /lctx_lft_alive_count_goal.
     iDestruct "Hs" as "(%κs & %L1 & %Hal & Hs)".
     iMod (fupd_mask_subseteq lftE) as "HF_cl"; first done.
@@ -1077,7 +1077,7 @@ Section rules.
     iMod "HF_cl" as "_".
     iPoseProof (box_ltype_acc_uniq F with "[$LFT $TIME $LLCTX] Htok Hcl_tok Hb") as "Hb"; [done.. | ].
     iDestruct "Hb" as "(%Hly & #Hlb & >(%l' & Hl & Hb & Hcl))".
-    iPoseProof ("Hs" with "[//] [//] [$LFT $TIME $LLCTX] HE HL Hb") as "Hb".
+    iPoseProof ("Hs" with "[//] [//] [//] [$LFT $TIME $LLCTX] HE HL Hb") as "Hb".
     iMod "Hb" as "(%L2 & %R & %rt' & %lt' & %r' & HL & %Hcond & Hstep & Hc)".
     iMod ("Hc" with "[] [$LFT $TIME $LLCTX] HE HL") as "(HL & %upd & Hupd & Hs)"; first done.
     destruct upd as [ Heq | ].

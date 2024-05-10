@@ -397,7 +397,7 @@ Section judgments.
 
   (** Notion of [subsume] with support for lifetime contexts + executing updates *)
   Definition subsume_full (E : elctx) (L : llctx) (step : bool) (P : iProp Σ) (Q : iProp Σ) (T : llctx → iProp Σ → iProp Σ) : iProp Σ :=
-    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
+    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗ ⌜shrE ⊆ F⌝ -∗
       rrust_ctx -∗
       elctx_interp E -∗
       llctx_interp L -∗
@@ -409,7 +409,7 @@ Section judgments.
   Lemma subsume_full_id E L step P T :
     T L True ⊢ subsume_full E L step P P T.
   Proof.
-    iIntros "HT" (???) "CTX HE HL ?".
+    iIntros "HT" (????) "CTX HE HL ?".
     iExists L, True%I. iFrame.
     iApply maybe_logical_step_intro. by iFrame.
   Qed.
@@ -419,7 +419,7 @@ Section judgments.
     subsume P Q (T L True) ⊢
     subsume_full E L step P Q T.
   Proof.
-    iIntros "Hsub" (???) "#CTX #HE HL HP". iPoseProof ("Hsub" with "HP") as "(HQ & HT)".
+    iIntros "Hsub" (????) "#CTX #HE HL HP". iPoseProof ("Hsub" with "HP") as "(HQ & HT)".
     iExists L, True%I; iFrame. iApply maybe_logical_step_intro. by iFrame.
   Qed.
   (* low priority, should not trigger when there are other more specific instances *)
@@ -1755,7 +1755,7 @@ Section judgments.
       (ma : StratifyAscendMode) {M} (ml : M) (l : loc) (lt : ltype rt) (r : place_rfn rt) (b : bor_kind)
       (T : stratify_ltype_cont_t) : iProp Σ :=
     ∀ F,
-      ⌜lftE ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
+      ⌜lftE ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ → ⌜shrE ⊆ F⌝ →
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       l ◁ₗ[π, b] r @ lt ={F}=∗
       ∃ L' R (rt' : Type) (lt' : ltype rt') (r' : place_rfn rt'),
@@ -1772,7 +1772,7 @@ Section judgments.
   Definition stratify_ltype_post_hook_cont_t := llctx → iProp Σ → ∀ rt', ltype rt' → place_rfn rt' → iProp Σ.
   Definition stratify_ltype_post_hook {rt} (π : thread_id) (E : elctx) (L : llctx) {M} (ml : M) (l : loc) (lt : ltype rt) (r : place_rfn rt) (b : bor_kind) (T : stratify_ltype_post_hook_cont_t) : iProp Σ :=
     ∀ F,
-      ⌜lftE ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
+      ⌜lftE ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ → ⌜shrE ⊆ F⌝ →
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       l ◁ₗ[π, b] r @ lt ={F}=∗
       ∃ L' R (rt' : Type) (lt' : ltype rt') (r' : place_rfn rt'),
@@ -1787,7 +1787,7 @@ Section judgments.
   Lemma stratify_ltype_post_hook_id {rt} (π : thread_id) (E : elctx) (L : llctx) {M} (ml : M) (l : loc) (lt : ltype rt) (r : place_rfn rt) (b : bor_kind) (T : stratify_ltype_post_hook_cont_t) :
     T L True%I _ lt r ⊢ stratify_ltype_post_hook π E L ml l lt r b T.
   Proof.
-    iIntros "HT" (?? ?) "CTX HE HL Hb".
+    iIntros "HT" (????) "CTX HE HL Hb".
     iExists _, _, _, _, _. iFrame. done.
   Qed.
   Global Instance stratify_ltype_post_hook_id_inst {rt} π E L {M} (ml : M) l (lt : ltype rt) r b :
@@ -1797,8 +1797,8 @@ Section judgments.
     stratify_ltype_post_hook π E L ml l lt r b T
     ⊢ stratify_ltype π E L mu mdu ma ml l lt r b T.
   Proof.
-    iIntros "HT" (?? ?) "CTX HE HL Hb".
-    iMod ("HT" with "[//] [//] CTX HE HL Hb") as "(%L2 & %R2 & %rt2 & %lt2 & %r2 & HL & Hst & Hb & HR & HT)".
+    iIntros "HT" (????) "CTX HE HL Hb".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL Hb") as "(%L2 & %R2 & %rt2 & %lt2 & %r2 & HL & Hst & Hb & HR & HT)".
     iExists _, _, _, _, _. iFrame. iApply logical_step_intro. by iFrame.
   Qed.
   (* TODO: remove this instance *)
@@ -1810,12 +1810,12 @@ Section judgments.
     stratify_ltype π E L mu mdu ma ml l lt1 r1 b T.
   Proof.
     iIntros "(%Heq & Hs)".
-    iIntros (???) "#CTX #HE HL Hb".
+    iIntros (????) "#CTX #HE HL Hb".
     iPoseProof (eqltype_use F with "CTX HE HL") as "(Hvs & HL)"; [done.. | ].
     iMod ("Hvs" with "Hb") as "Hb".
     iPoseProof (eqltype_acc with "CTX HE HL") as "#Heq"; first done.
     iPoseProof (ltype_eq_syn_type with "Heq") as "->".
-    iPoseProof ("Hs" with "[//] [//] CTX HE HL Hb") as ">Hb". iModIntro.
+    iPoseProof ("Hs" with "[//] [//] [//] CTX HE HL Hb") as ">Hb". iModIntro.
     iDestruct "Hb" as "(%L' & %R & %rt' & %lt' & %r' & HL & Hstep & HT)".
     iExists L', R, rt', lt', r'. iFrame.
   Qed.
@@ -1903,7 +1903,7 @@ Section judgments.
 
   Definition owned_subtype π E L (pers : bool) {rt1 rt2} (r1 : rt1) (r2 : rt2) (ty1 : type rt1) (ty2 : type rt2) (T : llctx → iProp Σ) : iProp Σ :=
     ∀ F,
-    ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
+    ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗ ⌜shrE ⊆ F⌝ -∗
     rrust_ctx -∗
     elctx_interp E -∗
     llctx_interp L -∗ |={F}=> ∃ L',
@@ -1915,7 +1915,7 @@ Section judgments.
     weak_subtype E L r1 r2 ty1 ty2 (T L)
     ⊢ owned_subtype π E L pers r1 r2 ty1 ty2 T.
   Proof.
-    iIntros "HT" (???) "#CTX #HE HL".
+    iIntros "HT" (????) "#CTX #HE HL".
     iMod ("HT" with "[//] CTX HE HL") as "(#Hincl & ? & ?)".
     iExists L. iFrame.
     iModIntro. iApply bi.intuitionistically_intuitionistically_if. iModIntro.
@@ -1935,7 +1935,7 @@ Section judgments.
     ⌜r1 = r2⌝ ∗ T L ⊢ owned_subtype π E L step r1 r2 ty ty T.
   Proof.
     iIntros "(-> & HT)".
-    iIntros (???) "#CTX #HE HL". iExists L. iFrame.
+    iIntros (????) "#CTX #HE HL". iExists L. iFrame.
     iModIntro. destruct step; simpl; try iModIntro. all: iApply owned_type_incl_refl.
   Qed.
   Global Instance owned_subtype_id_inst π E L step {rt} (r1 r2 : rt) (ty : type rt) :
@@ -2002,7 +2002,7 @@ Section judgments.
      But the problem is that both will take steps in the return case.
      So for return, I could either have two steps, or keep the context fold. *)
   Definition prove_with_subtype (E : elctx) (L : llctx) (step : bool) (pm : ProofMode) (P : iProp Σ) (T : llctx → list lft → iProp Σ → iProp Σ) : iProp Σ :=
-    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗ rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ |={F}=>
+    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗ ⌜shrE ⊆ F⌝ -∗ rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗ |={F}=>
       ∃ L' κs R, maybe_logical_step step F ((if pm is ProveWithStratify then (lft_dead_list κs ={lftE}=∗ P) else P) ∗ R) ∗ llctx_interp L' ∗ T L' κs R.
   Class ProveWithSubtype (E : elctx) (L : llctx) (step : bool) (pm : ProofMode) (P : iProp Σ) : Type :=
     prove_with_subtype_proof T : iProp_to_Prop (prove_with_subtype E L step pm P T).
@@ -2012,9 +2012,9 @@ Section judgments.
     prove_with_subtype E L step pm P1 (λ L' κs R1, prove_with_subtype E L' step pm P2 (λ L'' κs2 R2, T L'' (κs ++ κs2) (R1 ∗ R2)))
     ⊢ prove_with_subtype E L step pm (P1 ∗ P2) T.
   Proof.
-    iIntros "Hs" (F ??) "#CTX #HE HL".
-    iMod ("Hs" with "[//] [//] CTX HE HL") as "(%L' & %κs1 & %R1 & Ha & HL & Hs)".
-    iMod ("Hs" with "[//] [//] CTX HE HL") as "(%L'' & %κs2 & %R2 & Hb & ? & ?)".
+    iIntros "Hs" (F ???) "#CTX #HE HL".
+    iMod ("Hs" with "[//] [//] [//] CTX HE HL") as "(%L' & %κs1 & %R1 & Ha & HL & Hs)".
+    iMod ("Hs" with "[//] [//] [//] CTX HE HL") as "(%L'' & %κs2 & %R2 & Hb & ? & ?)".
     iExists L'', (κs1 ++ κs2), (R1 ∗ R2)%I. iFrame.
     iApply (maybe_logical_step_compose with "Ha").
     iApply (maybe_logical_step_compose with "Hb").
@@ -2031,8 +2031,8 @@ Section judgments.
     (∃ x, prove_with_subtype E L step pm (Φ x) T)
     ⊢ prove_with_subtype E L step pm (∃ x, Φ x) T.
   Proof.
-    iIntros "(%x & Hs)" (F ??) "#CTX #HE HL".
-    iMod ("Hs" with "[//] [//] CTX HE HL") as "(%L' & %κs & %R & Hs & ? & ?)".
+    iIntros "(%x & Hs)" (F ???) "#CTX #HE HL".
+    iMod ("Hs" with "[//] [//] [//] CTX HE HL") as "(%L' & %κs & %R & Hs & ? & ?)".
     iExists L', κs, R. iFrame.
     iApply (maybe_logical_step_wand with "[] Hs").
     destruct pm. { iIntros "(? & ?)". eauto with iFrame. }
@@ -2060,7 +2060,7 @@ Section judgments.
   Proof.
     rewrite /FindLoc.
     iIntros "Ha". iDestruct "Ha" as ([rt' [[[lt' r'] bk'] π']]) "(Hl & <- & Ha)". simpl.
-    iIntros (???) "#CTX #HE HL". iMod ("Ha" with "[//] [//] CTX HE HL Hl") as "(%L2 & %R2 & %rt2 & %lt2 & %r2 & HL & %Hsteq & Hstep & HT)".
+    iIntros (????) "#CTX #HE HL". iMod ("Ha" with "[//] [//] [//] CTX HE HL Hl") as "(%L2 & %R2 & %rt2 & %lt2 & %r2 & HL & %Hsteq & Hstep & HT)".
     destruct (decide (ltype_blocked_lfts lt2 = [])) as [-> | Hneq].
     - iDestruct "HT" as "(<- & HT)".
       iMod ("HT" with "[//] CTX HE HL") as "(#Hincl & HL & HT)".
@@ -2108,9 +2108,9 @@ Section judgments.
   Proof.
     rewrite /FindLoc.
     iIntros "Ha". iDestruct "Ha" as ([rt' [[[lt' r'] bk'] π']]) "(Hl & <- & Ha)". simpl.
-    iIntros (???) "#CTX #HE HL". iMod ("Ha" with "[//] [//] CTX HE HL Hl") as "(%L2 & %R2 & %rt2 & %lt2 & %r2 & HL & %Hsteq & Hstep & HT)".
+    iIntros (????) "#CTX #HE HL". iMod ("Ha" with "[//] [//] [//] CTX HE HL Hl") as "(%L2 & %R2 & %rt2 & %lt2 & %r2 & HL & %Hsteq & Hstep & HT)".
     destruct bk' as [ wl | | ]; [ | done..].
-    iMod ("HT" with "[] [] CTX HE HL") as "(%L3 & %κs2 & %R3 & Hs & HL & HT)"; [done.. | ].
+    iMod ("HT" with "[] [] [] CTX HE HL") as "(%L3 & %κs2 & %R3 & Hs & HL & HT)"; [done.. | ].
     simpl. iMod ("Hs") as "((Hcreds & %) & HR3)".
     iAssert (logical_step F (l ◁ₗ[ π, Owned true] r2 @ lt2 ∗ R2)) with "[Hcreds Hstep]" as "Hstep".
     { iApply logical_step_fupd. iApply (logical_step_wand with "Hstep").
@@ -2143,7 +2143,7 @@ Section judgments.
   Lemma prove_with_subtype_pure E L step pm (P : Prop) T :
     ⌜P⌝ ∗ T L [] True ⊢ prove_with_subtype E L step pm (⌜P⌝) T.
   Proof.
-    iIntros "(% & HT)". iIntros (???) "#CTX #HE HL".
+    iIntros "(% & HT)". iIntros (????) "#CTX #HE HL".
     iExists L, [], True%I. iFrame.
     destruct pm.
     - by iApply maybe_logical_step_intro.
@@ -2157,8 +2157,8 @@ Section judgments.
     prove_with_subtype E L step pm (SG True).(i2p_P) T
     ⊢ prove_with_subtype E L step pm P T.
   Proof.
-    iIntros "Ha" (???) "#CTX #HE HL".
-    iMod ("Ha" with "[//] [//] CTX HE HL") as "(%L' & %κs & %R & Ha & HL & HT)".
+    iIntros "Ha" (????) "#CTX #HE HL".
+    iMod ("Ha" with "[//] [//] [//] CTX HE HL") as "(%L' & %κs & %R & Ha & HL & HT)".
     unfold SimplifyGoal in SG.
     destruct SG as [P' Ha].
     iExists L', κs, R. iFrame.
@@ -2184,7 +2184,7 @@ Section judgments.
     P ∗ T L [] True%I
     ⊢ prove_with_subtype E L step pm P T.
   Proof.
-    iIntros "(HP & HT)". iIntros (???) "#CTX #HE HL".
+    iIntros "(HP & HT)". iIntros (????) "#CTX #HE HL".
     iExists L, [], True%I. iFrame.
     iApply maybe_logical_step_intro. iSplitL; last done.
     destruct pm; first done. iIntros "!> _ !>". done.
@@ -2197,8 +2197,8 @@ Section judgments.
       subsume_full E L step (fic_Prop Hrel.(rt_fic) a) P (λ L, T L []))
     ⊢ prove_with_subtype E L step pm P T.
   Proof.
-    iIntros "(%a & Ha & Hsub)" (???) "#CTX #HE HL".
-    iMod ("Hsub" with "[//] [//] CTX HE HL Ha") as "(%L2 & %R & Ha & ? & ?)".
+    iIntros "(%a & Ha & Hsub)" (????) "#CTX #HE HL".
+    iMod ("Hsub" with "[//] [//] [//] CTX HE HL Ha") as "(%L2 & %R & Ha & ? & ?)".
     iModIntro. iExists _, _, _. iFrame.
     iApply (maybe_logical_step_wand with "[] Ha").
     iIntros "(? & $)".
@@ -2253,7 +2253,7 @@ Section judgments.
     iDestruct "Ha" as ([c a]) "(Hstore  & %Hn & HT)". simpl.
     iPoseProof (credit_store_scrounge _ _ n with "Hstore") as "(Hcred & Hstore)"; first lia.
     iPoseProof ("HT" with "Hstore") as "HT".
-    iIntros (???) "CTX HE HL". iModIntro. iExists _, _, _. iFrame.
+    iIntros (????) "CTX HE HL". iModIntro. iExists _, _, _. iFrame.
     iApply maybe_logical_step_intro.
     iSplitL; last done.
     destruct pm; first done. iIntros "_ !>". done.
@@ -2273,7 +2273,7 @@ Section judgments.
     iDestruct "Hat" as "(Hat & Hat')".
     iPoseProof ("Hcl" with "Hcred Hat") as "Hstore".
     iPoseProof ("HT" with "Hstore") as "HT".
-    iIntros (???) "CTX HE HL". iModIntro. iExists _, _, _. iFrame.
+    iIntros (????) "CTX HE HL". iModIntro. iExists _, _, _. iFrame.
     iApply maybe_logical_step_intro.
     iSplitL; last done.
     destruct pm; first done. iIntros "_ !>". done.
@@ -2292,7 +2292,7 @@ Section judgments.
     prove_with_subtype E L step pm (Inherit κ k P) T.
   Proof.
     iIntros (Hi1) "Hinh HQP HT".
-    iIntros (???) "#CTX #HE HL".
+    iIntros (????) "#CTX #HE HL".
     iPoseProof (lctx_lft_incl_incl with "HL HE") as "#Hincl1"; first apply Hi1.
     (*iPoseProof (lctx_lft_incl_incl with "HL HE") as "#Hincl2"; first apply Hi2. *)
     iPoseProof (Inherit_mono with "Hincl1 Hinh") as "Hinh".
@@ -2308,7 +2308,7 @@ Section judgments.
     prove_with_subtype E L step pm P T.
   Proof.
     iIntros "(? & ?)".
-    iIntros (???) "???". iModIntro.
+    iIntros (????) "???". iModIntro.
     iExists _, _, _. iFrame.
     iApply maybe_logical_step_intro. iL.
     destruct pm; eauto with iFrame.
@@ -2560,7 +2560,7 @@ Section judgments.
   *)
   Definition typed_read_cont_t : Type := llctx → thread_id → val → ∀ rt : Type, type rt → rt → iProp Σ.
   Definition typed_read (E : elctx) (L : llctx) (e : expr) (ot : op_type) (T : typed_read_cont_t) : iProp Σ :=
-    (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
+    (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ → ⌜shrE ⊆ F⌝ →
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (∀ (l : loc),
         (* the client gets ownership of the read value and fractional ownership of the location *)
@@ -2592,7 +2592,7 @@ Section judgments.
   Definition typed_read_end_cont_t (rt : Type) : Type :=
     llctx → val → ∀ rt3, type rt3 → rt3 → ∀ rt', ltype rt' → place_rfn rt' → access_result rt rt' → iProp Σ.
   Definition typed_read_end (π : thread_id) (E : elctx) (L : llctx) (l : loc) {rt} (lt : ltype rt) (r : place_rfn rt) (b2 bmin : bor_kind) (ac : access_allowed) (ot : op_type) (T : typed_read_end_cont_t rt) : iProp Σ :=
-    (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
+    (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ → ⌜shrE ⊆ F⌝ →
     rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       bmin ⊑ₖ b2 -∗
       (* given ownership of the read location *)
@@ -2635,7 +2635,7 @@ Section judgments.
    *)
   Definition typed_write_cont_t : Type := llctx → iProp Σ.
   Definition typed_write (π : thread_id) (E : elctx) (L : llctx) (e : expr) (ot : op_type) (v : val) {rt} (ty : type rt) (r : rt) (T : typed_write_cont_t) : iProp Σ :=
-    (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
+    (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ → ⌜shrE ⊆ F⌝ →
     rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (* provided by the client: for any location l... *)
       (∀ (l : loc),
@@ -2662,7 +2662,7 @@ Section judgments.
   *)
   Definition typed_write_end_cont_t rt2 := llctx → ∀ rt3 : Type, type rt3 → rt3 → access_result rt2 rt3 → iProp Σ.
   Definition typed_write_end (π : thread_id) (E : elctx) (L : llctx) (ot : op_type) (v1 : val) {rt1} (ty1 : type rt1) (r1 : rt1) (b2 bmin : bor_kind) (ac : access_allowed) (l2 : loc) {rt2} (lt2 : ltype rt2) (r2 : place_rfn rt2) (T : typed_write_end_cont_t rt2) : iProp Σ :=
-    (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
+    (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ → ⌜shrE ⊆ F⌝ →
     rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       bmin ⊑ₖ b2 -∗
       (* given ownership of the written-to location *)
@@ -2701,7 +2701,7 @@ Section judgments.
   *)
   Definition typed_borrow_mut_cont_t := llctx → thread_id → val → gname → ∀ (rt : Type), type rt → rt → iProp Σ.
   Definition typed_borrow_mut (E : elctx) (L : llctx) (e : expr) (κ : lft) (ty_annot : option rust_type) (T : typed_borrow_mut_cont_t) : iProp Σ :=
-    (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
+    (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ → ⌜shrE ⊆ F⌝ →
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (* for any location provided to the client *)
       (∀ (l : loc),
@@ -2761,7 +2761,7 @@ Section judgments.
   *)
   Definition typed_borrow_shr_cont_t := llctx → thread_id → val → ∀ (rt : Type), type rt → place_rfn rt → iProp Σ.
   Definition typed_borrow_shr (E : elctx) (L : llctx) (e : expr) (κ : lft) (ty_annot : option rust_type) (T : typed_borrow_shr_cont_t) : iProp Σ :=
-    (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
+    (∀ Φ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ → ⌜shrE ⊆ F⌝ →
     rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       (* for any location provided to the client... *)
       (∀ (l : loc),
@@ -2783,7 +2783,7 @@ Section judgments.
 
   Definition typed_borrow_shr_end_cont_t rt := ltype rt → place_rfn rt → iProp Σ.
   Definition typed_borrow_shr_end π (E : elctx) (L : llctx) (κ : lft) (l : loc) {rt} (ty : type rt) (r : place_rfn rt) (b2 bmin : bor_kind) (T : typed_borrow_shr_end_cont_t rt) : iProp Σ :=
-    (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ →
+    (∀ F, ⌜lftE ⊆ F⌝ → ⌜↑rrustN ⊆ F⌝ → ⌜lft_userE ⊆ F⌝ → ⌜shrE ⊆ F⌝ →
     rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
     bmin ⊑ₖ b2 -∗
     (* given ownership of the location we borrow from
@@ -3100,7 +3100,7 @@ Section folding.
         with a [m] that identifies the folding action.
    *)
   Definition typed_pre_context_fold (E : elctx) (L : llctx) {M} (m : M) (T : llctx → iProp Σ) : iProp Σ :=
-    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
+    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗ ⌜shrE ⊆ F⌝ -∗
     rrust_ctx -∗
     elctx_interp E -∗
     llctx_interp L -∗
@@ -3109,7 +3109,7 @@ Section folding.
 
   (** The main context folding judgment. [tctx] is the list of types to fold. *)
   Definition typed_context_fold {M} (E : elctx) (L : llctx) (m : M) (tctx : list loc) (acc : Acc) (T : llctx → M → Acc → iProp Σ) : iProp Σ :=
-    (∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
+    (∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗ ⌜shrE ⊆ F⌝ -∗
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       logical_step F (Acc_interp acc) ={F}=∗
       ∃ L' acc' m', llctx_interp L' ∗ logical_step F (Acc_interp acc') ∗ T L' m' acc').
@@ -3123,7 +3123,7 @@ Section folding.
     Every such rule should make progress, so that the whole thing is terminating.
    *)
   Definition typed_context_fold_step {M} (π : thread_id) (E : elctx) (L : llctx) (m : M) (l : loc) {rt} (lt : ltype rt) (r : place_rfn rt) (tctx : list loc) (acc : Acc) (T : llctx → M → Acc → iProp Σ) : iProp Σ :=
-    (∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
+    (∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗ ⌜shrE ⊆ F⌝ -∗
       rrust_ctx -∗ elctx_interp E -∗ llctx_interp L -∗
       logical_step F (Acc_interp acc) -∗
       l ◁ₗ[ π, Owned false] r @ lt -∗ |={F}=>
@@ -3135,7 +3135,7 @@ Section folding.
     It gathers up the folding result and takes a program step to strip the accumulated laters.
   *)
   Definition typed_context_fold_end (E : elctx) (L : llctx) (acc : Acc) (T : llctx → iProp Σ) : iProp Σ :=
-    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗
+    ∀ F, ⌜lftE ⊆ F⌝ -∗ ⌜lft_userE ⊆ F⌝ -∗ ⌜shrE ⊆ F⌝ -∗
       rrust_ctx -∗
       elctx_interp E -∗
       llctx_interp L -∗
@@ -3149,7 +3149,7 @@ Section folding.
     ⊢ typed_context_fold E L m [] acc T.
   Proof.
     iIntros "HT".
-    iIntros (? ??) "#CTX #HE HL Hdel".
+    iIntros (????) "#CTX #HE HL Hdel".
     iExists L, acc, m. by iFrame.
   Qed.
   Global Instance typed_context_fold_nil_inst {M} E L (m : M) acc :
@@ -3170,8 +3170,8 @@ Section folding.
     rewrite /FindOptLoc. iIntros "(%res & HT)".
     destruct res as [ [rt' [[[lt' r'] bk'] π]] | ]; simpl.
     - iDestruct "HT" as "(Hl & HT)". iPoseProof ("HT") as "(-> & HT)".
-      iIntros (? ??) "#CTX #HE HL Hdel".
-      iDestruct ("HT" with "[//] [//] CTX HE HL Hdel Hl") as ">Hs".
+      iIntros (????) "#CTX #HE HL Hdel".
+      iDestruct ("HT" with "[//] [//] [//] CTX HE HL Hdel Hl") as ">Hs".
       done.
     - iDestruct "HT" as "(_ & HT)". iApply "HT".
   Qed.
@@ -3186,7 +3186,7 @@ Section folding.
     (introduce_with_hooks E L (Acc_interp acc) T)
     ⊢ typed_context_fold_end E L acc T.
   Proof.
-    iIntros "Hs". iIntros (? ??) "#(LFT & TIME & LLCTX) #HE HL Hstep".
+    iIntros "Hs". iIntros (????) "#(LFT & TIME & LLCTX) #HE HL Hstep".
     iApply logical_step_fupd.
     iApply (logical_step_wand with "Hstep").
     iIntros "Hacc". iMod ("Hs" with "[//] HE HL Hacc") as "(%L3 & HL & HT)".
@@ -3203,13 +3203,13 @@ Section folding.
     typed_pre_context_fold E L m T.
   Proof.
     iIntros "(Hinit & Hfold)".
-    iIntros (???) "#CTX #HE HL".
+    iIntros (????) "#CTX #HE HL".
     iApply fupd_logical_step.
-    iDestruct ("Hfold" $! F with "[//] [//] CTX HE HL [Hinit]") as ">Hs".
+    iDestruct ("Hfold" $! F with "[//] [//] [//] CTX HE HL [Hinit]") as ">Hs".
     { iApply logical_step_intro. iFrame. }
     iDestruct "Hs" as (L' acc' m') "(HL & Hdel & ? & Hs)".
     rewrite /typed_context_fold_end.
-    iApply ("Hs" with "[//] [//] CTX HE HL Hdel").
+    iApply ("Hs" with "[//] [//] [//] CTX HE HL Hdel").
   Qed.
   End folder.
 

@@ -306,7 +306,7 @@ li_tactic (compute_layout_goal (ty_syn_type ty1)) (λ ly1,
   Proof.
     rewrite /compute_layout_goal.
     iIntros "(%ly & %Halg1 & %Halg2 & HT)".
-    iIntros (???) "#CTX #HE HL Hl".
+    iIntros (????) "#CTX #HE HL Hl".
     rewrite !ltype_own_ofty_unfold /lty_of_ty_own. simpl.
     iDestruct "Hl" as "(%ly' & %Halg & %Hly & Hsc & ? & ? & %r' & <- & Hv)".
     iMod (fupd_mask_mono with "Hv") as "(%v & Hl & Hv)"; first done.
@@ -356,11 +356,11 @@ li_tactic (compute_layout_goal (ty_syn_type ty1)) (λ ly1,
   Proof.
     rewrite /compute_layout_goal. iIntros "(%ly1 & %Halg1 & HT)".
     iDestruct ("HT" with "[//]") as "(%ly2 & %Halg2 & HT)".
-    iIntros (???) "#CTX #HE HL Hl".
+    iIntros (????) "#CTX #HE HL Hl".
     iPoseProof (ltype_own_has_layout with "Hl") as "(%ly1' & %Halg1' & %Hlyl)".
     assert (ly1' = ly1) as -> by by eapply syn_type_has_layout_inj.
     iDestruct ("HT" with "[//] [//]") as "(%Hl_ly2 & Hsubt)".
-    iMod ("Hsubt" with "[//] [//] CTX HE HL") as "(%L' & Hv & ? & ?)".
+    iMod ("Hsubt" with "[//] [//] [//] CTX HE HL") as "(%L' & Hv & ? & ?)".
     iExists L', True%I. iFrame.
     iApply maybe_logical_step_intro. rewrite right_id.
     iApply (ofty_owned_subtype_aligned with "Hv Hl"); done.
@@ -382,7 +382,7 @@ li_tactic (compute_layout_goal (ty_syn_type ty1)) (λ ly1,
     iIntros "(%ly1 & %Hst1 & HT)".
     iDestruct ("HT" with "[//]") as "(%ly2 & %Hst2 & HT)".
     iDestruct ("HT" with "[//]") as "(%Hsz & HT)".
-    iIntros (???) "#CTX #HE HL".
+    iIntros (????) "#CTX #HE HL".
     iModIntro. iExists _. iFrame. iApply bi.intuitionistically_intuitionistically_if.
     iModIntro.
     iSplit; last iSplitR.

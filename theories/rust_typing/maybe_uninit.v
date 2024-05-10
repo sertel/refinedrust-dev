@@ -208,7 +208,7 @@ Section rules.
   Proof.
     rewrite /compute_layout_goal.
     iIntros "(%ly1 & %Halg1 & %ly2 & %Halg2 & %Hsz & HT)".
-    iIntros (???) "#CTX #HE HL". iExists L. iModIntro. iFrame.
+    iIntros (????) "#CTX #HE HL". iExists L. iModIntro. iFrame.
     iApply bi.intuitionistically_intuitionistically_if. iModIntro.
     iSplit; last iSplitR.
     { iPureIntro. simpl. intros ly3 ly4 Hst3 Hst4.

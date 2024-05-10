@@ -106,12 +106,12 @@ Proof.
     + iExists (π, ⊤) => /=.
       iFrame. iSplit; first done. iR.
       iIntros "_". iExists eq_refl, tt.
-      iIntros (???) "#CTX #HE HL".
+      iIntros (????) "#CTX #HE HL".
       iModIntro. iExists [], [], True%I.
       iFrame. iSplitR.
       { iApply maybe_logical_step_intro. simpl. eauto. }
       iIntros "_". simpl. iR.
-      iIntros (???) "_ _ HL". iModIntro.
+      iIntros (????) "_ _ HL". iModIntro.
       iExists [], [], True%I. iFrame.
       iSplitL "HP". { iApply maybe_logical_step_intro. eauto. }
       simpl. iSplitR. { iPureIntro. by apply Forall_nil. }

@@ -523,10 +523,10 @@ Section rules.
         (l ◁ₗ[π, Owned false] #v' @ ◁ (value_t st)) T.
   Proof.
     rewrite /compute_layout_goal.
-    iIntros "(%ly & %Hst & HT)" (???) "#CTX #HE HL Hty".
+    iIntros "(%ly & %Hst & HT)" (????) "#CTX #HE HL Hty".
     iMod (ofty_own_split_value_untyped with "Hty") as "(%v & Hv & Hty)"; [done.. | ].
     iDestruct ("HT" with "Hv") as "HT".
-    by iApply ("HT" with "[//] [//] CTX HE HL").
+    by iApply ("HT" with "[//] [//] [//] CTX HE HL").
   Qed.
   (* NOTE: not an instance due to the above issue *)
   (*Global Instance value_subsume_full_goal_ofty_inst π E L {rt} l v' st (ty : type rt) r :*)
@@ -541,8 +541,8 @@ Section rules.
     ⊢ subsume_full E L false (l ◁ₗ[π, Owned wl] PlaceIn v @ ◁ value_t (UntypedSynType ly1)) (l ◁ₗ[π, Owned wl] PlaceIn r @ (◁ ty)) T.
   Proof.
     iIntros "HT".
-    iIntros (???) "#CTX #HE HL Hl".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L' & % & %R & >(Hv & HR) & HL & % & % & HT)".
+    iIntros (????) "#CTX #HE HL Hl".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L' & % & %R & >(Hv & HR) & HL & % & % & HT)".
     iPoseProof (ofty_own_merge_value with "Hv Hl") as "?"; first done.
     iModIntro. iExists L', R. iFrame. done.
   Qed.
@@ -557,8 +557,8 @@ Section rules.
     ⊢ subsume_full E L false (l ◁ₗ[π, Owned wl] #v @ ◁ value_t st) (l ◁ₗ[π, Owned wl] #r @ (◁ ty)) T.
   Proof.
     iIntros "HT".
-    iIntros (???) "#CTX #HE HL Hl". iPoseProof (ltype_own_has_layout with "Hl") as "(%ly' & %Hst & %)".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L' & % & %R & >(Hv & HR) & HL & %Hc & %Ha & HT)".
+    iIntros (????) "#CTX #HE HL Hl". iPoseProof (ltype_own_has_layout with "Hl") as "(%ly' & %Hst & %)".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L' & % & %R & >(Hv & HR) & HL & %Hc & %Ha & HT)".
     iModIntro. iExists L', R. iFrame.
     iApply (ofty_own_merge_value with "Hv Hl").
     destruct st; try done. simp_ltypes in Hst. simpl in Hst. rewrite Ha.
@@ -577,8 +577,8 @@ Section rules.
     ⊢ owned_subtype π E L false v' r (value_t st) (ty) T.
   Proof.
     iIntros "HT".
-    iIntros (???) "#CTX #HE HL".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L2 & %κs & %R & >(Hv' & HR) & HL & HT)".
+    iIntros (????) "#CTX #HE HL".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L2 & %κs & %R & >(Hv' & HR) & HL & HT)".
     iMod ("HT" with "[//] HE HL HR") as "(%L3 & HL & %Hot & <- & HT)".
     iExists _. iFrame. iModIntro.
     iPoseProof (ty_own_val_sidecond with "Hv'") as "#$".
@@ -639,8 +639,8 @@ Section unify_loc.
   Proof.
     rewrite /compute_layout_goal.
     iIntros "(%ly2 & %Halg & HT)".
-    iIntros (F ??) "#CTX #HE HL Hl".
-    iMod ("HT" with "[//] [//] CTX HE HL Hl") as "(%L' & %R2 & Hl & HL & HT)".
+    iIntros (F ???) "#CTX #HE HL Hl".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL Hl") as "(%L' & %R2 & Hl & HL & HT)".
     iModIntro. iExists L', R2. iFrame.
     iApply (maybe_logical_step_wand with "[] Hl"). iIntros "(Hl & $)".
     iApply (ofty_mono_ly_strong with "[] [] Hl").
@@ -701,7 +701,7 @@ Section unify_loc.
   Proof.
     (*iIntros "(%Halign & -> & HT)".*)
     iIntros "HT".
-    iIntros (F ??) "#CTX #HE HL Hl". iModIntro. iExists L, True%I. iFrame.
+    iIntros (F ???) "#CTX #HE HL Hl". iModIntro. iExists L, True%I. iFrame.
     iPoseProof (ltype_own_has_layout with "Hl") as "(%ly' & %Hly' & %Hlyl)". simp_ltypes in Hly'. simpl in *.
     apply syn_type_has_layout_untyped_inv in Hly' as (-> & ? & ? & ?).
     iPoseProof ("HT" with "[//] [//]") as "(% & -> & % & % & HT)".
@@ -730,11 +730,11 @@ Section unify_loc.
   Proof.
     iIntros "(%Hst & HT)".
     match goal with H : LayoutSizeLe _ _ |- _ => rewrite /LayoutSizeLe in H end.
-    iIntros (F ??) "#CTX #HE HL Hl".
+    iIntros (F ???) "#CTX #HE HL Hl".
     iPoseProof (ltype_own_has_layout with "Hl") as "(%ly & %Halg & %Hal)".
     apply syn_type_has_layout_untyped_inv in Halg as (-> & ? & ?).
     iDestruct ("HT" with "[//]") as "(%Hal2 & %vs2' & -> & %ly1' & HT)".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L' & % & %R2 & Hl' & HL & %Hsz & HT)".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L' & % & %R2 & Hl' & HL & %Hsz & HT)".
     iExists _, R2. iFrame.
     iApply maybe_logical_step_fupd.
     iApply (maybe_logical_step_compose with "Hl'").
@@ -816,8 +816,8 @@ Section unify_val.
   Proof.
     rewrite /compute_layout_goal.
     iIntros "(%ly2 & %Halg & HT)".
-    iIntros (???) "#CTX #HE HL Hv".
-    iMod ("HT" with "[//] [//] CTX HE HL Hv") as "(%L2 & %R2 & Hv & ? & ?)".
+    iIntros (????) "#CTX #HE HL Hv".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL Hv") as "(%L2 & %R2 & Hv & ? & ?)".
     iExists L2, _. iFrame.
     iApply (maybe_logical_step_wand with "[] Hv").
     iIntros "(Hv & $)". iApply value_untyped_make_typed; done.
@@ -849,7 +849,7 @@ Section unify_val.
     ⊢ subsume_full E L step (v ◁ᵥ{π} vs1 @ value_t (UntypedSynType ly1)) (v ◁ᵥ{π} vs2 @ value_t (UntypedSynType ly2)) T.
   Proof.
     iIntros "(%Hal & -> & HT)".
-    iIntros (???) "#CTX #HE HL Hv".
+    iIntros (????) "#CTX #HE HL Hv".
     iExists _, _. iFrame.
     iApply maybe_logical_step_intro. iL.
     iApply value_untyped_layout_mono; last done.
@@ -887,7 +887,7 @@ Section rules.
         ∀ v, T L v _ ty r unit (◁ uninit ty.(ty_syn_type)) (#()) ResultStrong)
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong ot T.
   Proof.
-    iIntros "(%Hot & Hs)" (F ???) "#CTX #HE HL _ Hb".
+    iIntros "(%Hot & Hs)" (F ????) "#CTX #HE HL _ Hb".
     iPoseProof (ofty_ltype_acc_owned with "Hb") as "(%ly' & %Halg & %Hly & Hsc & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
     iPoseProof (ty_own_val_has_layout with "Hv") as "%Hlyv"; first done.
     specialize (ty_op_type_stable Hot) as Halg''.
@@ -920,7 +920,7 @@ Section rules.
         ∀ v, T L2 v _ ty r unit (OpenedLtype (◁ uninit ty.(ty_syn_type)) (◁ ty) (◁ ty) (λ r1 r2, ⌜r1 = r2⌝) (λ _ _, llft_elt_toks κs)) (#()) ResultStrong))
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Uniq κ γ) bmin AllowStrong ot T.
   Proof.
-    iIntros "HT" (F ???) "#CTX #HE HL Hincl0 Hb".
+    iIntros "HT" (F ????) "#CTX #HE HL Hincl0 Hb".
     rewrite /lctx_lft_alive_count_goal.
     iDestruct "HT" as (κs L2) "(%Hal & %Hot & HT)".
 
@@ -966,7 +966,7 @@ Section rules.
       T L v' _ (value_t ty.(ty_syn_type)) v val (◁ value_t ty.(ty_syn_type)) (#v) ResultStrong)
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong ot T.
   Proof.
-    iIntros "(%Hotalg & %Hot & Hs)" (F ???) "#CTX #HE HL _ Hb".
+    iIntros "(%Hotalg & %Hot & Hs)" (F ????) "#CTX #HE HL _ Hb".
     iPoseProof (ofty_ltype_acc_owned with "Hb") as "(%ly & %Halg & %Hly & Hsc & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
     iPoseProof (ty_own_val_has_layout with "Hv") as "%Hlyv"; first done.
     specialize (ty_op_type_stable Hot) as Halg''.
@@ -1019,7 +1019,7 @@ Section rules.
         ∀ v, T L v _ ty r unit (◁ uninit ty.(ty_syn_type)) (#()) ResultStrong)
     ⊢ typed_read_end π E L l (◁ ty) (#r) (Owned wl) bmin AllowStrong (UntypedOp ly) T.
   Proof.
-    iIntros "(%Hot & Hs)" (F ???) "#CTX #HE HL _ Hb".
+    iIntros "(%Hot & Hs)" (F ????) "#CTX #HE HL _ Hb".
     iPoseProof (ofty_ltype_acc_owned with "Hb") as "(%ly' & %Halg & %Hly & Hsc & Hlb & >(%v & Hl & Hv & Hcl))"; first done.
     iPoseProof (ty_own_val_has_layout with "Hv") as "%Hlyv"; first done.
     specialize (ty_op_type_stable Hot) as Halg''.
@@ -1101,14 +1101,14 @@ Section rules.
     ⊢ stratify_ltype π E L mu mdu ma m l (◁ value_t st)%I (#v) (Owned wl) T.
   Proof.
     iDestruct 1 as ([rt [[ty' r'] π']]) "(Hv & -> & %Hot & %Heq & HT)" => /=.
-    iIntros (???) "#CTX #HE HL Hl".
+    iIntros (????) "#CTX #HE HL Hl".
     iPoseProof (ltype_own_has_layout with "Hl") as "#(%ly & %Hst &_)".
     iPoseProof (ofty_own_merge_value with "Hv Hl") as "Ha".
     { subst st. destruct (ty_syn_type ty'); try done.
       simp_ltypes in Hst. simpl in Hst.
       specialize (syn_type_has_layout_untyped_inv _ _ Hst) as (-> & _).
       done. }
-    iMod ("HT" with "[//] [//] CTX HE HL Ha") as "Ha".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL Ha") as "Ha".
     subst st. eauto.
   Qed.
   (* needs to have a higher priority than the ofty_resolve_ghost instance *)

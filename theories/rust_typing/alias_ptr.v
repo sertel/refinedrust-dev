@@ -243,16 +243,16 @@ Section alias_ltype.
   Proof.
     iIntros "HT".
     destruct (decide (ma = StratNoRefold)) as [-> | ].
-    { iIntros (???) "#CTX #HE HL Hl". iModIntro. iExists _, _, _, _, _. iFrame.
+    { iIntros (????) "#CTX #HE HL Hl". iModIntro. iExists _, _, _, _, _. iFrame.
       iSplitR; first done. iApply logical_step_intro. by iFrame. }
     iAssert (find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)), ⌜π = π2⌝ ∗ ⌜ltype_st lt2 = st⌝ ∗ ⌜b2 = Owned wl⌝ ∗ stratify_ltype π E L mu mdu ma m l2 lt2 r2 b2 T))%I with "[HT]" as "HT".
     { destruct ma; done. }
     iDestruct "HT" as ([rt2 [[[lt2 r2] b2] π2]]) "(Hl2 & <- & <- & -> & HT)".
-    simpl. iIntros (???) "#CTX #HE HL Hl".
+    simpl. iIntros (????) "#CTX #HE HL Hl".
     rewrite ltype_own_alias_unfold /alias_lty_own.
     iDestruct "Hl" as "(%ly & %Halg & -> & %Hly & Hlb)".
     simp_ltypes.
-    iMod ("HT" with "[//] [//] CTX HE HL Hl2") as (L3 R rt2' lt2' r2') "(HL & %Hst & Hstep & HT)".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL Hl2") as (L3 R rt2' lt2' r2') "(HL & %Hst & Hstep & HT)".
     iModIntro. iExists _, _, _, _, _. iFrame. done.
   Qed.
   Global Instance stratify_ltype_alias_owned_inst π E L mu mdu ma {M} (m : M) l l2 rt st r wl :

@@ -159,7 +159,7 @@ Section updateable_rules.
     rewrite /FindLoc /find_in_context/=.
     iDestruct "HT" as ([rt [[[lt r] k] π]]) "(Ha & Hb)".
     rewrite /typed_array_access.
-    iMod ("Hb" with "[] [] CTX HE HL Ha") as "(%L2 & %k2 & %rt2 & %ty2 & %len & %iml & %rs2 & %rte & %re & %lte & Hl & He & HL & HT)";
+    iMod ("Hb" with "[] [] [] CTX HE HL Ha") as "(%L2 & %k2 & %rt2 & %ty2 & %len & %iml & %rs2 & %rte & %re & %lte & Hl & He & HL & HT)";
     [set_solver.. | ].
     iPoseProof ("HT" with "Hl He") as "Ha".
     iModIntro. iExists _. iFrame.
@@ -183,7 +183,7 @@ Section updateable_rules.
     iDestruct "Hb" as "(%wl & %ty & %r' & -> & -> & -> & HT)".
     rewrite /compute_layout_goal. simpl.
     rewrite /prove_with_subtype.
-    iMod ("HT" with "[] [] CTX HE HL") as "(%L2 & %κs & %R & HR & HL & HT)"; [solve_ndisj.. | ].
+    iMod ("HT" with "[] [] [] CTX HE HL") as "(%L2 & %κs & %R & HR & HL & HT)"; [solve_ndisj.. | ].
     iMod ("HR") as "(Hcred & HR)".
     iDestruct ("HT" with "HR") as "(%ly & %Hst & HT)".
     iMod (ofty_own_split_value_untyped_lc with "Hcred Ha") as "Ha"; [done.. | ].

@@ -358,8 +358,8 @@ Section stratify.
     ⊢ owned_subtype π E L false r r' ty (∃; P, ty) T.
   Proof.
     iIntros "HT".
-    iIntros (???) "#CTX #HE HL".
-    iMod ("HT" with "[//] [//] CTX HE HL") as "(%L2 & % & %R2 & >(Hinv & HR2) & HL & HT)".
+    iIntros (????) "#CTX #HE HL".
+    iMod ("HT" with "[//] [//] [//] CTX HE HL") as "(%L2 & % & %R2 & >(Hinv & HR2) & HL & HT)".
     iExists L2. iFrame. iPoseProof ("HT" with "HR2") as "$". iModIntro.
     iSplitR; last iSplitR.
     - simpl. iPureIntro.
@@ -408,9 +408,9 @@ Section stratify.
         T L2 R' _ (OpenedLtype lt' (◁ ty) (◁ (∃; P, ty)) (λ (r : rt) (x : X), P.(inv_P) π r x) (λ r x, True)) r'))
     ⊢ stratify_ltype π E L smu StratDoUnfold sa sm l (◁ (∃; P, ty)) (#x) (Owned wl) T.
   Proof.
-    iIntros "HT". iIntros (F ??) "#CTX #HE HL Hb".
+    iIntros "HT". iIntros (F ???) "#CTX #HE HL Hb".
     iMod (ex_plain_t_open_owned with "Hb") as "(%r & HP & Hb & Hcl)"; first done.
-    iMod ("HT" with "HP [//] [//] CTX HE HL Hb") as "Ha".
+    iMod ("HT" with "HP [//] [//] [//] CTX HE HL Hb") as "Ha".
     iDestruct "Ha" as "(%L2 & %R' & %rt' & %lt' & %r' & HL & %Hst & Hstep & HT)".
     iExists _, _, _, _, _. iFrame.
     iModIntro.
@@ -432,12 +432,12 @@ Section stratify.
     ⊢ stratify_ltype π E L smu StratDoUnfold sa sm l (◁ (∃; P, ty)) (PlaceIn x) (Uniq κ γ) T.
   Proof.
     rewrite /lctx_lft_alive_count_goal. iIntros "(%κs & %L' & %Hal & HT)".
-    iIntros (F ??) "#CTX #HE HL Hb".
+    iIntros (F ???) "#CTX #HE HL Hb".
     iMod (fupd_mask_subseteq lftE) as "Hcl_F"; first done.
     iMod (lctx_lft_alive_count_tok lftE with "HE HL") as "(%q & Htok & Hcl_tok & HL)"; [done.. | ].
     iMod "Hcl_F" as "_".
     iMod (ex_plain_t_open_uniq with "CTX Htok Hcl_tok Hb") as "(%r & HP & Hb & Hcl)"; first done.
-    iMod ("HT" with "HP [//] [//] CTX HE HL Hb") as "Ha".
+    iMod ("HT" with "HP [//] [//] [//] CTX HE HL Hb") as "Ha".
     iDestruct "Ha" as "(%L2 & %R' & %rt' & %lt' & %r' & HL & %Hst & Hstep & HT)".
     iExists _, _, _, _, _. iFrame.
     iSplitR. { iPureIntro. simp_ltypes. done. }
@@ -458,10 +458,10 @@ Section stratify.
         ∃ r'', ⌜r' = PlaceIn r''⌝ ∗ T L2 R' _ (ShadowedLtype lt' #r'' (◁ (∃; P, ty))) (PlaceIn x)))
     ⊢ stratify_ltype π E L smu StratDoUnfold sa sm l (◁ (∃; P, ty)) (PlaceIn x) (Shared κ) T.
   Proof.
-    iIntros "HT" (F ??) "#CTX #HE HL Hb".
+    iIntros "HT" (F ???) "#CTX #HE HL Hb".
     iMod (ex_plain_t_open_shared with "Hb") as "(%r & HP & Hb)"; first done.
     iPoseProof (shadowed_ltype_acc_cur with "Hb") as "(Hb & Hcl_b)".
-    iMod ("HT" with "HP [//] [//] CTX HE HL Hb") as (L2 R' rt' lt' r') "(HL & Hst & Hstep & HT)".
+    iMod ("HT" with "HP [//] [//] [//] CTX HE HL Hb") as (L2 R' rt' lt' r') "(HL & Hst & Hstep & HT)".
     iDestruct "HT" as "(%r'' & -> & HT)".
     iModIntro. iExists  _, _, _, _, _. iFrame.
     simp_ltypes. iSplitR; first done.
