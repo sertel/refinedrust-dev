@@ -48,6 +48,9 @@ Ltac liUnfoldSyntax :=
   | |- envs_entails _ (li.bind3 _ _) => liFromSyntax
   | |- envs_entails _ (li.bind4 _ _) => liFromSyntax
   | |- envs_entails _ (li.bind5 _ _) => liFromSyntax
+  (* Hack: We also need to unfold here, in case the prop we are introducing has been (erroneously) folded before.
+     This happens, for instance, if we introduce `P ∗ True`. *)
+  | |- envs_entails _ (bi_wand _ _) => liFromSyntax
   end.
 
 Ltac liEnsureInvariant :=

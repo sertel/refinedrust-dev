@@ -1041,10 +1041,8 @@ Section generated_code.
       UnsafeCell_get_old_prelude.
 
       repeat liRStep; liShow.
-
       iApply na_typed_place_ex_plain_t_shared.
 
-      (* NOTE: We don't have enough credit here *)
       do 6 liRStep; liShow.
       repeat liRStep; liShow.
 
@@ -1054,9 +1052,8 @@ Section generated_code.
 
       iApply typed_place_magic_owned.
 
-      do 22 liRStep; liShow. (* <<< This bug *)
-      do 10 liRStep; liShow.
-
+      do 20 liRStep; liShow.
+      do 7 liRStep.
       do 100 liRStep; liShow.
 
       (* NOTE: How do we catch up? *)
