@@ -721,13 +721,12 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         info!("outputting generated code to {}", generated_dir_path.to_str().unwrap());
         if fs::read_dir(generated_dir_path).is_err() {
             warn!("Output directory {:?} does not exist, creating directory", generated_dir_path);
-            fs::create_dir_all(generated_dir_path).unwrap();
         } else {
             // purge contents
             info!("Removing the contents of the generated directory");
             fs::remove_dir_all(generated_dir_path).unwrap();
-            fs::create_dir(generated_dir_path).unwrap();
         }
+        fs::create_dir_all(generated_dir_path).unwrap();
 
         let code_path = generated_dir_path.join(format!("generated_code_{}.v", stem));
         let spec_path = generated_dir_path.join(format!("generated_specs_{}.v", stem));

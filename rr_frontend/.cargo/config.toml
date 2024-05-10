@@ -32,7 +32,6 @@ rustflags = [
     "-Aclippy::string_lit_as_bytes",
 
     # clippy::restriction
-    "-Aclippy::create_dir",
     "-Aclippy::empty_structs_with_brackets",
     "-Aclippy::get_unwrap",
     "-Aclippy::if_then_some_else_none",
