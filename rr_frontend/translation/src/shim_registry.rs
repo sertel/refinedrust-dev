@@ -221,15 +221,13 @@ impl<'a> ShimRegistry<'a> {
                     .get("refinedrust_path")
                     .ok_or(format!("Missing attribute \"refinedrust_path\""))?
                     .as_str()
-                    .ok_or(format!("Expected string for \"refinedrust_path\" attribute"))?
-                    .to_string();
+                    .ok_or(format!("Expected string for \"refinedrust_path\" attribute"))?;
 
                 let module = obj
                     .get("refinedrust_module")
                     .ok_or(format!("Missing attribute \"refinedrust_module\""))?
                     .as_str()
-                    .ok_or(format!("Expected string for \"refinedrust_module\" attribute"))?
-                    .to_string();
+                    .ok_or(format!("Expected string for \"refinedrust_module\" attribute"))?;
 
                 let _ = obj
                     .get("refinedrust_name")
@@ -249,8 +247,7 @@ impl<'a> ShimRegistry<'a> {
                 for dependency in dependencies {
                     let path = dependency
                         .as_str()
-                        .ok_or(format!("Expected string for element of \"module_dependencies\" array"))?
-                        .to_string();
+                        .ok_or(format!("Expected string for element of \"module_dependencies\" array"))?;
 
                     self.dependencies.push(coq::Path::new(path));
                 }

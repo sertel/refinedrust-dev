@@ -343,22 +343,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     /// Write specifications of a verification unit.
     fn write_specifications(&self, spec_path: &Path, code_path: &Path, stem: &str) {
         let common_imports = vec![
-            coq::Import::new(coq::Module::new_with_path(
-                "lang".to_string(),
-                coq::Path::new("caesium".to_string()),
-            )),
-            coq::Import::new(coq::Module::new_with_path(
-                "notation".to_string(),
-                coq::Path::new("caesium".to_string()),
-            )),
-            coq::Import::new(coq::Module::new_with_path(
-                "typing".to_string(),
-                coq::Path::new("refinedrust".to_string()),
-            )),
-            coq::Import::new(coq::Module::new_with_path(
-                "shims".to_string(),
-                coq::Path::new("refinedrust".to_string()),
-            )),
+            coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
+            coq::Import::new(coq::Module::new_with_path("notation", coq::Path::new("caesium"))),
+            coq::Import::new(coq::Module::new_with_path("typing", coq::Path::new("refinedrust"))),
+            coq::Import::new(coq::Module::new_with_path("shims", coq::Path::new("refinedrust"))),
         ];
 
         let mut spec_file = io::BufWriter::new(fs::File::create(spec_path).unwrap());
@@ -366,8 +354,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         {
             let mut spec_exports = vec![coq::Export::new(coq::Module::new_with_path(
-                format!("generated_code_{stem}"),
-                coq::Path::new_from_segments(&[self.coq_path_prefix.clone(), stem.to_string()]),
+                &format!("generated_code_{stem}"),
+                coq::Path::new_from_segments(&[&self.coq_path_prefix, &stem]),
             ))];
 
             spec_exports.append(&mut self.extra_exports.iter().map(|(export, _)| export.clone()).collect());
@@ -509,22 +497,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         F: Fn(&str) -> std::path::PathBuf,
     {
         let common_imports = vec![
-            coq::Import::new(coq::Module::new_with_path(
-                "lang".to_string(),
-                coq::Path::new("caesium".to_string()),
-            )),
-            coq::Import::new(coq::Module::new_with_path(
-                "notation".to_string(),
-                coq::Path::new("caesium".to_string()),
-            )),
-            coq::Import::new(coq::Module::new_with_path(
-                "typing".to_string(),
-                coq::Path::new("refinedrust".to_string()),
-            )),
-            coq::Import::new(coq::Module::new_with_path(
-                "shims".to_string(),
-                coq::Path::new("refinedrust".to_string()),
-            )),
+            coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
+            coq::Import::new(coq::Module::new_with_path("notation", coq::Path::new("caesium"))),
+            coq::Import::new(coq::Module::new_with_path("typing", coq::Path::new("refinedrust"))),
+            coq::Import::new(coq::Module::new_with_path("shims", coq::Path::new("refinedrust"))),
         ];
 
         // write templates
@@ -540,12 +516,12 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
                 imports.append(&mut vec![
                     coq::Import::new(coq::Module::new_with_path(
-                        format!("generated_code_{stem}"),
-                        coq::Path::new_from_segments(&[self.coq_path_prefix.clone(), stem.to_string()]),
+                        &format!("generated_code_{stem}"),
+                        coq::Path::new_from_segments(&[&self.coq_path_prefix.clone(), &stem]),
                     )),
                     coq::Import::new(coq::Module::new_with_path(
-                        format!("generated_specs_{stem}"),
-                        coq::Path::new_from_segments(&[self.coq_path_prefix.clone(), stem.to_string()]),
+                        &format!("generated_specs_{stem}"),
+                        coq::Path::new_from_segments(&[&self.coq_path_prefix.clone(), &stem]),
                     )),
                 ]);
 
@@ -591,22 +567,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         F: Fn(&str) -> std::path::PathBuf,
     {
         let common_imports = vec![
-            coq::Import::new(coq::Module::new_with_path(
-                "lang".to_string(),
-                coq::Path::new("caesium".to_string()),
-            )),
-            coq::Import::new(coq::Module::new_with_path(
-                "notation".to_string(),
-                coq::Path::new("caesium".to_string()),
-            )),
-            coq::Import::new(coq::Module::new_with_path(
-                "typing".to_string(),
-                coq::Path::new("refinedrust".to_string()),
-            )),
-            coq::Import::new(coq::Module::new_with_path(
-                "shims".to_string(),
-                coq::Path::new("refinedrust".to_string()),
-            )),
+            coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
+            coq::Import::new(coq::Module::new_with_path("notation", coq::Path::new("caesium"))),
+            coq::Import::new(coq::Module::new_with_path("typing", coq::Path::new("refinedrust"))),
+            coq::Import::new(coq::Module::new_with_path("shims", coq::Path::new("refinedrust"))),
         ];
 
         // write proofs
@@ -631,28 +595,16 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
             imports.append(&mut vec![
                 coq::Import::new(coq::Module::new_with_path(
-                    format!("generated_code_{stem}"),
-                    coq::Path::new_from_segments(&[
-                        self.coq_path_prefix.clone(),
-                        stem.to_string(),
-                        "generated".to_string(),
-                    ]),
+                    &format!("generated_code_{stem}"),
+                    coq::Path::new_from_segments(&[&self.coq_path_prefix, &stem, "generated"]),
                 )),
                 coq::Import::new(coq::Module::new_with_path(
-                    format!("generated_specs_{stem}"),
-                    coq::Path::new_from_segments(&[
-                        self.coq_path_prefix.clone(),
-                        stem.to_string(),
-                        "generated".to_string(),
-                    ]),
+                    &format!("generated_specs_{stem}"),
+                    coq::Path::new_from_segments(&[&self.coq_path_prefix, &stem, "generated"]),
                 )),
                 coq::Import::new(coq::Module::new_with_path(
-                    format!("generated_template_{}", fun.name()),
-                    coq::Path::new_from_segments(&[
-                        self.coq_path_prefix.clone(),
-                        stem.to_string(),
-                        "generated".to_string(),
-                    ]),
+                    &format!("generated_template_{}", fun.name()),
+                    coq::Path::new_from_segments(&[&self.coq_path_prefix, &stem, "generated"]),
                 )),
             ]);
 

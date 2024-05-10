@@ -25,12 +25,12 @@ pub struct Path(String);
 
 impl Path {
     #[must_use]
-    pub const fn new(path: String) -> Self {
-        Self(path)
+    pub fn new(path: &str) -> Self {
+        Self(path.to_string())
     }
 
     #[must_use]
-    pub fn new_from_segments(segments: &[String]) -> Self {
+    pub fn new_from_segments(segments: &[&str]) -> Self {
         Self(segments.join("."))
     }
 }
@@ -44,14 +44,17 @@ pub struct Module {
 
 impl Module {
     #[must_use]
-    pub const fn new(name: String) -> Self {
-        Self { name, path: None }
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            path: None,
+        }
     }
 
     #[must_use]
-    pub const fn new_with_path(name: String, path: Path) -> Self {
+    pub fn new_with_path(name: &str, path: Path) -> Self {
         Self {
-            name,
+            name: name.to_string(),
             path: Some(path),
         }
     }
@@ -612,8 +615,8 @@ mod tests {
 
     #[test]
     fn modules_paths_none() {
-        let module_a = Module::new("A".to_string());
-        let module_b = Module::new("B".to_string());
+        let module_a = Module::new("A");
+        let module_b = Module::new("B");
         let modules = vec![&module_a, &module_b];
 
         assert_eq!(get_modules_path(&modules), vec![]);
@@ -621,37 +624,31 @@ mod tests {
 
     #[test]
     fn modules_paths_some_uniqueness() {
-        let module_a = Module::new_with_path("A".to_string(), Path::new("a.b.c".to_string()));
-        let module_b = Module::new_with_path("B".to_string(), Path::new("a.b.d".to_string()));
+        let module_a = Module::new_with_path("A", Path::new("a.b.c"));
+        let module_b = Module::new_with_path("B", Path::new("a.b.d"));
         let modules = vec![&module_a, &module_b];
 
-        assert_eq!(get_modules_path(&modules), vec![
-            Path::new("a.b.c".to_string()),
-            Path::new("a.b.d".to_string())
-        ]);
+        assert_eq!(get_modules_path(&modules), vec![Path::new("a.b.c"), Path::new("a.b.d")]);
     }
 
     #[test]
     fn modules_paths_some_duplicate() {
-        let module_a = Module::new_with_path("A".to_string(), Path::new("a.b.c".to_string()));
-        let module_b = Module::new_with_path("B".to_string(), Path::new("a.b.c".to_string()));
+        let module_a = Module::new_with_path("A", Path::new("a.b.c"));
+        let module_b = Module::new_with_path("B", Path::new("a.b.c"));
         let modules = vec![&module_a, &module_b];
 
-        assert_eq!(get_modules_path(&modules), vec![Path::new("a.b.c".to_string())]);
+        assert_eq!(get_modules_path(&modules), vec![Path::new("a.b.c")]);
     }
 
     #[test]
     fn modules_paths_all() {
-        let module_a = Module::new("A".to_string());
-        let module_b = Module::new_with_path("B".to_string(), Path::new("a.b.c".to_string()));
-        let module_c = Module::new_with_path("C".to_string(), Path::new("a.b.d".to_string()));
-        let module_d = Module::new_with_path("D".to_string(), Path::new("a.b.d".to_string()));
+        let module_a = Module::new("A");
+        let module_b = Module::new_with_path("B", Path::new("a.b.c"));
+        let module_c = Module::new_with_path("C", Path::new("a.b.d"));
+        let module_d = Module::new_with_path("D", Path::new("a.b.d"));
         let modules = vec![&module_a, &module_b, &module_c, &module_d];
 
-        assert_eq!(get_modules_path(&modules), vec![
-            Path::new("a.b.c".to_string()),
-            Path::new("a.b.d".to_string())
-        ]);
+        assert_eq!(get_modules_path(&modules), vec![Path::new("a.b.c"), Path::new("a.b.d")]);
     }
 
     #[test]
@@ -663,8 +660,8 @@ mod tests {
 
     #[test]
     fn display_none() {
-        let module_a = Import::new(Module::new("A".to_string()));
-        let module_b = Import::new(Module::new("B".to_string()));
+        let module_a = Import::new(Module::new("A"));
+        let module_b = Import::new(Module::new("B"));
         let modules = vec![module_a, module_b];
 
         assert_eq!(ImportList(&modules).to_string(), indoc! {"
@@ -674,8 +671,8 @@ mod tests {
 
     #[test]
     fn display_some_uniqueness() {
-        let module_a = Import::new(Module::new_with_path("A".to_string(), Path::new("a.b.c".to_string())));
-        let module_b = Import::new(Module::new_with_path("B".to_string(), Path::new("a.b.d".to_string())));
+        let module_a = Import::new(Module::new_with_path("A", Path::new("a.b.c")));
+        let module_b = Import::new(Module::new_with_path("B", Path::new("a.b.d")));
         let modules = vec![module_a, module_b];
 
         assert_eq!(ImportList(&modules).to_string(), indoc! {"
@@ -686,8 +683,8 @@ mod tests {
 
     #[test]
     fn display_some_duplicate() {
-        let module_a = Import::new(Module::new_with_path("A".to_string(), Path::new("a.b.c".to_string())));
-        let module_b = Import::new(Module::new_with_path("B".to_string(), Path::new("a.b.c".to_string())));
+        let module_a = Import::new(Module::new_with_path("A", Path::new("a.b.c")));
+        let module_b = Import::new(Module::new_with_path("B", Path::new("a.b.c")));
         let modules = vec![module_a, module_b];
 
         assert_eq!(ImportList(&modules).to_string(), indoc! {"
@@ -697,10 +694,10 @@ mod tests {
 
     #[test]
     fn display_all() {
-        let module_a = Import::new(Module::new("A".to_string()));
-        let module_b = Import::new(Module::new_with_path("B".to_string(), Path::new("a.b.c".to_string())));
-        let module_c = Import::new(Module::new_with_path("C".to_string(), Path::new("a.b.d".to_string())));
-        let module_d = Import::new(Module::new_with_path("D".to_string(), Path::new("a.b.d".to_string())));
+        let module_a = Import::new(Module::new("A"));
+        let module_b = Import::new(Module::new_with_path("B", Path::new("a.b.c")));
+        let module_c = Import::new(Module::new_with_path("C", Path::new("a.b.d")));
+        let module_d = Import::new(Module::new_with_path("D", Path::new("a.b.d")));
         let modules = vec![module_a, module_b, module_c, module_d];
 
         assert_eq!(ImportList(&modules).to_string(), indoc! {"
