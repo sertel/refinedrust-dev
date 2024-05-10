@@ -32,7 +32,6 @@ rustflags = [
     "-Aclippy::string_lit_as_bytes",
 
     # clippy::restriction
-    "-Aclippy::mod_module_files",
     "-Aclippy::non_ascii_literal",
     "-Aclippy::panic_in_result_fn",
     "-Aclippy::partial_pub_fields",
@@ -122,7 +121,6 @@ rustflags = [
     "-Aclippy::missing_trait_methods",
     "-Aclippy::pub_with_shorthand", # ("pub_without_shortand" is allowed)
     "-Aclippy::question_mark_used",
-    "-Aclippy::self_named_module_files", # ("mod_module_files" is allowed)
     "-Aclippy::semicolon_outside_block", # ("semicolon_outside_block" is allowed)
     "-Aclippy::shadow_reuse",
     "-Aclippy::shadow_same",
@@ -143,6 +141,7 @@ rustflags = [
 
     # `clippy::restriction` is enabled globally, but used carefully.
     "-Aclippy::blanket_clippy_restriction_lints",
+    "-Aclippy::mod_module_files", # see: self_named_module_files
 
     # These lints could be false positives, and should be caught by other lints.
     "-Aclippy::ignored_unit_patterns",
