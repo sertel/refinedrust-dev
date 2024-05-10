@@ -242,7 +242,7 @@ impl SynType {
             },
 
             Self::Var(i) => {
-                let a = env.get(*i).unwrap().as_ref().unwrap();
+                let a = env[*i].as_ref().unwrap();
                 to_syntype(a).layout_term_core(env, to_syntype)
             },
         }
@@ -282,7 +282,7 @@ impl SynType {
             },
 
             Self::Var(i) => {
-                let a = env.get(*i).unwrap().as_ref().unwrap();
+                let a = env[*i].as_ref().unwrap();
                 to_syntype(a).optype_core(env, to_syntype)
             },
         }

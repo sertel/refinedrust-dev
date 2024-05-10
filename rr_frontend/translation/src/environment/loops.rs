@@ -448,7 +448,7 @@ impl ProcedureLoops {
         loop_head: BasicBlockIndex,
         mir: &'a mir::Body<'tcx>,
     ) -> Vec<PlaceAccess<'tcx>> {
-        let body = self.loop_bodies.get(&loop_head).unwrap();
+        let body = &self.loop_bodies[&loop_head];
         let mut visitor = AccessCollector {
             body,
             accessed_places: Vec::new(),

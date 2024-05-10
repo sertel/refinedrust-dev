@@ -1264,8 +1264,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             for v in def.variants() {
                 let (variant_ref, _) = self.lookup_adt_variant(v.def_id)?;
                 let variant_name = strip_coq_ident(&v.ident(tcx).to_string());
-                let discriminant = discrs.get(&variant_name).unwrap();
-                enum_builder.add_variant(&variant_name, variant_ref, *discriminant);
+                let discriminant = discrs[&variant_name];
+                enum_builder.add_variant(&variant_name, variant_ref, discriminant);
             }
 
             Ok(enum_builder.finish(inductive_decl, enum_spec))

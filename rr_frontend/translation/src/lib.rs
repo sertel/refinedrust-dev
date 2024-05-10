@@ -404,9 +404,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     spec_file.write("\n".as_bytes()).unwrap();
                 }
             } else {
-                let eu_ref = enum_defs.get(did).unwrap();
-                info!("writing enum {:?}, {:?}", did, eu_ref);
-                let eu = eu_ref.as_ref().unwrap();
+                let eu = enum_defs[did].unwrap();
+                info!("writing enum {:?}, {:?}", did, eu);
 
                 // layout specs
                 code_file.write(eu.generate_coq_els_def().as_bytes()).unwrap();

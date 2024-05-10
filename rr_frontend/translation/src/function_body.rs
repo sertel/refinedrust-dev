@@ -156,14 +156,14 @@ impl<'def> ProcedureScope<'def> {
 
     /// Provide the code for a translated function.
     pub fn provide_translated_function(&mut self, did: DefId, trf: radium::Function<'def>) {
-        let meta = self.name_map.get(&did).unwrap();
+        let meta = &self.name_map[&did];
         assert!(meta.get_mode().needs_def());
         assert!(self.translated_functions.insert(did, trf).is_none());
     }
 
     /// Provide the specification for an `only_spec` function.
     pub fn provide_specced_function(&mut self, did: DefId, spec: radium::FunctionSpec<'def>) {
-        let meta = self.name_map.get(&did).unwrap();
+        let meta = &self.name_map[&did];
         assert!(meta.get_mode().is_only_spec());
         assert!(self.specced_functions.insert(did, spec).is_none());
     }
@@ -1232,7 +1232,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         // generate dependencies on statics
         for did in &self.collected_statics {
-            let s = self.const_registry.statics.get(did).unwrap();
+            let s = &self.const_registry.statics[did];
             self.translated_fn.require_static(s.clone());
         }
 
@@ -1665,7 +1665,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
     /// Find the optional `DefId` of the closure giving the invariant for the loop with head `head_bb`.
     fn find_loop_spec_closure(&self, head_bb: BasicBlock) -> Result<Option<DefId>, TranslationError> {
-        let bodies = self.proc.loop_info().ordered_loop_bodies.get(&head_bb).unwrap();
+        let bodies = &self.proc.loop_info().ordered_loop_bodies[&head_bb];
         let basic_blocks = &self.proc.get_mir().basic_blocks;
 
         // we go in order through the bodies in order to not stumble upon an annotation for a

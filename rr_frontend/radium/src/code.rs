@@ -79,7 +79,7 @@ impl RustType {
         match ty {
             Type::Var(var) => {
                 // this must be a generic type variable
-                let ty = env.get(*var).unwrap().as_ref().unwrap();
+                let ty = env[*var].as_ref().unwrap();
                 Self::TyVar(ty.rust_name.clone())
             },
 
