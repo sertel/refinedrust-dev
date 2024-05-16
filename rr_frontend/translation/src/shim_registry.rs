@@ -338,8 +338,7 @@ impl<'a> ShimRegistry<'a> {
                 };
 
                 self.trait_method_shims.push(entry);
-            }
-            else if kind == ShimKind::Trait {
+            } else if kind == ShimKind::Trait {
                 let b: ShimTraitEntry = serde_json::value::from_value(i).map_err(|e| e.to_string())?;
                 let entry = TraitShim {
                     path: self.intern_path(b.path),

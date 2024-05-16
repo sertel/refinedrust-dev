@@ -224,8 +224,13 @@ impl<'tcx> Environment<'tcx> {
     }
 
     /// Get tool attributes of this function, including selected attributes from the surrounding impl.
-    pub fn get_attributes_of_function<F>(&self, did: DefId, propagate_from_impl: F) -> Vec<&rustc_ast::ast::AttrItem> 
-        where F: for<'a> Fn(&'a rustc_ast::ast::AttrItem) -> bool
+    pub fn get_attributes_of_function<F>(
+        &self,
+        did: DefId,
+        propagate_from_impl: F,
+    ) -> Vec<&rustc_ast::ast::AttrItem>
+    where
+        F: for<'a> Fn(&'a rustc_ast::ast::AttrItem) -> bool,
     {
         let attrs = self.get_attributes(did);
         let mut filtered_attrs = crate::utils::filter_tool_attrs(attrs);
@@ -270,6 +275,30 @@ impl<'tcx> Environment<'tcx> {
     pub fn get_item_name(&self, def_id: DefId) -> String {
         self.tcx.def_path_str(def_id)
         // self.tcx().item_path_str(def_id)
+    }
+
+    /// Get the name of an item without the path prefix.
+    pub fn get_assoc_item_name(&self, trait_method_did: DefId) -> Option<String> {
+        let def_path = self.tcx.def_path(trait_method_did);
+        if let Some(last_elem) = def_path.data.last() {
+            if let Some(name) = last_elem.data.get_opt_name() {
+                return Some(name.as_str().to_string());
+            }
+        }
+        None
+    }
+
+    /// Get the associated types of a trait.
+    pub fn get_trait_assoc_types(&self, trait_did: DefId) -> Vec<DefId> {
+        let assoc_items: &ty::AssocItems = self.tcx.associated_items(trait_did);
+
+        let mut assoc_tys = Vec::new();
+        for c in assoc_items.in_definition_order() {
+            if ty::AssocKind::Type == c.kind {
+                assoc_tys.push(c.def_id);
+            }
+        }
+        assoc_tys
     }
 
     /// Get a Procedure.

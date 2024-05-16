@@ -11,4 +11,6 @@ version.workspace = true
 rrconfig.workspace = true
 
 indent_write.workspace = true
+derive_more.workspace = true
 log.workspace = true
+itertools.workspace = true

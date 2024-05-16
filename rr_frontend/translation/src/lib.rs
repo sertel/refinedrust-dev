@@ -64,8 +64,7 @@ use mod_parser::ModuleAttrParser;
 use rrconfig;
 use spec_parsers::{
     const_attr_parser as const_parser, crate_attr_parser as crate_parser, get_shim_attrs,
-    module_attr_parser as mod_parser,
-    propagate_method_attr_from_impl,
+    module_attr_parser as mod_parser, propagate_method_attr_from_impl,
 };
 use topological_sort::TopologicalSort;
 use trait_registry::TraitRegistry;
@@ -99,6 +98,8 @@ fn order_adt_defs(deps: HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
 
     defn_order
 }
+
+
 
 pub struct VerificationCtxt<'tcx, 'rcx> {
     env: &'rcx Environment<'tcx>,
@@ -240,9 +241,13 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     }
 
     /// Make a shim entry for a trait.
-    fn make_trait_shim_entry(&self, did: LocalDefId, decl: trait_registry::LiteralTraitSpecRef<'rcx>) -> Option<shim_registry::TraitShim> {
+    fn make_trait_shim_entry(
+        &self,
+        did: LocalDefId,
+        decl: radium::LiteralTraitSpecRef<'rcx>,
+    ) -> Option<shim_registry::TraitShim> {
         info!("making shim entry for {did:?}");
-        if let ty::Visibility::Public = self.env.tcx().visibility(did.to_def_id()) {
+        if ty::Visibility::Public == self.env.tcx().visibility(did.to_def_id()) {
             let interned_path = self.get_path_for_shim(did.into());
             let a = shim_registry::TraitShim {
                 path: interned_path,
@@ -259,7 +264,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     fn make_adt_shim_entry(&self, did: DefId, lit: radium::LiteralType) -> Option<shim_registry::AdtShim> {
         info!("making shim entry for {did:?}");
         if did.is_local() {
-            if let ty::Visibility::Public = self.env.tcx().visibility(did) {
+            if ty::Visibility::Public == self.env.tcx().visibility(did) {
                 // only export public items
                 let interned_path = self.get_path_for_shim(did);
                 let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
@@ -460,6 +465,16 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write tuples up to the necessary size
         // TODO
+
+        // write trait specs
+        // TODO: we also need to order these
+        let trait_deps = self.trait_registry.get_trait_deps();
+        let dep_order = order_adt_defs(trait_deps);
+        let trait_decls = self.trait_registry.get_trait_decls();
+        for did in dep_order {
+            let decl = trait_decls.get(&did.as_local().unwrap()).unwrap();
+            write!(spec_file, "{decl}\n").unwrap(); 
+        }
 
         // write translated source code of functions
         code_file
@@ -883,7 +898,7 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
 
     for shim in vcx.shim_registry.get_trait_shims().iter() {
         if let Some(did) = utils::try_resolve_did(vcx.env.tcx(), &shim.path) {
-            let spec = trait_registry::LiteralTraitSpec {
+            let spec = radium::LiteralTraitSpec {
                 name: shim.name.clone(),
                 spec_record: shim.spec_record.clone(),
                 base_spec: shim.base_spec.clone(),
@@ -1027,7 +1042,8 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         let fname = vcx.env.get_item_name(f.to_def_id());
         let meta = vcx.procedure_registry.lookup_function(&f.to_def_id()).unwrap();
 
-        let filtered_attrs = vcx.env.get_attributes_of_function(f.to_def_id(), |x| propagate_method_attr_from_impl(x));
+        let filtered_attrs =
+            vcx.env.get_attributes_of_function(f.to_def_id(), |x| propagate_method_attr_from_impl(x));
 
         let mode = meta.get_mode();
         if mode.is_shim() {
@@ -1204,7 +1220,7 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
 }
 
 /// Register traits.
-fn register_traits<'tcx, 'rcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result<(), String> {
+fn register_traits(vcx: &VerificationCtxt<'_, '_>) -> Result<(), String> {
     let mut traits = vcx.env.get_traits();
 
     for t in traits.iter() {
@@ -1218,12 +1234,10 @@ fn register_traits<'tcx, 'rcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result
                 if def_kind == rustc_hir::def::DefKind::AssocFn {
                     if !vcx.env.has_any_tool_attribute(def_id) {
                         all_have_annots = false;
-                    }
-                    else {
+                    } else {
                         some_has_annot = true;
                     }
                 }
-
             }
         }
         if !all_have_annots && some_has_annot {
@@ -1231,7 +1245,7 @@ fn register_traits<'tcx, 'rcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Result
             continue;
         }
 
-        vcx.trait_registry.register_trait(*t).map_err(|x| format!("{x:?}"));
+        vcx.trait_registry.register_trait(vcx.type_translator, *t).map_err(|x| format!("{x:?}")).map_err(|e| format!("{e:?}"))?;
     }
     Ok(())
 }
@@ -1387,7 +1401,7 @@ where
 
     register_functions(&mut vcx)?;
 
-    register_traits(&mut vcx)?;
+    register_traits(&vcx)?;
 
     register_shims(&mut vcx)?;
 

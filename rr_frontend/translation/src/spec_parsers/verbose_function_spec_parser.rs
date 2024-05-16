@@ -52,10 +52,10 @@ pub trait FunctionSpecParser<'def> {
         F: Fn(Vec<specs::Type<'def>>) -> specs::Type<'def>;
 
     //fn parse_trait_method_spec<'a, F>(
-        //&'a mut self,
-        //attrs: &'a [&'a AttrItem],
-        //ty_params: 
-        //spec: &'a mut radium::FunctionSpecBuilder<'def>,
+    //&'a mut self,
+    //attrs: &'a [&'a AttrItem],
+    //ty_params:
+    //spec: &'a mut radium::FunctionSpecBuilder<'def>,
     //) -> Result<(), String>;
 }
 
@@ -650,7 +650,13 @@ where
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
                 let name = seg.ident.name.as_str();
 
-                match self.handle_common_attributes(name, &buffer, &builder.generic_types, &mut builder.spec, &lfts) {
+                match self.handle_common_attributes(
+                    name,
+                    &buffer,
+                    &builder.generic_types,
+                    &mut builder.spec,
+                    &lfts,
+                ) {
                     Ok(b) => {
                         if !b {
                             let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
@@ -661,9 +667,7 @@ where
                                     let tacs = tacs.value();
                                     builder.add_manual_tactic(&tacs);
                                 },
-                                "capture" => {
-
-                                },
+                                "capture" => {},
                                 _ => {
                                     info!("ignoring function attribute: {:?}", args);
                                 },
@@ -705,7 +709,13 @@ where
                 let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
 
                 let name = seg.ident.name.as_str();
-                match self.handle_common_attributes(name, &buffer, &builder.generic_types, &mut builder.spec, &lfts) {
+                match self.handle_common_attributes(
+                    name,
+                    &buffer,
+                    &builder.generic_types,
+                    &mut builder.spec,
+                    &lfts,
+                ) {
                     Ok(b) => {
                         if !b {
                             let meta: &[specs::LiteralTyParam] = builder.get_ty_params();

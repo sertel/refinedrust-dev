@@ -1,88 +1,192 @@
-From refinedrust Require Import typing.
+From refinedrust Require Import typing shims.
 From iris Require Import options.
 
-Section function_subsume.
+
+(*
+
+trait Foo<T> {
+    type Output;
+    
+    #[rr::params("a", "b")]
+    #[rr::args("#a", "b")]
+    #[rr::exists("y")]
+    #[rr::returns("y")]
+    fn bar<U> (&self, x: U) -> (Self::Output, T, U);
+}
+
+impl Foo<u32> for i32 {
+    
+    type Output = i32;
+    
+    fn bar<U> (&self, x: U) -> (i32, u32, U) {
+        ( *self, 42, x)
+    }
+}
+
+#[rr::params("w")]
+#[rr::args("#w")]
+fn foobar<W, T> (x: &W) where W: Foo<T> {
+    x.bar(true);
+}
+
+fn call_foobar() {
+    foobar(&0);
+}
+
+*)
+
+Definition type_ty `{!typeGS Σ} := sigT type.
+
+
+
+(* Ideas for simplifying: 
+   - have a record of specs for a trait, so that it's clearer that stuff is bundled by trait. 
+*)
+
+(** trait Foo *)
+Section rr.
+Context `{!typeGS Σ}.
+
+Record Foo_spec : Type := {
+  Foo_bar_spec (U_rt : Type) (U_st : syn_type) : function_ty;
+}.
+
+Definition Foo_spec_incl (spec1 spec2 : Foo_spec) : Prop :=
+  (* one entry for every method *)
+  (∀ U_rt U_st, function_subtype (spec1.(Foo_bar_spec) U_rt U_st) (spec2.(Foo_bar_spec) U_rt U_st)).
+
+(*Definition Foo_bar_spec_ty {U_rt : Type} (U_st : syn_type) :=*)
+  (*sigT (λ lfts, sigT (λ A, prod_vec lft lfts → A → fn_params)).*)
+
+Context {Self_rt} (Self_ty : type Self_rt) {T_rt} (T_ty : type T_rt) {Output_rt} (Output_ty : type Output_rt).
+
+Definition Foo_base_spec : Foo_spec := {|
+  Foo_bar_spec U_rt U_st := 
+    existT _ $ existT _ $ fn(∀ ((), ulft_1) : 1 | (a, b, U_ty) : Self_rt * U_rt * type U_rt, (λ _, [(* ? *) ]); #a @ (shr_ref Self_ty ulft_1), b @ U_ty ; (λ π, True)) → ∃ y : _, y @ struct_t (tuple3_sls (ty_syn_type Output_ty) (ty_syn_type T_ty) (ty_syn_type U_ty)) +[ Output_ty; T_ty; U_ty] ; (λ π, True);
+|}.
+
+End rr.
+
+(** impl *)
+Definition Foo_i32_u32_bar_U_def (U_st : syn_type) : function.
+Proof.
+Admitted.
+
+Section rr.
   Context `{!typeGS Σ}.
 
-  (* If I have f ◁ F1, then f ◁ F2. *)
-  (* I can strengthen the precondition and weaken the postcondition *)
-  (*elctx_sat*)
-  (* TODO: think about how closures capture lifetimes in their environment.
-     lifetimes in the capture shouldn't really show up in their spec at trait-level (a purely safety spec).
-     I guess once I want to know something about the captured values (to reason about their functional correctness), I might need to know about lifetimes. However, even then, they should not pose any constraints -- they should just be satisfied, with us only knowing that they live at least as long as the closure body.
+  Definition type_of_Foo_i32_u32_bar_U (U_rt : Type) (U_st : syn_type) :=
+    (fn(∀ ((), ulft_1) : 1 | (a, b, U_ty) : Z * U_rt * type U_rt, (λ _, [(* ? *) ]); #a @ (shr_ref (int i32) ulft_1), b @ U_ty ; (λ π, True)) → ∃ y : _, y @ struct_t (tuple3_sls (IntSynType i32) (IntSynType u32) (ty_syn_type U_ty)) +[ int i32; int i32; U_ty] ; (λ π, True)).
 
-     The point is that I want to say that as long as the closure lifetime is alive, all is fine.
-
-
-     How does the justification that this is fine work?
-     Do I explicitly integrate some existential abstraction?
-      i.e. functions can pose the existence of lifetimes, as long as they are alive under the function lifetime
-
-
-     I don't think I can always just subtype that to use the lifetime of the closure. That would definitely break ghostcell etc. And also not everything might be covariant in the lifetime.
-  *)
-  Lemma subsume_function_ptr π v l1 l2 sts1 sts2 lfts {A B : Type} (F1 : prod_vec lft lfts → A → fn_params) (F2 : prod_vec lft lfts → B → fn_params) T : 
-    subsume (v ◁ᵥ{π} l1 @ function_ptr sts1 F1) (v ◁ᵥ{π} l2 @ function_ptr sts2 F2) T :-
-    and:
-    | drop_spatial;
-        (* TODO could also just require that the layouts are compatible *)
-        exhale ⌜sts1 = sts2⌝;
-        ∀ (κs : prod_vec lft lfts),
-        (* NOTE: this is more restrictive than necessary *)
-        exhale ⌜∀ a b ϝ, (F1 κs a).(fp_elctx) ϝ = (F2 κs b).(fp_elctx) ϝ⌝;
-        ∀ (b : B),
-        inhale (fp_Pa (F2 κs b) π);
-        ls ← iterate: fp_atys (F2 κs b) with [] {{ ty T ls,
-               ∀ l : loc,
-                inhale (l ◁ₗ[π, Owned false] #(projT2 ty).2 @ ◁ (projT2 ty).1); return T (ls ++ [l]) }};
-        ∃ (a : A),
-        exhale ⌜length (fp_atys (F1 κs a)) = length (fp_atys (F2 κs b))⌝%I;
-        iterate: zip ls (fp_atys (F1 κs a)) {{ e T, exhale (e.1 ◁ₗ[π, Owned false] #(projT2 e.2).2 @ ◁ (projT2 e.2).1); return T }};
-        exhale (fp_Pa (F1 κs a) π);
-        (* show that F1.ret implies F2.ret *)
-        ∀ (vr : val) a2,
-        inhale ((F1 κs a).(fp_fr) a2).(fr_R) π;
-        inhale (vr ◁ᵥ{π} ((F1 κs a).(fp_fr) a2).(fr_ref) @ ((F1 κs a).(fp_fr) a2).(fr_ty));
-        ∃ b2,
-        exhale ((F2 κs b).(fp_fr) b2).(fr_R) π;
-        exhale (vr ◁ᵥ{π} ((F2 κs b).(fp_fr) b2).(fr_ref) @ ((F2 κs b).(fp_fr) b2).(fr_ty));
-        done
-    | exhale ⌜l1 = l2⌝; return T. 
+  Lemma Foo_i32_u32_bar_U_has_type π :
+    ∀ (U_rt : Type) (U_st : syn_type),
+    ⊢ typed_function π (Foo_i32_u32_bar_U_def U_st) [(* TODO *)] (type_of_Foo_i32_u32_bar_U U_rt U_st).
   Proof.
-    iIntros "(#Ha & (-> & HT))".
-    iIntros "Hv". iFrame.
-    iDestruct "Ha" as "(-> & Ha)".
-    iEval (rewrite /ty_own_val/=) in "Hv".
-    iDestruct "Hv" as "(%fn & %local_sts & -> & Hen & %Halg1 & %Halg2 & #Htf)".
-    iEval (rewrite /ty_own_val/=). 
-    iExists fn, local_sts. iR. iFrame. 
-    iSplitR. { done. }
-    iR. 
-    iNext. 
-    
-    rewrite /typed_function.
-    iIntros (κs b ϝ) "!>".
-    iIntros (Hargly Hlocally lsa lsv).
-    iIntros "(Hcred & Hargs & Hlocals & Hpre)".
-    iSpecialize ("Ha" $! κs).
-    iDestruct "Ha" as "(%Helctx & Ha)".
-    iSpecialize ("Ha" $! b with "Hpre").
-    (*Locate "|".*)
-    (*
-    Search Z.divide.
-    Search aligned_to
-    is_aligned_to
-    iterate_elim0
-    Locate "iterate:".
-    iDestruct ("Ha" with "[Hargs]") as "(%a & %Hlen & Hargs & Hpre & Ha)".
-     *)
-
-
   Admitted.
-  Definition subsume_function_ptr_inst := [instance subsume_function_ptr].
-  Global Existing Instance subsume_function_ptr_inst  | 10.
-  (* TODO: maybe also make this a subsume_full instance *)
-End function_subsume.
+
+  Definition Foo_i32_u32_spec : Foo_spec := {|
+    Foo_bar_spec U_rt U_st := existT _ $ existT _ $ type_of_Foo_i32_u32_bar_U U_rt U_st;
+  |}.
+
+  Lemma Foo_i32_u32_incl : 
+    Foo_spec_incl (Foo_i32_u32_spec) (Foo_base_spec (int i32) (int u32) (int i32)).
+  Proof.
+  Admitted.
+End rr.
+
+(** foobar *)
+Definition foobar_def (W_st : syn_type) (T_st : syn_type) (Foo_W_T_Output_st : syn_type) (Foo_W_T_bar_bool_loc : loc) : function.
+Proof.
+
+Admitted.
+
+Section rr.
+Context `{!typeGS Σ}.
+
+(* what about the arg syntype? 
+    Since the semantic types are not fixed, I need to pass them as parameters.
+    I know which arguments this takes modulo generics. 
+    For generics, I need to substitute both the ones from self/the trait and from the method, then I should be good. 
+
+*)
+
+Definition type_of_foobar 
+  (W_rt : Type) (W_st : syn_type) (T_rt : Type) (T_st : syn_type)
+  (* we also need to quantify over the associated types here *)
+  (Foo_W_T_Output_rt : Type) (Foo_W_T_Output_st : syn_type)
+  (* we quantify over the specification for Foo *)
+  (Foo_W_T_spec : Foo_spec) :=
+  fn(∀ ((), ulft_1) : 1 | (a, W_ty, T_ty, Foo_W_T_Output_ty) : W_rt * type W_rt * type T_rt * type Foo_W_T_Output_rt, (λ _, [(* ? *) ]); #a @ (shr_ref W_ty ulft_1) ; (λ π, ⌜ty_syn_type W_ty = W_st⌝ ∗ ⌜ty_syn_type T_ty = T_st⌝ ∗ ⌜ty_syn_type Foo_W_T_Output_ty = Foo_W_T_Output_st⌝ ∗ 
+      (* we require that the specification we quantified over satisfies the expected specification (Foo_base_spec is the specification we expect here, but this could also be an overridden specification we assume) *)
+      ⌜Foo_spec_incl Foo_W_T_spec (Foo_base_spec W_ty T_ty Foo_W_T_Output_ty)⌝
+    )) → ∃ y : _, y @ unit_t ; (λ π, True).
+
+Lemma foobar_has_type π :
+  ∀ (W_rt : Type) (W_st : syn_type) (T_rt : Type) (T_st : syn_type)
+    (* also quantify over the Output (per trait instance we require) *)
+    (Foo_W_T_Output_rt : Type) (Foo_W_T_Output_st : syn_type)
+    (* also quantify over the specification of the trait (per trait instance) *)
+    (Foo_W_T_spec : Foo_spec)
+    (* quantify over the method locs (per generic instance per method per trait instance) *)
+    (Foo_W_T_bar_bool_loc : loc),
+  (* require type assignment for methods, instantiating the generics in the spec accordingly *)
+  Foo_W_T_bar_bool_loc ◁ᵥ{π} Foo_W_T_bar_bool_loc @ function_ptr [PtrSynType; BoolSynType] (proj_function_ty $ Foo_W_T_spec.(Foo_bar_spec) bool BoolSynType) -∗
+  typed_function π (foobar_def W_st T_st Foo_W_T_Output_st Foo_W_T_bar_bool_loc) [(* TODO *)] (type_of_foobar W_rt W_st T_rt T_st Foo_W_T_Output_rt Foo_W_T_Output_st Foo_W_T_spec). 
+Proof.
+Admitted.
+
+End rr.
+
+
+(** call_foobar *)
+Definition call_foobar_def (foobar_i32_u32_i32_loc : loc) : function.
+Proof.
+Admitted.
+
+Section rr.
+  Context `{!typeGS Σ}.
+
+Definition type_of_call_foobar :=
+  fn(∀ (()) : 0 | () : (), (λ _, []); (λ π, True)) → ∃ y : _, y @ unit_t ; (λ π, True).
+
+
+Lemma call_foobar_has_type π :
+  ∀ (foobar_i32_u32_i32_loc : loc), 
+  foobar_i32_u32_i32_loc ◁ᵥ{π} foobar_i32_u32_i32_loc @ function_ptr [(* TODO *)] (type_of_foobar Z (IntSynType i32) Z (IntSynType u32) Z (IntSynType i32)
+    (* we have to provide the spec we have for the trait impl we give it *)
+    (Foo_base_spec (int i32) (int u32) (int i32))) -∗
+  typed_function π (call_foobar_def foobar_i32_u32_i32_loc) [(* TODO *)] (type_of_call_foobar).
+Proof.
+Admitted.
+
+End rr.
+
+(* Adequacy (linking all this together) *)
+
+(* 
+  1. Allocate location for Foo_i32_u32_bar_bool. By Foo_i32_u32_bar_U_has_type, this is well-typed
+  2. Allocate location for foobar instantiated to W = i32, T = u32, Output = i32 and the preceding location. 
+    We instantiate foobar_has_type with these + Foo_base_spec instantiated to these types.
+    Thus, it has type type_of_foobar ...
+  3. Allocate location for call_foobar, using the preceding location.
+      Use call_foobar_has_type with the preceding assumption. 
+      It's important that the specification here lines up (in step 2 we picked Foo_base_spec to instantiate foobar, which needs to be the specification we actually have proved and assume now)
+      Now we have a closed typing proof for call_foobar.
+ *)
+
+
+(* How does this change the design?
+    - a trait has: a spec record, a base spec record, and a subsumption definition for the spec record; no more phys record; no more phys_has_spec
+    - we introduce associated types similarly to other generics
+      + add this to the localtraitscope
+    - we assume a spec record for every trait impl
+      + add this to the localtraitscope
+    - we assume in the spec of a function using a trait that the spec record subsumes the necessary function impl
+    - we require an instance of a function as usual when we use it.
+      However, this is a bit different, since we project out the spec from the spec record
+      
+ *)
+
 
 
 (*
@@ -135,6 +239,13 @@ Definition MyAdd_has_spec (π : thread_id) (impl: MyAdd_phys) (spec: MyAdd_spec)
   ⌜ty_syn_type (projT2 spec.(MyAdd_Output_ty)) = impl.(MyAdd_Output_st)⌝ ∗
   impl.(MyAdd_my_add_loc) ◁ᵥ{π} impl.(MyAdd_my_add_loc) @ function_ptr impl.(MyAdd_my_add_arg_sts) (projT2 $ projT2 spec.(MyAdd_my_add_spec)) ∗
   True.
+
+(* if I assume an implementation for a generic:
+    - should I explicitly close under subsumed specs? i.e. quantify over a spec?
+    - or should I just quantify over the associated types, and require that I have the base_spec (potentially with an override)?
+      + I prefer this. 
+  
+*)
 
 End rr.
 

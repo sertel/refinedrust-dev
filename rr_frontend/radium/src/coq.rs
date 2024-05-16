@@ -8,6 +8,7 @@ use std::fmt;
 use std::fmt::{Display, Formatter, Write};
 
 use indent_write::fmt::IndentWriter;
+use itertools::Itertools;
 
 pub(crate) const BASE_INDENT: &'static str = "  ";
 
@@ -31,13 +32,13 @@ impl fmt::Display for CoqPath {
 /// Represents an application of a term to an rhs.
 /// (commonly used for layouts and instantiating them with generics).
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct CoqAppTerm<T> {
+pub struct CoqAppTerm<T, U> {
     pub(crate) lhs: T,
-    pub(crate) rhs: Vec<String>,
+    pub(crate) rhs: Vec<U>,
 }
 
-impl<T> CoqAppTerm<T> {
-    pub fn new(lhs: T, rhs: Vec<String>) -> Self {
+impl<T, U> CoqAppTerm<T, U> {
+    pub fn new(lhs: T, rhs: Vec<U>) -> Self {
         Self { lhs, rhs }
     }
 
@@ -49,9 +50,10 @@ impl<T> CoqAppTerm<T> {
     }
 }
 
-impl<T> fmt::Display for CoqAppTerm<T>
+impl<T, U> fmt::Display for CoqAppTerm<T, U>
 where
     T: Display,
+    U: Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.rhs.len() == 0 {
@@ -121,6 +123,10 @@ pub enum CoqType {
     Gname,
     /// a plist with a given type constructor over a list of types
     PList(String, Vec<CoqType>),
+    /// the semantic type of a function
+    FunctionTy,
+    /// the Coq type Prop of propositions
+    Prop,
 }
 impl Display for CoqType {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
@@ -174,6 +180,12 @@ impl Display for CoqType {
                 }
                 write!(f, "]")
             },
+            Self::FunctionTy => {
+                write!(f, "function_ty")
+            },
+            Self::Prop => {
+                write!(f, "Prop")
+            },
         }
     }
 }
@@ -214,6 +226,8 @@ impl CoqType {
             Self::Z => true,
             Self::Bool => true,
             Self::Gname => true,
+            Self::FunctionTy => true,
+            Self::Prop => true,
         }
     }
 
@@ -256,28 +270,90 @@ impl CoqType {
             Self::Unit => (),
             Self::Z => (),
             Self::Bool => (),
+            Self::FunctionTy => (),
+            Self::Prop => (),
         }
     }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct CoqParamList(pub Vec<(CoqName, CoqType)>);
+pub struct CoqParam {
+    /// the name
+    pub name: CoqName,
+    /// the type
+    pub ty: CoqType,
+    /// implicit or not?
+    pub implicit: bool,
+    /// does this depend on Σ?
+    pub depends_on_sigma: bool,
+}
+
+impl CoqParam {
+    pub fn new(name: CoqName, ty: CoqType, implicit: bool) -> Self {
+        let depends_on_sigma = if let CoqType::Literal(ref lit) = ty { lit.contains('Σ') } else { false };
+        Self {
+            name,
+            ty,
+            implicit,
+            depends_on_sigma,
+        }
+    }
+
+    pub fn with_name(&self, name: String) -> Self {
+        Self::new(CoqName::Named(name), self.ty.clone(), self.implicit)
+    }
+
+    pub fn format(&self, f: &mut Formatter, make_implicits: bool) -> fmt::Result {
+        if self.implicit {
+            if make_implicits {
+                if let CoqName::Named(ref name) = self.name {
+                    write!(f, "`{{{} : !{}}}", name, self.ty)
+                } else {
+                    write!(f, "`{{!{}}}", self.ty)
+                }
+            } else {
+                if let CoqName::Named(ref name) = self.name {
+                    write!(f, "`({} : !{})", name, self.ty)
+                } else {
+                    write!(f, "`(!{})", self.ty)
+                }
+            }
+        } else {
+            write!(f, "({} : {})", self.name, self.ty)
+        }
+    }
+}
+
+impl Display for CoqParam {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        self.format(f, true)
+    }
+}
+
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct CoqParamList(pub Vec<CoqParam>);
 
 impl CoqParamList {
     pub const fn empty() -> Self {
         Self(vec![])
+    }
+
+    /// Make using terms for this list of binders
+    pub fn make_using_terms(&self) -> Vec<GallinaTerm> {
+        self.0.iter().map(|x| GallinaTerm::Literal(format!("{}", x.name))).collect()
     }
 }
 
 impl Display for CoqParamList {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut needs_sep = false;
-        for (name, ty) in self.0.iter() {
+        for param in self.0.iter() {
             if needs_sep {
                 write!(f, " ")?;
             }
             needs_sep = true;
-            write!(f, "({} : {})", name, ty)?;
+            write!(f, "{}", param)?;
         }
         Ok(())
     }
@@ -339,18 +415,77 @@ impl Display for CoqProofScript {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct CoqRecordBodyItem {
+    pub name: String,
+    pub params: CoqParamList,
+    pub term: GallinaTerm,
+}
+
+impl Display for CoqRecordBodyItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let mut writer = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
+        write!(writer, "{} {} :=\n{};", self.name, self.params, self.term)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct RecordBodyTerm {
+    pub items: Vec<CoqRecordBodyItem>,
+}
+
+impl Display for RecordBodyTerm {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{{|\n")?;
+        let mut f2 = IndentWriter::new(BASE_INDENT, &mut *f);
+        for it in &self.items {
+            write!(f2, "{}\n", it)?;
+        }
+        write!(f, "|}}\n")
+    }
+}
+
 /// A Coq Gallina term.
 #[derive(Clone, Debug)]
 pub enum GallinaTerm {
+    /// a literal
     Literal(String),
+    /// Application
+    App(Box<CoqAppTerm<GallinaTerm, GallinaTerm>>),
+    /// a record body
+    RecordBody(RecordBodyTerm),
+    /// Projection a.(b) from a record
+    RecordProj(Box<GallinaTerm>, String),
+    /// Universal quantifiers
+    All(CoqParamList, Box<GallinaTerm>),
+    /// Existential quantifiers
+    Exists(CoqParamList, Box<GallinaTerm>),
+    /// Infix operators 
+    Infix(String, Vec<GallinaTerm>),
 }
 
 impl Display for GallinaTerm {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Self::Literal(lit) => {
-                write!(f, "{}", lit)
+                let mut f2 = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
+                write!(f2, "{lit}")
             },
+            Self::RecordBody(b) => {
+                write!(f, "{b}")
+            },
+            Self::RecordProj(rec, component) => {
+                write!(f, "{rec}.({component})")
+            },
+            Self::App(box a) => write!(f, "{a}"),
+            Self::All(binders, box body) => write!(f, "∀ {binders}, {body}"),
+            Self::Exists(binders, box body) => write!(f, "∃ {binders}, {body}"),
+            Self::Infix(op, terms) => 
+                if terms.is_empty() {
+                    write!(f, "True")
+                } else {
+                    write!(f, "{}", terms.iter().format(" {op} "))
+                },
         }
     }
 }
@@ -466,11 +601,84 @@ impl Display for CoqInstanceDecl {
 }
 
 #[derive(Clone, Debug)]
+pub struct CoqRecordDeclItem {
+    pub name: String,
+    pub params: CoqParamList,
+    pub ty: CoqType,
+}
+
+impl Display for CoqRecordDeclItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} {} : {}", self.name, self.params, self.ty)
+    }
+}
+
+/// A record declaration.
+#[derive(Clone, Debug)]
+pub struct CoqRecord {
+    pub name: String,
+    pub params: CoqParamList,
+    pub ty: CoqType,
+    pub constructor: Option<String>,
+    pub body: Vec<CoqRecordDeclItem>,
+}
+
+impl Display for CoqRecord {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        let constructor = self.constructor.clone().unwrap_or("".to_string());
+        write!(f, "Record {} {} : {} := {constructor} {{\n", self.name, self.params, self.ty)?;
+        let mut f2 = IndentWriter::new(BASE_INDENT, &mut *f);
+        for it in self.body.iter() {
+            write!(f2, "{it};\n")?;
+        }
+        write!(f, "}}.\n")
+    }
+}
+
+/// A Context declaration.
+#[derive(Clone, Debug)]
+pub struct CoqContextDecl {
+    pub items: CoqParamList,
+}
+
+impl Display for CoqContextDecl {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Context {}.\n", self.items)
+    }
+}
+
+/// A Coq definition
+#[derive(Clone, Debug)]
+pub struct CoqDefinition {
+    pub name: String,
+    pub params: CoqParamList,
+    pub ty: Option<CoqType>,
+    pub body: CoqDefBody,
+}
+
+impl Display for CoqDefinition {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        if let Some(ref ty) = self.ty {
+            write!(f, "Definition {} {} : {ty}{}", self.name, self.params, self.body)
+        }
+        else {
+            write!(f, "Definition {} {}{}", self.name, self.params, self.body)
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
 pub enum CoqTopLevelAssertion {
     /// A declaration of a Coq Inductive
     InductiveDecl(CoqInductive),
     /// A declaration of a Coq instance
     InstanceDecl(CoqInstanceDecl),
+    /// A declaration of a Coq record
+    RecordDecl(CoqRecord),
+    /// A declaration of Coq context items
+    ContextDecl(CoqContextDecl),
+    /// A Coq Definition
+    Definition(CoqDefinition),
     /// A Coq comment
     Comment(String),
 }
@@ -480,6 +688,9 @@ impl Display for CoqTopLevelAssertion {
         match self {
             Self::InductiveDecl(inductive) => write!(f, "{inductive}")?,
             Self::InstanceDecl(decl) => write!(f, "{decl}")?,
+            Self::RecordDecl(decl) => write!(f, "{decl}")?,
+            Self::ContextDecl(decl) => write!(f, "{decl}")?,
+            Self::Definition(def) => write!(f, "{def}")?,
             Self::Comment(comm) => write!(f, "(* {comm} *)")?,
         }
         Ok(())

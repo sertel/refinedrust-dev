@@ -23,7 +23,7 @@ compiletest_rs = "0.10"
 config = "0.14"
 csv = "1"
 datafrog = "2"
-derive_more = { version = "1.0.0-beta.6", features = ["display"] }
+derive_more = { version = "1.0.0-beta.6", features = ["display", "constructor"] }
 env_logger = "0.11"
 glob = "0.3"
 indent_write = "2"
@@ -41,6 +41,7 @@ toml = "0.8"
 topological-sort = "0.2"
 typed-arena = "2"
 unicode-xid = "0.2"
+itertools = "0.12.1"
 
 [workspace.package]
 edition = "2021"

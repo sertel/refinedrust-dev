@@ -35,7 +35,9 @@ impl<'a, 'tcx> CollectPrustiSpecVisitor<'a, 'tcx> {
         }
     }
 
-    pub fn get_results(self) -> (Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>) {
+    pub fn get_results(
+        self,
+    ) -> (Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>) {
         (self.functions, self.modules, self.statics, self.consts, self.traits)
     }
 
@@ -80,8 +82,7 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
             let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
             trace!("Add module {} to result", item_def_path);
             self.modules.push(def_id);
-        }
-        else if let hir::ItemKind::Trait(..) = item.kind {
+        } else if let hir::ItemKind::Trait(..) = item.kind {
             let def_id = item.hir_id().owner.def_id;
             let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
             trace!("Add trait {} to result", item_def_path);

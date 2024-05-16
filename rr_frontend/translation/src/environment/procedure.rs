@@ -24,7 +24,6 @@ pub type BasicBlockIndex = mir::BasicBlock;
 pub struct Procedure<'tcx> {
     tcx: TyCtxt<'tcx>,
     proc_def_id: ProcedureDefId,
-    ty_params: ty::GenericArgsRef<'tcx>,
     mir: Rc<Mir<'tcx>>,
     real_edges: RealEdges,
     loop_info: loops::ProcedureLoops,
@@ -44,24 +43,9 @@ impl<'tcx> Procedure<'tcx> {
         //let nonspec_basic_blocks = build_nonspec_basic_blocks(&mir, &real_edges, &tcx);
         let loop_info = loops::ProcedureLoops::new(&mir, &real_edges);
 
-        let ty = tcx.type_of(proc_def_id).instantiate_identity();
-        let ty_params = match ty.kind() {
-            ty::TyKind::FnDef(_, params) => params,
-            ty::TyKind::Closure(_, closure_args) => {
-                assert!(ty.is_closure());
-                let clos = closure_args.as_closure();
-                let parent_args = clos.parent_args();
-
-                // TODO: this doesn't include lifetime parameters specific to this closure...
-                tcx.mk_args(parent_args)
-            },
-            _ => panic!("Procedure::new called on a procedure whose type is not TyKind::FnDef!"),
-        };
-
         Self {
             tcx,
             proc_def_id,
-            ty_params,
             mir,
             real_edges,
             loop_info,
@@ -102,11 +86,6 @@ impl<'tcx> Procedure<'tcx> {
     /// Get the typing context.
     pub const fn get_tcx(&self) -> TyCtxt<'tcx> {
         self.tcx
-    }
-
-    /// Get the type parameters of this procedure.
-    pub const fn get_type_params(&self) -> ty::GenericArgsRef<'tcx> {
-        self.ty_params
     }
 
     /// Get an absolute `def_path`. Note: not preserved across compilations!

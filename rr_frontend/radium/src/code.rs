@@ -286,11 +286,11 @@ pub enum Expr {
         e: Box<Expr>,
     },
     StructInitE {
-        sls: CoqAppTerm<String>,
+        sls: CoqAppTerm<String, String>,
         components: Vec<(String, Expr)>,
     },
     EnumInitE {
-        els: CoqAppTerm<String>,
+        els: CoqAppTerm<String, String>,
         variant: String,
         ty: RustType,
         initializer: Box<Expr>,
@@ -1007,7 +1007,8 @@ impl<'def> Function<'def> {
         // write coq parameters
         let has_params = !self.spec.coq_params.is_empty()
             || !self.other_functions.is_empty()
-            || !self.used_statics.is_empty();
+            || !self.used_statics.is_empty()
+            || !self.spec.ty_params.is_empty();
         if has_params {
             write!(f, "∀ ")?;
             for param in self.spec.coq_params.iter() {
@@ -1018,6 +1019,12 @@ impl<'def> Function<'def> {
                     write!(f, "({} : {})", param.name, param.ty)?;
                 }
                 write!(f, " ")?;
+            }
+
+            // write ty_params
+            for names in &self.spec.ty_params {
+                write!(f, "{} ", CoqParam::new(CoqName::Named(names.refinement_type.to_string()), CoqType::Type, false))?;
+                write!(f, "{} ", CoqParam::new(CoqName::Named(names.syn_type.to_string()), CoqType::SynType, false))?;
             }
 
             // assume locations for other functions
@@ -1055,7 +1062,10 @@ impl<'def> Function<'def> {
             write!(f, "⊢ ")?;
         } else {
             for proc_use in self.other_functions.iter() {
-                info!("Using other function: {:?} with insts: {:?}", proc_use.spec_name, proc_use.type_params);
+                info!(
+                    "Using other function: {:?} with insts: {:?}",
+                    proc_use.spec_name, proc_use.type_params
+                );
                 // generate an instantiation for the generic type arguments, by getting the refinement types
                 // which need to be passed at the Coq level
                 let mut gen_rfn_type_inst = Vec::new();
@@ -1067,7 +1077,8 @@ impl<'def> Function<'def> {
                     let st = p.get_syn_type();
                     gen_rfn_type_inst.push(format!("({})", st));
                 }
-                let arg_syntys: Vec<String> = proc_use.syntype_of_all_args.iter().map(|st| st.to_string()).collect();
+                let arg_syntys: Vec<String> =
+                    proc_use.syntype_of_all_args.iter().map(|st| st.to_string()).collect();
 
                 write!(
                     f,
@@ -1115,6 +1126,10 @@ impl<'def> Function<'def> {
                 write!(f, "{} ", param.name)?;
             }
         }
+        for names in &self.spec.ty_params {
+            write!(f, "{} {} ", names.refinement_type, names.syn_type)?;
+        }
+
 
         write!(f, ").\n")
     }
@@ -1159,7 +1174,7 @@ impl<'def> Function<'def> {
             }
 
             let mut p_count = 0;
-            for (n, _) in params.iter().chain(ty_params.iter()) {
+            for (n, _) in params.iter() {
                 if p_count > 1 {
                     ip_params.push_str(" ]");
                 }
@@ -1167,8 +1182,15 @@ impl<'def> Function<'def> {
                 p_count += 1;
                 ip_params.push_str(format!("{}", n).as_str());
             }
-            for (n, _) in ty_params.iter() {
-                write!(f, "let {} := fresh \"{}\" in\n", n, n)?;
+            for names in ty_params.iter() {
+                if p_count > 1 {
+                    ip_params.push_str(" ]");
+                }
+                ip_params.push_str(" ");
+                p_count += 1;
+                ip_params.push_str(format!("{}", names.type_term).as_str());
+
+                write!(f, "let {} := fresh \"{}\" in\n", names.type_term, names.type_term)?;
             }
 
             if p_count > 1 {
@@ -1306,7 +1328,12 @@ pub struct UsedProcedure<'def> {
     pub syntype_of_all_args: Vec<SynType>,
 }
 impl<'def> UsedProcedure<'def> {
-    pub fn new(loc_name: String, spec_name: String, type_params: Vec<Type<'def>>, syntypes_of_args: Vec<SynType>) -> Self {
+    pub fn new(
+        loc_name: String,
+        spec_name: String,
+        type_params: Vec<Type<'def>>,
+        syntypes_of_args: Vec<SynType>,
+    ) -> Self {
         Self {
             loc_name,
             spec_name,
@@ -1366,10 +1393,7 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Require another function to be available.
-    pub fn require_function(
-        &mut self,
-        proc_use: UsedProcedure<'def>,
-    ) {
+    pub fn require_function(&mut self, proc_use: UsedProcedure<'def>) {
         self.other_functions.push(proc_use);
     }
 
@@ -1427,48 +1451,6 @@ impl<'def> FunctionBuilder<'def> {
             panic!("registered loop invariant multiple times");
         }
     }
-
-    fn add_generics_to_spec(&mut self) {
-        // push generic type parameters to the spec builder
-        for names in self.generic_types.iter() {
-            // TODO(cleanup): this currently regenerates the names for ty + rt, instead of using
-            // the existing names
-            self.spec
-                .add_coq_param(CoqName::Named(names.refinement_type.to_string()), CoqType::Type, false)
-                .unwrap();
-            self.spec
-                .add_coq_param(
-                    CoqName::Unnamed,
-                    CoqType::Literal(format!("Inhabited {}", names.refinement_type)),
-                    true,
-                )
-                .unwrap();
-            self.spec
-                .add_coq_param(CoqName::Named(names.syn_type.to_string()), CoqType::SynType, false)
-                .unwrap();
-            self.spec
-                .add_ty_param(
-                    CoqName::Named(names.type_term.clone()),
-                    CoqType::Ttype(Box::new(CoqType::Literal(names.refinement_type.clone()))),
-                )
-                .unwrap();
-
-            // Add assumptions that the syntactic type of the semantic argument matches with the
-            // assumed syntactic type.
-            let st_precond = IProp::Pure(format!("ty_syn_type {} = {}", names.type_term, names.syn_type));
-            // We prepend these conditions so that this information can already be used to simplify
-            // the other assumptions.
-            self.spec.prepend_precondition(st_precond).unwrap();
-
-            // add assumptions that reads/writes to the generic are allowed
-            let write_precond = IProp::Pure(format!("ty_allows_writes {}", names.type_term));
-            let read_precond = IProp::Pure(format!("ty_allows_reads {}", names.type_term));
-            let sc_precond = IProp::Atom(format!("ty_sidecond {}", names.type_term));
-            self.spec.add_precondition(write_precond).unwrap();
-            self.spec.add_precondition(read_precond).unwrap();
-            self.spec.add_precondition(sc_precond).unwrap();
-        }
-    }
 }
 
 impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
@@ -1501,7 +1483,9 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
             .collect();
         parameters.append(&mut gen_st_parameters);
 
-        self.add_generics_to_spec();
+        for names in &self.generic_types {
+            self.spec.add_ty_param(names.clone());
+        }
         let spec = self.spec.into_function_spec(&self.function_name, &self.spec_name);
 
         let code = FunctionCode {
@@ -1526,7 +1510,9 @@ impl<'def> Into<Function<'def>> for FunctionBuilder<'def> {
 
 impl<'def> Into<FunctionSpec<'def>> for FunctionBuilder<'def> {
     fn into(mut self) -> FunctionSpec<'def> {
-        self.add_generics_to_spec();
+        for names in self.generic_types {
+            self.spec.add_ty_param(names.clone());
+        }
         self.spec.into_function_spec(&self.function_name, &self.spec_name)
     }
 }
