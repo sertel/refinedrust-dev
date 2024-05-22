@@ -133,8 +133,8 @@ Ltac liExtensible_to_i2p_hook P bind cont ::=
       cont uconstr:(((_ : ResolveGhost π E L m lb l lt b r) T))
   | find_observation ?rt ?γ ?mode ?T =>
       cont uconstr:(((_ : FindObservation rt γ mode) T))
-  | typed_on_endlft ?π ?E ?L ?κ ?worklist ?T =>
-      cont uconstr:(((_ : TypedOnEndlft π E L κ worklist) T))
+  | typed_on_endlft ?E ?L ?κ ?worklist ?T =>
+      cont uconstr:(((_ : TypedOnEndlft E L κ worklist) T))
   | typed_on_endlft_trigger ?E ?L ?key ?P ?T =>
       cont uconstr:(((_ : TypedOnEndlftTrigger E L key P) T))
   | introduce_with_hooks ?E ?L ?P ?T =>
@@ -560,7 +560,7 @@ Ltac liRContextExtractInit :=
       match envs with
       | Envs _ ?spatial _ =>
           let tctx := gather_location_list spatial in
-          notypeclasses refine (tac_fast_apply (typed_context_fold_extract_init tctx E L κ T) _)
+          notypeclasses refine (tac_fast_apply (typed_context_fold_extract_init tctx _ E L κ T) _)
       | _ => fail 1000 "gather_tctx: cannot determine Iris context"
       end
   end.
