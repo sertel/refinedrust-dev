@@ -126,7 +126,10 @@ impl<'def> TypeTranslationScope<'def> {
                         v.push(Some(lit_ty));
                     },
                     _ => {
-                        panic!("enter_generic_scope: not a type parameter");
+                        return Err(TranslationError::UnsupportedFeature {
+                            description: "RefinedRust does currently not support non-type generic arguments"
+                                .to_string(),
+                        });
                     },
                 },
 
@@ -1395,9 +1398,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 if adt.is_box() {
                     // extract the type parameter
                     // the second parameter is the allocator, which we ignore for now
-                    assert!(substs.len() == 2);
-                    let ty = substs[0].expect_ty();
-                    let translated_ty = self.translate_type_with_deps(ty, &mut *state)?;
+                    let [ty, _] = substs.as_slice() else {
+                        return Err(TranslationError::UnsupportedFeature {
+                            description: format!("unsupported ADT {:?}", ty),
+                        });
+                    };
+
+                    let translated_ty = self.translate_type_with_deps(ty.expect_ty(), &mut *state)?;
                     return Ok(radium::Type::BoxType(Box::new(translated_ty)));
                 }
 

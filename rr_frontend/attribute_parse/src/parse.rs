@@ -512,23 +512,23 @@ where
     U: ?Sized,
 {
     fn parse(input: ParseStream, _: &U) -> ParseResult<Self> {
-        let lit = input.expect_literal()?;
-        match lit.0.kind {
+        let (lit, span) = input.expect_literal()?;
+        match lit.kind {
             LitKind::Integer => {
-                let sym = lit.0.symbol;
+                let sym = lit.symbol;
 
                 let Some((digits, suffix)) = value::parse_lit_int(&sym.to_string()) else {
-                    panic!("Not an integer literal: {}", sym);
+                    return Err(ParseError::OtherErr(span, format!("Not an integer literal: {}", sym)));
                 };
 
                 Ok(Self {
-                    span: lit.1,
-                    sym: lit.0.symbol,
+                    span,
+                    sym: lit.symbol,
                     digits,
                     suffix,
                 })
             },
-            _ => Err(ParseError::UnexpectedLitKind(LitKind::Integer, lit.0.kind)),
+            _ => Err(ParseError::UnexpectedLitKind(LitKind::Integer, lit.kind)),
         }
     }
 }

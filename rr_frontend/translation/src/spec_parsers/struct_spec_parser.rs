@@ -118,9 +118,10 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let spec = specs::TyOwnSpec::new(loc_str, rfn_str, type_str, true, annot_meta);
                     Ok(Self::Type(spec))
                 },
-                _ => {
-                    panic!("invalid macro command: {:?}", macro_cmd.value());
-                },
+                _ => Err(parse::ParseError::OtherErr(
+                    input.pos().unwrap(),
+                    format!("invalid macro command: {:?}", macro_cmd.value()),
+                )),
             }
         } else {
             let name_or_prop_str: parse::LitStr = input.parse(meta)?;
@@ -160,9 +161,7 @@ impl<U> parse::Parse<U> for InvariantSpecFlags {
             "plain" => Ok(Self(specs::InvariantSpecFlags::Plain)),
             "na" => Ok(Self(specs::InvariantSpecFlags::NonAtomic)),
             "atomic" => Ok(Self(specs::InvariantSpecFlags::Atomic)),
-            _ => {
-                panic!("invalid ADT mode: {:?}", mode.value())
-            },
+            _ => Err(parse::ParseError::OtherErr(input.pos().unwrap(), "invalid ADT mode".to_string())),
         }
     }
 }

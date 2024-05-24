@@ -169,9 +169,10 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let (term, _meta) = process_coq_literal(&term.value(), *meta);
                     Ok(Self::Linktime(term))
                 },
-                _ => {
-                    panic!("invalid macro command: {:?}", macro_cmd.value());
-                },
+                _ => Err(parse::ParseError::OtherErr(
+                    input.pos().unwrap(),
+                    format!("invalid macro command: {:?}", macro_cmd.value()),
+                )),
             }
         } else {
             let name_or_prop_str: parse::LitStr = input.parse(meta)?;

@@ -685,10 +685,6 @@ impl Display for FunctionCode {
             )
         }
 
-        if self.basic_blocks.is_empty() {
-            panic!("Function has no basic block");
-        }
-
         let params = display_list!(&self.required_parameters, " ", fmt_params);
         let args = display_list!(&self.stack_layout.args, ";\n", fmt_variable);
         let locals = display_list!(&self.stack_layout.locals, ";\n", fmt_variable);

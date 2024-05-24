@@ -1608,58 +1608,53 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// generics.
     fn call_expr_op_split_inst(
         &self,
-        op: &Operand<'tcx>,
+        constant: &Constant<'tcx>,
     ) -> Result<(DefId, ty::PolyFnSig<'tcx>, ty::GenericArgsRef<'tcx>, ty::PolyFnSig<'tcx>), TranslationError>
     {
-        match op {
-            Operand::Constant(box Constant { literal, .. }) => {
-                match literal {
-                    ConstantKind::Ty(c) => {
-                        match c.ty().kind() {
-                            TyKind::FnDef(def, args) => {
-                                let ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(def);
+        match constant.literal {
+            ConstantKind::Ty(c) => {
+                match c.ty().kind() {
+                    TyKind::FnDef(def, args) => {
+                        let ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(def);
 
-                                let ty_ident = ty.instantiate_identity();
-                                assert!(ty_ident.is_fn());
-                                let ident_sig = ty_ident.fn_sig(self.env.tcx());
+                        let ty_ident = ty.instantiate_identity();
+                        assert!(ty_ident.is_fn());
+                        let ident_sig = ty_ident.fn_sig(self.env.tcx());
 
-                                let ty_instantiated = ty.instantiate(self.env.tcx(), args.as_slice());
-                                let instantiated_sig = ty_instantiated.fn_sig(self.env.tcx());
+                        let ty_instantiated = ty.instantiate(self.env.tcx(), args.as_slice());
+                        let instantiated_sig = ty_instantiated.fn_sig(self.env.tcx());
 
-                                Ok((*def, ident_sig, args, instantiated_sig))
-                            },
-                            // TODO handle FnPtr, closure
-                            _ => Err(TranslationError::Unimplemented {
-                                description: "implement function pointers".to_string(),
-                            }),
-                        }
+                        Ok((*def, ident_sig, args, instantiated_sig))
                     },
-                    ConstantKind::Val(_, ty) => {
-                        match ty.kind() {
-                            TyKind::FnDef(def, args) => {
-                                let ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(def);
-
-                                let ty_ident = ty.instantiate_identity();
-                                assert!(ty_ident.is_fn());
-                                let ident_sig = ty_ident.fn_sig(self.env.tcx());
-
-                                let ty_instantiated = ty.instantiate(self.env.tcx(), args.as_slice());
-                                let instantiated_sig = ty_instantiated.fn_sig(self.env.tcx());
-
-                                Ok((*def, ident_sig, args, instantiated_sig))
-                            },
-                            // TODO handle FnPtr, closure
-                            _ => Err(TranslationError::Unimplemented {
-                                description: "implement function pointers".to_string(),
-                            }),
-                        }
-                    },
-                    ConstantKind::Unevaluated(_, _) => Err(TranslationError::Unimplemented {
-                        description: "implement ConstantKind::Unevaluated".to_string(),
+                    // TODO handle FnPtr, closure
+                    _ => Err(TranslationError::Unimplemented {
+                        description: "implement function pointers".to_string(),
                     }),
                 }
             },
-            _ => panic!("should not be reachable"),
+            ConstantKind::Val(_, ty) => {
+                match ty.kind() {
+                    TyKind::FnDef(def, args) => {
+                        let ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(def);
+
+                        let ty_ident = ty.instantiate_identity();
+                        assert!(ty_ident.is_fn());
+                        let ident_sig = ty_ident.fn_sig(self.env.tcx());
+
+                        let ty_instantiated = ty.instantiate(self.env.tcx(), args.as_slice());
+                        let instantiated_sig = ty_instantiated.fn_sig(self.env.tcx());
+
+                        Ok((*def, ident_sig, args, instantiated_sig))
+                    },
+                    // TODO handle FnPtr, closure
+                    _ => Err(TranslationError::Unimplemented {
+                        description: "implement function pointers".to_string(),
+                    }),
+                }
+            },
+            ConstantKind::Unevaluated(_, _) => Err(TranslationError::Unimplemented {
+                description: "implement ConstantKind::Unevaluated".to_string(),
+            }),
         }
     }
 
@@ -1759,7 +1754,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
     fn compute_call_regions(
         &self,
-        func: &Operand<'tcx>,
+        func: &Constant<'tcx>,
         loc: Location,
     ) -> Result<CallRegions, TranslationError> {
         let midpoint = self.info.interner.get_point_index(&facts::Point {
@@ -1878,7 +1873,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             CallRegionKind::Intersection(s) => {
                                 s.insert(*r1);
                             },
-                            _ => panic!("unreachable"),
+                            _ => unreachable!(),
                         }
                     }
                 }
@@ -1907,6 +1902,15 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             typ: facts::PointType::Start,
         });
 
+        let Operand::Constant(box func_constant) = func else {
+            return Err(TranslationError::UnsupportedFeature {
+                description: format!(
+                    "RefinedRust does currently not support this kind of call operand (got: {:?})",
+                    func
+                ),
+            });
+        };
+
         // for lifetime annotations:
         // 1. get the regions involved here. for that, get the instantiation of the function.
         //    + if it's a FnDef type, that should be easy.
@@ -1927,7 +1931,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         //    substituted regions) should be.
         // 6. annotate the return value on assignment and establish constraints.
 
-        let classification = self.compute_call_regions(func, loc)?;
+        let classification = self.compute_call_regions(func_constant, loc)?;
 
         // update the inclusion tracker with the new regions we have introduced
         // We just add the inclusions and ignore that we resolve it in a "tight" way.
@@ -1991,7 +1995,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 cont_stmt = self.prepend_endlfts(cont_stmt, dying_loans.iter().copied());
 
                 // Get the type of the return value from the function
-                let (_, _, _, inst_sig) = self.call_expr_op_split_inst(func)?;
+                let (_, _, _, inst_sig) = self.call_expr_op_split_inst(func_constant)?;
                 // TODO: do we need to do something with late bounds?
                 let output_ty = inst_sig.output().skip_binder();
                 info!("call has instantiated type {:?}", inst_sig);
@@ -2056,7 +2060,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 CallRegionKind::Intersection(rs) => {
                     match rs.len() {
-                        0 => panic!("unconstrained lifetime"),
+                        0 => {
+                            return Err(TranslationError::UnsupportedFeature {
+                                description: "RefinedRust does currently not support unconstrained lifetime"
+                                    .to_string(),
+                            });
+                        },
                         1 => {
                             // this is really just an equality constraint
                             if let Some(r2) = rs.iter().next() {
@@ -3395,32 +3404,27 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             // use is used top-level to convert an lvalue to an rvalue, which is why we use it here.
             Operand::Copy(ref place) | Operand::Move(ref place) => {
                 // check if this goes to a temporary of a checked op
-                let translated_place;
-                let ty;
-                if self.checked_op_temporaries.contains_key(&place.local) {
+                let place_kind = if self.checked_op_temporaries.contains_key(&place.local) {
                     assert!(place.projection.len() == 1);
 
-                    match place.projection[0] {
-                        ProjectionElem::Field(f, _0) => {
-                            if f.index() == 0 {
-                                // access to the result of the op
-                                let new_place = self.make_local_place(place.local);
-                                translated_place = self.translate_place(&new_place)?;
-                                ty = self.get_type_of_place(place);
-                            } else {
-                                // make this a constant false -- our semantics directly checks for overflows
-                                // and otherwise throws UB.
-                                return Ok(radium::Expr::Literal(radium::Literal::LitBool(false)));
-                            }
-                        },
-                        _ => {
-                            panic!("invariant violation for access to checked op temporary");
-                        },
+                    let ProjectionElem::Field(f, _0) = place.projection[0] else {
+                        unreachable!("invariant violation for access to checked op temporary");
+                    };
+
+                    if f.index() != 0 {
+                        // make this a constant false -- our semantics directly checks for overflows
+                        // and otherwise throws UB.
+                        return Ok(radium::Expr::Literal(radium::Literal::LitBool(false)));
                     }
+
+                    // access to the result of the op
+                    self.make_local_place(place.local)
                 } else {
-                    translated_place = self.translate_place(place)?;
-                    ty = self.get_type_of_place(place);
-                }
+                    *place
+                };
+
+                let translated_place = self.translate_place(&place_kind)?;
+                let ty = self.get_type_of_place(place);
 
                 let st = self.ty_translator.translate_type_to_syn_type(ty.ty)?;
                 let ot = self.ty_translator.translate_syn_type_to_op_type(&st);

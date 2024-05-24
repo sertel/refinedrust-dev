@@ -127,7 +127,9 @@ fn fmt_modules(f: &mut fmt::Formatter<'_>, modules: &[&Module], kind: &str) -> f
     for path in get_modules_path(modules) {
         let modules: Vec<_> = modules.iter().filter_map(|x| is(x, Some(&path))).collect();
 
-        assert!(!modules.is_empty());
+        if modules.is_empty() {
+            unreachable!("get_modules_path() gave the path {path} but no modules matched it.");
+        }
 
         writeln!(f, "From {} Require {} {}.", path, kind, modules.join(" "))?;
     }
