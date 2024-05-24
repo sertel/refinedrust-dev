@@ -60,11 +60,11 @@ impl AdtUseKey {
 #[derive(Debug)]
 pub struct TypeTranslationScope<'def> {
     /// defid of the current function
-    pub(crate) did: DefId,
+    did: DefId,
 
     /// maps generic indices (De Bruijn) to the corresponding Coq names in the current environment
     /// the invariant is that they are Literals
-    pub generic_scope: Vec<Option<radium::LiteralTyParam>>,
+    pub(crate) generic_scope: Vec<Option<radium::LiteralTyParam>>,
 
     /// maps universal lifetime indices (Polonius) to their names. offset by 1 because 0 = static.
     universal_lifetimes: HashMap<ty::RegionVid, String>,
@@ -72,6 +72,7 @@ pub struct TypeTranslationScope<'def> {
     // TODO currently, these may contain duplicates
     /// collection of tuple types that we use
     pub(crate) tuple_uses: Vec<radium::LiteralTypeUse<'def>>,
+
     /// Shim uses for the current function
     pub(crate) shim_uses: HashMap<AdtUseKey, radium::LiteralTypeUse<'def>>,
 }

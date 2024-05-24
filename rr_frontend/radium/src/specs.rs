@@ -2656,7 +2656,7 @@ pub struct FunctionSpec<'def> {
     /// postcondition as a separating conjunction
     pub post: IProp,
     /// true iff any attributes have been provided
-    has_spec: bool,
+    pub has_spec: bool,
 }
 
 impl<'def> FunctionSpec<'def> {
@@ -2684,11 +2684,6 @@ impl<'def> FunctionSpec<'def> {
         push_str_list!(out, &self.args, ", ");
 
         out
-    }
-
-    #[must_use]
-    pub const fn has_spec(&self) -> bool {
-        self.has_spec
     }
 
     fn uncurry_typed_binders<'a, F>(v: F) -> (coq::Pattern, coq::Type)

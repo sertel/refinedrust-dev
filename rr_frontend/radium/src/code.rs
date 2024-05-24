@@ -757,6 +757,7 @@ struct InvariantMap(HashMap<usize, LoopSpec>);
 
 /// A Caesium function bundles up the Caesium code itself as well as the generated specification
 /// for it.
+#[allow(clippy::partial_pub_fields)]
 pub struct Function<'def> {
     pub code: FunctionCode,
     pub spec: FunctionSpec<'def>,
@@ -1077,6 +1078,7 @@ pub struct StaticMeta<'def> {
 /// A `CaesiumFunctionBuilder` allows to incrementally construct the functions's code and the spec
 /// at the same time. It ensures that both definitions line up in the right way (for instance, by
 /// ensuring that other functions are linked up in a consistent way).
+#[allow(clippy::partial_pub_fields)]
 pub struct FunctionBuilder<'def> {
     pub code: FunctionCodeBuilder,
     pub spec: FunctionSpecBuilder<'def>,

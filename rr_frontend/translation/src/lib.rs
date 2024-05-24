@@ -447,7 +447,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             )
             .unwrap();
         for (_, fun) in self.procedure_registry.iter_code() {
-            if fun.spec.has_spec() {
+            if fun.spec.has_spec {
                 if fun.spec.args.len() != fun.code.get_argument_count() {
                     warn!("Function specification for {} is missing arguments", fun.name());
                 }
@@ -463,7 +463,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // also write only-spec functions specs
         for (_, spec) in self.procedure_registry.iter_only_spec() {
-            if spec.has_spec() {
+            if spec.has_spec {
                 spec_file.write(format!("{}", spec).as_bytes()).unwrap();
                 spec_file.write("\n\n".as_bytes()).unwrap();
             } else {
@@ -510,7 +510,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
             let mode = self.procedure_registry.lookup_function_mode(*did).unwrap();
 
-            if fun.spec.has_spec() && mode.needs_proof() {
+            if fun.spec.has_spec && mode.needs_proof() {
                 let mut imports = common_imports.clone();
 
                 imports.append(&mut vec![
@@ -547,7 +547,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 write!(template_file, "End proof.\n\n").unwrap();
 
                 fun.generate_proof_prelude(&mut template_file).unwrap();
-            } else if !fun.spec.has_spec() {
+            } else if !fun.spec.has_spec {
                 write!(template_file, "(* No specification provided *)").unwrap();
             } else {
                 write!(template_file, "(* Function is trusted *)").unwrap();
@@ -557,7 +557,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
     fn check_function_needs_proof(&self, did: DefId, fun: &radium::Function) -> bool {
         let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
-        fun.spec.has_spec() && mode.needs_proof()
+        fun.spec.has_spec && mode.needs_proof()
     }
 
     /// Write proofs for a verification unit.

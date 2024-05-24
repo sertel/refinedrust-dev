@@ -6,7 +6,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use log::{debug, trace};
+use log::{debug, info, trace};
 use rustc_data_structures::graph::dominators::{dominators, Dominators};
 use rustc_index::{Idx, IndexVec};
 use rustc_middle::mir;
@@ -207,12 +207,12 @@ fn order_basic_blocks(
 #[derive(Clone)]
 pub struct ProcedureLoops {
     /// A list of basic blocks that are loop heads.
-    pub loop_heads: HashSet<BasicBlockIndex>,
+    loop_heads: HashSet<BasicBlockIndex>,
     /// The depth of each loop head, starting from one for a simple single loop.
-    pub loop_head_depths: HashMap<BasicBlockIndex, usize>,
+    loop_head_depths: HashMap<BasicBlockIndex, usize>,
     /// A map from loop heads to the corresponding bodies.
-    pub loop_bodies: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>>,
-    pub ordered_loop_bodies: HashMap<BasicBlockIndex, Vec<BasicBlockIndex>>,
+    loop_bodies: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>>,
+    ordered_loop_bodies: HashMap<BasicBlockIndex, Vec<BasicBlockIndex>>,
     /// A map from loop bodies to the ordered vector of enclosing loop heads (from outer to inner).
     enclosing_loop_heads: HashMap<BasicBlockIndex, Vec<BasicBlockIndex>>,
     /// A map from loop heads to the ordered blocks from which a CFG edge exits from the loop.
@@ -221,11 +221,11 @@ pub struct ProcedureLoops {
     /// in any loop iteration).
     nonconditional_loop_blocks: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>>,
     /// Back edges.
-    pub back_edges: HashSet<(BasicBlockIndex, BasicBlockIndex)>,
+    back_edges: HashSet<(BasicBlockIndex, BasicBlockIndex)>,
     /// Dominators graph.
     dominators: Dominators<BasicBlockIndex>,
     /// The list of basic blocks ordered in the topological order (ignoring back edges).
-    pub ordered_blocks: Vec<BasicBlockIndex>,
+    ordered_blocks: Vec<BasicBlockIndex>,
 }
 
 impl ProcedureLoops {
@@ -362,6 +362,20 @@ impl ProcedureLoops {
     #[must_use]
     pub fn count_loop_heads(&self) -> usize {
         self.loop_heads.len()
+    }
+
+    pub fn dump_body_head(&self) {
+        info!("loop heads: {:?}", self.loop_heads);
+        for (head, bodies) in &self.loop_bodies {
+            info!("loop {:?} -> {:?}", head, bodies);
+        }
+    }
+
+    #[must_use]
+    pub const fn get_back_edges(
+        &self,
+    ) -> &HashSet<(rustc_middle::mir::BasicBlock, rustc_middle::mir::BasicBlock)> {
+        &self.back_edges
     }
 
     #[must_use]

@@ -308,7 +308,7 @@ pub struct PoloniusInfo<'a, 'tcx: 'a> {
     /// Position at which a specific loan was created.
     pub(crate) loan_position: HashMap<facts::Loan, mir::Location>,
     pub(crate) loan_at_position: HashMap<mir::Location, facts::Loan>,
-    pub place_regions: PlaceRegions,
+    pub(crate) place_regions: PlaceRegions,
     pub(crate) additional_facts: AdditionalFacts,
     /// Loans that are created inside loops. Loan → loop head.
     pub(crate) loops: loops::ProcedureLoops,
@@ -488,7 +488,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
 
         let output = Output::compute(&all_facts, Algorithm::Naive, true);
         let all_facts_without_back_edges =
-            remove_back_edges(*all_facts.clone(), &interner, &loop_info.back_edges);
+            remove_back_edges(*all_facts.clone(), &interner, loop_info.get_back_edges());
         let output_without_back_edges =
             Output::compute(&all_facts_without_back_edges, Algorithm::Naive, true);
 

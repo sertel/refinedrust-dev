@@ -1161,10 +1161,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     ) -> Result<radium::Function<'def>, TranslationError> {
         // add loop info
         let loop_info = self.proc.loop_info();
-        info!("loop heads: {:?}", loop_info.loop_heads);
-        for (head, bodies) in &loop_info.loop_bodies {
-            info!("loop {:?} -> {:?}", head, bodies);
-        }
+        loop_info.dump_body_head();
 
         // translate the function's basic blocks
         let basic_blocks = &self.proc.get_mir().basic_blocks;
@@ -1660,7 +1657,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
     /// Find the optional `DefId` of the closure giving the invariant for the loop with head `head_bb`.
     fn find_loop_spec_closure(&self, head_bb: BasicBlock) -> Result<Option<DefId>, TranslationError> {
-        let bodies = &self.proc.loop_info().ordered_loop_bodies[&head_bb];
+        let bodies = self.proc.loop_info().get_loop_body(head_bb);
         let basic_blocks = &self.proc.get_mir().basic_blocks;
 
         // we go in order through the bodies in order to not stumble upon an annotation for a

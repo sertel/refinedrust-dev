@@ -524,7 +524,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 
     fn visit_basic_block(&mut self, bb: mir::BasicBlock) -> Result<(), io::Error> {
         write_graph!(self, "\"{:?}\" [ shape = \"record\"", bb);
-        if self.loops.loop_heads.contains(&bb) {
+        if self.loops.is_loop_head(bb) {
             write_graph!(self, "color=green");
         }
         write_graph!(self, "label =<<table>");
@@ -579,7 +579,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             self.visit_terminator(bb, terminator)?;
         }
 
-        if !self.loops.loop_heads.contains(&bb) {
+        if !self.loops.is_loop_head(bb) {
             return Ok(());
         }
 

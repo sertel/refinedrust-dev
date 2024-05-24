@@ -116,14 +116,14 @@ impl<'tcx> Procedure<'tcx> {
         self.ty_params
     }
 
-    /// Get an absolute `def_path`. Note: not preserved across compilations!
-    #[must_use]
-    pub fn get_def_path(&self) -> String {
-        let def_path = self.tcx.def_path(self.proc_def_id);
-        let mut crate_name = self.tcx.crate_name(def_path.krate).to_string();
-        crate_name.push_str(&def_path.to_string_no_crate_verbose());
-        crate_name
-    }
+    // /// Get an absolute `def_path`. Note: not preserved across compilations!
+    // #[must_use]
+    // pub fn get_def_path(&self) -> String {
+    //     let def_path = self.tcx.def_path(self.proc_def_id);
+    //     let mut crate_name = self.tcx.crate_name(def_path.krate).to_string();
+    //     crate_name.push_str(&def_path.to_string_no_crate_verbose());
+    //     crate_name
+    // }
 
     // /// Get a short name of the procedure
     // pub fn get_short_name(&self) -> String {
@@ -135,49 +135,45 @@ impl<'tcx> Procedure<'tcx> {
     //     self.tcx.absolute_item_path_str(self.proc_def_id)
     // }
 
-    /// Get the span of the procedure
-    #[must_use]
-    pub fn get_span(&self) -> Span {
-        self.mir.span
-    }
+    // /// Get the span of the procedure
+    // #[must_use]
+    // pub fn get_span(&self) -> Span {
+    //     self.mir.span
+    // }
 
-    /// Get the first CFG block
-    #[must_use]
-    pub fn get_first_cfg_block(&self) -> BasicBlock {
-        self.mir.basic_blocks.indices().next().unwrap()
-    }
+    // /// Get the first CFG block
+    // #[must_use]
+    // pub fn get_first_cfg_block(&self) -> BasicBlock {
+    //     self.mir.basic_blocks.indices().next().unwrap()
+    // }
 
-    /// Iterate over all CFG basic blocks
-    #[must_use]
-    pub fn get_all_cfg_blocks(&self) -> Vec<BasicBlock> {
-        self.loop_info.ordered_blocks.clone()
-    }
+    // /// Iterate over all CFG basic blocks
+    // #[must_use]
+    // pub fn get_all_cfg_blocks(&self) -> Vec<BasicBlock> {
+    //     self.loop_info.ordered_blocks.clone()
+    // }
 
-    /// Iterate over all reachable CFG basic blocks
-    #[must_use]
-    pub fn get_reachable_cfg_blocks(&self) -> Vec<BasicBlock> {
-        self.get_all_cfg_blocks()
-            .into_iter()
-            .filter(|bbi| self.is_reachable_block(*bbi))
-            .collect()
-    }
+    // /// Iterate over all reachable CFG basic blocks
+    // #[must_use]
+    // pub fn get_reachable_cfg_blocks(&self) -> Vec<BasicBlock> {
+    //     self.get_all_cfg_blocks()
+    //         .into_iter()
+    //         .filter(|bbi| self.is_reachable_block(*bbi))
+    //         .collect()
+    // }
 
-    /*
-    /// Iterate over all reachable CFG basic blocks that are not part of the specification type checking
-    pub fn get_reachable_nonspec_cfg_blocks(&self) -> Vec<BasicBlock> {
-        self.get_reachable_cfg_blocks()
-            .into_iter()
-            .filter(|bbi| !self.is_spec_block(*bbi))
-            .collect()
-    }
-    */
+    // /// Iterate over all reachable CFG basic blocks that are not part of the specification type checking
+    // pub fn get_reachable_nonspec_cfg_blocks(&self) -> Vec<BasicBlock> {
+    //     self.get_reachable_cfg_blocks()
+    //         .into_iter()
+    //         .filter(|bbi| !self.is_spec_block(*bbi))
+    //         .collect()
+    // }
 
-    /*
-    /// Check whether the block is used for typechecking the specification
-    pub fn is_spec_block(&self, bbi: BasicBlockIndex) -> bool {
-        !self.nonspec_basic_blocks.contains(&bbi)
-    }
-    */
+    // /// Check whether the block is used for typechecking the specification
+    // pub fn is_spec_block(&self, bbi: BasicBlockIndex) -> bool {
+    //     !self.nonspec_basic_blocks.contains(&bbi)
+    // }
 
     /// Check whether the block is reachable
     #[must_use]
