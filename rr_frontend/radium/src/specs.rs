@@ -32,7 +32,7 @@ impl<'def> TypeWithRef<'def> {
 
     #[must_use]
     pub fn make_unit() -> Self {
-        TypeWithRef(Type::Unit, "()".to_string())
+        TypeWithRef(Type::Unit, "()".to_owned())
     }
 
     #[must_use]
@@ -238,7 +238,7 @@ impl SynType {
 
             Self::Literal(ca) => {
                 let rhs = format!("{}", ca);
-                Layout::Literal(coq::AppTerm::new("use_layout_alg'".to_string(), vec![rhs]))
+                Layout::Literal(coq::AppTerm::new("use_layout_alg'".to_owned(), vec![rhs]))
             },
 
             Self::Var(i) => {
@@ -273,12 +273,12 @@ impl SynType {
             Self::Ptr | Self::FnPtr => OpType::PtrOp,
 
             Self::Untyped(ly) => OpType::UntypedOp(ly.clone()),
-            Self::Unit => OpType::StructOp(coq::AppTerm::new_lhs("unit_sl".to_string()), Vec::new()),
+            Self::Unit => OpType::StructOp(coq::AppTerm::new_lhs("unit_sl".to_owned()), Vec::new()),
             Self::Never => OpType::UntypedOp(Layout::UnitLayout),
 
             Self::Literal(ca) => {
                 let rhs = format!("{}", ca);
-                OpType::Literal(coq::AppTerm::new("use_op_alg'".to_string(), vec![rhs]))
+                OpType::Literal(coq::AppTerm::new("use_op_alg'".to_owned(), vec![rhs]))
             },
 
             Self::Var(i) => {
@@ -667,7 +667,7 @@ impl<'def> Type<'def> {
             },
 
             Self::Var(_i) => {
-                s.insert("RAW".to_string());
+                s.insert("RAW".to_owned());
             },
         }
     }
@@ -696,7 +696,7 @@ impl<'def> Type<'def> {
             },
 
             Self::Var(_) => {
-                s.insert("RAW".to_string());
+                s.insert("RAW".to_owned());
             },
         }
     }
@@ -1542,7 +1542,7 @@ impl<'def> AbstractStruct<'def> {
     pub fn public_rt_def_name(&self) -> String {
         match &self.invariant {
             Some(inv) => inv.rt_def_name(),
-            None => self.plain_rt_def_name().to_string(),
+            None => self.plain_rt_def_name().to_owned(),
         }
     }
 
@@ -1580,10 +1580,10 @@ impl<'def> AbstractStruct<'def> {
     #[must_use]
     pub fn make_literal_type(&self) -> LiteralType {
         LiteralType {
-            rust_name: Some(self.name().to_string()),
-            type_term: self.public_type_name().to_string(),
+            rust_name: Some(self.name().to_owned()),
+            type_term: self.public_type_name().to_owned(),
             refinement_type: coq::Type::Literal(self.public_rt_def_name()),
-            syn_type: SynType::Literal(self.sls_def_name().to_string()),
+            syn_type: SynType::Literal(self.sls_def_name().to_owned()),
         }
     }
 }
@@ -1621,7 +1621,7 @@ impl<'def> VariantBuilder<'def> {
             .collect();
 
         let rfn_type = coq::Type::PList(
-            "place_rfn".to_string(),
+            "place_rfn".to_owned(),
             subst_fields.iter().map(|(_, t)| t.get_rfn_type(&[])).collect(),
         );
 
@@ -1662,7 +1662,7 @@ impl<'def> VariantBuilder<'def> {
 
     /// Append a field to the struct def.
     pub fn add_field(&mut self, name: &str, ty: Type<'def>) {
-        self.fields.push((name.to_string(), ty));
+        self.fields.push((name.to_owned(), ty));
     }
 }
 
@@ -1768,7 +1768,7 @@ impl<'def> AbstractStructUse<'def> {
         let inv = &def.invariant;
 
         if self.is_raw() || inv.is_none() {
-            let rfn_type = def.plain_rt_def_name().to_string();
+            let rfn_type = def.plain_rt_def_name().to_owned();
             let applied = coq::AppTerm::new(rfn_type, rfn_instantiations);
             applied.to_string()
         } else {
@@ -1794,7 +1794,7 @@ impl<'def> AbstractStructUse<'def> {
 
         // use_struct_layout_alg' ([my_spec] [params])
         let specialized_spec = format!("({})", coq::AppTerm::new(def.sls_def_name(), param_sts));
-        coq::AppTerm::new("use_struct_layout_alg'".to_string(), vec![specialized_spec]).to_string()
+        coq::AppTerm::new("use_struct_layout_alg'".to_owned(), vec![specialized_spec]).to_string()
     }
 
     #[must_use]
@@ -1830,7 +1830,7 @@ impl<'def> AbstractStructUse<'def> {
         }
         // TODO generates too many apps
 
-        let specialized_spec = coq::AppTerm::new(def.st_def_name().to_string(), param_sts);
+        let specialized_spec = coq::AppTerm::new(def.st_def_name().to_owned(), param_sts);
         SynType::Literal(format!("{}", specialized_spec))
     }
 
@@ -2070,14 +2070,14 @@ impl<'def> AbstractEnum<'def> {
         // TODO: probably should build this up modularly over the fields
 
         let mut v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_lfts {})", p.type_term)).collect();
-        v.push("[]".to_string());
+        v.push("[]".to_owned());
         format!("{}", v.join(" ++ "))
     }
 
     fn generate_wf_elctx(&self) -> String {
         // TODO: probably should build this up modularly over the fields
         let mut v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_wf_E {})", p.type_term)).collect();
-        v.push("[]".to_string());
+        v.push("[]".to_owned());
         format!("{}", v.join(" ++ "))
     }
 
@@ -2258,10 +2258,10 @@ impl<'def> AbstractEnum<'def> {
     #[must_use]
     pub fn make_literal_type(&self) -> LiteralType {
         LiteralType {
-            rust_name: Some(self.name().to_string()),
-            type_term: self.public_type_name().to_string(),
-            refinement_type: coq::Type::Literal(self.public_rt_def_name().to_string()),
-            syn_type: SynType::Literal(self.els_def_name().to_string()),
+            rust_name: Some(self.name().to_owned()),
+            type_term: self.public_type_name().to_owned(),
+            refinement_type: coq::Type::Literal(self.public_rt_def_name().to_owned()),
+            syn_type: SynType::Literal(self.els_def_name().to_owned()),
         }
     }
 }
@@ -2337,7 +2337,7 @@ impl<'def> EnumBuilder<'def> {
         variant: Option<&'def AbstractStruct<'def>>,
         discriminant: i128,
     ) {
-        self.variants.push((name.to_string(), variant, discriminant));
+        self.variants.push((name.to_owned(), variant, discriminant));
     }
 }
 
@@ -2399,7 +2399,7 @@ impl<'def> AbstractEnumUse<'def> {
 
         // use_struct_layout_alg' ([my_spec] [params])
         let specialized_spec = format!("({})", coq::AppTerm::new(self.def.els_def_name.clone(), param_sts));
-        coq::AppTerm::new("use_enum_layout_alg'".to_string(), vec![specialized_spec]).to_string()
+        coq::AppTerm::new("use_enum_layout_alg'".to_owned(), vec![specialized_spec]).to_string()
     }
 
     /// Generate a term for the enum layout spec (of type `enum_layout_spec`).
@@ -2693,7 +2693,7 @@ impl<'def> FunctionSpec<'def> {
         let mut v = v.into_iter().peekable();
 
         if v.peek().is_none() {
-            return ("_".to_string(), coq::Type::Literal("unit".to_string()));
+            return ("_".to_owned(), coq::Type::Literal("unit".to_owned()));
         }
 
         let mut pattern = String::with_capacity(100);
@@ -2816,7 +2816,7 @@ impl<'def> FunctionSpecBuilder<'def> {
 
     fn push_coq_name(&mut self, name: &coq::Name) {
         if let coq::Name::Named(name) = &name {
-            self.coq_names.insert(name.to_string());
+            self.coq_names.insert(name.to_owned());
         }
     }
 
@@ -2856,7 +2856,7 @@ impl<'def> FunctionSpecBuilder<'def> {
                 return Ok(());
             }
         }
-        Err("could not find name".to_string())
+        Err("could not find name".to_owned())
     }
 
     fn ensure_coq_bound(&self, name: &str) -> Result<(), String> {
@@ -2966,7 +2966,7 @@ impl<'def> FunctionSpecBuilder<'def> {
     /// Set the return type of the function
     pub fn set_ret_type(&mut self, ret: TypeWithRef<'def>) -> Result<(), String> {
         if self.ret.is_some() {
-            return Err("Re-definition of return type".to_string());
+            return Err("Re-definition of return type".to_owned());
         }
         self.ret = Some(ret);
         Ok(())
@@ -2995,8 +2995,8 @@ impl<'def> FunctionSpecBuilder<'def> {
 
         FunctionSpec {
             extra_link_assum: self.extra_link_assum,
-            function_name: name.to_string(),
-            spec_name: spec_name.to_string(),
+            function_name: name.to_owned(),
+            spec_name: spec_name.to_owned(),
             coq_params: self.coq_params,
             lifetimes: self.lifetimes,
             params: self.params,

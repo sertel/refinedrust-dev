@@ -198,7 +198,7 @@ fn main() {
     debug!("rustc arguments: {:?}", rustc_args);
 
     let exit_code = rustc_driver::catch_with_exit_code(move || {
-        if rustc_args.get(1) == Some(&"-vV".to_string()) {
+        if rustc_args.get(1) == Some(&"-vV".to_owned()) {
             // When cargo queries the verbose rustc version,
             // also print the RR version to stdout.
             // This ensures that the cargo build cache is
@@ -232,7 +232,7 @@ fn main() {
                 rustc_args.push("-Zidentify-regions=yes".to_owned());
             }
             if rrconfig::dump_borrowck_info() {
-                rustc_args.push("-Znll-facts=yes".to_string());
+                rustc_args.push("-Znll-facts=yes".to_owned());
                 rustc_args.push(format!(
                     "-Znll-facts-dir={}",
                     rrconfig::log_dir()

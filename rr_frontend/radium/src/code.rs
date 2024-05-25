@@ -113,13 +113,13 @@ impl RustType {
                 let typarams: Vec<_> = as_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
                 let ty_name = if is_raw { def.plain_ty_name() } else { def.public_type_name() };
 
-                Self::Lit(vec![ty_name.to_string()], typarams)
+                Self::Lit(vec![ty_name.to_owned()], typarams)
             },
 
             Type::Enum(ae_use) => {
                 let typarams: Vec<_> = ae_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
 
-                Self::Lit(vec![ae_use.def.public_type_name().to_string()], typarams)
+                Self::Lit(vec![ae_use.def.public_type_name().to_owned()], typarams)
             },
 
             Type::LiteralParam(lit) => Self::TyVar(lit.rust_name.clone()),
@@ -139,7 +139,7 @@ impl RustType {
                 panic!("RustType::of_type: cannot translate Never type");
             },
 
-            Type::RawPtr => Self::Lit(vec!["alias_ptr_t".to_string()], vec![]),
+            Type::RawPtr => Self::Lit(vec!["alias_ptr_t".to_owned()], vec![]),
         }
     }
 }
@@ -737,11 +737,11 @@ impl FunctionCodeBuilder {
     }
 
     pub fn add_argument(&mut self, name: &str, st: SynType) {
-        self.stack_layout.insert_arg(name.to_string(), st);
+        self.stack_layout.insert_arg(name.to_owned(), st);
     }
 
     pub fn add_local(&mut self, name: &str, st: SynType) {
-        self.stack_layout.insert_local(name.to_string(), st);
+        self.stack_layout.insert_local(name.to_owned(), st);
     }
 
     pub fn add_basic_block(&mut self, index: usize, bb: Stmt) {
@@ -1113,8 +1113,8 @@ impl<'def> FunctionBuilder<'def> {
         let code_builder = FunctionCodeBuilder::new();
         let spec_builder = FunctionSpecBuilder::new();
         FunctionBuilder {
-            function_name: name.to_string(),
-            spec_name: spec_name.to_string(),
+            function_name: name.to_owned(),
+            spec_name: spec_name.to_owned(),
             other_functions: Vec::new(),
             generic_types: Vec::new(),
             generic_lifetimes: Vec::new(),
@@ -1161,7 +1161,7 @@ impl<'def> FunctionBuilder<'def> {
 
     /// Add a manual tactic used for a sidecondition proof.
     pub fn add_manual_tactic(&mut self, tac: &str) {
-        self.tactics.push(tac.to_string());
+        self.tactics.push(tac.to_owned());
     }
 
     /// Add a generic type used by this function.

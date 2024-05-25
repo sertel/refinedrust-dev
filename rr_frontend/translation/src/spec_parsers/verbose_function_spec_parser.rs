@@ -541,7 +541,7 @@ where
             ty::ClosureKind::FnMut => {
                 // wrap the argument in a mutable reference
                 let post_name = "__γclos";
-                builder.spec.add_param(coq::Name::Named(post_name.to_string()), coq::Type::Gname).unwrap();
+                builder.spec.add_param(coq::Name::Named(post_name.to_owned()), coq::Type::Gname).unwrap();
 
                 let lft = meta.closure_lifetime.unwrap();
                 let ref_ty = specs::Type::MutRef(Box::new(tuple), lft);
@@ -561,9 +561,7 @@ where
                 });
                 post_term.push(']');
 
-                builder
-                    .spec
-                    .add_postcondition(MetaIProp::Observe(post_name.to_string(), post_term).into());
+                builder.spec.add_postcondition(MetaIProp::Observe(post_name.to_owned(), post_term).into());
             },
         }
         Ok(())

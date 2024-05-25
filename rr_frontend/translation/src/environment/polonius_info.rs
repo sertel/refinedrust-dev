@@ -403,7 +403,7 @@ fn get_borrowed_places<'a, 'tcx: 'a>(
         mir::Rvalue::Cast(..) => {
             // all other loan-casts are unsupported
             Err(PoloniusInfoError::LoanInUnsupportedStatement(
-                "cast statements that create loans are not supported".to_string(),
+                "cast statements that create loans are not supported".to_owned(),
                 *location,
             ))
         },

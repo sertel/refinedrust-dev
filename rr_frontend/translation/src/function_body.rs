@@ -861,7 +861,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             used_names.insert(mir_name);
             name
         } else {
-            let mut name = "__".to_string();
+            let mut name = "__".to_owned();
             name.push_str(&local.index().to_string());
             name
         }
@@ -889,7 +889,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                             // used already
                             // TODO: find better solution
                             if !used_names.contains(name.as_str()) {
-                                return Some(name.as_str().to_string());
+                                return Some(name.as_str().to_owned());
                             }
                         }
                     }
@@ -943,7 +943,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let mut return_synty = radium::SynType::Unit; // default
         let mut fn_locals = Vec::new();
         let mut opt_return_name =
-            Err(TranslationError::UnknownError("could not find local for return value".to_string()));
+            Err(TranslationError::UnknownError("could not find local for return value".to_owned()));
         let mut used_names = HashSet::new();
         let mut arg_tys = Vec::new();
 
@@ -1178,7 +1178,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         self.format_atomic_region(r2),
                     ),
                     s: Box::new(translated_bb),
-                    why: Some("initialization".to_string()),
+                    why: Some("initialization".to_owned()),
                 };
             }
             self.translated_fn.code.add_basic_block(initial_bb_idx.as_usize(), translated_bb);
@@ -1308,7 +1308,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 },
                 ty::GenericArgKind::Const(_c) => {
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does not support const generics".to_string(),
+                        description: "RefinedRust does not support const generics".to_owned(),
                     });
                 },
             }
@@ -1345,7 +1345,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             .lookup_function_spec_name(did)
             .ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
 
-        let mut mangled_name = name.to_string();
+        let mut mangled_name = name.to_owned();
         let mut translated_params = Vec::new();
 
         // TODO: maybe come up with some better way to generate names
@@ -1422,7 +1422,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         );
 
         self.collected_procedures
-            .insert(tup, (loc_name.clone(), spec_name.to_string(), translated_params, syntypes));
+            .insert(tup, (loc_name.clone(), spec_name.to_owned(), translated_params, syntypes));
 
         trace!("leave register_use_procedure");
         Ok(loc_name)
@@ -1625,7 +1625,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     },
                     // TODO handle FnPtr, closure
                     _ => Err(TranslationError::Unimplemented {
-                        description: "implement function pointers".to_string(),
+                        description: "implement function pointers".to_owned(),
                     }),
                 }
             },
@@ -1645,12 +1645,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     },
                     // TODO handle FnPtr, closure
                     _ => Err(TranslationError::Unimplemented {
-                        description: "implement function pointers".to_string(),
+                        description: "implement function pointers".to_owned(),
                     }),
                 }
             },
             ConstantKind::Unevaluated(_, _) => Err(TranslationError::Unimplemented {
-                description: "implement ConstantKind::Unevaluated".to_string(),
+                description: "implement ConstantKind::Unevaluated".to_owned(),
             }),
         }
     }
@@ -2008,7 +2008,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let cont_stmt = radium::Stmt::with_annotations(
                     cont_stmt,
                     post_stmt_annots,
-                    &Some("post_function_call".to_string()),
+                    &Some("post_function_call".to_owned()),
                 );
 
                 // assign stmt with call; then jump to bb
@@ -2021,7 +2021,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let annotated_rhs = radium::Expr::with_optional_annotation(
                     call_expr,
                     rhs_annots,
-                    Some("function_call".to_string()),
+                    Some("function_call".to_owned()),
                 );
                 let assign_stmt = radium::Stmt::Assign {
                     ot,
@@ -2032,7 +2032,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 radium::Stmt::with_annotations(
                     assign_stmt,
                     pre_stmt_annots,
-                    &Some("function_call".to_string()),
+                    &Some("function_call".to_owned()),
                 )
             },
             None => {
@@ -2060,7 +2060,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         0 => {
                             return Err(TranslationError::UnsupportedFeature {
                                 description: "RefinedRust does currently not support unconstrained lifetime"
-                                    .to_string(),
+                                    .to_owned(),
                             });
                         },
                         1 => {
@@ -2080,7 +2080,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             }
         }
 
-        let stmt = radium::Stmt::with_annotations(stmt, stmt_annots, &Some("function_call".to_string()));
+        let stmt = radium::Stmt::with_annotations(stmt, stmt_annots, &Some("function_call".to_owned()));
         Ok(stmt)
     }
 
@@ -2180,7 +2180,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let translated_ty = self.ty_translator.translate_type(ty)?;
                 let radium::Type::Int(it) = translated_ty else {
                     return Err(TranslationError::UnknownError(
-                        "SwitchInt switching on non-integer type".to_string(),
+                        "SwitchInt switching on non-integer type".to_owned(),
                     ));
                 };
 
@@ -2244,11 +2244,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             TerminatorKind::Unreachable => Ok(radium::Stmt::Stuck),
 
             TerminatorKind::UnwindResume => Err(TranslationError::Unimplemented {
-                description: "implement UnwindResume".to_string(),
+                description: "implement UnwindResume".to_owned(),
             }),
 
             TerminatorKind::UnwindTerminate(_) => Err(TranslationError::Unimplemented {
-                description: "implement UnwindTerminate".to_string(),
+                description: "implement UnwindTerminate".to_owned(),
             }),
 
             TerminatorKind::GeneratorDrop
@@ -2275,7 +2275,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 cont_stmt = radium::Stmt::Annot {
                     a: radium::Annotation::EndLft(self.format_atomic_region(&lft)),
                     s: Box::new(cont_stmt),
-                    why: Some("endlft".to_string()),
+                    why: Some("endlft".to_owned()),
                 };
             }
         }
@@ -2751,13 +2751,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         cont_stmt = radium::Stmt::with_annotations(
                             cont_stmt,
                             post_stmt_annots,
-                            &Some("post-assignment".to_string()),
+                            &Some("post-assignment".to_owned()),
                         );
 
                         let translated_val = radium::Expr::with_optional_annotation(
                             self.translate_rvalue(loc, val)?,
                             expr_annot,
-                            Some("assignment".to_string()),
+                            Some("assignment".to_owned()),
                         );
                         let translated_place = self.translate_place(plc)?;
                         let synty = self.ty_translator.translate_type_to_syn_type(plc_ty.ty)?;
@@ -2771,17 +2771,17 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         cont_stmt = radium::Stmt::with_annotations(
                             cont_stmt,
                             pre_stmt_annots,
-                            &Some("assignment".to_string()),
+                            &Some("assignment".to_owned()),
                         );
                         cont_stmt = radium::Stmt::with_annotations(
                             cont_stmt,
                             borrow_annots,
-                            &Some("borrow".to_string()),
+                            &Some("borrow".to_owned()),
                         );
                         cont_stmt = radium::Stmt::with_annotations(
                             cont_stmt,
                             composite_annots,
-                            &Some("composite".to_string()),
+                            &Some("composite".to_owned()),
                         );
                     }
                 },
@@ -2789,7 +2789,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 StatementKind::Deinit(_) => {
                     // TODO: find out where this is emitted
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does currently not support Deinit".to_string(),
+                        description: "RefinedRust does currently not support Deinit".to_owned(),
                     });
                 },
 
@@ -2800,7 +2800,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 StatementKind::Intrinsic(_intrinsic) => {
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does currently not support Intrinsic".to_string(),
+                        description: "RefinedRust does currently not support Intrinsic".to_owned(),
                     });
                 },
 
@@ -2815,7 +2815,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 } => {
                     // TODO
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does currently not support SetDiscriminant".to_string(),
+                        description: "RefinedRust does currently not support SetDiscriminant".to_owned(),
                     });
                 },
 
@@ -2849,7 +2849,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // TODO: figure out what to do with this
                 // arises in match lowering
                 Err(TranslationError::UnsupportedFeature {
-                    description: "RefinedRust does currently not support shallow borrows".to_string(),
+                    description: "RefinedRust does currently not support shallow borrows".to_owned(),
                 })
             },
             BorrowKind::Mut { .. } => {
@@ -2925,13 +2925,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             BinOp::Sub => Ok(radium::Binop::CheckedSubOp),
             BinOp::Mul => Ok(radium::Binop::CheckedMulOp),
             BinOp::Shl => Err(TranslationError::UnsupportedFeature {
-                description: "RefinedRust does currently not support checked Shl".to_string(),
+                description: "RefinedRust does currently not support checked Shl".to_owned(),
             }),
             BinOp::Shr => Err(TranslationError::UnsupportedFeature {
-                description: "RefinedRust does currently not support checked Shr".to_string(),
+                description: "RefinedRust does currently not support checked Shr".to_owned(),
             }),
             _ => Err(TranslationError::UnknownError(
-                "unexpected checked binop that is not Add, Sub, Mul, Shl, or Shr".to_string(),
+                "unexpected checked binop that is not Add, Sub, Mul, Shl, or Shr".to_owned(),
             )),
         }
     }
@@ -2943,7 +2943,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 ty::TyKind::Bool => Ok(radium::Unop::NotBoolOp),
                 ty::TyKind::Int(_) | ty::TyKind::Uint(_) => Ok(radium::Unop::NotIntOp),
                 _ => Err(TranslationError::UnknownError(
-                    "application of UnOp::Not to non-{Int, Bool}".to_string(),
+                    "application of UnOp::Not to non-{Int, Bool}".to_owned(),
                 )),
             },
             UnOp::Neg => Ok(radium::Unop::NegOp),
@@ -3085,7 +3085,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // TODO: SizeOf
                 Err(TranslationError::UnsupportedFeature {
                     description: "RefinedRust does currently not support nullary ops (AlignOf, Sizeof)"
-                        .to_string(),
+                        .to_owned(),
                 })
             },
 
@@ -3290,26 +3290,26 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     },
 
                     mir::CastKind::DynStar => Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does currently not support dyn* cast".to_string(),
+                        description: "RefinedRust does currently not support dyn* cast".to_owned(),
                     }),
 
                     mir::CastKind::IntToInt => {
                         // TODO
                         Err(TranslationError::Unimplemented {
-                            description: "RefinedRust does currently not support int-to-int cast".to_string(),
+                            description: "RefinedRust does currently not support int-to-int cast".to_owned(),
                         })
                     },
 
                     mir::CastKind::IntToFloat => Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does currently not support int-to-float cast".to_string(),
+                        description: "RefinedRust does currently not support int-to-float cast".to_owned(),
                     }),
 
                     mir::CastKind::FloatToInt => Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does currently not support float-to-int cast".to_string(),
+                        description: "RefinedRust does currently not support float-to-int cast".to_owned(),
                     }),
 
                     mir::CastKind::FloatToFloat => Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does currently not support float-to-float cast".to_string(),
+                        description: "RefinedRust does currently not support float-to-float cast".to_owned(),
                     }),
 
                     mir::CastKind::PtrToPtr => {
@@ -3435,7 +3435,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
     fn translate_fn_def_use(&mut self, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
         let TyKind::FnDef(defid, params) = ty.kind() else {
-            return Err(TranslationError::UnknownError("not a FnDef type".to_string()));
+            return Err(TranslationError::UnknownError("not a FnDef type".to_owned()));
         };
 
         let key: ty::ParamEnv<'tcx> = self.env.tcx().param_env(self.proc.get_id());
@@ -3591,7 +3591,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         }
                     },
                     _ => Err(TranslationError::UnsupportedFeature {
-                        description: "Unsupported ConstKind".to_string(),
+                        description: "Unsupported ConstKind".to_owned(),
                     }),
                 }
             },
@@ -3668,18 +3668,18 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 ProjectionElem::Index(_v) => {
                     //TODO
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "places: implement index access".to_string(),
+                        description: "places: implement index access".to_owned(),
                     });
                 },
                 ProjectionElem::ConstantIndex { .. } => {
                     //TODO
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "places: implement const index access".to_string(),
+                        description: "places: implement const index access".to_owned(),
                     });
                 },
                 ProjectionElem::Subslice { .. } => {
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "places: implement subslicing".to_string(),
+                        description: "places: implement subslicing".to_owned(),
                     });
                 },
                 ProjectionElem::Downcast(_, variant_idx) => {
@@ -3698,18 +3698,18 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             }
                         } else {
                             return Err(TranslationError::UnknownError(
-                                "places: ADT downcasting on non-enum type".to_string(),
+                                "places: ADT downcasting on non-enum type".to_owned(),
                             ));
                         }
                     } else {
                         return Err(TranslationError::UnknownError(
-                            "places: ADT downcasting on non-enum type".to_string(),
+                            "places: ADT downcasting on non-enum type".to_owned(),
                         ));
                     }
                 },
                 ProjectionElem::OpaqueCast(_) => {
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "places: implement opaque casts".to_string(),
+                        description: "places: implement opaque casts".to_owned(),
                     });
                 },
             };

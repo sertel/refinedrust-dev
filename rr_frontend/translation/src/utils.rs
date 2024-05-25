@@ -149,7 +149,7 @@ pub fn get_cleaned_def_path(tcx: TyCtxt<'_>, did: DefId) -> Vec<String> {
             // this is a generic specialization, skip
             continue;
         }
-        components.push(i.to_string());
+        components.push(i.to_owned());
     }
     info!("split def path {:?} to {:?}", def_path, components);
 
@@ -162,7 +162,7 @@ fn extract_def_path(path: &rustc_hir::definitions::DefPath) -> Vec<String> {
     let mut components = Vec::new();
     for p in &path.data {
         if let Some(name) = p.data.get_opt_name() {
-            components.push(name.as_str().to_string());
+            components.push(name.as_str().to_owned());
         }
     }
     components
@@ -243,13 +243,13 @@ where
 
     // if the first component is "std", try if we can replace it with "alloc" or "core"
     if path[0].as_ref() == "std" {
-        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_string()).collect();
-        components[0] = "core".to_string();
+        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_owned()).collect();
+        components[0] = "core".to_owned();
         if let Some(did) = try_resolve_did_direct(tcx, &components) {
             return Some(did);
         }
         // try "alloc"
-        components[0] = "alloc".to_string();
+        components[0] = "alloc".to_owned();
         try_resolve_did_direct(tcx, &components)
     } else {
         None
@@ -437,13 +437,13 @@ where
 
     // if the first component is "std", try if we can replace it with "alloc" or "core"
     if path[0].as_ref() == "std" {
-        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_string()).collect();
-        components[0] = "core".to_string();
+        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_owned()).collect();
+        components[0] = "core".to_owned();
         if let Some(did) = try_resolve_method_did_direct(tcx, &components) {
             return Some(did);
         }
         // try "alloc"
-        components[0] = "alloc".to_string();
+        components[0] = "alloc".to_owned();
         try_resolve_method_did_direct(tcx, &components)
     } else {
         None

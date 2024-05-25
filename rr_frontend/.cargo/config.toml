@@ -34,7 +34,6 @@ rustflags = [
     # clippy::restriction
     "-Aclippy::non_ascii_literal",
     "-Aclippy::panic_in_result_fn",
-    "-Aclippy::str_to_string",
     "-Aclippy::string_to_string",
     "-Aclippy::tests_outside_test_module",
     "-Aclippy::unneeded_field_pattern",

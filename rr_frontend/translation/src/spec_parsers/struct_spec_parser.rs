@@ -161,7 +161,7 @@ impl<U> parse::Parse<U> for InvariantSpecFlags {
             "plain" => Ok(Self(specs::InvariantSpecFlags::Plain)),
             "na" => Ok(Self(specs::InvariantSpecFlags::NonAtomic)),
             "atomic" => Ok(Self(specs::InvariantSpecFlags::Atomic)),
-            _ => Err(parse::ParseError::OtherErr(input.pos().unwrap(), "invalid ADT mode".to_string())),
+            _ => Err(parse::ParseError::OtherErr(input.pos().unwrap(), "invalid ADT mode".to_owned())),
         }
     }
 }
@@ -192,7 +192,7 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
         let mut type_invariants: Vec<specs::TyOwnSpec> = Vec::new();
         let mut abstracted_refinement = None;
 
-        let mut rfn_pat = "placeholder_pat".to_string();
+        let mut rfn_pat = "placeholder_pat".to_owned();
         let mut rfn_type = coq::Type::Infer;
 
         let mut existentials: Vec<RRParam> = Vec::new();
@@ -255,7 +255,7 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
                         let term = IdentOrTerm::parse(&buffer, &meta).map_err(str_err)?;
 
                         if abstracted_refinement.is_some() {
-                            return Err("multiple refines specifications given".to_string());
+                            return Err("multiple refines specifications given".to_owned());
                         }
                         abstracted_refinement = Some(term.to_string());
                     },
@@ -278,9 +278,9 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
         let refinement_included = abstracted_refinement.is_some();
 
         let spec = specs::InvariantSpec::new(
-            ty_name.to_string(),
+            ty_name.to_owned(),
             inv_flags,
-            "κ".to_string(),
+            "κ".to_owned(),
             rfn_type,
             rfn_pat,
             existentials.into_iter().map(|a| (a.name, a.ty)).collect(),

@@ -65,7 +65,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
                 "raw" => {
                     raw = specs::TypeIsRaw::Yes;
                 },
-                _ => return Err(parse::ParseError::OtherErr(loc.unwrap(), "Unsupported flag".to_string())),
+                _ => return Err(parse::ParseError::OtherErr(loc.unwrap(), "Unsupported flag".to_owned())),
             }
         }
 
@@ -323,7 +323,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
                 literal_tyvars.insert(param.clone());
                 format!("{}(ty_syn_type {})", &c[1], &param.type_term)
             },
-            None => "ERR".to_string(),
+            None => "ERR".to_owned(),
         }
     });
     let cs = RE_LY_OF.replace_all(&cs, |c: &Captures<'_>| {
@@ -334,7 +334,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
                 literal_tyvars.insert(param.clone());
                 format!("{}(use_layout_alg' (ty_syn_type {}))", &c[1], &param.type_term)
             },
-            None => "ERR".to_string(),
+            None => "ERR".to_owned(),
         }
     });
     let cs = RE_TY_OF.replace_all(&cs, |c: &Captures<'_>| {
@@ -356,7 +356,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
                 literal_lfts.insert(lft.clone());
                 format!("{}{}", &c[1], lft)
             },
-            None => "ERR".to_string(),
+            None => "ERR".to_owned(),
         }
     });
     let cs = RE_LIT.replace_all(&cs, |c: &Captures<'_>| format!("{}", &c[1]));

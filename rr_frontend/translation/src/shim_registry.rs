@@ -84,8 +84,8 @@ pub struct FunctionShim<'a> {
 impl<'a> From<FunctionShim<'a>> for ShimFunctionEntry {
     fn from(shim: FunctionShim<'a>) -> Self {
         Self {
-            path: shim.path.iter().map(|x| (*x).to_string()).collect(),
-            kind: if shim.is_method { "method".to_string() } else { "function".to_string() },
+            path: shim.path.iter().map(|x| (*x).to_owned()).collect(),
+            kind: if shim.is_method { "method".to_owned() } else { "function".to_owned() },
             name: shim.name,
             spec: shim.spec_name,
         }
@@ -107,7 +107,7 @@ impl From<TraitMethodImplShim> for ShimTraitMethodImplEntry {
             trait_path: shim.trait_path,
             method_ident: shim.method_ident,
             for_type: shim.for_type,
-            kind: "trait_method".to_string(),
+            kind: "trait_method".to_owned(),
             name: shim.name,
             spec: shim.spec_name,
         }
@@ -125,8 +125,8 @@ pub struct AdtShim<'a> {
 impl<'a> From<AdtShim<'a>> for ShimAdtEntry {
     fn from(shim: AdtShim<'a>) -> Self {
         Self {
-            path: shim.path.iter().map(|x| (*x).to_string()).collect(),
-            kind: "adt".to_string(),
+            path: shim.path.iter().map(|x| (*x).to_owned()).collect(),
+            kind: "adt".to_owned(),
             syntype: shim.syn_type,
             semtype: shim.sem_type,
             rtype: shim.refinement_type,
@@ -261,7 +261,7 @@ impl<'a> ShimRegistry<'a> {
 
             serde_json::Value::Array(arr) => arr,
 
-            _ => return Err("invalid Json format".to_string()),
+            _ => return Err("invalid Json format".to_owned()),
         };
 
         for i in v {
@@ -393,7 +393,7 @@ pub fn is_valid_refinedrust_module(f: File) -> Option<String> {
             let name = obj.get("refinedrust_name")?;
             let name = name.as_str()?;
 
-            Some(name.to_string())
+            Some(name.to_owned())
         },
         _ => None,
     }

@@ -118,7 +118,7 @@ impl<'def> TypeTranslationScope<'def> {
                         let st_term = st_name;
 
                         let lit_ty = radium::LiteralTyParam {
-                            rust_name: p.name.as_str().to_string(),
+                            rust_name: p.name.as_str().to_owned(),
                             type_term: ty_term,
                             refinement_type: rt_name,
                             syn_type: st_term,
@@ -129,7 +129,7 @@ impl<'def> TypeTranslationScope<'def> {
                     _ => {
                         return Err(TranslationError::UnsupportedFeature {
                             description: "RefinedRust does currently not support non-type generic arguments"
-                                .to_string(),
+                                .to_owned(),
                         });
                     },
                 },
@@ -155,7 +155,7 @@ impl<'def> TypeTranslationScope<'def> {
 
                 ty::GenericArgKind::Const(_c) => {
                     return Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does currently not support const generics".to_string(),
+                        description: "RefinedRust does currently not support const generics".to_owned(),
                     });
                 },
             }
@@ -341,19 +341,19 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         if repr.simd() {
             return Err(TranslationError::UnsupportedFeature {
-                description: "RefinedRust does currently not support the SIMD flag".to_string(),
+                description: "RefinedRust does currently not support the SIMD flag".to_owned(),
             });
         }
 
         if repr.packed() {
             return Err(TranslationError::UnsupportedFeature {
-                description: "RefinedRust does currently not support the repr(packed) flag".to_string(),
+                description: "RefinedRust does currently not support the repr(packed) flag".to_owned(),
             });
         }
 
         if repr.linear() {
             return Err(TranslationError::UnsupportedFeature {
-                description: "RefinedRust does currently not support the linear flag".to_string(),
+                description: "RefinedRust does currently not support the linear flag".to_owned(),
             });
         }
 
@@ -372,19 +372,19 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         if repr.simd() {
             return Err(TranslationError::UnsupportedFeature {
-                description: "RefinedRust does currently not support the SIMD flag".to_string(),
+                description: "RefinedRust does currently not support the SIMD flag".to_owned(),
             });
         }
 
         if repr.packed() {
             return Err(TranslationError::UnsupportedFeature {
-                description: "RefinedRust does currently not support the repr(packed) flag".to_string(),
+                description: "RefinedRust does currently not support the repr(packed) flag".to_owned(),
             });
         }
 
         if repr.linear() {
             return Err(TranslationError::UnsupportedFeature {
-                description: "RefinedRust does currently not support the linear flag".to_string(),
+                description: "RefinedRust does currently not support the linear flag".to_owned(),
             });
         }
 
@@ -414,8 +414,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 None
             },
 
-            ty::RegionKind::ReStatic => Some("static".to_string()),
-            ty::RegionKind::ReErased => Some("erased".to_string()),
+            ty::RegionKind::ReStatic => Some("static".to_owned()),
+            ty::RegionKind::ReErased => Some("erased".to_owned()),
 
             ty::RegionKind::ReVar(v) => match &translation_state {
                 TranslationStateInner::InFunction(scope) => {
@@ -512,7 +512,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 if adt.is_box() {
                     // TODO: for now, Box gets a special treatment and is not accurately
                     // translated. Reconsider this later on
-                    return Err(TranslationError::UnknownError("Box is not a proper structlike".to_string()));
+                    return Err(TranslationError::UnknownError("Box is not a proper structlike".to_owned()));
                 }
 
                 if adt.is_struct() {
@@ -528,7 +528,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 if adt.is_enum() {
                     let Some(variant) = variant else {
                         return Err(TranslationError::UnknownError(
-                            "a non-downcast enum is not a structlike".to_string(),
+                            "a non-downcast enum is not a structlike".to_owned(),
                         ));
                     };
 
@@ -540,13 +540,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 }
 
                 Err(TranslationError::UnsupportedType {
-                    description: "non-{enum, struct, tuple} ADTs are not supported".to_string(),
+                    description: "non-{enum, struct, tuple} ADTs are not supported".to_owned(),
                 })
             },
 
             TyKind::Tuple(args) => self.generate_tuple_use(*args, adt_deps).map(radium::Type::Literal),
 
-            _ => Err(TranslationError::UnknownError("not a structlike".to_string())),
+            _ => Err(TranslationError::UnknownError("not a structlike".to_owned())),
         }
     }
 
@@ -609,7 +609,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let Some(arg_ty) = arg.as_type() else {
                 return Err(TranslationError::UnsupportedFeature {
                     description: "RefinedRust does currently not support ADTs with lifetime parameters"
-                        .to_string(),
+                        .to_owned(),
                 });
             };
 
@@ -764,7 +764,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         if def.is_union() {
             Err(TranslationError::Unimplemented {
-                description: "union ADTs are not yet supported".to_string(),
+                description: "union ADTs are not yet supported".to_owned(),
             })
         } else if self.is_struct_definitely_zero_sized(def.did()) == Some(true) {
             Ok(())
@@ -883,7 +883,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         // check for representation flags
         let repr = Self::get_struct_representation(&adt.repr())?;
-        let mut builder = radium::VariantBuilder::new(struct_name.to_string(), repr);
+        let mut builder = radium::VariantBuilder::new(struct_name.to_owned(), repr);
 
         // parse attributes
         let outer_attrs = self.env.get_attributes(ty.def_id);
@@ -1057,18 +1057,18 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Get the spec for a built-in enum like `std::option::Option`.
     fn get_builtin_enum_spec(&self, did: DefId) -> Option<radium::EnumSpec> {
         let option_spec = radium::EnumSpec {
-            rfn_type: coq::Type::Literal("_".to_string()),
+            rfn_type: coq::Type::Literal("_".to_owned()),
             variant_patterns: vec![
-                ("None".to_string(), vec![], "-[]".to_string()),
-                ("Some".to_string(), vec!["x".to_string()], "-[x]".to_string()),
+                ("None".to_owned(), vec![], "-[]".to_owned()),
+                ("Some".to_owned(), vec!["x".to_owned()], "-[x]".to_owned()),
             ],
         };
 
         let enum_spec = radium::EnumSpec {
-            rfn_type: coq::Type::Literal("_".to_string()),
+            rfn_type: coq::Type::Literal("_".to_owned()),
             variant_patterns: vec![
-                ("inl".to_string(), vec!["x".to_string()], "-[x]".to_string()),
-                ("inr".to_string(), vec!["x".to_string()], "-[x]".to_string()),
+                ("inl".to_owned(), vec!["x".to_owned()], "-[x]".to_owned()),
+                ("inr".to_owned(), vec!["x".to_owned()], "-[x]".to_owned()),
             ],
         };
 
@@ -1104,16 +1104,16 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let registry = self.variant_registry.borrow();
             let (variant_name, coq_def, variant_def, _, _) = registry.get(&v.def_id).unwrap();
             let coq_def = coq_def.get().unwrap();
-            let refinement_type = coq_def.plain_rt_def_name().to_string();
+            let refinement_type = coq_def.plain_rt_def_name().to_owned();
 
             // simple optimization: if the variant has no fields, also this constructor gets no arguments
             let (variant_args, variant_arg_binders, variant_rfn) = if variant_def.fields.is_empty() {
-                (vec![], vec![], "-[]".to_string())
+                (vec![], vec![], "-[]".to_owned())
             } else {
                 let args =
                     vec![coq::Param::new(coq::Name::Unnamed, coq::Type::Literal(refinement_type), false)];
 
-                (args, vec!["x".to_string()], "x".to_string())
+                (args, vec!["x".to_owned()], "x".to_owned())
             };
 
             let variant_def = coq::Variant {
@@ -1127,13 +1127,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         // We assume the generated Inductive def is placed in a context where the generic types are in scope.
         let inductive = coq::Inductive {
-            name: enum_name.to_string(),
+            name: enum_name.to_owned(),
             parameters: coq::ParamList::new(vec![]),
             variants,
         };
 
         let enum_spec = radium::EnumSpec {
-            rfn_type: coq::Type::Literal(enum_name.to_string()),
+            rfn_type: coq::Type::Literal(enum_name.to_owned()),
             variant_patterns,
         };
 
@@ -1477,60 +1477,60 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             },
 
             TyKind::Float(_) => Err(TranslationError::UnsupportedType {
-                description: "RefinedRust does not support floats".to_string(),
+                description: "RefinedRust does not support floats".to_owned(),
             }),
 
             TyKind::Array(_, _) => Err(TranslationError::UnsupportedFeature {
-                description: "RefinedRust does not support arrays".to_string(),
+                description: "RefinedRust does not support arrays".to_owned(),
             }),
 
             TyKind::Slice(_) => {
                 // TODO this should really be a fat ptr?
                 Err(TranslationError::UnsupportedFeature {
-                    description: "RefinedRust does not support slices".to_string(),
+                    description: "RefinedRust does not support slices".to_owned(),
                 })
             },
 
             TyKind::Foreign(_) => Err(TranslationError::UnsupportedType {
-                description: "RefinedRust does not support extern types".to_string(),
+                description: "RefinedRust does not support extern types".to_owned(),
             }),
 
             TyKind::Str => Err(TranslationError::UnsupportedType {
-                description: "RefinedRust does not support str".to_string(),
+                description: "RefinedRust does not support str".to_owned(),
             }),
 
             TyKind::FnDef(_, _) => Err(TranslationError::Unimplemented {
-                description: "RefinedRust does not support FnDef".to_string(),
+                description: "RefinedRust does not support FnDef".to_owned(),
             }),
 
             TyKind::FnPtr(_) => Err(TranslationError::Unimplemented {
-                description: "RefinedRust does not support FnPtr".to_string(),
+                description: "RefinedRust does not support FnPtr".to_owned(),
             }),
 
             TyKind::Dynamic(_, _, _) => Err(TranslationError::UnsupportedType {
-                description: "RefinedRust does not support trait objects".to_string(),
+                description: "RefinedRust does not support trait objects".to_owned(),
             }),
 
             TyKind::Generator(_, _, _) | TyKind::GeneratorWitness(_) | TyKind::GeneratorWitnessMIR(_, _) => {
                 Err(TranslationError::UnsupportedType {
-                    description: "RefinedRust does currently not support generators".to_string(),
+                    description: "RefinedRust does currently not support generators".to_owned(),
                 })
             },
 
             TyKind::Alias(_, _) => {
                 // TODO: probably need this when translating trait definitions
                 Err(TranslationError::UnsupportedType {
-                    description: "RefinedRust does not support Alias types".to_string(),
+                    description: "RefinedRust does not support Alias types".to_owned(),
                 })
             },
 
             TyKind::Infer(_) => Err(TranslationError::UnsupportedType {
-                description: "RefinedRust does not support infer types".to_string(),
+                description: "RefinedRust does not support infer types".to_owned(),
             }),
 
             TyKind::Bound(_, _) | TyKind::Placeholder(_) | TyKind::Error(_) => {
                 Err(TranslationError::UnsupportedType {
-                    description: "RefinedRust does not support higher-ranked types".to_string(),
+                    description: "RefinedRust does not support higher-ranked types".to_owned(),
                 })
             },
         }
@@ -1702,12 +1702,12 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
                         self.generate_enum_variant_use(v.def_id, args.iter(), scope).map(Some)
                     } else {
                         Err(TranslationError::UnknownError(
-                            "a non-downcast enum is not a structlike".to_string(),
+                            "a non-downcast enum is not a structlike".to_owned(),
                         ))
                     }
                 } else {
                     Err(TranslationError::UnsupportedType {
-                        description: "non-{enum, struct, tuple} ADTs are not supported".to_string(),
+                        description: "non-{enum, struct, tuple} ADTs are not supported".to_owned(),
                     })
                 }
             },
@@ -1720,7 +1720,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
                 let upvars = closure_args.upvar_tys();
                 self.generate_tuple_use(upvars, &mut TranslationStateInner::InFunction(scope)).map(Some)
             },
-            _ => Err(TranslationError::UnknownError("not a structlike".to_string())),
+            _ => Err(TranslationError::UnknownError("not a structlike".to_owned())),
         }
     }
 

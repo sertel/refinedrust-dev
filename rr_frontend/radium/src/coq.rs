@@ -26,7 +26,7 @@ pub struct Path(String);
 impl Path {
     #[must_use]
     pub fn new(path: &str) -> Self {
-        Self(path.to_string())
+        Self(path.to_owned())
     }
 
     #[must_use]
@@ -46,7 +46,7 @@ impl Module {
     #[must_use]
     pub fn new(name: &str) -> Self {
         Self {
-            name: name.to_string(),
+            name: name.to_owned(),
             path: None,
         }
     }
@@ -54,7 +54,7 @@ impl Module {
     #[must_use]
     pub fn new_with_path(name: &str, path: Path) -> Self {
         Self {
-            name: name.to_string(),
+            name: name.to_owned(),
             path: Some(path),
         }
     }
@@ -212,7 +212,7 @@ pub type Pattern = String;
 
 fn fmt_prod(v: &Vec<Type>) -> String {
     match v.as_slice() {
-        [] => "unit".to_string(),
+        [] => "unit".to_owned(),
         [t] => t.to_string(),
         _ => format!("({})%type", display_list!(v, " * ")),
     }

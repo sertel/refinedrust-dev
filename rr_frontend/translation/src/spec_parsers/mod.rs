@@ -40,7 +40,7 @@ pub fn get_export_as_attr(attrs: &[&AttrItem]) -> Result<Vec<String>, String> {
             }
         }
     }
-    Err("Did not find export_as annotation".to_string())
+    Err("Did not find export_as annotation".to_owned())
 }
 
 /// Parser for getting shim attributes
@@ -62,7 +62,7 @@ where
         if args.len() != 2 {
             return Err(parse::ParseError::OtherErr(
                 pos,
-                "Expected exactly two arguments to rr::shim".to_string(),
+                "Expected exactly two arguments to rr::shim".to_owned(),
             ));
         }
 
@@ -92,5 +92,5 @@ pub fn get_shim_attrs(attrs: &[&AttrItem]) -> Result<ShimAnnot, String> {
             }
         }
     }
-    Err("Did not find shim annotation".to_string())
+    Err("Did not find shim annotation".to_owned())
 }

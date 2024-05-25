@@ -131,27 +131,24 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             return None;
         }
 
-        match self.env.tcx().visibility(did) {
-            // only export public items
-            ty::Visibility::Public => {
-                let is_method = self.env.tcx().impl_of_method(did).is_some();
-                let interned_path = self.get_path_for_shim(did);
-
-                let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
-                info!("Found function path {:?} for did {:?} with name {:?}", interned_path, did, name);
-
-                Some(shim_registry::FunctionShim {
-                    path: interned_path,
-                    is_method,
-                    name,
-                    spec_name: spec_name.to_string(),
-                })
-            },
-            ty::Visibility::Restricted(_) => {
-                // don't  export
-                None
-            },
+        if self.env.tcx().visibility(did) != ty::Visibility::Public {
+            // don't export
+            return None;
         }
+
+        // only export public items
+        let is_method = self.env.tcx().impl_of_method(did).is_some();
+        let interned_path = self.get_path_for_shim(did);
+
+        let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
+        info!("Found function path {:?} for did {:?} with name {:?}", interned_path, did, name);
+
+        Some(shim_registry::FunctionShim {
+            path: interned_path,
+            is_method,
+            name,
+            spec_name: spec_name.to_owned(),
+        })
     }
 
     fn make_shim_trait_method_entry(
@@ -211,7 +208,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     return None;
                 };
 
-                let method_ident = ident.as_str().to_string();
+                let method_ident = ident.as_str().to_owned();
                 let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
 
                 trace!("leave make_shim_trait_method_entry (success)");
@@ -220,7 +217,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     method_ident,
                     for_type,
                     name,
-                    spec_name: spec_name.to_string(),
+                    spec_name: spec_name.to_owned(),
                 })
             },
             ty::Visibility::Restricted(_) => {
@@ -703,8 +700,9 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 let (project_name, dune_project_package) = if let Some(dune_package) = &self.dune_package {
                     (dune_package.to_string(), format!("(package (name {dune_package}))\n"))
                 } else {
-                    (stem.to_string(), format!(""))
+                    (stem.to_owned(), format!(""))
                 };
+
                 write!(
                     dune_project_file,
                     "\
@@ -1064,7 +1062,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                 &vcx.procedure_registry,
                 &vcx.const_registry,
             ),
-            _ => Err(base::TranslationError::UnknownError("unknown function kind".to_string())),
+            _ => Err(base::TranslationError::UnknownError("unknown function kind".to_owned())),
         };
 
         if mode.is_only_spec() {
@@ -1269,7 +1267,7 @@ where
     let mut crate_parser = crate_parser::VerboseCrateAttrParser::new();
     let crate_spec = crate_parser.parse_crate_attrs(&crate_attrs)?;
 
-    let path_prefix = crate_spec.prefix.unwrap_or_else(|| "refinedrust.examples".to_string());
+    let path_prefix = crate_spec.prefix.unwrap_or_else(|| "refinedrust.examples".to_owned());
     info!("Setting Coq path prefix: {:?}", path_prefix);
 
     let package = crate_spec.package;
