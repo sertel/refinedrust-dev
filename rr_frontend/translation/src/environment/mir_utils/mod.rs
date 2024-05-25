@@ -6,22 +6,12 @@
 
 //! This module provides utility functions for MIR.
 
-mod all_places;
-mod args_for_mir;
-mod mir_place;
-mod real_edges;
-mod split_aggregate_assignment;
-mod statement_as_assign;
-mod statement_at;
-mod tuple_items_for_ty;
-mod ty_as_ty_ref;
-
-pub use self::all_places::*;
-pub use self::args_for_mir::*;
-pub use self::mir_place::*;
-pub use self::real_edges::*;
-pub use self::split_aggregate_assignment::*;
-pub use self::statement_as_assign::*;
-pub use self::statement_at::*;
-pub use self::tuple_items_for_ty::*;
-pub use self::ty_as_ty_ref::*;
+pub mod all_places;
+pub mod args_for_mir;
+pub mod mir_place;
+pub mod real_edges;
+pub mod split_aggregate_assignment;
+pub mod statement_as_assign;
+pub mod statement_at;
+pub mod tuple_items_for_ty;
+pub mod ty_as_ty_ref;

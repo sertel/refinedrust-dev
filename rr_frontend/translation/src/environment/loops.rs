@@ -13,7 +13,7 @@ use rustc_middle::mir;
 use rustc_middle::mir::visit::Visitor;
 
 use crate::environment::mir_sets::place_set::PlaceSet;
-use crate::environment::mir_utils::RealEdges;
+use crate::environment::mir_utils::real_edges::RealEdges;
 use crate::environment::procedure::BasicBlockIndex;
 use crate::utils;
 

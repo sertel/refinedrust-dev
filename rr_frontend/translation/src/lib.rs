@@ -1064,7 +1064,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                 &vcx.procedure_registry,
                 &vcx.const_registry,
             ),
-            _ => Err(function_body::TranslationError::UnknownError("unknown function kind".to_string())),
+            _ => Err(base::TranslationError::UnknownError("unknown function kind".to_string())),
         };
 
         if mode.is_only_spec() {
@@ -1074,7 +1074,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                     println!("Successfully generated spec for {}", fname);
                     vcx.procedure_registry.provide_specced_function(f.to_def_id(), spec);
                 },
-                Err(function_body::TranslationError::FatalError(err)) => {
+                Err(base::TranslationError::FatalError(err)) => {
                     println!("Encountered fatal cross-function error in translation: {:?}", err);
                     println!("Aborting...");
                     return;
@@ -1097,7 +1097,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                     println!("Successfully translated {}", fname);
                     vcx.procedure_registry.provide_translated_function(f.to_def_id(), fun);
                 },
-                Err(function_body::TranslationError::FatalError(err)) => {
+                Err(base::TranslationError::FatalError(err)) => {
                     println!("Encountered fatal cross-function error in translation: {:?}", err);
                     println!("Aborting...");
                     return;

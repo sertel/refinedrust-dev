@@ -21,7 +21,7 @@ use rustc_middle::ty::{ConstKind, Ty, TyKind};
 use rustc_middle::{mir, ty};
 
 use crate::arg_folder::*;
-pub use crate::base::*;
+use crate::base::*;
 use crate::checked_op_analysis::CheckedOpLocalAnalysis;
 use crate::environment::borrowck::facts;
 use crate::environment::polonius_info::PoloniusInfo;

@@ -23,9 +23,11 @@ use super::procedure::Procedure;
 use super::{loops, Environment};
 use crate::environment::borrowck::facts::PointType;
 use crate::environment::borrowck::regions::{PlaceRegions, PlaceRegionsError};
-use crate::environment::mir_utils::{
-    AllPlaces, RealEdges, SplitAggregateAssignment, StatementAsAssign, StatementAt,
-};
+use crate::environment::mir_utils::all_places::AllPlaces;
+use crate::environment::mir_utils::real_edges::RealEdges;
+use crate::environment::mir_utils::split_aggregate_assignment::SplitAggregateAssignment;
+use crate::environment::mir_utils::statement_as_assign::StatementAsAssign;
+use crate::environment::mir_utils::statement_at::StatementAt;
 use crate::environment::polonius_info::facts::AllInputFacts;
 use crate::utils;
 

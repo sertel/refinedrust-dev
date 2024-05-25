@@ -6,7 +6,7 @@
 
 use datafrog as df;
 
-pub use crate::base::*;
+use crate::base::*;
 /// The `InclusionTracker` maintains a set of dynamic lifetime inclusions holding in the `RefinedRust`
 /// type system at given program points.
 /// This is used for the lifetime annotation generation.

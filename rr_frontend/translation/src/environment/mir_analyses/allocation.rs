@@ -20,7 +20,7 @@ use rr_rustc_interface::hir::def_id::DefId;
 use rr_rustc_interface::middle::mir;
 
 use super::initialization::AnalysisResult;
-use crate::environment::mir_sets::LocalSet;
+use crate::environment::mir_sets::local_set::LocalSet;
 
 /// The result of the definitely allocated analysis.
 pub type DefinitelyAllocatedAnalysisResult = AnalysisResult<LocalSet>;

@@ -4,8 +4,8 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use attribute_parse as parse;
 /// Parsing of `RefinedRust` struct specifications.
+use attribute_parse::{parse, MToken};
 use log::info;
 use parse::{Parse, Peek};
 use radium::{coq, specs};
@@ -49,7 +49,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
 
         // optionally, parse a type annotation (otherwise, let Coq inference do its thing)
         if parse::Colon::peek(input) {
-            input.parse::<_, parse::MToken![:]>(meta)?;
+            input.parse::<_, MToken![:]>(meta)?;
             let ty: parse::LitStr = input.parse(meta)?;
             let (ty, _) = process_coq_literal(ty.value().as_str(), *meta);
             Ok(Self {
@@ -82,7 +82,7 @@ enum MetaIProp {
 impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
     fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
         if parse::Pound::peek(input) {
-            input.parse::<_, parse::MToken![#]>(meta)?;
+            input.parse::<_, MToken![#]>(meta)?;
             let macro_cmd: parse::Ident = input.parse(meta)?;
             match macro_cmd.value().as_str() {
                 "iris" => {
@@ -101,14 +101,14 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let loc_str: parse::LitStr = input.parse(meta)?;
                     let (loc_str, mut annot_meta) = process_coq_literal(&loc_str.value(), *meta);
 
-                    input.parse::<_, parse::MToken![:]>(meta)?;
+                    input.parse::<_, MToken![:]>(meta)?;
 
                     let rfn_str: parse::LitStr = input.parse(meta)?;
                     let (rfn_str, annot_meta2) = process_coq_literal(&rfn_str.value(), *meta);
 
                     annot_meta.join(&annot_meta2);
 
-                    input.parse::<_, parse::MToken![@]>(meta)?;
+                    input.parse::<_, MToken![@]>(meta)?;
 
                     let type_str: parse::LitStr = input.parse(meta)?;
                     let (type_str, annot_meta3) = process_coq_literal(&type_str.value(), *meta);
@@ -129,7 +129,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 // this is a name
                 let name_str = name_or_prop_str.value();
 
-                input.parse::<_, parse::MToken![:]>(meta)?;
+                input.parse::<_, MToken![:]>(meta)?;
 
                 let pure_prop: parse::LitStr = input.parse(meta)?;
                 let (pure_str, _annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
@@ -416,7 +416,7 @@ where
 
                 if parse::At::peek(&buffer) {
                     info!("expecting type");
-                    buffer.parse::<_, parse::MToken![@]>(&meta).map_err(str_err)?;
+                    buffer.parse::<_, MToken![@]>(&meta).map_err(str_err)?;
                 } else {
                     continue;
                 }

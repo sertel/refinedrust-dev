@@ -1,7 +1,7 @@
 use rustc_middle::ty::visit::*;
 use rustc_middle::ty::{self, Binder, GenericArg, GenericArgKind, ParamConst, Ty, TyCtxt, TypeFolder};
-pub use rustc_type_ir::fold::{TypeFoldable, TypeSuperFoldable};
-pub use rustc_type_ir::visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor};
+use rustc_type_ir::fold::{TypeFoldable, TypeSuperFoldable};
+use rustc_type_ir::visit::{TypeSuperVisitable, TypeVisitable, TypeVisitor};
 
 /// A version of the `ArgFolder` in `rustc_middle::src::ty::generic_args` that skips over `ReVar`
 /// (instead of triggering a bug).

@@ -40,9 +40,8 @@ use rustc_span::source_map::SourceMap;
 use self::borrowck::facts::BorrowckFacts;
 use self::collect_closure_defs_visitor::CollectClosureDefsVisitor;
 use self::collect_prusti_spec_visitor::CollectPrustiSpecVisitor;
-pub use self::dump_borrowck_info::dump_borrowck_info;
-pub use self::loops::{PlaceAccess, PlaceAccessKind, ProcedureLoops};
-pub use self::procedure::{BasicBlockIndex, Procedure};
+use self::loops::{PlaceAccess, PlaceAccessKind, ProcedureLoops};
+use self::procedure::{BasicBlockIndex, Procedure};
 // use config;
 use crate::data::ProcedureDefId;
 
@@ -446,4 +445,12 @@ impl<'tcx> Environment<'tcx> {
             )
         }
     */
+}
+
+pub fn dump_borrowck_info<'a, 'tcx>(
+    env: &'a Environment<'tcx>,
+    procedure: ProcedureDefId,
+    info: &'a polonius_info::PoloniusInfo<'a, 'tcx>,
+) {
+    dump_borrowck_info::dump_borrowck_info(env, procedure, info);
 }

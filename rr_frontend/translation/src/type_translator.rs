@@ -15,7 +15,7 @@ use rustc_middle::ty;
 use rustc_middle::ty::{IntTy, Ty, TyKind, UintTy};
 use typed_arena::Arena;
 
-pub use crate::base::*;
+use crate::base::*;
 use crate::environment::{polonius_info as info, Environment};
 use crate::rustc_middle::ty::TypeFoldable;
 use crate::spec_parsers::enum_spec_parser::{EnumSpecParser, VerboseEnumSpecParser};

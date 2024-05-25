@@ -25,7 +25,7 @@ use super::polonius_info::PoloniusInfo;
 use super::procedure::Procedure;
 use super::{loops, Environment};
 use crate::data::ProcedureDefId;
-use crate::environment::mir_utils::RealEdges;
+use crate::environment::mir_utils::real_edges::RealEdges;
 
 /*
 pub fn dump_borrowck_info(env: &Environment<'_>, procedures: &[ProcedureDefId]) {

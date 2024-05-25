@@ -4,8 +4,8 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use attribute_parse as parse;
-use parse::Peek;
+use attribute_parse::{parse, MToken};
+use parse::{Parse, Peek};
 use radium::{coq, specs};
 use rustc_ast::ast::AttrItem;
 
@@ -46,10 +46,10 @@ impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
 
         let args: Vec<String> = if parse::Dollar::peek(input) {
             // optionally parse args
-            input.parse::<_, parse::MToken![$]>(meta)?;
+            input.parse::<_, MToken![$]>(meta)?;
 
             // parse a sequence of args
-            let parsed_args: parse::Punctuated<parse::LitStr, parse::MToken![,]> =
+            let parsed_args: parse::Punctuated<parse::LitStr, MToken![,]> =
                 parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
 
             parsed_args

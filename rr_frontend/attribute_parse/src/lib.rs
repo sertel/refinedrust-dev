@@ -5,4 +5,3 @@ extern crate rustc_driver;
 extern crate rustc_span;
 
 pub mod parse;
-pub use parse::*;

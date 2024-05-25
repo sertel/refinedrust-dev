@@ -14,7 +14,7 @@ use rustc_span::Span;
 
 use super::loops;
 use crate::data::ProcedureDefId;
-use crate::environment::mir_utils::RealEdges;
+use crate::environment::mir_utils::real_edges::RealEdges;
 use crate::environment::Environment;
 
 /// Index of a Basic Block

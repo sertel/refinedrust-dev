@@ -25,7 +25,7 @@ use rr_rustc_interface::{
     middle::{mir, ty::TyCtxt},
 };
 
-use crate::environment::mir_sets::PlaceSet;
+use crate::environment::mir_sets::place_set::PlaceSet;
 
 pub struct AnalysisResult<T> {
     /// The state before the basic block.
