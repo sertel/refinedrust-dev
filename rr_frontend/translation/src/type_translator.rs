@@ -417,8 +417,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             ty::RegionKind::ReStatic => Some("static".to_string()),
             ty::RegionKind::ReErased => Some("erased".to_string()),
 
-            ty::RegionKind::ReVar(v) => match translation_state {
-                TranslationStateInner::InFunction(ref scope) => {
+            ty::RegionKind::ReVar(v) => match &translation_state {
+                TranslationStateInner::InFunction(scope) => {
                     let r = scope.lookup_universal_region(v);
                     info!("Translating region: ReVar {:?} as {:?}", v, r);
                     r
@@ -614,10 +614,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             };
 
             let translated_ty = match state {
-                TranslationStateInner::TranslateAdt(ref mut deps) => {
+                TranslationStateInner::TranslateAdt(deps) => {
                     self.translate_type_with_deps(arg_ty, &mut TranslationStateInner::TranslateAdt(deps))?
                 },
-                TranslationStateInner::InFunction(ref mut scope) => {
+                TranslationStateInner::InFunction(scope) => {
                     let mut translated_ty =
                         self.translate_type_with_deps(arg_ty, &mut TranslationStateInner::InFunction(scope))?;
 
@@ -656,7 +656,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let params = self.translate_generic_args(args, &mut *state)?;
         let key = AdtUseKey::new(variant_id, &params);
 
-        if let TranslationStateInner::InFunction(ref mut scope) = state {
+        if let TranslationStateInner::InFunction(scope) = state {
             let lit_uses = &mut scope.shim_uses;
 
             lit_uses
@@ -721,7 +721,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         // TODO: don't generate duplicates
         let struct_use = radium::LiteralTypeUse::new(lit, params);
-        if let TranslationStateInner::InFunction(ref mut scope) = *state {
+        if let TranslationStateInner::InFunction(scope) = state {
             scope.tuple_uses.push(struct_use.clone());
         }
 
@@ -954,7 +954,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         info!("finished variant def: {:?}", struct_def);
 
         // now add the invariant, if one was annotated
-        if let Some(ref mut invariant_spec) = invariant_spec {
+        if let Some(invariant_spec) = &mut invariant_spec {
             if expect_refinement {
                 // make a plist out of this
                 let mut rfn = String::with_capacity(100);
@@ -1316,7 +1316,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let key = AdtUseKey::new(adt.did(), &params);
         let shim_use = radium::LiteralTypeUse::new(shim, params);
 
-        if let TranslationStateInner::InFunction(ref mut scope) = state {
+        if let TranslationStateInner::InFunction(scope) = state {
             // track this shim use for the current function
             scope.shim_uses.entry(key).or_insert_with(|| shim_use.clone());
         }
@@ -1414,7 +1414,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     return Ok(radium::Type::Unit);
                 }
 
-                if let TranslationStateInner::TranslateAdt(ref mut adt_deps) = *state {
+                if let TranslationStateInner::TranslateAdt(adt_deps) = state {
                     adt_deps.insert(adt.did());
                 }
 
@@ -1452,7 +1452,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             },
 
             TyKind::Param(param_ty) => {
-                let TranslationStateInner::InFunction(ref mut scope) = state else {
+                let TranslationStateInner::InFunction(scope) = state else {
                     info!("using generic type param: {}", param_ty);
                     return Ok(radium::Type::Var(param_ty.index as usize));
                 };
@@ -1828,7 +1828,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         //let struct_use = radium::AbstractStructUse::new(struct_ref, translated_tys,
         // radium::TypeIsRaw::Yes);
         let struct_use = radium::LiteralTypeUse::new(lit, translated_tys);
-        if let TranslationStateInner::InFunction(ref mut scope) = *state {
+        if let TranslationStateInner::InFunction(scope) = state {
             scope.tuple_uses.push(struct_use.clone());
         }
 

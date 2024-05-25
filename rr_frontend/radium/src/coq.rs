@@ -391,7 +391,7 @@ pub struct Param {
 impl Param {
     #[must_use]
     pub fn new(name: Name, ty: Type, implicit: bool) -> Self {
-        let depends_on_sigma = if let Type::Literal(ref lit) = ty { lit.contains('Σ') } else { false };
+        let depends_on_sigma = if let Type::Literal(lit) = &ty { lit.contains('Σ') } else { false };
 
         Self {
             name,
@@ -414,13 +414,13 @@ impl Param {
         }
 
         if make_implicits {
-            if let Name::Named(ref name) = self.name {
+            if let Name::Named(name) = &self.name {
                 format!("`{{{} : !{}}}", name, self.ty)
             } else {
                 format!("`{{!{}}}", self.ty)
             }
         } else {
-            if let Name::Named(ref name) = self.name {
+            if let Name::Named(name) = &self.name {
                 format!("`({} : !{})", name, self.ty)
             } else {
                 format!("`(!{})", self.ty)
@@ -560,8 +560,8 @@ pub struct InstanceDecl {
 
 impl Display for InstanceDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.name {
-            Some(ref name) => {
+        match &self.name {
+            Some(name) => {
                 write!(f, "{} Instance {} {} : {}{}", self.attrs, name, self.params, self.ty, self.body)
             },
             None => write!(f, "{} Instance {} : {}{}", self.attrs, self.params, self.ty, self.body),

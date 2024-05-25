@@ -1527,8 +1527,8 @@ impl<'def> AbstractStruct<'def> {
     /// Get the name of the struct, or an ADT defined on it, if available.
     #[must_use]
     pub fn public_type_name(&self) -> &str {
-        match self.invariant {
-            Some(ref inv) => &inv.type_name,
+        match &self.invariant {
+            Some(inv) => &inv.type_name,
             None => self.plain_ty_name(),
         }
     }
@@ -1540,8 +1540,8 @@ impl<'def> AbstractStruct<'def> {
 
     #[must_use]
     pub fn public_rt_def_name(&self) -> String {
-        match self.invariant {
-            Some(ref inv) => inv.rt_def_name(),
+        match &self.invariant {
+            Some(inv) => inv.rt_def_name(),
             None => self.plain_rt_def_name().to_string(),
         }
     }
@@ -1563,7 +1563,7 @@ impl<'def> AbstractStruct<'def> {
     /// Generate a Coq definition for the struct type alias.
     #[must_use]
     pub fn generate_coq_type_def(&self) -> String {
-        let extra_context = if let Some(ref inv) = self.invariant { inv.coq_params.as_slice() } else { &[] };
+        let extra_context = if let Some(inv) = &self.invariant { inv.coq_params.as_slice() } else { &[] };
 
         self.variant_def.generate_coq_type_def(&self.ty_params, extra_context)
     }
@@ -1847,7 +1847,7 @@ impl<'def> AbstractStructUse<'def> {
         }
 
         if !self.is_raw() && def.invariant.is_some() {
-            let Some(ref inv) = def.invariant else {
+            let Some(inv) = &def.invariant else {
                 unreachable!();
             };
 
@@ -2167,7 +2167,7 @@ impl<'def> AbstractEnum<'def> {
         }
 
         // write the Coq inductive, if applicable
-        if let Some(ref ind) = self.optional_inductive_def {
+        if let Some(ind) = &self.optional_inductive_def {
             let mut assertions = coq::TopLevelAssertions::empty();
 
             assertions.push(coq::TopLevelAssertion::Comment(format!(
@@ -2664,7 +2664,7 @@ impl<'def> FunctionSpec<'def> {
         let mut out = String::with_capacity(100);
 
         out.push_str("λ ϝ, [");
-        push_str_list!(out, &self.elctx, ", ", |(ref lft1, ref lft2)| format!("({lft1}, {lft2})"));
+        push_str_list!(out, &self.elctx, ", ", |(lft1, lft2)| format!("({lft1}, {lft2})"));
         out.push(']');
 
         out
@@ -2815,7 +2815,7 @@ impl<'def> FunctionSpecBuilder<'def> {
     }
 
     fn push_coq_name(&mut self, name: &coq::Name) {
-        if let coq::Name::Named(ref name) = name {
+        if let coq::Name::Named(name) = &name {
             self.coq_names.insert(name.to_string());
         }
     }
@@ -2868,7 +2868,7 @@ impl<'def> FunctionSpecBuilder<'def> {
     }
 
     fn ensure_coq_not_bound(&self, name: &coq::Name) -> Result<(), String> {
-        if let coq::Name::Named(ref name) = name {
+        if let coq::Name::Named(name) = &name {
             if self.coq_names.contains(name) {
                 return Err(format!("Coq name is already bound: {}", name));
             }
@@ -2909,10 +2909,10 @@ impl<'def> FunctionSpecBuilder<'def> {
 
     /// Add a new universal lifetime constraint.
     pub fn add_lifetime_constraint(&mut self, lft1: UniversalLft, lft2: UniversalLft) -> Result<(), String> {
-        if let UniversalLft::Local(ref s) = lft1 {
+        if let UniversalLft::Local(s) = &lft1 {
             let _ = self.ensure_coq_bound(s)?;
         }
-        if let UniversalLft::Local(ref s) = lft2 {
+        if let UniversalLft::Local(s) = &lft2 {
             let _ = self.ensure_coq_bound(s)?;
         }
         self.elctx.push((lft1, lft2));

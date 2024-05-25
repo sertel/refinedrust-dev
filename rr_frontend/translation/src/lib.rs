@@ -700,7 +700,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 let mut dune_project_file =
                     io::BufWriter::new(fs::File::create(dune_project_path.as_path()).unwrap());
 
-                let (project_name, dune_project_package) = if let Some(ref dune_package) = self.dune_package {
+                let (project_name, dune_project_package) = if let Some(dune_package) = &self.dune_package {
                     (dune_package.to_string(), format!("(package (name {dune_package}))\n"))
                 } else {
                     (stem.to_string(), format!(""))
@@ -747,7 +747,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         let extra_theories: Vec<String> = extra_theories.into_iter().map(|x| x.to_string()).collect();
 
-        let dune_package = if let Some(ref dune_package) = self.dune_package {
+        let dune_package = if let Some(dune_package) = &self.dune_package {
             format!("(package {dune_package})\n")
         } else {
             format!("")

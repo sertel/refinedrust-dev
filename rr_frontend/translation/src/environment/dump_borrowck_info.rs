@@ -546,14 +546,16 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         write_graph!(self, "</th>");
 
         let mir::BasicBlockData {
-            ref statements,
-            ref terminator,
+            statements,
+            terminator,
             ..
-        } = self.mir[bb];
+        } = &self.mir[bb];
+
         let mut location = mir::Location {
             block: bb,
             statement_index: 0,
         };
+
         let terminator_index = statements.len();
 
         while location.statement_index < terminator_index {
@@ -575,7 +577,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         write_graph!(self, "</tr>");
         write_graph!(self, "</table>> ];");
 
-        if let Some(ref terminator) = &terminator {
+        if let Some(terminator) = &terminator {
             self.visit_terminator(bb, terminator)?;
         }
 
@@ -783,11 +785,11 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 
     fn visit_terminator(&self, bb: mir::BasicBlock, terminator: &mir::Terminator) -> Result<(), io::Error> {
         use rustc_middle::mir::TerminatorKind;
-        match terminator.kind {
+        match &terminator.kind {
             TerminatorKind::Goto { target } => {
                 write_edge!(self, bb, target);
             },
-            TerminatorKind::SwitchInt { ref targets, .. } => {
+            TerminatorKind::SwitchInt { targets, .. } => {
                 for target in targets.all_targets() {
                     write_edge!(self, bb, target);
                 }
@@ -802,18 +804,14 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             TerminatorKind::UnwindTerminate(_) => {
                 write_edge!(self, bb, str terminate);
             },
-            TerminatorKind::Drop {
-                ref target, unwind, ..
-            } => {
+            TerminatorKind::Drop { target, unwind, .. } => {
                 write_edge!(self, bb, target);
                 //if let Some(target) = unwind {
                 //write_edge!(self, bb, unwind target);
                 //}
             },
-            TerminatorKind::Call {
-                ref target, unwind, ..
-            } => {
-                if let Some(target) = *target {
+            TerminatorKind::Call { target, unwind, .. } => {
+                if let Some(target) = target {
                     write_edge!(self, bb, target);
                 }
                 //if let Some(target) = unwind {
@@ -829,8 +827,8 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             TerminatorKind::Yield { .. } => unimplemented!(),
             TerminatorKind::GeneratorDrop => unimplemented!(),
             TerminatorKind::FalseEdge {
-                ref real_target,
-                ref imaginary_target,
+                real_target,
+                imaginary_target,
             } => {
                 write_edge!(self, bb, real_target);
                 write_edge!(self, bb, imaginary_target);

@@ -13,6 +13,6 @@ pub trait StatementAsAssign<'tcx> {
 
 impl<'tcx> StatementAsAssign<'tcx> for mir::Statement<'tcx> {
     fn as_assign(&self) -> Option<(mir::Place<'tcx>, &mir::Rvalue<'tcx>)> {
-        if let mir::StatementKind::Assign(box (lhs, ref rhs)) = self.kind { Some((lhs, rhs)) } else { None }
+        if let mir::StatementKind::Assign(box (lhs, rhs)) = &self.kind { Some((*lhs, rhs)) } else { None }
     }
 }

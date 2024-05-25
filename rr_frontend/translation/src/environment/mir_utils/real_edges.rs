@@ -44,12 +44,12 @@ impl RealEdges {
 }
 
 fn real_targets(terminator: &mir::Terminator) -> Vec<mir::BasicBlock> {
-    match terminator.kind {
-        TerminatorKind::Goto { ref target } | TerminatorKind::Assert { ref target, .. } => {
+    match &terminator.kind {
+        TerminatorKind::Goto { target } | TerminatorKind::Assert { target, .. } => {
             vec![*target]
         },
 
-        TerminatorKind::SwitchInt { ref targets, .. } => targets.all_targets().to_vec(),
+        TerminatorKind::SwitchInt { targets, .. } => targets.all_targets().to_vec(),
 
         TerminatorKind::GeneratorDrop
         | TerminatorKind::Return
@@ -57,26 +57,21 @@ fn real_targets(terminator: &mir::Terminator) -> Vec<mir::BasicBlock> {
         | TerminatorKind::UnwindResume
         | TerminatorKind::UnwindTerminate(_) => vec![],
 
-        TerminatorKind::Drop { ref target, .. } => vec![*target],
+        TerminatorKind::Drop { target, .. } => vec![*target],
 
-        TerminatorKind::Call { ref target, .. } => match *target {
-            Some(target) => vec![target],
+        TerminatorKind::Call { target, .. } => match target {
+            Some(target) => vec![*target],
             None => vec![],
         },
 
-        TerminatorKind::FalseEdge {
-            ref real_target, ..
-        }
-        | TerminatorKind::FalseUnwind {
-            ref real_target, ..
-        } => vec![*real_target],
+        TerminatorKind::FalseEdge { real_target, .. } | TerminatorKind::FalseUnwind { real_target, .. } => {
+            vec![*real_target]
+        },
 
-        TerminatorKind::Yield { ref resume, .. } => vec![*resume],
+        TerminatorKind::Yield { resume, .. } => vec![*resume],
 
-        TerminatorKind::InlineAsm {
-            ref destination, ..
-        } => match *destination {
-            Some(target) => vec![target],
+        TerminatorKind::InlineAsm { destination, .. } => match destination {
+            Some(target) => vec![*target],
             None => vec![],
         },
     }

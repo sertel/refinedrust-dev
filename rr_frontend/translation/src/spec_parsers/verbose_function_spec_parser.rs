@@ -251,7 +251,7 @@ where
         lit: &LiteralTypeWithRef,
         ty: &specs::Type<'def>,
     ) -> (specs::TypeWithRef<'def>, Option<coq::Type>) {
-        if let Some(ref lit_ty) = lit.ty {
+        if let Some(lit_ty) = &lit.ty {
             // literal type given, we use this literal type as the RR semantic type
             // just use the syntype from the Rust type
             let st = ty.get_syn_type();
@@ -321,7 +321,7 @@ where
                     builder.spec.add_arg(ty);
                     if let Some(cty) = hint {
                         // potentially add a typing hint to the refinement
-                        if let IdentOrTerm::Ident(ref i) = arg.rfn {
+                        if let IdentOrTerm::Ident(i) = arg.rfn {
                             info!("Trying to add a typing hint for {}", i);
                             builder.spec.add_param_type_annot(&coq::Name::Named(i.clone()), cty)?;
                         }

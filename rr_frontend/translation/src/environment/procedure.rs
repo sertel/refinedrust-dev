@@ -183,29 +183,28 @@ impl<'tcx> Procedure<'tcx> {
 
     #[must_use]
     pub fn is_panic_block(&self, bbi: BasicBlockIndex) -> bool {
-        if let TerminatorKind::Call {
-            args: ref _args,
-            destination: ref _destination,
-            func:
-                mir::Operand::Constant(box mir::Constant {
-                    literal: mir::ConstantKind::Ty(c),
-                    ..
-                }),
-            ..
-        } = self.mir[bbi].terminator().kind
-        {
-            if let ty::TyKind::FnDef(def_id, ..) = c.ty().kind() {
-                // let func_proc_name = self.tcx.absolute_item_path_str(def_id);
-                let func_proc_name = self.tcx.def_path_str(*def_id);
-                &func_proc_name == "std::rt::begin_panic"
-                    || &func_proc_name == "core::panicking::panic"
-                    || &func_proc_name == "core::panicking::panic_fmt"
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+        let TerminatorKind::Call { func, .. } = &self.mir[bbi].terminator().kind else {
+            return false;
+        };
+
+        let mir::Operand::Constant(box mir::Constant { literal, .. }) = func else {
+            return false;
+        };
+
+        let mir::ConstantKind::Ty(c) = literal else {
+            return false;
+        };
+
+        let ty::TyKind::FnDef(def_id, ..) = c.ty().kind() else {
+            return false;
+        };
+
+        // let func_proc_name = self.tcx.absolute_item_path_str(def_id);
+        let func_proc_name = self.tcx.def_path_str(*def_id);
+
+        func_proc_name == "std::rt::begin_panic"
+            || func_proc_name == "core::panicking::panic"
+            || func_proc_name == "core::panicking::panic_fmt"
     }
 
     /// Get the successors of a basic block.

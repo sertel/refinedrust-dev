@@ -719,8 +719,8 @@ pub fn has_any_tool_attr(attrs: &[ast::Attribute]) -> bool {
 pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
     attrs
         .iter()
-        .filter_map(|attr| match attr.kind {
-            ast::AttrKind::Normal(ref na) => {
+        .filter_map(|attr| match &attr.kind {
+            ast::AttrKind::Normal(na) => {
                 let item = &na.item;
 
                 let seg = item.path.segments.get(0)?;

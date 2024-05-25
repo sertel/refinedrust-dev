@@ -327,7 +327,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             typ: facts::PointType::Start,
         });
 
-        for (ref r1, ref r2, ref p) in &info.borrowck_in_facts.subset_base {
+        for (r1, r2, p) in &info.borrowck_in_facts.subset_base {
             if *p == root_point && *r2 == r {
                 info!("find placeholder region for: {:?} ⊑ {:?} = r = {:?}", r1, r2, r);
                 return Some(*r1);
@@ -1668,7 +1668,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // check the statements for an assignment
                 let data = basic_blocks.get(*body).unwrap();
                 for stmt in &data.statements {
-                    if let StatementKind::Assign(box (ref pl, _)) = stmt.kind {
+                    if let StatementKind::Assign(box (pl, _)) = stmt.kind {
                         if let Some(did) = self.is_spec_closure_local(pl.local)? {
                             return Ok(Some(did));
                         }
@@ -2093,13 +2093,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         loc: Location,
         dying_loans: Vec<facts::Loan>,
     ) -> Result<radium::Stmt, TranslationError> {
-        match term.kind {
-            TerminatorKind::Goto { target } => self.translate_goto_like(&loc, target),
+        match &term.kind {
+            TerminatorKind::Goto { target } => self.translate_goto_like(&loc, *target),
 
             TerminatorKind::Call {
-                ref func,
-                ref args,
-                ref destination,
+                func,
+                args,
+                destination,
                 target,
                 ..
             } => {
@@ -2109,7 +2109,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     return Ok(radium::Stmt::Stuck);
                 }
 
-                self.translate_function_call(func, args, destination, target, loc, dying_loans.as_slice())
+                self.translate_function_call(func, args, destination, *target, loc, dying_loans.as_slice())
             },
 
             TerminatorKind::Return => {
@@ -2132,10 +2132,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             //res_stmt = radium::Stmt::Stuck;
             //res_stmt = self.prepend_endlfts(res_stmt, dying_loans.into_iter());
             //},
-            TerminatorKind::SwitchInt {
-                ref discr,
-                ref targets,
-            } => {
+            TerminatorKind::SwitchInt { discr, targets } => {
                 let operand = self.translate_operand(discr, true)?;
                 let all_targets: &[BasicBlock] = targets.all_targets();
 
@@ -2197,7 +2194,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             },
 
             TerminatorKind::Assert {
-                ref cond,
+                cond,
                 expected,
                 target,
                 ..
@@ -2209,10 +2206,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     ot1: radium::OpType::BoolOp,
                     ot2: radium::OpType::BoolOp,
                     e1: Box::new(cond_translated),
-                    e2: Box::new(radium::Expr::Literal(radium::Literal::LitBool(expected))),
+                    e2: Box::new(radium::Expr::Literal(radium::Literal::LitBool(*expected))),
                 };
 
-                let stmt = self.translate_goto_like(&loc, target)?;
+                let stmt = self.translate_goto_like(&loc, *target)?;
 
                 // TODO: should we really have this?
                 let stmt = self.prepend_endlfts(stmt, dying_loans.into_iter());
@@ -2223,31 +2220,24 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 })
             },
 
-            TerminatorKind::Drop {
-                ref place, target, ..
-            } => {
+            TerminatorKind::Drop { place, target, .. } => {
                 let ty = self.get_type_of_place(place);
                 self.register_drop_shim_for(ty.ty);
 
                 let place_translated = self.translate_place(place)?;
                 let _drope = radium::Expr::DropE(Box::new(place_translated));
 
-                let stmt = self.translate_goto_like(&loc, target)?;
+                let stmt = self.translate_goto_like(&loc, *target)?;
 
                 Ok(self.prepend_endlfts(stmt, dying_loans.into_iter()))
 
                 //res_stmt = radium::Stmt::ExprS { e: drope, s: Box::new(res_stmt)};
             },
 
-            TerminatorKind::FalseEdge { real_target, .. } => {
-                // just a goto for our purposes
-                self.translate_goto_like(&loc, real_target)
-            },
-
-            TerminatorKind::FalseUnwind {
-                ref real_target, ..
-            } => {
-                // this is just a virtual edge for the borrowchecker, we can translate this to a normal goto
+            // just a goto for our purposes
+            TerminatorKind::FalseEdge { real_target, .. }
+            // this is just a virtual edge for the borrowchecker, we can translate this to a normal goto
+            | TerminatorKind::FalseUnwind { real_target, .. } => {
                 self.translate_goto_like(&loc, *real_target)
             },
 
@@ -3399,7 +3389,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         match op {
             // In Caesium: typed_place needs deref (not use) for place accesses.
             // use is used top-level to convert an lvalue to an rvalue, which is why we use it here.
-            Operand::Copy(ref place) | Operand::Move(ref place) => {
+            Operand::Copy(place) | Operand::Move(place) => {
                 // check if this goes to a temporary of a checked op
                 let place_kind = if self.checked_op_temporaries.contains_key(&place.local) {
                     assert!(place.projection.len() == 1);
@@ -3435,7 +3425,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     Ok(translated_place)
                 }
             },
-            Operand::Constant(ref constant) => {
+            Operand::Constant(constant) => {
                 // TODO: possibly need different handling of the rvalue flag
                 // when this also handles string literals etc.
                 return self.translate_constant(constant.as_ref());
@@ -3590,7 +3580,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let const_ty = v.ty();
 
                 match v.kind() {
-                    ConstKind::Value(ref v) => {
+                    ConstKind::Value(v) => {
                         // this doesn't contain the necessary structure anymore. Need to reconstruct using the
                         // type.
                         match v.try_to_scalar() {
@@ -3647,8 +3637,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let mut acc_expr = radium::Expr::Var(local_name.to_string());
 
         // iterate in evaluation order
-        for ref it in pl.projection {
-            match it {
+        for it in pl.projection {
+            match &it {
                 ProjectionElem::Deref => {
                     // use the type of the dereferencee
                     let st = self.ty_translator.translate_type_to_syn_type(cur_ty.ty)?;
@@ -3724,7 +3714,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 },
             };
             // update cur_ty
-            cur_ty = cur_ty.projection_ty(self.env.tcx(), *it);
+            cur_ty = cur_ty.projection_ty(self.env.tcx(), it);
         }
         info!("translating place {:?} to {:?}", pl, acc_expr);
         Ok(acc_expr)

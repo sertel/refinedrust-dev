@@ -361,52 +361,54 @@ fn get_borrowed_places<'a, 'tcx: 'a>(
         return Ok(Vec::new());
     };
 
-    let mir::BasicBlockData { ref statements, .. } = mir[location.block];
+    let mir::BasicBlockData { statements, .. } = &mir[location.block];
+
     if statements.len() == location.statement_index {
         return Ok(Vec::new());
     }
 
-    let statement = &statements[location.statement_index];
-    match statement.kind {
-        mir::StatementKind::Assign(box (ref _lhs, ref rhs)) => match *rhs {
-            mir::Rvalue::Use(mir::Operand::Copy(ref place) | mir::Operand::Move(ref place))
-            | mir::Rvalue::Ref(_, _, ref place)
-            | mir::Rvalue::Discriminant(ref place) => Ok(vec![place]),
+    let kind = &statements[location.statement_index].kind;
+    let mir::StatementKind::Assign(box (_, rhs)) = kind else {
+        unreachable!("{:?}", kind);
+    };
 
-            mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
+    match rhs {
+        mir::Rvalue::Use(mir::Operand::Copy(place) | mir::Operand::Move(place))
+        | mir::Rvalue::Ref(_, _, place)
+        | mir::Rvalue::Discriminant(place) => Ok(vec![place]),
 
-            mir::Rvalue::Aggregate(_, ref operands) => Ok(operands
-                .iter()
-                .filter_map(|operand| match *operand {
-                    mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => Some(place),
-                    mir::Operand::Constant(_) => None,
-                })
-                .collect()),
+        mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
 
-            // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
-            mir::Rvalue::Cast(
-                mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize),
-                ref operand,
-                ref ty,
-            ) if ty.is_slice() && !ty.is_unsafe_ptr() => {
-                trace!("slice: operand={:?}, ty={:?}", operand, ty);
-                Ok(match *operand {
-                    mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => vec![place],
-                    mir::Operand::Constant(_) => vec![],
-                })
-            },
+        mir::Rvalue::Aggregate(_, operands) => Ok(operands
+            .iter()
+            .filter_map(|operand| match operand {
+                mir::Operand::Copy(place) | mir::Operand::Move(place) => Some(place),
+                mir::Operand::Constant(_) => None,
+            })
+            .collect()),
 
-            mir::Rvalue::Cast(..) => {
-                // all other loan-casts are unsupported
-                Err(PoloniusInfoError::LoanInUnsupportedStatement(
-                    "cast statements that create loans are not supported".to_string(),
-                    *location,
-                ))
-            },
-
-            ref x => unreachable!("{:?}", x),
+        // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
+        mir::Rvalue::Cast(
+            mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize),
+            operand,
+            ty,
+        ) if ty.is_slice() && !ty.is_unsafe_ptr() => {
+            trace!("slice: operand={:?}, ty={:?}", operand, ty);
+            Ok(match operand {
+                mir::Operand::Copy(place) | mir::Operand::Move(place) => vec![place],
+                mir::Operand::Constant(_) => vec![],
+            })
         },
-        ref x => unreachable!("{:?}", x),
+
+        mir::Rvalue::Cast(..) => {
+            // all other loan-casts are unsupported
+            Err(PoloniusInfoError::LoanInUnsupportedStatement(
+                "cast statements that create loans are not supported".to_string(),
+                *location,
+            ))
+        },
+
+        x => unreachable!("{:?}", x),
     }
 }
 
@@ -1345,85 +1347,93 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
 
 /// Check if the statement is assignment.
 fn is_assignment(mir: &mir::Body<'_>, location: mir::Location) -> bool {
-    let mir::BasicBlockData { ref statements, .. } = mir[location.block];
+    let mir::BasicBlockData { statements, .. } = &mir[location.block];
+
     if statements.len() == location.statement_index {
         return false;
     }
+
     matches!(statements[location.statement_index].kind, mir::StatementKind::Assign { .. })
 }
 
 /// Check if the terminator is return.
 fn is_return(mir: &mir::Body<'_>, location: mir::Location) -> bool {
     let mir::BasicBlockData {
-        ref statements,
-        ref terminator,
+        statements,
+        terminator,
         ..
-    } = mir[location.block];
+    } = &mir[location.block];
+
     if statements.len() != location.statement_index {
         return false;
     }
+
     matches!(terminator.as_ref().unwrap().kind, mir::TerminatorKind::Return)
 }
 
 fn is_call(mir: &mir::Body<'_>, location: mir::Location) -> bool {
     let mir::BasicBlockData {
-        ref statements,
-        ref terminator,
+        statements,
+        terminator,
         ..
-    } = mir[location.block];
+    } = &mir[location.block];
+
     if statements.len() != location.statement_index {
         return false;
     }
+
     matches!(terminator.as_ref().unwrap().kind, mir::TerminatorKind::Call { .. })
 }
 
 /// Extract the call terminator at the location. Otherwise return None.
 fn get_call_destination<'tcx>(mir: &mir::Body<'tcx>, location: mir::Location) -> Option<mir::Place<'tcx>> {
     let mir::BasicBlockData {
-        ref statements,
-        ref terminator,
+        statements,
+        terminator,
         ..
-    } = mir[location.block];
+    } = &mir[location.block];
+
     if statements.len() != location.statement_index {
         return None;
     }
-    match terminator.as_ref().unwrap().kind {
-        mir::TerminatorKind::Call {
-            ref destination, ..
-        } => Some(*destination),
-        ref x => {
-            panic!("Expected call, got {:?} at {:?}", x, location);
-        },
-    }
+
+    let kind = &terminator.as_ref().unwrap().kind;
+    let mir::TerminatorKind::Call { destination, .. } = kind else {
+        panic!("Expected call, got {:?} at {:?}", kind, location);
+    };
+
+    Some(*destination)
 }
 
 /// Extract reference-typed arguments of the call at the given location.
 fn get_call_arguments(mir: &mir::Body<'_>, location: mir::Location) -> Vec<mir::Local> {
     let mir::BasicBlockData {
-        ref statements,
-        ref terminator,
+        statements,
+        terminator,
         ..
-    } = mir[location.block];
+    } = &mir[location.block];
+
     assert!(statements.len() == location.statement_index);
-    match terminator.as_ref().unwrap().kind {
-        mir::TerminatorKind::Call { ref args, .. } => {
-            let mut reference_args = Vec::new();
-            for arg in args {
-                match arg {
-                    mir::Operand::Copy(place) | mir::Operand::Move(place) => {
-                        if place.projection.len() == 0 {
-                            reference_args.push(place.local);
-                        }
-                    },
-                    mir::Operand::Constant(_) => {},
+
+    let kind = &terminator.as_ref().unwrap().kind;
+    let mir::TerminatorKind::Call { args, .. } = kind else {
+        panic!("Expected call, got {:?} at {:?}", kind, location);
+    };
+
+    let mut reference_args = Vec::new();
+
+    for arg in args {
+        match arg {
+            mir::Operand::Copy(place) | mir::Operand::Move(place) => {
+                if place.projection.len() == 0 {
+                    reference_args.push(place.local);
                 }
-            }
-            reference_args
-        },
-        ref x => {
-            panic!("Expected call, got {:?} at {:?}", x, location);
-        },
+            },
+            mir::Operand::Constant(_) => {},
+        }
     }
+
+    reference_args
 }
 
 /// Additional facts derived from the borrow checker facts.
