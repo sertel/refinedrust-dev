@@ -3644,7 +3644,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             .get(&pl.local)
             .ok_or_else(|| TranslationError::UnknownVar(format!("{:?}", pl.local)))?;
 
-        let mut acc_expr: radium::Expr = radium::Expr::Var(local_name.to_string());
+        let mut acc_expr = radium::Expr::Var(local_name.to_string());
 
         // iterate in evaluation order
         for ref it in pl.projection {

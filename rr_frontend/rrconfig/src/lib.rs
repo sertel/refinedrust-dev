@@ -85,7 +85,7 @@ pub fn dump() -> String {
 /// Makes the path absolute with respect to the `work_dir`.
 fn make_path_absolute(path: &str) -> PathBuf {
     // read the base path we set
-    let base_path: String = work_dir();
+    let base_path = work_dir();
 
     let path_buf = std::path::PathBuf::from(path);
     if path_buf.is_absolute() {
