@@ -971,7 +971,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             let st = tr_ty.get_syn_type();
 
             let name = Self::make_local_name(body, local, &mut used_names);
-            radium_name_map.insert(local, name.to_string());
+            radium_name_map.insert(local, name.clone());
 
             fn_locals.push((local, name.clone(), tr_ty));
 
@@ -2121,7 +2121,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // return place? See also discussion at https://github.com/rust-lang/rust/issues/71117
                 let stmt = radium::Stmt::Return(radium::Expr::Use {
                     ot: self.ty_translator.translate_syn_type_to_op_type(&self.return_synty),
-                    e: Box::new(radium::Expr::Var(self.return_name.to_string())),
+                    e: Box::new(radium::Expr::Var(self.return_name.clone())),
                 });
 
                 // TODO is this right?

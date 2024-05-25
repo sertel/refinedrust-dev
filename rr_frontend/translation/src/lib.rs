@@ -648,7 +648,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             fs::create_dir_all(base_dir_path.as_path()).unwrap();
         }
 
-        let toplevel_module_path = self.coq_path_prefix.to_string();
+        let toplevel_module_path = self.coq_path_prefix.clone();
         let coq_module_path = format!("{}.{}", toplevel_module_path, stem);
         let generated_module_path = format!("{}.generated", coq_module_path);
         let proof_module_path = format!("{}.proofs", coq_module_path);
@@ -838,8 +838,8 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
                 // register as usual in the procedure registry
                 info!("registering shim for {:?}", shim.path);
                 let meta = function_body::ProcedureMeta::new(
-                    shim.spec_name.to_string(),
-                    shim.name.to_string(),
+                    shim.spec_name.clone(),
+                    shim.name.clone(),
                     function_body::ProcedureMode::Shim,
                 );
                 vcx.procedure_registry.register_function(did, meta)?;
@@ -911,8 +911,8 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
         );
 
         let meta = function_body::ProcedureMeta::new(
-            shim.spec_name.to_string(),
-            shim.name.to_string(),
+            shim.spec_name.clone(),
+            shim.name.clone(),
             function_body::ProcedureMode::Shim,
         );
 

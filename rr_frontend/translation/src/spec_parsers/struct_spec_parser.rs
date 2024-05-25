@@ -368,7 +368,7 @@ where
         info!("making type: {:?}, {:?}", lit, ty);
         let lit_ty = specs::LiteralType {
             rust_name: None,
-            type_term: lit.ty.to_string(),
+            type_term: lit.ty.clone(),
             refinement_type: coq::Type::Infer,
             syn_type: st,
         };

@@ -1959,7 +1959,7 @@ impl<'def> AbstractEnum<'def> {
         if !self.ty_params.is_empty() {
             for names in &self.ty_params {
                 typarams.push(format!("({} : syn_type)", names.syn_type));
-                typarams_use.push(names.syn_type.to_string());
+                typarams_use.push(names.syn_type.clone());
             }
         }
 

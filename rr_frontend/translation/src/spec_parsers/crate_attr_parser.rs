@@ -63,14 +63,14 @@ impl CrateAttrParser for VerboseCrateAttrParser {
                         if prefix.is_some() {
                             return Err(format!("multiple rr::coq_prefix attributes have been provided"));
                         }
-                        prefix = Some(path.value().to_string());
+                        prefix = Some(path.value().clone());
                     },
                     "package" => {
                         let path: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
                         if package.is_some() {
                             return Err(format!("multiple rr::package attributes have been provided"));
                         }
-                        package = Some(path.value().to_string());
+                        package = Some(path.value().clone());
                     },
                     "context" => {
                         let param: parse_utils::RRGlobalCoqContextItem =

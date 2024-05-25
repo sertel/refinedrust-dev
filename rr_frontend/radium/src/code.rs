@@ -597,7 +597,7 @@ impl StackMap {
         if self.used_names.contains(&name) {
             return false;
         }
-        self.used_names.insert(name.to_string());
+        self.used_names.insert(name.clone());
         self.locals.push(Variable::new(name, st));
         true
     }
@@ -606,7 +606,7 @@ impl StackMap {
         if self.used_names.contains(&name) {
             return false;
         }
-        self.used_names.insert(name.to_string());
+        self.used_names.insert(name.clone());
         self.args.push(Variable::new(name, st));
         true
     }
@@ -1012,7 +1012,7 @@ impl<'def> Function<'def> {
             &self
                 .generic_types
                 .iter()
-                .map(|names| (names.rust_name.to_string(), format!("existT _ ({})", names.type_term)))
+                .map(|names| (names.rust_name.clone(), format!("existT _ ({})", names.type_term)))
                 .collect(),
         );
 
@@ -1146,7 +1146,7 @@ impl<'def> FunctionBuilder<'def> {
 
     /// Adds a lifetime parameter to the function.
     pub fn add_universal_lifetime(&mut self, name: Option<String>, lft: Lft) -> Result<(), String> {
-        self.generic_lifetimes.push((name, lft.to_string()));
+        self.generic_lifetimes.push((name, lft.clone()));
         self.spec.add_lifetime(lft)
     }
 
@@ -1201,7 +1201,7 @@ impl<'def> FunctionBuilder<'def> {
             // TODO(cleanup): this currently regenerates the names for ty + rt, instead of using
             // the existing names
             self.spec
-                .add_coq_param(coq::Name::Named(names.refinement_type.to_string()), coq::Type::Type, false)
+                .add_coq_param(coq::Name::Named(names.refinement_type.clone()), coq::Type::Type, false)
                 .unwrap();
             self.spec
                 .add_coq_param(
@@ -1211,7 +1211,7 @@ impl<'def> FunctionBuilder<'def> {
                 )
                 .unwrap();
             self.spec
-                .add_coq_param(coq::Name::Named(names.syn_type.to_string()), coq::Type::SynType, false)
+                .add_coq_param(coq::Name::Named(names.syn_type.clone()), coq::Type::SynType, false)
                 .unwrap();
             self.spec
                 .add_ty_param(
@@ -1249,14 +1249,14 @@ impl<'def> From<FunctionBuilder<'def>> for Function<'def> {
         let mut parameters: Vec<(coq::Name, coq::Type)> = builder
             .other_functions
             .iter()
-            .map(|f_inst| (coq::Name::Named(f_inst.0.to_string()), coq::Type::Loc))
+            .map(|f_inst| (coq::Name::Named(f_inst.0.clone()), coq::Type::Loc))
             .collect();
 
         // generate location parameters for statics used by this function
         let mut statics_parameters = builder
             .used_statics
             .iter()
-            .map(|s| (coq::Name::Named(s.loc_name.to_string()), coq::Type::Loc))
+            .map(|s| (coq::Name::Named(s.loc_name.clone()), coq::Type::Loc))
             .collect();
         parameters.append(&mut statics_parameters);
 
@@ -1264,7 +1264,7 @@ impl<'def> From<FunctionBuilder<'def>> for Function<'def> {
         let mut gen_st_parameters = builder
             .generic_types
             .iter()
-            .map(|names| (coq::Name::Named(names.syn_type.to_string()), coq::Type::SynType))
+            .map(|names| (coq::Name::Named(names.syn_type.clone()), coq::Type::SynType))
             .collect();
         parameters.append(&mut gen_st_parameters);
 
