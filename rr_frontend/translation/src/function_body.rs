@@ -423,170 +423,162 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         info!("Function signature: {:?}", sig);
         info!("Closure generic args: {:?}", parent_args);
 
-        match PoloniusInfo::new(env, proc) {
-            Ok(info) => {
-                // TODO: avoid leak
-                let info: &'def PoloniusInfo = &*Box::leak(Box::new(info));
+        let info = match PoloniusInfo::new(env, proc) {
+            Ok(info) => info,
+            Err(err) => return Err(TranslationError::UnknownError(format!("{:?}", err))),
+        };
 
-                // For closures, we only handle the parent's args here!
-                // TODO: do we need to do something special for the parent's late-bound region
-                // parameters?
-                // TODO: should we always take the lifetime parameters?
-                let params = parent_args;
-                //proc.get_type_params();
-                info!("Function generic args: {:?}", params);
+        // TODO: avoid leak
+        let info: &'def PoloniusInfo = &*Box::leak(Box::new(info));
 
-                // dump graphviz files
-                // color code: red: dying loan, pink: becoming a zombie; green: is zombie
-                if rrconfig::dump_borrowck_info() {
-                    dump_borrowck_info(env, proc.get_id(), info);
-                }
+        // For closures, we only handle the parent's args here!
+        // TODO: do we need to do something special for the parent's late-bound region
+        // parameters?
+        // TODO: should we always take the lifetime parameters?
+        let params = parent_args;
+        //proc.get_type_params();
+        info!("Function generic args: {:?}", params);
 
-                let (tupled_inputs, output, mut universal_lifetimes) =
-                    Self::process_lifetimes_of_args(env, params, sig, body);
-
-                // Process the lifetime parameters that come from the captures
-                for r in capture_regions {
-                    // TODO: problem: we're introducing inconsistent names here.
-                    let ty::RegionKind::ReVar(r) = r.kind() else {
-                        unreachable!();
-                    };
-
-                    let lft = info.mk_atomic_region(r);
-                    let name = format_atomic_region_direct(&lft, None);
-                    universal_lifetimes.insert(r, (name, None));
-                }
-
-                // also add the lifetime for the outer reference
-                let mut maybe_outer_lifetime = None;
-                if let ty::TyKind::Ref(r, _, _) = closure_arg.ty.kind() {
-                    let ty::RegionKind::ReVar(r) = r.kind() else {
-                        unreachable!();
-                    };
-
-                    // We need to do some hacks here to find the right Polonius region:
-                    // `r` is the non-placeholder region that the variable gets, but we are
-                    // looking for the corresponding placeholder region
-                    let r2 = Self::find_placeholder_region_for(r, info).unwrap();
-
-                    info!("using lifetime {:?} for closure universal", r2);
-                    let lft = info.mk_atomic_region(r2);
-                    let name = format_atomic_region_direct(&lft, None);
-                    universal_lifetimes.insert(r2, (name, None));
-
-                    maybe_outer_lifetime = Some(r2);
-                }
-
-                // detuple the inputs
-                assert!(tupled_inputs.len() == 1);
-                let input_tuple_ty = tupled_inputs[0];
-                let mut inputs = Vec::new();
-
-                // push the closure as the first argument
-                /*
-                if let Some(r2) = maybe_outer_lifetime {
-                    // in this case, we need to patch the region first
-                    if let ty::TyKind::Ref(_, ty, m) = closure_arg.ty.kind() {
-                        let new_region = ty::Region::new_var(env.tcx(), r2);
-                        inputs.push(env.tcx().mk_ty_from_kind(ty::TyKind::Ref(new_region, *ty, *m)));
-                    }
-                }
-                else {
-                    inputs.push(closure_arg.ty);
-                }
-                */
-
-                if let ty::TyKind::Tuple(args) = input_tuple_ty.kind() {
-                    inputs.extend(args.iter());
-                }
-
-                info!("inputs({}): {:?}, output: {:?}", inputs.len(), inputs, output);
-                info!("Have lifetime parameters: {:?}", universal_lifetimes);
-
-                // add universal lifetimes to the spec
-                for (lft, name) in universal_lifetimes.values() {
-                    //let lft = info::AtomicRegion::Universal(info::UniversalRegionKind::Local,
-                    // ty::RegionVid::from_u32(1+r));
-                    translated_fn
-                        .add_universal_lifetime(name.clone(), lft.to_string())
-                        .map_err(TranslationError::UnknownError)?;
-                }
-
-                let mut inclusion_tracker = InclusionTracker::new(info);
-                // add placeholder subsets
-                let initial_point: facts::Point = facts::Point {
-                    location: BasicBlock::from_u32(0).start_location(),
-                    typ: facts::PointType::Start,
-                };
-                for (r1, r2) in &info.borrowck_in_facts.known_placeholder_subset {
-                    inclusion_tracker.add_static_inclusion(
-                        *r1,
-                        *r2,
-                        info.interner.get_point_index(&initial_point),
-                    );
-                }
-
-                // enter the procedure
-                let universal_lifetime_map: HashMap<_, _> =
-                    universal_lifetimes.into_iter().map(|(x, y)| (x, y.0)).collect();
-                let type_scope = TypeTranslationScope::new(
-                    proc.get_id(),
-                    env.tcx().mk_args(params),
-                    universal_lifetime_map,
-                )?;
-                // add generic args to the fn
-                let generics = &type_scope.generic_scope;
-                for t in generics.iter().flatten() {
-                    translated_fn.add_generic_type(t.clone());
-                }
-
-                let mut t = Self {
-                    env,
-                    proc,
-                    info,
-                    translated_fn,
-                    inclusion_tracker,
-                    procedure_registry: proc_registry,
-                    attrs,
-                    ty_translator: LocalTypeTranslator::new(ty_translator, type_scope),
-                    const_registry,
-                    inputs: inputs.clone(),
-                };
-
-                // add universal constraints
-                let universal_constraints = t.get_relevant_universal_constraints();
-                info!("univeral constraints: {:?}", universal_constraints);
-                for (lft1, lft2) in universal_constraints {
-                    t.translated_fn
-                        .add_universal_lifetime_constraint(lft1, lft2)
-                        .map_err(TranslationError::UnknownError)?;
-                }
-
-                // compute meta information needed to generate the spec
-                let mut translated_upvars_types = Vec::new();
-                for ty in upvars_tys {
-                    let translated_ty = t.ty_translator.translate_type(ty)?;
-                    translated_upvars_types.push(translated_ty);
-                }
-
-                let meta = {
-                    let scope = t.ty_translator.scope.borrow();
-
-                    ClosureMetaInfo {
-                        kind: closure_kind,
-                        captures,
-                        capture_tys: &translated_upvars_types,
-                        closure_lifetime: maybe_outer_lifetime
-                            .map(|x| scope.lookup_universal_region(x).unwrap()),
-                    }
-                };
-
-                // process attributes
-                t.process_closure_attrs(&inputs, output, meta)?;
-                Ok(t)
-            },
-            Err(err) => Err(TranslationError::UnknownError(format!("{:?}", err))),
+        // dump graphviz files
+        // color code: red: dying loan, pink: becoming a zombie; green: is zombie
+        if rrconfig::dump_borrowck_info() {
+            dump_borrowck_info(env, proc.get_id(), info);
         }
+
+        let (tupled_inputs, output, mut universal_lifetimes) =
+            Self::process_lifetimes_of_args(env, params, sig, body);
+
+        // Process the lifetime parameters that come from the captures
+        for r in capture_regions {
+            // TODO: problem: we're introducing inconsistent names here.
+            let ty::RegionKind::ReVar(r) = r.kind() else {
+                unreachable!();
+            };
+
+            let lft = info.mk_atomic_region(r);
+            let name = format_atomic_region_direct(&lft, None);
+            universal_lifetimes.insert(r, (name, None));
+        }
+
+        // also add the lifetime for the outer reference
+        let mut maybe_outer_lifetime = None;
+        if let ty::TyKind::Ref(r, _, _) = closure_arg.ty.kind() {
+            let ty::RegionKind::ReVar(r) = r.kind() else {
+                unreachable!();
+            };
+
+            // We need to do some hacks here to find the right Polonius region:
+            // `r` is the non-placeholder region that the variable gets, but we are
+            // looking for the corresponding placeholder region
+            let r2 = Self::find_placeholder_region_for(r, info).unwrap();
+
+            info!("using lifetime {:?} for closure universal", r2);
+            let lft = info.mk_atomic_region(r2);
+            let name = format_atomic_region_direct(&lft, None);
+            universal_lifetimes.insert(r2, (name, None));
+
+            maybe_outer_lifetime = Some(r2);
+        }
+
+        // detuple the inputs
+        assert!(tupled_inputs.len() == 1);
+        let input_tuple_ty = tupled_inputs[0];
+        let mut inputs = Vec::new();
+
+        // push the closure as the first argument
+        /*
+        if let Some(r2) = maybe_outer_lifetime {
+            // in this case, we need to patch the region first
+            if let ty::TyKind::Ref(_, ty, m) = closure_arg.ty.kind() {
+                let new_region = ty::Region::new_var(env.tcx(), r2);
+                inputs.push(env.tcx().mk_ty_from_kind(ty::TyKind::Ref(new_region, *ty, *m)));
+            }
+        }
+        else {
+            inputs.push(closure_arg.ty);
+        }
+        */
+
+        if let ty::TyKind::Tuple(args) = input_tuple_ty.kind() {
+            inputs.extend(args.iter());
+        }
+
+        info!("inputs({}): {:?}, output: {:?}", inputs.len(), inputs, output);
+        info!("Have lifetime parameters: {:?}", universal_lifetimes);
+
+        // add universal lifetimes to the spec
+        for (lft, name) in universal_lifetimes.values() {
+            //let lft = info::AtomicRegion::Universal(info::UniversalRegionKind::Local,
+            // ty::RegionVid::from_u32(1+r));
+            translated_fn
+                .add_universal_lifetime(name.clone(), lft.to_string())
+                .map_err(TranslationError::UnknownError)?;
+        }
+
+        let mut inclusion_tracker = InclusionTracker::new(info);
+        // add placeholder subsets
+        let initial_point: facts::Point = facts::Point {
+            location: BasicBlock::from_u32(0).start_location(),
+            typ: facts::PointType::Start,
+        };
+        for (r1, r2) in &info.borrowck_in_facts.known_placeholder_subset {
+            inclusion_tracker.add_static_inclusion(*r1, *r2, info.interner.get_point_index(&initial_point));
+        }
+
+        // enter the procedure
+        let universal_lifetime_map: HashMap<_, _> =
+            universal_lifetimes.into_iter().map(|(x, y)| (x, y.0)).collect();
+        let type_scope =
+            TypeTranslationScope::new(proc.get_id(), env.tcx().mk_args(params), universal_lifetime_map)?;
+        // add generic args to the fn
+        let generics = &type_scope.generic_scope;
+        for t in generics.iter().flatten() {
+            translated_fn.add_generic_type(t.clone());
+        }
+
+        let mut t = Self {
+            env,
+            proc,
+            info,
+            translated_fn,
+            inclusion_tracker,
+            procedure_registry: proc_registry,
+            attrs,
+            ty_translator: LocalTypeTranslator::new(ty_translator, type_scope),
+            const_registry,
+            inputs: inputs.clone(),
+        };
+
+        // add universal constraints
+        let universal_constraints = t.get_relevant_universal_constraints();
+        info!("univeral constraints: {:?}", universal_constraints);
+        for (lft1, lft2) in universal_constraints {
+            t.translated_fn
+                .add_universal_lifetime_constraint(lft1, lft2)
+                .map_err(TranslationError::UnknownError)?;
+        }
+
+        // compute meta information needed to generate the spec
+        let mut translated_upvars_types = Vec::new();
+        for ty in upvars_tys {
+            let translated_ty = t.ty_translator.translate_type(ty)?;
+            translated_upvars_types.push(translated_ty);
+        }
+
+        let meta = {
+            let scope = t.ty_translator.scope.borrow();
+
+            ClosureMetaInfo {
+                kind: closure_kind,
+                captures,
+                capture_tys: &translated_upvars_types,
+                closure_lifetime: maybe_outer_lifetime.map(|x| scope.lookup_universal_region(x).unwrap()),
+            }
+        };
+
+        // process attributes
+        t.process_closure_attrs(&inputs, output, meta)?;
+        Ok(t)
     }
 
     /// Translate the body of a function.

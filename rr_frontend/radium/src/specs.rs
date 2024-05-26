@@ -2917,11 +2917,13 @@ impl<'def> FunctionSpecBuilder<'def> {
     /// Add a new universal lifetime constraint.
     pub fn add_lifetime_constraint(&mut self, lft1: UniversalLft, lft2: UniversalLft) -> Result<(), String> {
         if let UniversalLft::Local(s) = &lft1 {
-            let _ = self.ensure_coq_bound(s)?;
+            self.ensure_coq_bound(s)?;
         }
+
         if let UniversalLft::Local(s) = &lft2 {
-            let _ = self.ensure_coq_bound(s)?;
+            self.ensure_coq_bound(s)?;
         }
+
         self.elctx.push((lft1, lft2));
         Ok(())
     }

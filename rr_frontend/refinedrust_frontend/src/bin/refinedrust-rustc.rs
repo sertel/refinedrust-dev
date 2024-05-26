@@ -72,29 +72,26 @@ fn override_queries(_session: &Session, local: &mut Providers, _: &mut ExternPro
 /// This translates a crate.
 pub fn analyze(tcx: TyCtxt<'_>) {
     match translation::generate_coq_code(tcx, |vcx| vcx.write_coq_files()) {
-        Ok(_) => (),
+        Ok(()) => (),
         Err(e) => {
             println!("Frontend failed with error {:?}", e);
             process::exit(1)
         },
     }
 
-    match rrconfig::post_generation_hook() {
-        None => (),
-        Some(s) => {
-            if let Some(parts) = shlex::split(&s) {
-                let work_dir = rrconfig::absolute_work_dir();
-                let dir_path = PathBuf::from(&work_dir);
-                info!("running post-generation hook in {:?}: {:?}", dir_path, s);
+    if let Some(s) = rrconfig::post_generation_hook() {
+        if let Some(parts) = shlex::split(&s) {
+            let work_dir = rrconfig::absolute_work_dir();
+            let dir_path = PathBuf::from(&work_dir);
+            info!("running post-generation hook in {:?}: {:?}", dir_path, s);
 
-                let status = Command::new(&parts[0])
-                    .args(&parts[1..])
-                    .current_dir(&dir_path)
-                    .status()
-                    .expect("failed to execute process");
-                println!("Post-generation hook finished with {status}");
-            }
-        },
+            let status = Command::new(&parts[0])
+                .args(&parts[1..])
+                .current_dir(&dir_path)
+                .status()
+                .expect("failed to execute process");
+            println!("Post-generation hook finished with {status}");
+        }
     }
 
     if rrconfig::check_proofs() {
