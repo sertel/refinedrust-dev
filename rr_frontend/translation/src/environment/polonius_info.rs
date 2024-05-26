@@ -5,6 +5,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fs::File;
+use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -16,19 +18,19 @@ use rustc_middle::ty::fold::TypeFolder;
 use rustc_middle::{mir, ty};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
-use {datafrog, rrconfig as config};
+use {datafrog, rrconfig};
 
-use super::borrowck::{facts, regions};
-use super::procedure::Procedure;
-use super::{loops, Environment};
 use crate::environment::borrowck::facts::PointType;
 use crate::environment::borrowck::regions::{PlaceRegions, PlaceRegionsError};
+use crate::environment::borrowck::{facts, regions};
 use crate::environment::mir_utils::all_places::AllPlaces;
 use crate::environment::mir_utils::real_edges::RealEdges;
 use crate::environment::mir_utils::split_aggregate_assignment::SplitAggregateAssignment;
 use crate::environment::mir_utils::statement_as_assign::StatementAsAssign;
 use crate::environment::mir_utils::statement_at::StatementAt;
 use crate::environment::polonius_info::facts::AllInputFacts;
+use crate::environment::procedure::Procedure;
+use crate::environment::{loops, Environment};
 use crate::utils;
 
 /// This represents the assignment in which a loan was created. The `source`
@@ -177,7 +179,7 @@ pub fn graphviz<'tcx>(
     def_path: &rustc_hir::definitions::DefPath,
     def_id: DefId,
     info: &PoloniusInfo<'_, 'tcx>,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     macro_rules! to_html {
         ( $o:expr ) => {{
             format!("{:?}", $o)
@@ -208,13 +210,13 @@ pub fn graphviz<'tcx>(
     let borrowck_out_facts = &info.borrowck_out_facts;
     //let borrowck_out_facts = Output::compute(&borrowck_in_facts, Algorithm::Naive, true);
 
-    let graph_path = config::log_dir()
+    let graph_path = rrconfig::log_dir()
         .join("nll-facts")
         .join(def_path.to_filename_friendly_no_crate())
         .join("polonius.dot");
 
-    let graph_file = std::fs::File::create(graph_path).expect("Unable to create file");
-    let mut graph = std::io::BufWriter::new(graph_file);
+    let graph_file = File::create(graph_path).expect("Unable to create file");
+    let mut graph = io::BufWriter::new(graph_file);
 
     let mut blocks: HashMap<_, _> = HashMap::new();
     let mut block_edges = HashSet::new();
@@ -471,7 +473,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         let facts = env.local_mir_borrowck_facts(def_id.expect_local());
 
         // // Read relations between region IDs and local variables.
-        // let renumber_path = PathBuf::from(config::log_dir())
+        // let renumber_path = PathBuf::from(rrconfig::log_dir()
         //     .join("mir")
         //     .join(format!(
         //         "{}.{}.-------.renumber.0.mir",

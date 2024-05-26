@@ -6,6 +6,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::{cmp, fmt};
 
 use polonius_engine::FactTypes;
 use rustc_borrowck::consumers::{LocationTable, RichLocation, RustcFacts};
@@ -49,21 +50,21 @@ pub enum PointType {
     Mid,
 }
 
-impl std::cmp::PartialOrd for PointType {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl cmp::PartialOrd for PointType {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         let res = match (self, other) {
-            (Self::Start, Self::Mid) => std::cmp::Ordering::Less,
-            (Self::Mid, Self::Start) => std::cmp::Ordering::Greater,
+            (Self::Start, Self::Mid) => cmp::Ordering::Less,
+            (Self::Mid, Self::Start) => cmp::Ordering::Greater,
 
-            (Self::Start, Self::Start) | (Self::Mid, Self::Mid) => std::cmp::Ordering::Equal,
+            (Self::Start, Self::Start) | (Self::Mid, Self::Mid) => cmp::Ordering::Equal,
         };
 
         Some(res)
     }
 }
 
-impl std::cmp::Ord for PointType {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+impl cmp::Ord for PointType {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.partial_cmp(other).unwrap()
     }
 }
@@ -75,8 +76,8 @@ pub struct Point {
     pub typ: PointType,
 }
 
-impl std::fmt::Display for Point {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}:{:?}:{:?}", self.location.block, self.location.statement_index, self.typ)
     }
 }

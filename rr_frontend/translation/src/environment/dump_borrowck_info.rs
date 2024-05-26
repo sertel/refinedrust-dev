@@ -4,11 +4,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::cell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+use std::{cell, fs, io};
 
 use log::{debug, trace};
 use rustc_hash::FxHashMap;
@@ -68,10 +68,7 @@ struct InfoPrinter<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
-    fn dump_borrowck_facts(
-        info: &'a PoloniusInfo<'a, 'tcx>,
-        writer: &mut BufWriter<File>,
-    ) -> std::io::Result<()> {
+    fn dump_borrowck_facts(info: &'a PoloniusInfo<'a, 'tcx>, writer: &mut BufWriter<File>) -> io::Result<()> {
         let input_facts = &info.borrowck_in_facts;
         let interner = &info.interner;
         write!(writer, "======== Borrowck facts ========\n\n")?;
@@ -194,7 +191,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         debug!("Writing raw polonius info to {:?}", raw_path);
 
         let prefix = raw_path.parent().expect("Unable to determine parent dir");
-        std::fs::create_dir_all(prefix).expect("Unable to create parent dir");
+        fs::create_dir_all(prefix).expect("Unable to create parent dir");
         let raw_file = File::create(raw_path).expect("Unable to create file");
         let mut raw = BufWriter::new(raw_file);
         Self::dump_borrowck_facts(info, &mut raw).unwrap();
@@ -210,7 +207,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         debug!("Writing graph to {:?}", graph_path);
 
         let prefix = graph_path.parent().expect("Unable to determine parent dir");
-        std::fs::create_dir_all(prefix).expect("Unable to create parent dir");
+        fs::create_dir_all(prefix).expect("Unable to create parent dir");
         let graph_file = File::create(graph_path).expect("Unable to create file");
         let graph = BufWriter::new(graph_file);
 

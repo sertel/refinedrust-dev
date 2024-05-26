@@ -7,6 +7,7 @@
 #![feature(box_patterns)]
 #![feature(let_chains)]
 #![feature(rustc_private)]
+extern crate polonius_engine;
 extern crate rustc_abi;
 extern crate rustc_ast;
 extern crate rustc_attr;
@@ -25,19 +26,6 @@ extern crate rustc_target;
 extern crate rustc_trait_selection;
 extern crate rustc_type_ir;
 
-extern crate polonius_engine;
-
-use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::io::{self, Read, Write};
-use std::path::Path;
-
-use log::{info, trace, warn};
-use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_middle::ty;
-use rustc_middle::ty::TyCtxt;
-use typed_arena::Arena;
-
 mod arg_folder;
 mod base;
 mod checked_op_analysis;
@@ -53,20 +41,24 @@ mod type_translator;
 mod tyvars;
 mod utils;
 
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::{fs, io, process};
 
-use const_parser::ConstAttrParser;
-use crate_parser::CrateAttrParser;
 use environment::Environment;
 use function_body::{ConstScope, FunctionTranslator, ProcedureMode, ProcedureScope};
-use mod_parser::ModuleAttrParser;
+use log::{info, trace, warn};
 use radium::coq;
-use spec_parsers::{
-    const_attr_parser as const_parser, crate_attr_parser as crate_parser, get_shim_attrs,
-    module_attr_parser as mod_parser,
-};
+use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_middle::ty;
+use spec_parsers::const_attr_parser::{ConstAttrParser, VerboseConstAttrParser};
+use spec_parsers::crate_attr_parser::{CrateAttrParser, VerboseCrateAttrParser};
+use spec_parsers::module_attr_parser::{ModuleAttrParser, ModuleAttrs, VerboseModuleAttrParser};
 use topological_sort::TopologicalSort;
 use type_translator::{normalize_in_function, TypeTranslator};
+use typed_arena::Arena;
 
 /// Order ADT definitions topologically.
 fn order_adt_defs(deps: &HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
@@ -346,8 +338,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             coq::Import::new(coq::Module::new_with_path("shims", coq::Path::new("refinedrust"))),
         ];
 
-        let mut spec_file = io::BufWriter::new(fs::File::create(spec_path).unwrap());
-        let mut code_file = io::BufWriter::new(fs::File::create(code_path).unwrap());
+        let mut spec_file = io::BufWriter::new(File::create(spec_path).unwrap());
+        let mut code_file = io::BufWriter::new(File::create(code_path).unwrap());
 
         {
             let mut spec_exports = vec![coq::Export::new(coq::Module::new_with_path(
@@ -476,7 +468,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         if let Some(extra_specs_path) = rrconfig::extra_specs_file() {
             writeln!(spec_file, "(* Included specifications from configured file {:?} *)", extra_specs_path)
                 .unwrap();
-            let mut extra_specs_file = io::BufReader::new(fs::File::open(extra_specs_path).unwrap());
+            let mut extra_specs_file = io::BufReader::new(File::open(extra_specs_path).unwrap());
 
             let mut extra_specs_string = String::new();
             extra_specs_file.read_to_string(&mut extra_specs_string).unwrap();
@@ -490,7 +482,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     /// Write proof templates for a verification unit.
     fn write_templates<F>(&self, file_path: F, stem: &str)
     where
-        F: Fn(&str) -> std::path::PathBuf,
+        F: Fn(&str) -> PathBuf,
     {
         let common_imports = vec![
             coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
@@ -503,7 +495,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // each function gets a separate file in order to parallelize
         for (did, fun) in self.procedure_registry.iter_code() {
             let path = file_path(fun.name());
-            let mut template_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
+            let mut template_file = io::BufWriter::new(File::create(path.as_path()).unwrap());
 
             let mode = self.procedure_registry.lookup_function_mode(*did).unwrap();
 
@@ -560,7 +552,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     /// Write proofs for a verification unit.
     fn write_proofs<F>(&self, file_path: F, stem: &str)
     where
-        F: Fn(&str) -> std::path::PathBuf,
+        F: Fn(&str) -> PathBuf,
     {
         let common_imports = vec![
             coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
@@ -585,7 +577,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
             info!("Proof file for function {} does not yet exist, creating", fun.name());
 
-            let mut proof_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
+            let mut proof_file = io::BufWriter::new(File::create(path.as_path()).unwrap());
 
             let mut imports = common_imports.clone();
 
@@ -656,7 +648,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // write gitignore file
         let gitignore_path = base_dir_path.as_path().join(format!(".gitignore"));
         {
-            let mut gitignore_file = io::BufWriter::new(fs::File::create(gitignore_path.as_path()).unwrap());
+            let mut gitignore_file = io::BufWriter::new(File::create(gitignore_path.as_path()).unwrap());
             write!(
                 gitignore_file,
                 "\
@@ -695,7 +687,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
             if !dune_project_path.exists() {
                 let mut dune_project_file =
-                    io::BufWriter::new(fs::File::create(dune_project_path.as_path()).unwrap());
+                    io::BufWriter::new(File::create(dune_project_path.as_path()).unwrap());
 
                 let (project_name, dune_project_package) = if let Some(dune_package) = &self.dune_package {
                     (dune_package.to_string(), format!("(package (name {dune_package}))\n"))
@@ -736,7 +728,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         self.write_templates(|name| generated_dir_path.join(format!("generated_template_{name}.v")), stem);
 
         // write dune meta file
-        let mut dune_file = io::BufWriter::new(fs::File::create(generated_dune_path.as_path()).unwrap());
+        let mut dune_file = io::BufWriter::new(File::create(generated_dune_path.as_path()).unwrap());
 
         let mut extra_theories: HashSet<coq::Path> =
             self.extra_exports.iter().filter_map(|(export, _)| export.get_path()).collect();
@@ -812,7 +804,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write proof dune file
         let proof_dune_path = proof_dir_path.join("dune");
-        let mut dune_file = io::BufWriter::new(fs::File::create(proof_dune_path.as_path()).unwrap());
+        let mut dune_file = io::BufWriter::new(File::create(proof_dune_path.as_path()).unwrap());
         write!(dune_file, "\
             ; Generated by [refinedrust], do not edit.\n\
             (coq.theory\n\
@@ -935,19 +927,19 @@ fn get_most_restrictive_function_mode(
     let attrs = get_attributes_of_function(vcx.env, did);
 
     // check if this is a purely spec function; if so, skip.
-    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
+    if utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
         return function_body::ProcedureMode::Shim;
     }
 
-    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "trust_me") {
+    if utils::has_tool_attr_filtered(attrs.as_slice(), "trust_me") {
         return function_body::ProcedureMode::TrustMe;
     }
 
-    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "only_spec") {
+    if utils::has_tool_attr_filtered(attrs.as_slice(), "only_spec") {
         return function_body::ProcedureMode::OnlySpec;
     }
 
-    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "ignore") {
+    if utils::has_tool_attr_filtered(attrs.as_slice(), "ignore") {
         info!("Function {:?} will be ignored", did);
         return function_body::ProcedureMode::Ignore;
     }
@@ -963,8 +955,8 @@ fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> 
         if mode == function_body::ProcedureMode::Shim {
             // TODO better error message
             let attrs = vcx.env.get_attributes(f.to_def_id());
-            let v = crate::utils::filter_tool_attrs(attrs);
-            let annot = get_shim_attrs(v.as_slice()).unwrap();
+            let v = utils::filter_tool_attrs(attrs);
+            let annot = spec_parsers::get_shim_attrs(v.as_slice()).unwrap();
 
             info!(
                 "Registering shim: {:?} as spec: {}, code: {}",
@@ -1011,11 +1003,11 @@ fn propagate_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
 
 fn get_attributes_of_function<'a>(env: &'a Environment, did: DefId) -> Vec<&'a rustc_ast::ast::AttrItem> {
     let attrs = env.get_attributes(did);
-    let mut filtered_attrs = crate::utils::filter_tool_attrs(attrs);
+    let mut filtered_attrs = utils::filter_tool_attrs(attrs);
     // also add selected attributes from the surrounding impl
     if let Some(impl_did) = env.tcx().impl_of_method(did) {
         let impl_attrs = env.get_attributes(impl_did);
-        let filtered_impl_attrs = crate::utils::filter_tool_attrs(impl_attrs);
+        let filtered_impl_attrs = utils::filter_tool_attrs(impl_attrs);
         filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
     }
     filtered_attrs
@@ -1117,7 +1109,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
 
 fn exit_with_error(s: &str) {
     eprintln!("{s}");
-    std::process::exit(-1);
+    process::exit(-1);
 }
 
 /// Get all functions and closures in the current crate that have attributes on them and are not
@@ -1176,7 +1168,7 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
             Ok(translated_ty) => {
                 let _full_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(s.to_def_id()));
 
-                let mut const_parser = const_parser::VerboseConstAttrParser::new();
+                let mut const_parser = VerboseConstAttrParser::new();
                 let const_spec = const_parser.parse_const_attrs(*s, &const_attrs)?;
 
                 let name = const_spec.name;
@@ -1198,16 +1190,14 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
 }
 
 /// Get and parse all module attributes.
-pub fn get_module_attributes(
-    env: &Environment<'_>,
-) -> Result<HashMap<LocalDefId, mod_parser::ModuleAttrs>, String> {
+pub fn get_module_attributes(env: &Environment<'_>) -> Result<HashMap<LocalDefId, ModuleAttrs>, String> {
     let modules = env.get_modules();
     let mut attrs = HashMap::new();
     info!("collected modules: {:?}", modules);
 
     for m in &modules {
         let module_attrs = utils::filter_tool_attrs(env.get_attributes(m.to_def_id()));
-        let mut module_parser = mod_parser::VerboseModuleAttrParser::new();
+        let mut module_parser = VerboseModuleAttrParser::new();
         let module_spec = module_parser.parse_module_attrs(*m, &module_attrs)?;
         attrs.insert(*m, module_spec);
     }
@@ -1216,7 +1206,7 @@ pub fn get_module_attributes(
 }
 
 /// Find `RefinedRust` modules in the given loadpath.
-fn scan_loadpath(path: &Path, storage: &mut HashMap<String, std::path::PathBuf>) -> io::Result<()> {
+fn scan_loadpath(path: &Path, storage: &mut HashMap<String, PathBuf>) -> io::Result<()> {
     if path.is_dir() {
         for entry in fs::read_dir(path)? {
             let entry = entry?;
@@ -1241,8 +1231,8 @@ fn scan_loadpath(path: &Path, storage: &mut HashMap<String, std::path::PathBuf>)
 }
 
 /// Find `RefinedRust` modules in the given loadpaths.
-fn scan_loadpaths(paths: &[std::path::PathBuf]) -> io::Result<HashMap<String, std::path::PathBuf>> {
-    let mut found_lib_files: HashMap<String, std::path::PathBuf> = HashMap::new();
+fn scan_loadpaths(paths: &[PathBuf]) -> io::Result<HashMap<String, PathBuf>> {
+    let mut found_lib_files: HashMap<String, PathBuf> = HashMap::new();
 
     for path in paths {
         scan_loadpath(path, &mut found_lib_files)?;
@@ -1252,7 +1242,7 @@ fn scan_loadpaths(paths: &[std::path::PathBuf]) -> io::Result<HashMap<String, st
 }
 
 /// Translate a crate, creating a `VerificationCtxt` in the process.
-pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F) -> Result<(), String>
+pub fn generate_coq_code<'tcx, F>(tcx: ty::TyCtxt<'tcx>, continuation: F) -> Result<(), String>
 where
     F: Fn(VerificationCtxt<'tcx, '_>),
 {
@@ -1264,7 +1254,7 @@ where
     let crate_attrs = utils::filter_tool_attrs(crate_attrs);
     info!("Found crate attributes: {:?}", crate_attrs);
     // parse crate attributes
-    let mut crate_parser = crate_parser::VerboseCrateAttrParser::new();
+    let mut crate_parser = VerboseCrateAttrParser::new();
     let crate_spec = crate_parser.parse_crate_attrs(&crate_attrs)?;
 
     let path_prefix = crate_spec.prefix.unwrap_or_else(|| "refinedrust.examples".to_owned());

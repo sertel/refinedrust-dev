@@ -26,11 +26,11 @@
 /// This provides parsing facilities for rustc attribute token streams.
 // TODO: refactor/ make into own crate?
 use std::cell::Cell;
-use std::fmt::Display;
-use std::str::{self, FromStr};
+use std::str::FromStr;
+use std::{fmt, vec};
 
 use rustc_ast::token::{BinOpToken, Lit, LitKind, TokenKind};
-use rustc_ast::tokenstream::TokenTree;
+use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
 use rustc_span::{Span, Symbol};
 use unicode_xid::UnicodeXID;
 
@@ -100,7 +100,7 @@ impl FromSpans for [Span; 3] {
 pub enum ParseError {
     EOF,
     WrongTokenKind(TokenKind, TokenKind, Span),
-    UnexpectedDelim(rustc_ast::tokenstream::DelimSpan),
+    UnexpectedDelim(DelimSpan),
     ExpectedIdent(TokenKind, Span),
     ExpectedLiteral(TokenKind, Span),
     UnexpectedLitKind(LitKind, LitKind),
@@ -114,13 +114,13 @@ pub type ParseResult<T> = Result<T, ParseError>;
 // having multiple different cursors at once into the same vector.
 #[derive(Clone, Debug)]
 pub struct ParseBuffer {
-    trees: Vec<rustc_ast::tokenstream::TokenTree>,
+    trees: Vec<TokenTree>,
     index: Cell<usize>,
 }
 
 impl ParseBuffer {
     #[must_use]
-    pub fn new(stream: &rustc_ast::tokenstream::TokenStream) -> Self {
+    pub fn new(stream: &TokenStream) -> Self {
         // TODO; maybe avoid the cloning
         let trees: Vec<TokenTree> = stream.trees().cloned().collect();
 
@@ -501,7 +501,7 @@ impl LitInt {
     pub fn base10_parse<N>(&self) -> ParseResult<N>
     where
         N: FromStr,
-        N::Err: Display,
+        N::Err: fmt::Display,
     {
         self.digits.parse().map_err(|err| ParseError::OtherErr(self.span, format!("{}", err)))
     }
@@ -583,7 +583,7 @@ mod value {
                             b'0'..=b'9' => has_exp = true,
                             _ => {
                                 let suffix = &s[1 + i..];
-                                if has_exp && crate::parse::xid_ok(suffix) {
+                                if has_exp && super::xid_ok(suffix) {
                                     return None;
                                 } else {
                                     break 'outer;
@@ -611,7 +611,7 @@ mod value {
 
         let suffix = s;
 
-        (suffix.is_empty() || crate::parse::xid_ok(suffix)).then(|| {
+        (suffix.is_empty() || super::xid_ok(suffix)).then(|| {
             let mut repr = value.to_string();
             if negative {
                 repr.insert(0, '-');
@@ -665,8 +665,8 @@ impl BigInt {
     }
 }
 
-impl Display for BigInt {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+impl fmt::Display for BigInt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
         let mut repr = String::with_capacity(self.digits.len());
 
         let mut has_nonzero = false;
@@ -1213,7 +1213,7 @@ impl<'a, T, P> ExactSizeIterator for PairsMut<'a, T, P> {
 ///
 /// [module documentation]: self
 pub struct IntoPairs<T, P> {
-    inner: std::vec::IntoIter<(T, P)>,
+    inner: vec::IntoIter<(T, P)>,
     last: option::IntoIter<T>,
 }
 
@@ -1266,7 +1266,7 @@ where
 ///
 /// [module documentation]: self
 pub struct IntoIter<T> {
-    inner: std::vec::IntoIter<T>,
+    inner: vec::IntoIter<T>,
 }
 
 impl<T> Iterator for IntoIter<T> {

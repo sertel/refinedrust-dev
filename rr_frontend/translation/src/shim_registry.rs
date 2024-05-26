@@ -196,7 +196,7 @@ impl<'a> ShimRegistry<'a> {
         }
     }
 
-    pub fn new(arena: &'a Arena<String>) -> std::result::Result<ShimRegistry<'a>, String> {
+    pub fn new(arena: &'a Arena<String>) -> Result<ShimRegistry<'a>, String> {
         let mut reg = Self::empty(arena);
 
         match rrconfig::shim_file() {

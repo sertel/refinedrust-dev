@@ -3,6 +3,7 @@ use rustc_hir as hir;
 use rustc_hir::def_id::LocalDefId;
 use rustc_hir::intravisit::{walk_expr, Visitor};
 use rustc_middle::hir::map::Map;
+use rustc_middle::hir::nested_filter::OnlyBodies;
 
 use crate::environment::Environment;
 
@@ -31,7 +32,7 @@ impl<'env, 'tcx> CollectClosureDefsVisitor<'env, 'tcx> {
 
 impl<'env, 'tcx> Visitor<'tcx> for CollectClosureDefsVisitor<'env, 'tcx> {
     type Map = Map<'tcx>;
-    type NestedFilter = rr_rustc_interface::middle::hir::nested_filter::OnlyBodies;
+    type NestedFilter = OnlyBodies;
 
     fn nested_visit_map(&mut self) -> Self::Map {
         self.map

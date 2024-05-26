@@ -6,13 +6,13 @@
 #![feature(let_chains)]
 
 //use prusti_utils::{config, launch};
-use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+use std::{env, process};
 
 fn main() {
     if let Err(code) = process(env::args().skip(1)) {
-        std::process::exit(code);
+        process::exit(code);
     }
 }
 

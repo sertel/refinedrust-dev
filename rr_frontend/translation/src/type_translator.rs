@@ -22,6 +22,7 @@ use crate::spec_parsers::enum_spec_parser::{EnumSpecParser, VerboseEnumSpecParse
 use crate::spec_parsers::struct_spec_parser::{self, InvariantSpecParser, StructFieldSpecParser};
 use crate::traits::normalize_type;
 use crate::tyvars::*;
+use crate::utils;
 
 /// Strip symbols from an identifier to be compatible with Coq.
 /// In particular things like ' or ::.
@@ -891,8 +892,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let lft_params: Vec<(Option<String>, radium::Lft)> = Vec::new();
         let expect_refinement;
         let mut invariant_spec;
-        if crate::utils::has_tool_attr(outer_attrs, "refined_by") {
-            let outer_attrs = crate::utils::filter_tool_attrs(outer_attrs);
+        if utils::has_tool_attr(outer_attrs, "refined_by") {
+            let outer_attrs = utils::filter_tool_attrs(outer_attrs);
             let mut spec_parser = struct_spec_parser::VerboseInvariantSpecParser::new();
             let ty_name = strip_coq_ident(format!("{}_inv_t", struct_name).as_str());
             let res = spec_parser
@@ -916,7 +917,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let f_name = f.ident(tcx).to_string();
 
             let attrs = self.env.get_attributes(f.did);
-            let attrs = crate::utils::filter_tool_attrs(attrs);
+            let attrs = utils::filter_tool_attrs(attrs);
 
             let f_ty = self.env.tcx().type_of(f.did).instantiate_identity();
             let mut ty =
@@ -1045,7 +1046,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     fn does_did_match(&self, did: DefId, path: &[&str]) -> bool {
-        let lookup_did = crate::utils::try_resolve_did(self.env.tcx(), path);
+        let lookup_did = utils::try_resolve_did(self.env.tcx(), path);
         if let Some(lookup_did) = lookup_did {
             if lookup_did == did {
                 return true;
@@ -1213,7 +1214,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
                 // also remember the attributes for additional processing
                 let outer_attrs = self.env.get_attributes(v.def_id);
-                let outer_attrs = crate::utils::filter_tool_attrs(outer_attrs);
+                let outer_attrs = utils::filter_tool_attrs(outer_attrs);
                 variant_attrs.push(outer_attrs);
 
                 // finalize the definition
@@ -1246,7 +1247,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 enum_spec = spec;
             } else if self.env.has_tool_attribute(def.did(), "refined_by") {
                 let attributes = self.env.get_attributes(def.did());
-                let attributes = crate::utils::filter_tool_attrs(attributes);
+                let attributes = utils::filter_tool_attrs(attributes);
 
                 // TODO: change once we handle lft parameters properly
                 let lft_params: Vec<(Option<String>, radium::Lft)> = Vec::new();

@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{btree_map, BTreeMap, HashMap, HashSet};
 
 use log::{info, trace, warn};
 use radium::coq;
@@ -26,7 +26,7 @@ use crate::checked_op_analysis::CheckedOpLocalAnalysis;
 use crate::environment::borrowck::facts;
 use crate::environment::polonius_info::PoloniusInfo;
 use crate::environment::procedure::Procedure;
-use crate::environment::{polonius_info as info, Environment};
+use crate::environment::{dump_borrowck_info, polonius_info, Environment};
 use crate::inclusion_tracker::*;
 use crate::rustc_middle::ty::TypeFoldable;
 use crate::spec_parsers::verbose_function_spec_parser::{
@@ -34,6 +34,7 @@ use crate::spec_parsers::verbose_function_spec_parser::{
 };
 use crate::type_translator::*;
 use crate::tyvars::*;
+use crate::{traits, utils};
 
 /**
  * Tracks the functions we translated and the Coq names they are available under.
@@ -49,6 +50,7 @@ pub enum ProcedureMode {
     Shim,
     Ignore,
 }
+
 impl ProcedureMode {
     pub fn is_prove(self) -> bool {
         self == Self::Prove
@@ -169,12 +171,12 @@ impl<'def> ProcedureScope<'def> {
     }
 
     /// Iterate over the functions we have generated code for.
-    pub fn iter_code(&self) -> std::collections::btree_map::Iter<'_, DefId, radium::Function<'def>> {
+    pub fn iter_code(&self) -> btree_map::Iter<'_, DefId, radium::Function<'def>> {
         self.translated_functions.iter()
     }
 
     /// Iterate over the functions we have generated only specs for.
-    pub fn iter_only_spec(&self) -> std::collections::btree_map::Iter<'_, DefId, radium::FunctionSpec<'def>> {
+    pub fn iter_only_spec(&self) -> btree_map::Iter<'_, DefId, radium::FunctionSpec<'def>> {
         self.specced_functions.iter()
     }
 }
@@ -437,7 +439,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 // dump graphviz files
                 // color code: red: dying loan, pink: becoming a zombie; green: is zombie
                 if rrconfig::dump_borrowck_info() {
-                    crate::environment::dump_borrowck_info(env, proc.get_id(), info);
+                    dump_borrowck_info(env, proc.get_id(), info);
                 }
 
                 let (tupled_inputs, output, mut universal_lifetimes) =
@@ -634,7 +636,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         // dump graphviz files
         // color code: red: dying loan, pink: becoming a zombie; green: is zombie
         if rrconfig::dump_borrowck_info() {
-            crate::environment::dump_borrowck_info(env, proc.get_id(), info);
+            dump_borrowck_info(env, proc.get_id(), info);
         }
 
         let (inputs, output, universal_lifetimes) = Self::process_lifetimes_of_args(env, params, sig, body);
@@ -716,14 +718,14 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let mut universal_constraints = Vec::new();
 
         for (r1, r2) in placeholder_subset {
-            if let info::RegionKind::Universal(uk1) = info.get_region_kind(*r1) {
-                if let info::RegionKind::Universal(uk2) = info.get_region_kind(*r2) {
+            if let polonius_info::RegionKind::Universal(uk1) = info.get_region_kind(*r1) {
+                if let polonius_info::RegionKind::Universal(uk2) = info.get_region_kind(*r2) {
                     // if LHS is static, ignore.
-                    if uk1 == info::UniversalRegionKind::Static {
+                    if uk1 == polonius_info::UniversalRegionKind::Static {
                         continue;
                     }
                     // if RHS is the function lifetime, ignore
-                    if uk2 == info::UniversalRegionKind::Function {
+                    if uk2 == polonius_info::UniversalRegionKind::Function {
                         continue;
                     }
 
@@ -826,19 +828,23 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     }
 
     // TODO refactor/ move
-    fn to_universal_lft(&self, k: info::UniversalRegionKind, r: Region) -> Option<radium::UniversalLft> {
+    fn to_universal_lft(
+        &self,
+        k: polonius_info::UniversalRegionKind,
+        r: Region,
+    ) -> Option<radium::UniversalLft> {
         match k {
-            info::UniversalRegionKind::Function => Some(radium::UniversalLft::Function),
-            info::UniversalRegionKind::Static => Some(radium::UniversalLft::Static),
+            polonius_info::UniversalRegionKind::Function => Some(radium::UniversalLft::Function),
+            polonius_info::UniversalRegionKind::Static => Some(radium::UniversalLft::Static),
 
-            info::UniversalRegionKind::Local => self
+            polonius_info::UniversalRegionKind::Local => self
                 .ty_translator
                 .scope
                 .borrow()
                 .lookup_universal_region(r)
                 .map(radium::UniversalLft::Local),
 
-            info::UniversalRegionKind::External => self
+            polonius_info::UniversalRegionKind::External => self
                 .ty_translator
                 .scope
                 .borrow()
@@ -1031,7 +1037,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         &mut self,
         _sig_args: &[Ty<'tcx>],
         _local_args: &[Ty<'tcx>],
-    ) -> Vec<(info::AtomicRegion, info::AtomicRegion)> {
+    ) -> Vec<(polonius_info::AtomicRegion, polonius_info::AtomicRegion)> {
         // Polonius generates a base subset constraint uregion ⊑ pregion.
         // We turn that into pregion = uregion, as we do strong updates at the top-level.
         let info = &self.info;
@@ -1056,7 +1062,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             let lft1 = self.info.mk_atomic_region(*r1);
             let lft2 = self.info.mk_atomic_region(*r2);
 
-            let info::AtomicRegion::Universal(info::UniversalRegionKind::Local, _) = lft1 else {
+            let polonius_info::AtomicRegion::Universal(polonius_info::UniversalRegionKind::Local, _) = lft1
+            else {
                 continue;
             };
 
@@ -1068,7 +1075,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             self.inclusion_tracker.add_static_inclusion(*r1, *r2, root_point);
             self.inclusion_tracker.add_static_inclusion(*r2, *r1, root_point);
 
-            assert!(matches!(lft2, info::AtomicRegion::PlaceRegion(_)));
+            assert!(matches!(lft2, polonius_info::AtomicRegion::PlaceRegion(_)));
 
             initial_arg_mapping.push((lft1, lft2));
         }
@@ -1080,7 +1087,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         &mut self,
         sig_args: &[Ty<'tcx>],
         local_args: &[Ty<'tcx>],
-    ) -> Vec<(info::AtomicRegion, info::AtomicRegion)> {
+    ) -> Vec<(polonius_info::AtomicRegion, polonius_info::AtomicRegion)> {
         // Polonius generates a base subset constraint uregion ⊑ pregion.
         // We turn that into pregion = uregion, as we do strong updates at the top-level.
         assert!(sig_args.len() == local_args.len());
@@ -1157,7 +1164,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// if successful.
     pub fn translate(
         mut self,
-        initial_constraints: &Vec<(info::AtomicRegion, info::AtomicRegion)>,
+        initial_constraints: &Vec<(polonius_info::AtomicRegion, polonius_info::AtomicRegion)>,
     ) -> Result<radium::Function<'def>, TranslationError> {
         // add loop info
         let loop_info = self.proc.loop_info();
@@ -1243,7 +1250,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         &mut self,
         _sig_args: &[Ty<'tcx>],
         _local_args: &[Ty<'tcx>],
-    ) -> Vec<(info::AtomicRegion, info::AtomicRegion)> {
+    ) -> Vec<(polonius_info::AtomicRegion, polonius_info::AtomicRegion)> {
         // Polonius generates a base subset constraint uregion ⊑ pregion.
         // We turn that into pregion = uregion, as we do strong updates at the top-level.
         let info = &self.info;
@@ -1268,7 +1275,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             let lft1 = self.info.mk_atomic_region(*r1);
             let lft2 = self.info.mk_atomic_region(*r2);
 
-            let info::AtomicRegion::Universal(info::UniversalRegionKind::Local, _) = lft1 else {
+            let polonius_info::AtomicRegion::Universal(polonius_info::UniversalRegionKind::Local, _) = lft1
+            else {
                 continue;
             };
 
@@ -1280,7 +1288,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             self.inclusion_tracker.add_static_inclusion(*r1, *r2, root_point);
             self.inclusion_tracker.add_static_inclusion(*r2, *r1, root_point);
 
-            assert!(matches!(lft2, info::AtomicRegion::PlaceRegion(_)));
+            assert!(matches!(lft2, polonius_info::AtomicRegion::PlaceRegion(_)));
 
             initial_arg_mapping.push((lft1, lft2));
         }
@@ -1439,7 +1447,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
     /// Format an atomic region, using the naming info for universal lifetimes available in the current
     /// context.
-    fn format_atomic_region(&self, r: &info::AtomicRegion) -> String {
+    fn format_atomic_region(&self, r: &polonius_info::AtomicRegion) -> String {
         self.ty_translator.format_atomic_region(r)
     }
 
@@ -1713,7 +1721,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         };
 
         if let Some(panic_id_std) =
-            crate::utils::try_resolve_did(self.env.tcx(), &["std", "panicking", "begin_panic"])
+            utils::try_resolve_did(self.env.tcx(), &["std", "panicking", "begin_panic"])
         {
             if panic_id_std == *did {
                 return true;
@@ -1722,9 +1730,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             warn!("Failed to determine DefId of std::panicking::begin_panic");
         }
 
-        if let Some(panic_id_core) =
-            crate::utils::try_resolve_did(self.env.tcx(), &["core", "panicking", "panic"])
-        {
+        if let Some(panic_id_core) = utils::try_resolve_did(self.env.tcx(), &["core", "panicking", "panic"]) {
             if panic_id_core == *did {
                 return true;
             }
@@ -1739,7 +1745,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     #[allow(clippy::unused_self)]
     const fn register_drop_shim_for(&self, _ty: Ty<'tcx>) {
         // TODO!
-        //let drop_in_place_did: DefId = crate::utils::try_resolve_did(self.env.tcx(), &["std", "ptr",
+        //let drop_in_place_did: DefId = utils::try_resolve_did(self.env.tcx(), &["std", "ptr",
         // "drop_in_place"]).unwrap();
 
         //let x: ty::InstanceDef = ty::InstanceDef::DropGlue(drop_in_place_did, Some(ty));
@@ -1804,12 +1810,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let mut new_regions = HashSet::new();
         let mut relevant_constraints = Vec::new();
         for (r1, r2) in &new_constraints {
-            if matches!(self.info.get_region_kind(*r1), info::RegionKind::Unknown) {
+            if matches!(self.info.get_region_kind(*r1), polonius_info::RegionKind::Unknown) {
                 // this is probably a inference variable for the call
                 new_regions.insert(*r1);
                 relevant_constraints.push((*r1, *r2));
             }
-            if matches!(self.info.get_region_kind(*r2), info::RegionKind::Unknown) {
+            if matches!(self.info.get_region_kind(*r2), polonius_info::RegionKind::Unknown) {
                 new_regions.insert(*r2);
                 relevant_constraints.push((*r1, *r2));
             }
@@ -1839,7 +1845,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // - otherwise, it will be an intersection of local regions
         let mut new_regions_classification = HashMap::new();
         // compute transitive closure of constraints
-        let relevant_constraints = info::compute_transitive_closure(relevant_constraints);
+        let relevant_constraints = polonius_info::compute_transitive_closure(relevant_constraints);
         for r in &new_regions_sorted {
             for (r1, r2) in &relevant_constraints {
                 if *r2 == *r {
@@ -3446,7 +3452,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
 
         let Some((resolved_did, resolved_params, kind)) =
-            crate::traits::resolve_assoc_item(self.env.tcx(), key, *defid, params)
+            traits::resolve_assoc_item(self.env.tcx(), key, *defid, params)
         else {
             return Err(TranslationError::TraitResolution(format!("Could not resolve trait {:?}", defid)));
         };
@@ -3457,16 +3463,16 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         );
 
         match kind {
-            crate::traits::TraitResolutionKind::UserDefined => {
+            traits::TraitResolutionKind::UserDefined => {
                 let param_name = self.register_use_procedure(resolved_did, resolved_params)?;
                 Ok(radium::Expr::MetaParam(param_name))
             },
 
-            crate::traits::TraitResolutionKind::Param => Err(TranslationError::Unimplemented {
+            traits::TraitResolutionKind::Param => Err(TranslationError::Unimplemented {
                 description: format!("Implement trait invocation for Param"),
             }),
 
-            crate::traits::TraitResolutionKind::Closure => {
+            traits::TraitResolutionKind::Closure => {
                 // TODO: here, we should first generate an instance of the trait
                 //self.env.tcx().
                 // mir_shims(rustc_middle::ty::InstanceDef::Item(resolved_did));

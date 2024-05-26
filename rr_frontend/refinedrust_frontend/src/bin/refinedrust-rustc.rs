@@ -14,8 +14,9 @@ extern crate rustc_interface;
 extern crate rustc_middle;
 extern crate rustc_session;
 
-use std::env;
+use std::path::PathBuf;
 use std::process::Command;
+use std::{env, process};
 
 use log::{debug, info};
 use rustc_driver::Compilation;
@@ -74,7 +75,7 @@ pub fn analyze(tcx: TyCtxt<'_>) {
         Ok(_) => (),
         Err(e) => {
             println!("Frontend failed with error {:?}", e);
-            std::process::exit(1)
+            process::exit(1)
         },
     }
 
@@ -83,7 +84,7 @@ pub fn analyze(tcx: TyCtxt<'_>) {
         Some(s) => {
             if let Some(parts) = shlex::split(&s) {
                 let work_dir = rrconfig::absolute_work_dir();
-                let dir_path = std::path::PathBuf::from(&work_dir);
+                let dir_path = PathBuf::from(&work_dir);
                 info!("running post-generation hook in {:?}: {:?}", dir_path, s);
 
                 let status = Command::new(&parts[0])
@@ -100,7 +101,7 @@ pub fn analyze(tcx: TyCtxt<'_>) {
         if cfg!(target_os = "windows") {
             println!("Cannot run proof checker on Windows.");
         } else if let Some(dir_str) = rrconfig::output_dir() {
-            let dir_path = std::path::PathBuf::from(&dir_str);
+            let dir_path = PathBuf::from(&dir_str);
 
             info!("calling type checker in {:?}", dir_path);
 
@@ -248,5 +249,5 @@ fn main() {
         rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks).run()
     });
 
-    std::process::exit(exit_code)
+    process::exit(exit_code)
 }

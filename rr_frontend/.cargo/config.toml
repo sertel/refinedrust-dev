@@ -59,7 +59,6 @@ rustflags = [
     "-Aclippy::wildcard_imports",
 
     # clippy::restriction
-    "-Aclippy::absolute_paths",
     "-Aclippy::arithmetic_side_effects",
     "-Aclippy::as_conversions",
     "-Aclippy::clone_on_ref_ptr",
