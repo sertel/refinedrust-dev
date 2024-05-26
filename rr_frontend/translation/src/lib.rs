@@ -367,42 +367,39 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write structs and enums
         // we need to do a bit of work to order them right
-        let struct_defs = self.type_translator.get_struct_defs();
-        let enum_defs = self.type_translator.get_enum_defs();
-        let adt_deps = self.type_translator.get_adt_deps();
+        {
+            let struct_defs = self.type_translator.get_struct_defs();
+            let enum_defs = self.type_translator.get_enum_defs();
+            let adt_deps = self.type_translator.get_adt_deps();
 
-        let ordered = order_adt_defs(&adt_deps);
-        info!("ordered ADT defns: {:?}", ordered);
+            let ordered = order_adt_defs(&adt_deps);
+            info!("ordered ADT defns: {:?}", ordered);
 
-        for did in &ordered {
-            if let Some(su_ref) = struct_defs.get(did) {
-                info!("writing struct {:?}, {:?}", did, su_ref);
-                let su = su_ref.as_ref().unwrap();
+            for did in &ordered {
+                if let Some(su_ref) = struct_defs.get(did) {
+                    info!("writing struct {:?}, {:?}", did, su_ref);
+                    let su = su_ref.as_ref().unwrap();
 
-                // layout specs
-                code_file.write(su.generate_coq_sls_def().as_bytes()).unwrap();
-                code_file.write("\n".as_bytes()).unwrap();
+                    // layout specs
+                    writeln!(code_file, "{}", su.generate_coq_sls_def()).unwrap();
 
-                // type aliases
-                spec_file.write(su.generate_coq_type_def().as_bytes()).unwrap();
-                spec_file.write("\n".as_bytes()).unwrap();
+                    // type aliases
+                    writeln!(spec_file, "{}", su.generate_coq_type_def()).unwrap();
 
-                // abstracted type
-                if let Some(inv_spec) = su.generate_optional_invariant_def() {
-                    spec_file.write(inv_spec.as_bytes()).unwrap();
-                    spec_file.write("\n".as_bytes()).unwrap();
+                    // abstracted type
+                    if let Some(inv_spec) = su.generate_optional_invariant_def() {
+                        writeln!(spec_file, "{}", inv_spec).unwrap();
+                    }
+                } else {
+                    let eu = enum_defs[did].unwrap();
+                    info!("writing enum {:?}, {:?}", did, eu);
+
+                    // layout specs
+                    writeln!(code_file, "{}", eu.generate_coq_els_def()).unwrap();
+
+                    // type definition
+                    writeln!(spec_file, "{}", eu.generate_coq_type_def()).unwrap();
                 }
-            } else {
-                let eu = enum_defs[did].unwrap();
-                info!("writing enum {:?}, {:?}", did, eu);
-
-                // layout specs
-                code_file.write(eu.generate_coq_els_def().as_bytes()).unwrap();
-                code_file.write("\n".as_bytes()).unwrap();
-
-                // type definition
-                spec_file.write(eu.generate_coq_type_def().as_bytes()).unwrap();
-                spec_file.write("\n".as_bytes()).unwrap();
             }
         }
 
@@ -410,73 +407,74 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // TODO
 
         // write translated source code of functions
-        code_file
-            .write(
-                "Section code.\n\
-            Context `{!refinedrustGS Σ}.\n\
-            Open Scope printing_sugar.\n\n"
-                    .as_bytes(),
-            )
-            .unwrap();
+        {
+            writeln!(code_file, "Section code.").unwrap();
+            writeln!(code_file, "Context `{{!refinedrustGS Σ}}.").unwrap();
+            writeln!(code_file, "Open Scope printing_sugar.").unwrap();
+            writeln!(code_file).unwrap();
 
-        for (_, fun) in self.procedure_registry.iter_code() {
-            code_file.write(fun.code.to_string().as_bytes()).unwrap();
-            code_file.write("\n\n".as_bytes()).unwrap();
+            for (_, fun) in self.procedure_registry.iter_code() {
+                writeln!(code_file, "{}", fun.code).unwrap();
+                writeln!(code_file).unwrap();
+            }
+
+            write!(code_file, "End code.").unwrap();
         }
 
-        code_file.write("End code.".as_bytes()).unwrap();
-
         // write function specs
-        spec_file
-            .write(
-                "\
-            Section specs.\n\
-            Context `{!refinedrustGS Σ}.\n\n"
-                    .as_bytes(),
-            )
-            .unwrap();
-        for (_, fun) in self.procedure_registry.iter_code() {
-            if fun.spec.has_spec {
-                if fun.spec.args.len() != fun.code.get_argument_count() {
-                    warn!("Function specification for {} is missing arguments", fun.name());
+        {
+            writeln!(spec_file, "Section specs.").unwrap();
+            writeln!(spec_file, "Context `{{!refinedrustGS Σ}}.").unwrap();
+            writeln!(spec_file).unwrap();
+
+            for (_, fun) in self.procedure_registry.iter_code() {
+                if fun.spec.has_spec {
+                    if fun.spec.args.len() != fun.code.get_argument_count() {
+                        warn!("Function specification for {} is missing arguments", fun.name());
+                    }
+
+                    writeln!(spec_file, "{}", fun.spec).unwrap();
+                } else {
+                    warn!("No specification for {}", fun.name());
+
+                    writeln!(spec_file, "(* No specification provided for {} *)", fun.name()).unwrap();
                 }
-                spec_file.write(fun.spec.to_string().as_bytes()).unwrap();
-                spec_file.write("\n\n".as_bytes()).unwrap();
-            } else {
-                warn!("No specification for {}", fun.name());
-                spec_file
-                    .write(format!("(* No specification provided for {} *)\n\n", fun.name()).as_bytes())
-                    .unwrap();
             }
+            writeln!(spec_file).unwrap();
         }
 
         // also write only-spec functions specs
-        for (_, spec) in self.procedure_registry.iter_only_spec() {
-            if spec.has_spec {
-                spec_file.write(spec.to_string().as_bytes()).unwrap();
-                spec_file.write("\n\n".as_bytes()).unwrap();
-            } else {
-                spec_file
-                    .write(
-                        format!("(* No specification provided for {} *)\n\n", spec.function_name).as_bytes(),
-                    )
-                    .unwrap();
+        {
+            for (_, spec) in self.procedure_registry.iter_only_spec() {
+                if spec.has_spec {
+                    writeln!(spec_file, "{}", spec).unwrap();
+                } else {
+                    writeln!(spec_file, "(* No specification provided for {} *)", spec.function_name)
+                        .unwrap();
+                }
             }
+            writeln!(spec_file).unwrap();
         }
 
         // Include extra specs
-        if let Some(extra_specs_path) = rrconfig::extra_specs_file() {
-            writeln!(spec_file, "(* Included specifications from configured file {:?} *)", extra_specs_path)
+        {
+            if let Some(extra_specs_path) = rrconfig::extra_specs_file() {
+                writeln!(
+                    spec_file,
+                    "(* Included specifications from configured file {:?} *)",
+                    extra_specs_path
+                )
                 .unwrap();
-            let mut extra_specs_file = io::BufReader::new(File::open(extra_specs_path).unwrap());
 
-            let mut extra_specs_string = String::new();
-            extra_specs_file.read_to_string(&mut extra_specs_string).unwrap();
+                let mut extra_specs_file = io::BufReader::new(File::open(extra_specs_path).unwrap());
+                let mut extra_specs_string = String::new();
+                extra_specs_file.read_to_string(&mut extra_specs_string).unwrap();
 
-            write!(spec_file, "{}", extra_specs_string).unwrap();
+                write!(spec_file, "{}", extra_specs_string).unwrap();
+            }
         }
 
-        spec_file.write("End specs.".as_bytes()).unwrap();
+        write!(spec_file, "End specs.").unwrap();
     }
 
     /// Write proof templates for a verification unit.
@@ -517,19 +515,16 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
                 write!(template_file, "{}", coq::ImportList(&imports)).unwrap();
                 write!(template_file, "{}", coq::ExportList(&exports)).unwrap();
+                write!(template_file, "\n").unwrap();
 
-                template_file.write("\n".as_bytes()).unwrap();
-
-                template_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
-
-                template_file
-                    .write(
-                        "\
+                write!(template_file, "Set Default Proof Using \"Type\".\n\n").unwrap();
+                write!(
+                    template_file,
+                    "\
                     Section proof.\n\
-                    Context `{!refinedrustGS Σ}.\n"
-                            .as_bytes(),
-                    )
-                    .unwrap();
+                    Context `{{!refinedrustGS Σ}}.\n"
+                )
+                .unwrap();
 
                 fun.generate_lemma_statement(&mut template_file).unwrap();
 
@@ -596,27 +591,22 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 )),
             ]);
 
-            write!(proof_file, "{}", coq::ImportList(&imports)).unwrap();
+            writeln!(proof_file, "{}", coq::ImportList(&imports)).unwrap();
 
             // Note: we do not export the self.extra_exports explicitly, as we rely on them
             // being re-exported from the template -- we want to be stable under changes of the
             // extras
-            proof_file.write("\n".as_bytes()).unwrap();
 
-            proof_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
+            writeln!(proof_file, "Set Default Proof Using \"Type\".").unwrap();
+            writeln!(proof_file).unwrap();
 
-            proof_file
-                .write(
-                    "\
-                Section proof.\n\
-                Context `{!refinedrustGS Σ}.\n"
-                        .as_bytes(),
-                )
-                .unwrap();
+            writeln!(proof_file, "Section proof.").unwrap();
+            writeln!(proof_file, "Context `{{!refinedrustGS Σ}}.").unwrap();
+            writeln!(proof_file).unwrap();
 
             fun.generate_proof(&mut proof_file, rrconfig::admit_proofs()).unwrap();
 
-            proof_file.write("End proof.".as_bytes()).unwrap();
+            writeln!(proof_file, "End proof.").unwrap();
         }
     }
 
