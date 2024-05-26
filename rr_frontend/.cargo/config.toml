@@ -76,9 +76,6 @@ rustflags = [
     "-Aclippy::unwrap_used",
     "-Aclippy::use_debug",
 
-    # clippy::style
-    "-Aclippy::enum_variant_names",
-
     # === AVOIDABLE LINTS ===
 
     # clippy::complexity

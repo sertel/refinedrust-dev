@@ -154,45 +154,45 @@ impl RustType {
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Literal {
     #[display("I2v ({}) {}", _0, IntType::I8)]
-    LitI8(i8),
+    I8(i8),
 
     #[display("I2v ({}) {}", _0, IntType::I16)]
-    LitI16(i16),
+    I16(i16),
 
     #[display("I2v ({}) {}", _0, IntType::I32)]
-    LitI32(i32),
+    I32(i32),
 
     #[display("I2v ({}) {}", _0, IntType::I64)]
-    LitI64(i64),
+    I64(i64),
 
     #[display("I2v ({}) {}", _0, IntType::I128)]
-    LitI128(i128),
+    I128(i128),
 
     #[display("I2v ({}) {}", _0, IntType::U8)]
-    LitU8(u8),
+    U8(u8),
 
     #[display("I2v ({}) {}", _0, IntType::U16)]
-    LitU16(u16),
+    U16(u16),
 
     #[display("I2v ({}) {}", _0, IntType::U32)]
-    LitU32(u32),
+    U32(u32),
 
     #[display("I2v ({}) {}", _0, IntType::U64)]
-    LitU64(u64),
+    U64(u64),
 
     #[display("I2v ({}) {}", _0, IntType::U128)]
-    LitU128(u128),
+    U128(u128),
 
     #[display("val_of_bool {}", _0)]
-    LitBool(bool),
+    Bool(bool),
 
     /// name of the loc
     #[display("{}", _0)]
-    LitLoc(String),
+    Loc(String),
 
     /// dummy literal for ZST values (e.g. ())
     #[display("zst_val")]
-    LitZST,
+    ZST,
 }
 
 /**
@@ -452,7 +452,7 @@ pub enum Stmt {
     #[display("expr: {};\n{}", e, &s)]
     ExprS { e: Expr, s: Box<Stmt> },
 
-    #[display("assert{{ {} }}: {};\n{}", OpType::BoolOp, e, &s)]
+    #[display("assert{{ {} }}: {};\n{}", OpType::Bool, e, &s)]
     AssertS { e: Expr, s: Box<Stmt> },
 
     #[display("annot: {};{}\n{}", a, fmt_comment(why), &s)]
@@ -484,47 +484,52 @@ impl Stmt {
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Unop {
     #[display("NegOp")]
-    NegOp,
+    Neg,
 
     #[display("NotBoolOp")]
-    NotBoolOp,
+    NotBool,
 
     #[display("NotIntOp")]
-    NotIntOp,
+    NotInt,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Binop {
     //arithmetic
-    AddOp,
-    SubOp,
-    MulOp,
-    DivOp,
-    ModOp,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+
     // logical
-    AndOp,
-    OrOp,
+    And,
+    Or,
+
     //bitwise
-    BitAndOp,
-    BitOrOp,
-    BitXorOp,
-    ShlOp,
-    ShrOp,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+
     // comparison
-    EqOp,
-    NeOp,
-    LtOp,
-    GtOp,
-    LeOp,
-    GeOp,
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+
     // pointer operations
-    PtrOffsetOp(Layout),
-    PtrNegOffsetOp(Layout),
-    PtrDiffOp(Layout),
+    PtrOffset(Layout),
+    PtrNegOffset(Layout),
+    PtrDiff(Layout),
+
     // checked ops
-    CheckedAddOp,
-    CheckedSubOp,
-    CheckedMulOp,
+    CheckedAdd,
+    CheckedSub,
+    CheckedMul,
 }
 
 impl Binop {
@@ -533,30 +538,30 @@ impl Binop {
         let format_bool = |st: &str| format!("{} {} , {} , {} }}", st, ot1, ot2, BOOL_REPR);
 
         match self {
-            Self::AddOp => format_prim("+{"),
-            Self::SubOp => format_prim("-{"),
-            Self::MulOp => format_prim("×{"),
-            Self::CheckedAddOp => format_prim("+c{"),
-            Self::CheckedSubOp => format_prim("-c{"),
-            Self::CheckedMulOp => format_prim("×c{"),
-            Self::DivOp => format_prim("/{"),
-            Self::ModOp => format_prim("%{"),
-            Self::AndOp => format_bool("&&{"),
-            Self::OrOp => format_bool("||{"),
-            Self::BitAndOp => format_prim("&b{"),
-            Self::BitOrOp => format_prim("|{"),
-            Self::BitXorOp => format_prim("^{"),
-            Self::ShlOp => format_prim("<<{"),
-            Self::ShrOp => format_prim(">>{"),
-            Self::EqOp => format_bool("= {"),
-            Self::NeOp => format_bool("!= {"),
-            Self::LtOp => format_bool("<{"),
-            Self::GtOp => format_bool(">{"),
-            Self::LeOp => format_bool("≤{"),
-            Self::GeOp => format_bool("≥{"),
-            Self::PtrOffsetOp(ly) => format!("at_offset{{ {} , {} , {} }}", ly, ot1, ot2),
-            Self::PtrNegOffsetOp(ly) => format!("at_neg_offset{{ {} , {} , {} }}", ly, ot1, ot2),
-            Self::PtrDiffOp(ly) => format!("sub_ptr{{ {} , {} , {} }}", ly, ot1, ot2),
+            Self::Add => format_prim("+{"),
+            Self::Sub => format_prim("-{"),
+            Self::Mul => format_prim("×{"),
+            Self::CheckedAdd => format_prim("+c{"),
+            Self::CheckedSub => format_prim("-c{"),
+            Self::CheckedMul => format_prim("×c{"),
+            Self::Div => format_prim("/{"),
+            Self::Mod => format_prim("%{"),
+            Self::And => format_bool("&&{"),
+            Self::Or => format_bool("||{"),
+            Self::BitAnd => format_prim("&b{"),
+            Self::BitOr => format_prim("|{"),
+            Self::BitXor => format_prim("^{"),
+            Self::Shl => format_prim("<<{"),
+            Self::Shr => format_prim(">>{"),
+            Self::Eq => format_bool("= {"),
+            Self::Ne => format_bool("!= {"),
+            Self::Lt => format_bool("<{"),
+            Self::Gt => format_bool(">{"),
+            Self::Le => format_bool("≤{"),
+            Self::Ge => format_bool("≥{"),
+            Self::PtrOffset(ly) => format!("at_offset{{ {} , {} , {} }}", ly, ot1, ot2),
+            Self::PtrNegOffset(ly) => format!("at_neg_offset{{ {} , {} , {} }}", ly, ot1, ot2),
+            Self::PtrDiff(ly) => format!("sub_ptr{{ {} , {} , {} }}", ly, ot1, ot2),
         }
     }
 }

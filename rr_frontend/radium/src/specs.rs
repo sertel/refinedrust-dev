@@ -136,28 +136,29 @@ impl IntType {
 /// Representation of Caesium's optypes.
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum OpType {
-    IntOp(IntType),
-    BoolOp,
-    CharOp,
-    PtrOp,
+    Int(IntType),
+    Bool,
+    Char,
+    Ptr,
     // a term for the struct_layout, and optypes for the individual fields
-    StructOp(coq::AppTerm<String>, Vec<OpType>),
-    UntypedOp(Layout),
+    Struct(coq::AppTerm<String>, Vec<OpType>),
+    Untyped(Layout),
     Literal(coq::AppTerm<String>),
 }
+
 impl Display for OpType {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::BoolOp => write!(f, "BoolOp"),
-            Self::CharOp => write!(f, "CharOp"),
-            Self::IntOp(it) => write!(f, "IntOp {}", it),
-            Self::PtrOp => write!(f, "PtrOp"),
-            Self::StructOp(sl, ops) => {
+            Self::Bool => write!(f, "BoolOp"),
+            Self::Char => write!(f, "CharOp"),
+            Self::Int(it) => write!(f, "IntOp {}", it),
+            Self::Ptr => write!(f, "PtrOp"),
+            Self::Struct(sl, ops) => {
                 write!(f, "StructOp {} [", sl)?;
                 write_list!(f, ops, "; ")?;
                 write!(f, "]")
             },
-            Self::UntypedOp(ly) => write!(f, "UntypedOp ({})", ly),
+            Self::Untyped(ly) => write!(f, "UntypedOp ({})", ly),
             Self::Literal(ca) => write!(f, "{}", ca),
         }
     }
@@ -227,14 +228,14 @@ impl SynType {
         G: Fn(&F) -> Self,
     {
         match self {
-            Self::Bool => Layout::BoolLayout,
-            Self::Char => Layout::CharLayout,
-            Self::Int(it) => Layout::IntLayout(*it),
+            Self::Bool => Layout::Bool,
+            Self::Char => Layout::Char,
+            Self::Int(it) => Layout::Int(*it),
 
-            Self::Ptr | Self::FnPtr => Layout::PtrLayout,
+            Self::Ptr | Self::FnPtr => Layout::Ptr,
 
             Self::Untyped(ly) => ly.clone(),
-            Self::Unit | Self::Never => Layout::UnitLayout,
+            Self::Unit | Self::Never => Layout::Unit,
 
             Self::Literal(ca) => {
                 let rhs = format!("{}", ca);
@@ -266,15 +267,15 @@ impl SynType {
         G: Fn(&F) -> Self,
     {
         match self {
-            Self::Bool => OpType::BoolOp,
-            Self::Char => OpType::CharOp,
-            Self::Int(it) => OpType::IntOp(*it),
+            Self::Bool => OpType::Bool,
+            Self::Char => OpType::Char,
+            Self::Int(it) => OpType::Int(*it),
 
-            Self::Ptr | Self::FnPtr => OpType::PtrOp,
+            Self::Ptr | Self::FnPtr => OpType::Ptr,
 
-            Self::Untyped(ly) => OpType::UntypedOp(ly.clone()),
-            Self::Unit => OpType::StructOp(coq::AppTerm::new_lhs("unit_sl".to_owned()), Vec::new()),
-            Self::Never => OpType::UntypedOp(Layout::UnitLayout),
+            Self::Untyped(ly) => OpType::Untyped(ly.clone()),
+            Self::Unit => OpType::Struct(coq::AppTerm::new_lhs("unit_sl".to_owned()), Vec::new()),
+            Self::Never => OpType::Untyped(Layout::Unit),
 
             Self::Literal(ca) => {
                 let rhs = format!("{}", ca);
@@ -1782,7 +1783,7 @@ impl<'def> AbstractStructUse<'def> {
     #[must_use]
     pub fn generate_struct_layout_term(&self) -> String {
         let Some(def) = self.def.as_ref() else {
-            return Layout::UnitLayout.to_string();
+            return Layout::Unit.to_string();
         };
 
         // first get the syntys for the type params
@@ -2450,31 +2451,37 @@ type LayoutEnv = HashMap<String, Layout>;
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub enum Layout {
     // in the case of  32bits
-    PtrLayout,
+    Ptr,
+
     // layout specified by the int type
-    IntLayout(IntType),
+    Int(IntType),
+
     // size 1, similar to u8/i8
-    BoolLayout,
+    Bool,
+
     // size 4, similar to u32
-    CharLayout,
+    Char,
+
     // guaranteed to have size 0 and alignment 1.
-    UnitLayout,
+    Unit,
+
     /// used for variable layout terms, e.g. for struct layouts or generics
     Literal(coq::AppTerm<String>),
+
     /// padding of a given number of bytes
-    PadLayout(u32),
+    Pad(u32),
 }
 
 impl Display for Layout {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
-            Self::PtrLayout => write!(f, "void*"),
-            Self::IntLayout(it) => write!(f, "(it_layout {})", it),
-            Self::BoolLayout => write!(f, "bool_layout"),
-            Self::CharLayout => write!(f, "char_layout"),
-            Self::UnitLayout => write!(f, "(layout_of unit_sl)"),
+            Self::Ptr => write!(f, "void*"),
+            Self::Int(it) => write!(f, "(it_layout {})", it),
+            Self::Bool => write!(f, "bool_layout"),
+            Self::Char => write!(f, "char_layout"),
+            Self::Unit => write!(f, "(layout_of unit_sl)"),
             Self::Literal(n) => write!(f, "{}", n),
-            Self::PadLayout(s) => write!(f, "(Layout {}%nat 0%nat)", s),
+            Self::Pad(s) => write!(f, "(Layout {}%nat 0%nat)", s),
         }
     }
 }
@@ -2483,10 +2490,10 @@ impl Layout {
     #[must_use]
     pub fn size(&self, env: &LayoutEnv) -> Option<u32> {
         match self {
-            Self::UnitLayout => Some(0),
-            Self::BoolLayout => Some(1),
-            Self::CharLayout | Self::PtrLayout => Some(4),
-            Self::IntLayout(it) => Some(it.size()),
+            Self::Unit => Some(0),
+            Self::Bool => Some(1),
+            Self::Char | Self::Ptr => Some(4),
+            Self::Int(it) => Some(it.size()),
             Self::Literal(n) => {
                 // TODO: this doesn't work if the layout is applied to things.
                 match env.get(&n.lhs) {
@@ -2495,16 +2502,16 @@ impl Layout {
                 }
             },
             //Self::StructLayout(ly) => ly.size(env),
-            Self::PadLayout(s) => Some(*s),
+            Self::Pad(s) => Some(*s),
         }
     }
 
     #[must_use]
     pub fn alignment(&self, env: &LayoutEnv) -> Option<u32> {
         match self {
-            Self::BoolLayout | Self::UnitLayout | Self::PadLayout(_) => Some(1),
-            Self::CharLayout | Self::PtrLayout => Some(4),
-            Self::IntLayout(it) => Some(it.alignment()),
+            Self::Bool | Self::Unit | Self::Pad(_) => Some(1),
+            Self::Char | Self::Ptr => Some(4),
+            Self::Int(it) => Some(it.alignment()),
             Self::Literal(n) => {
                 // TODO: this doesn't work if the layout is applied to things.
                 match env.get(&n.lhs) {

@@ -2156,7 +2156,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                     let stmt = radium::Stmt::If {
                         e: operand,
-                        ot: radium::OpType::BoolOp,
+                        ot: radium::OpType::Bool,
                         s1: Box::new(true_branch),
                         s2: Box::new(false_branch),
                     };
@@ -2208,11 +2208,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // this translation gets stuck on failure
                 let cond_translated = self.translate_operand(cond, true)?;
                 let comp = radium::Expr::BinOp {
-                    o: radium::Binop::EqOp,
-                    ot1: radium::OpType::BoolOp,
-                    ot2: radium::OpType::BoolOp,
+                    o: radium::Binop::Eq,
+                    ot1: radium::OpType::Bool,
+                    ot2: radium::OpType::Bool,
                     e1: Box::new(cond_translated),
-                    e2: Box::new(radium::Expr::Literal(radium::Literal::LitBool(*expected))),
+                    e2: Box::new(radium::Expr::Literal(radium::Literal::Bool(*expected))),
                 };
 
                 let stmt = self.translate_goto_like(&loc, *target)?;
@@ -2891,24 +2891,24 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         _e2: &Operand<'tcx>,
     ) -> Result<radium::Binop, TranslationError> {
         match op {
-            BinOp::Add | BinOp::AddUnchecked => Ok(radium::Binop::AddOp),
-            BinOp::Sub | BinOp::SubUnchecked => Ok(radium::Binop::SubOp),
-            BinOp::Mul | BinOp::MulUnchecked => Ok(radium::Binop::MulOp),
-            BinOp::Div => Ok(radium::Binop::DivOp),
-            BinOp::Rem => Ok(radium::Binop::ModOp),
+            BinOp::Add | BinOp::AddUnchecked => Ok(radium::Binop::Add),
+            BinOp::Sub | BinOp::SubUnchecked => Ok(radium::Binop::Sub),
+            BinOp::Mul | BinOp::MulUnchecked => Ok(radium::Binop::Mul),
+            BinOp::Div => Ok(radium::Binop::Div),
+            BinOp::Rem => Ok(radium::Binop::Mod),
 
-            BinOp::BitXor => Ok(radium::Binop::BitXorOp),
-            BinOp::BitAnd => Ok(radium::Binop::BitAndOp),
-            BinOp::BitOr => Ok(radium::Binop::BitOrOp),
-            BinOp::Shl | BinOp::ShlUnchecked => Ok(radium::Binop::ShlOp),
-            BinOp::Shr | BinOp::ShrUnchecked => Ok(radium::Binop::ShrOp),
+            BinOp::BitXor => Ok(radium::Binop::BitXor),
+            BinOp::BitAnd => Ok(radium::Binop::BitAnd),
+            BinOp::BitOr => Ok(radium::Binop::BitOr),
+            BinOp::Shl | BinOp::ShlUnchecked => Ok(radium::Binop::Shl),
+            BinOp::Shr | BinOp::ShrUnchecked => Ok(radium::Binop::Shr),
 
-            BinOp::Eq => Ok(radium::Binop::EqOp),
-            BinOp::Lt => Ok(radium::Binop::LtOp),
-            BinOp::Le => Ok(radium::Binop::LeOp),
-            BinOp::Ne => Ok(radium::Binop::NeOp),
-            BinOp::Ge => Ok(radium::Binop::GeOp),
-            BinOp::Gt => Ok(radium::Binop::GtOp),
+            BinOp::Eq => Ok(radium::Binop::Eq),
+            BinOp::Lt => Ok(radium::Binop::Lt),
+            BinOp::Le => Ok(radium::Binop::Le),
+            BinOp::Ne => Ok(radium::Binop::Ne),
+            BinOp::Ge => Ok(radium::Binop::Ge),
+            BinOp::Gt => Ok(radium::Binop::Gt),
 
             BinOp::Offset => {
                 // we need to get the layout of the thing we're offsetting
@@ -2917,7 +2917,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let off_ty = BodyTranslator::get_offset_ty(e1_ty)?;
                 let st = self.ty_translator.translate_type_to_syn_type(off_ty)?;
                 let ly = self.ty_translator.translate_syn_type_to_layout(&st);
-                Ok(radium::Binop::PtrOffsetOp(ly))
+                Ok(radium::Binop::PtrOffset(ly))
             },
         }
     }
@@ -2927,9 +2927,9 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Caesium layout annotation.
     fn translate_checked_binop(op: BinOp) -> Result<radium::Binop, TranslationError> {
         match op {
-            BinOp::Add => Ok(radium::Binop::CheckedAddOp),
-            BinOp::Sub => Ok(radium::Binop::CheckedSubOp),
-            BinOp::Mul => Ok(radium::Binop::CheckedMulOp),
+            BinOp::Add => Ok(radium::Binop::CheckedAdd),
+            BinOp::Sub => Ok(radium::Binop::CheckedSub),
+            BinOp::Mul => Ok(radium::Binop::CheckedMul),
             BinOp::Shl => Err(TranslationError::UnsupportedFeature {
                 description: "RefinedRust does currently not support checked Shl".to_owned(),
             }),
@@ -2946,13 +2946,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     fn translate_unop(op: UnOp, ty: Ty<'tcx>) -> Result<radium::Unop, TranslationError> {
         match op {
             UnOp::Not => match ty.kind() {
-                ty::TyKind::Bool => Ok(radium::Unop::NotBoolOp),
-                ty::TyKind::Int(_) | ty::TyKind::Uint(_) => Ok(radium::Unop::NotIntOp),
+                ty::TyKind::Bool => Ok(radium::Unop::NotBool),
+                ty::TyKind::Int(_) | ty::TyKind::Uint(_) => Ok(radium::Unop::NotInt),
                 _ => Err(TranslationError::UnknownError(
                     "application of UnOp::Not to non-{Int, Bool}".to_owned(),
                 )),
             },
-            UnOp::Neg => Ok(radium::Unop::NegOp),
+            UnOp::Neg => Ok(radium::Unop::Neg),
         }
     }
 
@@ -3128,7 +3128,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     )));
                 };
 
-                let ot = radium::OpType::IntOp(translated_it);
+                let ot = radium::OpType::Int(translated_it);
 
                 Ok(radium::Expr::Use {
                     ot,
@@ -3152,7 +3152,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     box mir::AggregateKind::Tuple => {
                         if operand_types.is_empty() {
                             // translate to unit literal
-                            return Ok(radium::Expr::Literal(radium::Literal::LitZST));
+                            return Ok(radium::Expr::Literal(radium::Literal::ZST));
                         }
 
                         let struct_use =
@@ -3177,7 +3177,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                             let Some(struct_use) = struct_use else {
                                 // if not, it's replaced by unit
-                                return Ok(radium::Expr::Literal(radium::Literal::LitZST));
+                                return Ok(radium::Expr::Literal(radium::Literal::ZST));
                             };
 
                             let sl = struct_use.generate_raw_syn_type_term();
@@ -3240,7 +3240,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         // We basically translate this to a tuple
                         if operand_types.is_empty() {
                             // translate to unit literal
-                            return Ok(radium::Expr::Literal(radium::Literal::LitZST));
+                            return Ok(radium::Expr::Literal(radium::Literal::ZST));
                         }
 
                         let struct_use =
@@ -3407,7 +3407,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     if f.index() != 0 {
                         // make this a constant false -- our semantics directly checks for overflows
                         // and otherwise throws UB.
-                        return Ok(radium::Expr::Literal(radium::Literal::LitBool(false)));
+                        return Ok(radium::Expr::Literal(radium::Literal::Bool(false)));
                     }
 
                     // access to the result of the op
@@ -3498,35 +3498,33 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
 
         match ty.kind() {
-            TyKind::Bool => translate_literal(sc.to_bool(), radium::Literal::LitBool),
+            TyKind::Bool => translate_literal(sc.to_bool(), radium::Literal::Bool),
 
             TyKind::Int(it) => match it {
-                ty::IntTy::I8 => translate_literal(sc.to_i8(), radium::Literal::LitI8),
-                ty::IntTy::I16 => translate_literal(sc.to_i16(), radium::Literal::LitI16),
-                ty::IntTy::I32 => translate_literal(sc.to_i32(), radium::Literal::LitI32),
-                ty::IntTy::I128 => translate_literal(sc.to_i128(), radium::Literal::LitI128),
+                ty::IntTy::I8 => translate_literal(sc.to_i8(), radium::Literal::I8),
+                ty::IntTy::I16 => translate_literal(sc.to_i16(), radium::Literal::I16),
+                ty::IntTy::I32 => translate_literal(sc.to_i32(), radium::Literal::I32),
+                ty::IntTy::I128 => translate_literal(sc.to_i128(), radium::Literal::I128),
 
                 // For Radium, the pointer size is 8 bytes
-                ty::IntTy::I64 | ty::IntTy::Isize => translate_literal(sc.to_i64(), radium::Literal::LitI64),
+                ty::IntTy::I64 | ty::IntTy::Isize => translate_literal(sc.to_i64(), radium::Literal::I64),
             },
 
             TyKind::Uint(it) => match it {
-                ty::UintTy::U8 => translate_literal(sc.to_u8(), radium::Literal::LitU8),
-                ty::UintTy::U16 => translate_literal(sc.to_u16(), radium::Literal::LitU16),
-                ty::UintTy::U32 => translate_literal(sc.to_u32(), radium::Literal::LitU32),
-                ty::UintTy::U128 => translate_literal(sc.to_u128(), radium::Literal::LitU128),
+                ty::UintTy::U8 => translate_literal(sc.to_u8(), radium::Literal::U8),
+                ty::UintTy::U16 => translate_literal(sc.to_u16(), radium::Literal::U16),
+                ty::UintTy::U32 => translate_literal(sc.to_u32(), radium::Literal::U32),
+                ty::UintTy::U128 => translate_literal(sc.to_u128(), radium::Literal::U128),
 
                 // For Radium, the pointer is 8 bytes
-                ty::UintTy::U64 | ty::UintTy::Usize => {
-                    translate_literal(sc.to_u64(), radium::Literal::LitU64)
-                },
+                ty::UintTy::U64 | ty::UintTy::Usize => translate_literal(sc.to_u64(), radium::Literal::U64),
             },
 
             TyKind::FnDef(_, _) => self.translate_fn_def_use(ty),
 
             TyKind::Tuple(tys) => {
                 if tys.is_empty() {
-                    return Ok(radium::Expr::Literal(radium::Literal::LitZST));
+                    return Ok(radium::Expr::Literal(radium::Literal::ZST));
                 }
 
                 Err(TranslationError::UnsupportedFeature {
@@ -3557,7 +3555,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             };
 
                             self.collected_statics.insert(did);
-                            Ok(radium::Expr::Literal(radium::Literal::LitLoc(s.loc_name.clone())))
+                            Ok(radium::Expr::Literal(radium::Literal::Loc(s.loc_name.clone())))
                         },
 
                         _ => Err(TranslationError::UnsupportedFeature {
@@ -3611,7 +3609,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 info!("Translating ZST val for function call target: {:?}", ty);
                                 self.translate_fn_def_use(ty)
                             },
-                            _ => Ok(radium::Expr::Literal(radium::Literal::LitZST)),
+                            _ => Ok(radium::Expr::Literal(radium::Literal::ZST)),
                         }
                     },
                     _ => {
