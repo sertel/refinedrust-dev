@@ -26,6 +26,7 @@ pub struct CrateAttrs {
     pub context_params: Vec<coq::Param>,
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub struct VerboseCrateAttrParser;
 
 impl VerboseCrateAttrParser {
@@ -47,46 +48,48 @@ impl CrateAttrParser for VerboseCrateAttrParser {
             let path_segs = &it.path.segments;
             let args = &it.args;
 
-            if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-                match seg.ident.name.as_str() {
-                    "import" => {
-                        let path: parse_utils::CoqModule = buffer.parse(&meta).map_err(str_err)?;
-                        exports.push(coq::Export::new(path.into()));
-                    },
-                    "include" => {
-                        let name: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                        includes.push(name.value());
-                    },
-                    "coq_prefix" => {
-                        let path: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                        if prefix.is_some() {
-                            return Err(format!("multiple rr::coq_prefix attributes have been provided"));
-                        }
-                        prefix = Some(path.value().clone());
-                    },
-                    "package" => {
-                        let path: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                        if package.is_some() {
-                            return Err(format!("multiple rr::package attributes have been provided"));
-                        }
-                        package = Some(path.value().clone());
-                    },
-                    "context" => {
-                        let param: parse_utils::RRGlobalCoqContextItem =
-                            buffer.parse(&meta).map_err(str_err)?;
-                        context_params.push(coq::Param::new(
-                            coq::Name::Unnamed,
-                            coq::Type::Literal(param.item),
-                            true,
-                        ));
-                    },
-                    _ => {
-                        return Err(format!("unknown attribute for crate specification: {:?}", args));
-                    },
-                }
+            let Some(seg) = path_segs.get(1) else {
+                continue;
+            };
+
+            let buffer = parse::Buffer::new(&it.args.inner_tokens());
+            match seg.ident.name.as_str() {
+                "import" => {
+                    let path: parse_utils::CoqModule = buffer.parse(&meta).map_err(str_err)?;
+                    exports.push(coq::Export::new(path.into()));
+                },
+                "include" => {
+                    let name: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                    includes.push(name.value());
+                },
+                "coq_prefix" => {
+                    let path: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                    if prefix.is_some() {
+                        return Err(format!("multiple rr::coq_prefix attributes have been provided"));
+                    }
+                    prefix = Some(path.value().clone());
+                },
+                "package" => {
+                    let path: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                    if package.is_some() {
+                        return Err(format!("multiple rr::package attributes have been provided"));
+                    }
+                    package = Some(path.value().clone());
+                },
+                "context" => {
+                    let param: parse_utils::RRGlobalCoqContextItem = buffer.parse(&meta).map_err(str_err)?;
+                    context_params.push(coq::Param::new(
+                        coq::Name::Unnamed,
+                        coq::Type::Literal(param.item),
+                        true,
+                    ));
+                },
+                _ => {
+                    return Err(format!("unknown attribute for crate specification: {:?}", args));
+                },
             }
         }
+
         Ok(CrateAttrs {
             exports,
             prefix,

@@ -26,6 +26,7 @@ pub struct ConstAttrs {
     pub name: String,
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub struct VerboseConstAttrParser;
 
 impl VerboseConstAttrParser {
@@ -47,27 +48,30 @@ impl ConstAttrParser for VerboseConstAttrParser {
             let path_segs = &it.path.segments;
             let args = &it.args;
 
-            if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-                match seg.ident.name.as_str() {
-                    "name" => {
-                        let parsed_name: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                        if name.is_some() {
-                            return Err(format!("name attribute has already been specified"));
-                        }
-                        name = Some(parsed_name.value());
-                    },
-                    _ => {
-                        return Err(format!("unknown attribute for const specification: {:?}", args));
-                    },
-                }
+            let Some(seg) = path_segs.get(1) else {
+                continue;
+            };
+
+            let buffer = parse::Buffer::new(&it.args.inner_tokens());
+
+            match seg.ident.name.as_str() {
+                "name" => {
+                    let parsed_name: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                    if name.is_some() {
+                        return Err(format!("name attribute has already been specified"));
+                    }
+                    name = Some(parsed_name.value());
+                },
+                _ => {
+                    return Err(format!("unknown attribute for const specification: {:?}", args));
+                },
             }
         }
 
-        if let Some(name) = name {
-            Ok(ConstAttrs { name })
-        } else {
-            Err(format!("no name attribute specified on const"))
-        }
+        let Some(name) = name else {
+            return Err(format!("no name attribute specified on const"));
+        };
+
+        Ok(ConstAttrs { name })
     }
 }

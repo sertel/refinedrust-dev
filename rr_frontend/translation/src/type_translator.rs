@@ -1837,10 +1837,12 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
 }
 
 /// Type translator bundling the function scope
+#[allow(clippy::module_name_repetitions)]
 pub struct LocalTypeTranslator<'a, 'def, 'tcx> {
     pub translator: &'a TypeTranslator<'def, 'tcx>,
     pub scope: RefCell<TypeTranslationScope<'def>>,
 }
+
 impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
     pub const fn new(translator: &'a TypeTranslator<'def, 'tcx>, scope: TypeTranslationScope<'def>) -> Self {
         Self {

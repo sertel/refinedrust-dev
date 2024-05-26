@@ -51,7 +51,6 @@ rustflags = [
     "-Aclippy::manual_assert",
     "-Aclippy::missing_errors_doc",
     "-Aclippy::missing_panics_doc",
-    "-Aclippy::module_name_repetitions",
     "-Aclippy::uninlined_format_args",
     "-Aclippy::wildcard_imports",
 

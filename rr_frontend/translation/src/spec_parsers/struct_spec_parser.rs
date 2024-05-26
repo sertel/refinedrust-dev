@@ -43,7 +43,7 @@ struct RfnPattern {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let pat = parse::LitStr::parse(input, meta)?;
         let (pat, _) = process_coq_literal(pat.value().as_str(), *meta);
 
@@ -80,7 +80,7 @@ enum MetaIProp {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         if parse::Pound::peek(input) {
             input.parse::<_, MToken![#]>(meta)?;
             let macro_cmd: parse::Ident = input.parse(meta)?;
@@ -89,14 +89,17 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let prop: IProp = input.parse(meta)?;
                     Ok(Self::Iris(prop.into()))
                 },
+
                 "own" => {
                     let prop: IProp = input.parse(meta)?;
                     Ok(Self::Own(prop.into()))
                 },
+
                 "shr" => {
                     let prop: IProp = input.parse(meta)?;
                     Ok(Self::Shared(prop.into()))
                 },
+
                 "type" => {
                     let loc_str: parse::LitStr = input.parse(meta)?;
                     let (loc_str, mut annot_meta) = process_coq_literal(&loc_str.value(), *meta);
@@ -118,7 +121,8 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let spec = specs::TyOwnSpec::new(loc_str, rfn_str, type_str, true, annot_meta);
                     Ok(Self::Type(spec))
                 },
-                _ => Err(parse::ParseError::OtherErr(
+
+                _ => Err(parse::Error::OtherErr(
                     input.pos().unwrap(),
                     format!("invalid macro command: {:?}", macro_cmd.value()),
                 )),
@@ -154,14 +158,15 @@ impl From<InvariantSpecFlags> for specs::InvariantSpecFlags {
 }
 
 impl<U> parse::Parse<U> for InvariantSpecFlags {
-    fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &U) -> parse::Result<Self> {
         let mode: parse::Ident = input.parse(meta)?;
+
         match mode.value().as_str() {
             "persistent" => Ok(Self(specs::InvariantSpecFlags::Persistent)),
             "plain" => Ok(Self(specs::InvariantSpecFlags::Plain)),
             "na" => Ok(Self(specs::InvariantSpecFlags::NonAtomic)),
             "atomic" => Ok(Self(specs::InvariantSpecFlags::Atomic)),
-            _ => Err(parse::ParseError::OtherErr(input.pos().unwrap(), "invalid ADT mode".to_owned())),
+            _ => Err(parse::Error::OtherErr(input.pos().unwrap(), "invalid ADT mode".to_owned())),
         }
     }
 }
@@ -206,72 +211,72 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
             let path_segs = &it.path.segments;
             let args = &it.args;
 
-            if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&args.inner_tokens());
-                match seg.ident.name.as_str() {
-                    "refined_by" => {
-                        let pat = RfnPattern::parse(&buffer, &meta).map_err(str_err)?;
+            let Some(seg) = path_segs.get(1) else {
+                continue;
+            };
 
-                        rfn_pat = pat.rfn_pat;
+            let buffer = parse::Buffer::new(&args.inner_tokens());
+            match seg.ident.name.as_str() {
+                "refined_by" => {
+                    let pat = RfnPattern::parse(&buffer, &meta).map_err(str_err)?;
 
-                        if let Some(ty) = pat.rfn_type {
-                            rfn_type = ty;
-                        }
-                    },
-                    "invariant" => {
-                        let prop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+                    rfn_pat = pat.rfn_pat;
 
-                        match prop {
-                            MetaIProp::Own(iprop) => {
-                                invariants.push((iprop, specs::InvariantMode::OnlyOwned));
+                    if let Some(ty) = pat.rfn_type {
+                        rfn_type = ty;
+                    }
+                },
+                "invariant" => {
+                    let prop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+
+                    match prop {
+                        MetaIProp::Own(iprop) => {
+                            invariants.push((iprop, specs::InvariantMode::OnlyOwned));
+                        },
+                        MetaIProp::Shared(iprop) => {
+                            invariants.push((iprop, specs::InvariantMode::OnlyShared));
+                        },
+                        MetaIProp::Iris(iprop) => {
+                            invariants.push((iprop, specs::InvariantMode::All));
+                        },
+                        MetaIProp::Type(ty) => {
+                            type_invariants.push(ty);
+                        },
+                        MetaIProp::Pure(p, name) => match name {
+                            None => invariants.push((specs::IProp::Pure(p), specs::InvariantMode::All)),
+                            Some(n) => {
+                                invariants
+                                    .push((specs::IProp::PureWithName(p, n), specs::InvariantMode::All));
                             },
-                            MetaIProp::Shared(iprop) => {
-                                invariants.push((iprop, specs::InvariantMode::OnlyShared));
-                            },
-                            MetaIProp::Iris(iprop) => {
-                                invariants.push((iprop, specs::InvariantMode::All));
-                            },
-                            MetaIProp::Type(ty) => {
-                                type_invariants.push(ty);
-                            },
-                            MetaIProp::Pure(p, name) => match name {
-                                None => invariants.push((specs::IProp::Pure(p), specs::InvariantMode::All)),
-                                Some(n) => invariants
-                                    .push((specs::IProp::PureWithName(p, n), specs::InvariantMode::All)),
-                            },
-                        }
-                    },
-                    "exists" => {
-                        let mut params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+                        },
+                    }
+                },
+                "exists" => {
+                    let mut params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
 
-                        existentials.append(&mut params.params);
-                    },
-                    "mode" => {
-                        let mode = InvariantSpecFlags::parse(&buffer, &meta).map_err(str_err)?;
+                    existentials.append(&mut params.params);
+                },
+                "mode" => {
+                    let mode = InvariantSpecFlags::parse(&buffer, &meta).map_err(str_err)?;
 
-                        inv_flags = mode.into();
-                    },
-                    "refines" => {
-                        let term = IdentOrTerm::parse(&buffer, &meta).map_err(str_err)?;
+                    inv_flags = mode.into();
+                },
+                "refines" => {
+                    let term = IdentOrTerm::parse(&buffer, &meta).map_err(str_err)?;
 
-                        if abstracted_refinement.is_some() {
-                            return Err("multiple refines specifications given".to_owned());
-                        }
-                        abstracted_refinement = Some(term.to_string());
-                    },
-                    "context" => {
-                        let param = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
+                    if abstracted_refinement.is_some() {
+                        return Err("multiple refines specifications given".to_owned());
+                    }
+                    abstracted_refinement = Some(term.to_string());
+                },
+                "context" => {
+                    let param = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
 
-                        params.push(coq::Param::new(
-                            coq::Name::Unnamed,
-                            coq::Type::Literal(param.item),
-                            true,
-                        ));
-                    },
-                    _ => {
-                        //skip, this may be part of an enum spec
-                    },
-                }
+                    params.push(coq::Param::new(coq::Name::Unnamed, coq::Type::Literal(param.item), true));
+                },
+                _ => {
+                    //skip, this may be part of an enum spec
+                },
             }
         }
 
@@ -403,7 +408,7 @@ where
                 continue;
             };
 
-            let buffer = parse::ParseBuffer::new(&args.inner_tokens());
+            let buffer = parse::Buffer::new(&args.inner_tokens());
 
             if seg.ident.name.as_str() != "field" {
                 return Err(format!("unknown attribute for struct field specification: {:?}", args));

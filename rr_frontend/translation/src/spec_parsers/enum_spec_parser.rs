@@ -39,7 +39,7 @@ pub struct EnumPattern {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         // parse the pattern
         let pat: parse::LitStr = input.parse(meta)?;
         let (pat, _) = process_coq_literal(&pat.value(), *meta);
@@ -67,6 +67,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub struct VerboseEnumSpecParser;
 
 impl VerboseEnumSpecParser {
@@ -93,19 +94,21 @@ impl EnumSpecParser for VerboseEnumSpecParser {
             let path_segs = &it.path.segments;
             let args = &it.args;
 
-            if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-                match seg.ident.name.as_str() {
-                    "refined_by" => {
-                        let ty: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                        let (ty, _) = process_coq_literal(ty.value().as_str(), meta);
-                        rfn_type = Some(coq::Type::Literal(ty));
-                    },
-                    "export_as" => {},
-                    _ => {
-                        return Err(format!("unknown attribute for enum specification: {:?}", args));
-                    },
-                }
+            let Some(seg) = path_segs.get(1) else {
+                continue;
+            };
+
+            let buffer = parse::Buffer::new(&it.args.inner_tokens());
+            match seg.ident.name.as_str() {
+                "refined_by" => {
+                    let ty: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                    let (ty, _) = process_coq_literal(ty.value().as_str(), meta);
+                    rfn_type = Some(coq::Type::Literal(ty));
+                },
+                "export_as" => {},
+                _ => {
+                    return Err(format!("unknown attribute for enum specification: {:?}", args));
+                },
             }
         }
 
@@ -116,38 +119,40 @@ impl EnumSpecParser for VerboseEnumSpecParser {
             for &it in attrs {
                 let path_segs = &it.path.segments;
 
-                if let Some(seg) = path_segs.get(1) {
-                    let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
-                    match seg.ident.name.as_str() {
-                        "pattern" => {
-                            let pat: EnumPattern = buffer.parse(&meta).map_err(str_err)?;
-                            pattern = Some(pat);
-                        },
-                        "refinement" => {
-                            let rfn: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                            let (rfn, _) = process_coq_literal(rfn.value().as_str(), meta);
-                            refinement = Some(rfn);
-                        },
-                        _ => {
-                            // skip and ignore other attributes
-                        },
-                    }
+                let Some(seg) = path_segs.get(1) else {
+                    continue;
+                };
+
+                let buffer = parse::Buffer::new(&it.args.inner_tokens());
+                match seg.ident.name.as_str() {
+                    "pattern" => {
+                        let pat: EnumPattern = buffer.parse(&meta).map_err(str_err)?;
+                        pattern = Some(pat);
+                    },
+                    "refinement" => {
+                        let rfn: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                        let (rfn, _) = process_coq_literal(rfn.value().as_str(), meta);
+                        refinement = Some(rfn);
+                    },
+                    _ => {
+                        // skip and ignore other attributes
+                    },
                 }
             }
+
             if let Some(pattern) = pattern {
                 let refinement = refinement.unwrap_or_else(|| "-[]".to_owned());
                 variant_patterns.push((pattern.pat, pattern.args, refinement));
             }
         }
 
-        if let Some(rfn_type) = rfn_type {
-            let enum_spec = specs::EnumSpec {
-                rfn_type,
-                variant_patterns,
-            };
-            Ok(enum_spec)
-        } else {
-            Err(format!("No refined_by clause provided for enum {:?}", ty_name))
-        }
+        let Some(rfn_type) = rfn_type else {
+            return Err(format!("No refined_by clause provided for enum {:?}", ty_name));
+        };
+
+        Ok(specs::EnumSpec {
+            rfn_type,
+            variant_patterns,
+        })
     }
 }

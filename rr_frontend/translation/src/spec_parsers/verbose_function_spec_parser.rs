@@ -57,8 +57,9 @@ pub trait FunctionSpecParser<'def> {
 struct RRArgs {
     args: Vec<LiteralTypeWithRef>,
 }
+
 impl<'a> parse::Parse<ParseMeta<'a>> for RRArgs {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let args: parse::Punctuated<LiteralTypeWithRef, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
         Ok(Self {
@@ -77,7 +78,7 @@ struct ClosureCaptureSpec {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for ClosureCaptureSpec {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let name_str: parse::LitStr = input.parse(meta)?;
         let name = name_str.value();
         input.parse::<_, MToken![:]>(meta)?;
@@ -90,7 +91,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for ClosureCaptureSpec {
 
             let post_spec: LiteralTypeWithRef = input.parse(meta)?;
             if post_spec.ty.is_some() {
-                Err(parse::ParseError::OtherErr(
+                Err(parse::Error::OtherErr(
                     current_pos,
                     format!("Did not expect type specification for capture postcondition"),
                 ))
@@ -126,7 +127,7 @@ enum MetaIProp {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         if parse::Pound::peek(input) {
             input.parse::<_, MToken![#]>(meta)?;
             let macro_cmd: parse::Ident = input.parse(meta)?;
@@ -169,7 +170,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let (term, _meta) = process_coq_literal(&term.value(), *meta);
                     Ok(Self::Linktime(term))
                 },
-                _ => Err(parse::ParseError::OtherErr(
+                _ => Err(parse::Error::OtherErr(
                     input.pos().unwrap(),
                     format!("invalid macro command: {:?}", macro_cmd.value()),
                 )),
@@ -290,7 +291,7 @@ where
     fn handle_common_attributes(
         &mut self,
         name: &str,
-        buffer: &parse::ParseBuffer,
+        buffer: &parse::Buffer,
         builder: &mut radium::FunctionBuilder<'def>,
         lfts: &[(Option<String>, String)],
     ) -> Result<bool, String> {
@@ -606,7 +607,7 @@ where
             let meta: ParseMeta = (&meta, &lfts);
 
             if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&args.inner_tokens());
+                let buffer = parse::Buffer::new(&args.inner_tokens());
 
                 if seg.ident.name.as_str() == "capture" {
                     let spec: ClosureCaptureSpec = buffer.parse(&meta).map_err(str_err)?;
@@ -622,7 +623,7 @@ where
             let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
+                let buffer = parse::Buffer::new(&it.args.inner_tokens());
                 let name = seg.ident.name.as_str();
 
                 match self.handle_common_attributes(name, &buffer, builder, &lfts) {
@@ -661,24 +662,27 @@ where
             let path_segs = &it.path.segments;
             let args = &it.args;
 
-            if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
+            let Some(seg) = path_segs.get(1) else {
+                continue;
+            };
 
-                match self.handle_common_attributes(seg.ident.name.as_str(), &buffer, builder, &lfts) {
-                    Ok(b) => {
-                        if !b {
-                            let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
-                            let _meta: ParseMeta = (&meta, &lfts);
+            let buffer = parse::Buffer::new(&it.args.inner_tokens());
 
-                            info!("ignoring function attribute: {:?}", args);
-                        }
-                    },
-                    Err(e) => {
-                        return Err(e);
-                    },
-                }
+            match self.handle_common_attributes(seg.ident.name.as_str(), &buffer, builder, &lfts) {
+                Ok(b) => {
+                    if !b {
+                        let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
+                        let _meta: ParseMeta = (&meta, &lfts);
+
+                        info!("ignoring function attribute: {:?}", args);
+                    }
+                },
+                Err(e) => {
+                    return Err(e);
+                },
             }
         }
+
         Ok(())
     }
 }

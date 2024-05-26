@@ -639,6 +639,7 @@ impl StackMap {
 }
 
 /// Representation of a Caesium function's source code
+#[allow(clippy::module_name_repetitions)]
 pub struct FunctionCode {
     name: String,
     stack_layout: StackMap,

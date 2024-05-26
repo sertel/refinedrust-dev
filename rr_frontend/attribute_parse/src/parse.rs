@@ -27,7 +27,7 @@
 // TODO: refactor/ make into own crate?
 use std::cell::Cell;
 use std::str::FromStr;
-use std::{fmt, vec};
+use std::{fmt, result, vec};
 
 use rustc_ast::token::{BinOpToken, Lit, LitKind, TokenKind};
 use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
@@ -97,7 +97,7 @@ impl FromSpans for [Span; 3] {
 }
 
 #[derive(Debug)]
-pub enum ParseError {
+pub enum Error {
     EOF,
     WrongTokenKind(TokenKind, TokenKind, Span),
     UnexpectedDelim(DelimSpan),
@@ -107,18 +107,18 @@ pub enum ParseError {
     OtherErr(Span, String),
 }
 
-pub type ParseResult<T> = Result<T, ParseError>;
+pub type Result<T> = result::Result<T, Error>;
 
 // TODO: maybe change to just have a shared reference to the vector? (or a RefCell)?
-// we anyways only ever read from it, and making ParseBuffer Copy might be nice for
+// we anyways only ever read from it, and making parse::Buffer Copy might be nice for
 // having multiple different cursors at once into the same vector.
 #[derive(Clone, Debug)]
-pub struct ParseBuffer {
+pub struct Buffer {
     trees: Vec<TokenTree>,
     index: Cell<usize>,
 }
 
-impl ParseBuffer {
+impl Buffer {
     #[must_use]
     pub fn new(stream: &TokenStream) -> Self {
         // TODO; maybe avoid the cloning
@@ -130,14 +130,14 @@ impl ParseBuffer {
         }
     }
 
-    pub fn parse<U, T: Parse<U>>(&self, meta: &U) -> ParseResult<T>
+    pub fn parse<U, T: Parse<U>>(&self, meta: &U) -> Result<T>
     where
         U: ?Sized,
     {
         T::parse(self, meta)
     }
 
-    pub fn call<T>(&self, function: fn(ParseStream) -> ParseResult<T>) -> ParseResult<T> {
+    pub fn call<T>(&self, function: fn(Stream) -> Result<T>) -> Result<T> {
         function(self)
     }
 
@@ -145,17 +145,17 @@ impl ParseBuffer {
         self.trees.get(self.index.get()).map(TokenTree::span)
     }
 
-    pub fn peek(&self, n: usize) -> ParseResult<&TokenTree> {
-        self.trees.get(self.index.get() + n).ok_or(ParseError::EOF)
+    pub fn peek(&self, n: usize) -> Result<&TokenTree> {
+        self.trees.get(self.index.get() + n).ok_or(Error::EOF)
     }
 
     pub fn advance(&self, n: usize) {
         self.index.set(self.index.get() + n);
     }
 
-    pub fn advance_get(&self) -> ParseResult<&TokenTree> {
+    pub fn advance_get(&self) -> Result<&TokenTree> {
         let i = self.index.get();
-        let r = self.trees.get(i).ok_or(ParseError::EOF)?;
+        let r = self.trees.get(i).ok_or(Error::EOF)?;
         self.index.set(i + 1);
         Ok(r)
     }
@@ -175,7 +175,7 @@ impl ParseBuffer {
     }
 
     /// Consume a token of the given kind.
-    pub fn expect_token(&self, token: TokenKind) -> ParseResult<Span> {
+    pub fn expect_token(&self, token: TokenKind) -> Result<Span> {
         let tok = self.peek(0)?;
         match tok {
             TokenTree::Token(tok, _) => {
@@ -183,15 +183,15 @@ impl ParseBuffer {
                     self.advance(1);
                     Ok(tok.span)
                 } else {
-                    Err(ParseError::WrongTokenKind(token, tok.kind.clone(), tok.span))
+                    Err(Error::WrongTokenKind(token, tok.kind.clone(), tok.span))
                 }
             },
-            TokenTree::Delimited(span, _, _) => Err(ParseError::UnexpectedDelim(*span)),
+            TokenTree::Delimited(span, _, _) => Err(Error::UnexpectedDelim(*span)),
         }
     }
 
     /// Consume an identifier.
-    pub fn expect_ident(&self) -> ParseResult<(Symbol, Span)> {
+    pub fn expect_ident(&self) -> Result<(Symbol, Span)> {
         let tok = self.peek(0)?;
         match tok {
             TokenTree::Token(tok, _) => match tok.kind {
@@ -199,14 +199,14 @@ impl ParseBuffer {
                     self.advance(1);
                     Ok((sym, tok.span))
                 },
-                _ => Err(ParseError::ExpectedIdent(tok.kind.clone(), tok.span)),
+                _ => Err(Error::ExpectedIdent(tok.kind.clone(), tok.span)),
             },
-            TokenTree::Delimited(span, _, _) => Err(ParseError::UnexpectedDelim(*span)),
+            TokenTree::Delimited(span, _, _) => Err(Error::UnexpectedDelim(*span)),
         }
     }
 
     /// Consume a literal.
-    pub fn expect_literal(&self) -> ParseResult<(Lit, Span)> {
+    pub fn expect_literal(&self) -> Result<(Lit, Span)> {
         let tok = self.peek(0)?;
         match tok {
             TokenTree::Token(tok, _) => match tok.kind {
@@ -214,33 +214,33 @@ impl ParseBuffer {
                     self.advance(1);
                     Ok((lit, tok.span))
                 },
-                _ => Err(ParseError::ExpectedLiteral(tok.kind.clone(), tok.span)),
+                _ => Err(Error::ExpectedLiteral(tok.kind.clone(), tok.span)),
             },
-            TokenTree::Delimited(span, _, _) => Err(ParseError::UnexpectedDelim(*span)),
+            TokenTree::Delimited(span, _, _) => Err(Error::UnexpectedDelim(*span)),
         }
     }
 }
 
-pub type ParseStream<'a> = &'a ParseBuffer;
+pub type Stream<'a> = &'a Buffer;
 
 pub trait Parse<U>: Sized
 where
     U: ?Sized,
 {
-    fn parse(stream: ParseStream, meta: &U) -> ParseResult<Self>;
+    fn parse(stream: Stream, meta: &U) -> Result<Self>;
 }
 
 impl<U, T: Parse<U>> Parse<U> for Box<T>
 where
     U: ?Sized,
 {
-    fn parse(input: ParseStream, meta: &U) -> ParseResult<Self> {
+    fn parse(input: Stream, meta: &U) -> Result<Self> {
         input.parse(meta).map(Self::new)
     }
 }
 
 pub trait Peek {
-    fn peek(stream: ParseStream) -> bool;
+    fn peek(stream: Stream) -> bool;
 }
 
 pub trait PToken: Peek {}
@@ -311,7 +311,7 @@ macro_rules! define_punctuation {
             //}
 
             impl<U> Parse<U> for $name where U: ?Sized {
-                fn parse(input: ParseStream, _: &U) -> ParseResult<Self> {
+                fn parse(input: Stream, _: &U) -> Result<Self> {
                     Ok($name {
                         span: input.expect_token($tk)?,
                     })
@@ -319,7 +319,7 @@ macro_rules! define_punctuation {
             }
 
             impl Peek for $name {
-                fn peek(input: ParseStream) -> bool {
+                fn peek(input: Stream) -> bool {
                     input.peek_token(&$tk)
                 }
 
@@ -453,14 +453,14 @@ impl<U> Parse<U> for LitStr
 where
     U: ?Sized,
 {
-    fn parse(input: ParseStream, _: &U) -> ParseResult<Self> {
+    fn parse(input: Stream, _: &U) -> Result<Self> {
         let lit = input.expect_literal()?;
         match lit.0.kind {
             LitKind::Str => Ok(Self {
                 span: lit.1,
                 sym: lit.0.symbol,
             }),
-            _ => Err(ParseError::UnexpectedLitKind(LitKind::Str, lit.0.kind)),
+            _ => Err(Error::UnexpectedLitKind(LitKind::Str, lit.0.kind)),
         }
     }
 }
@@ -474,7 +474,7 @@ impl<U> Parse<U> for Ident
 where
     U: ?Sized,
 {
-    fn parse(input: ParseStream, _: &U) -> ParseResult<Self> {
+    fn parse(input: Stream, _: &U) -> Result<Self> {
         let (sym, span) = input.expect_ident()?;
         Ok(Self { span, sym })
     }
@@ -498,12 +498,12 @@ impl LitInt {
     //pub fn value(&self) -> String {
     //self.sym.to_string()
     //}
-    pub fn base10_parse<N>(&self) -> ParseResult<N>
+    pub fn base10_parse<N>(&self) -> Result<N>
     where
         N: FromStr,
         N::Err: fmt::Display,
     {
-        self.digits.parse().map_err(|err| ParseError::OtherErr(self.span, format!("{}", err)))
+        self.digits.parse().map_err(|err| Error::OtherErr(self.span, format!("{}", err)))
     }
 }
 
@@ -511,14 +511,14 @@ impl<U> Parse<U> for LitInt
 where
     U: ?Sized,
 {
-    fn parse(input: ParseStream, _: &U) -> ParseResult<Self> {
+    fn parse(input: Stream, _: &U) -> Result<Self> {
         let (lit, span) = input.expect_literal()?;
         match lit.kind {
             LitKind::Integer => {
                 let sym = lit.symbol;
 
                 let Some((digits, suffix)) = value::parse_lit_int(&sym.to_string()) else {
-                    return Err(ParseError::OtherErr(span, format!("Not an integer literal: {}", sym)));
+                    return Err(Error::OtherErr(span, format!("Not an integer literal: {}", sym)));
                 };
 
                 Ok(Self {
@@ -528,7 +528,7 @@ where
                     suffix,
                 })
             },
-            _ => Err(ParseError::UnexpectedLitKind(LitKind::Integer, lit.kind)),
+            _ => Err(Error::UnexpectedLitKind(LitKind::Integer, lit.kind)),
         }
     }
 }
@@ -664,7 +664,7 @@ impl BigInt {
 }
 
 impl fmt::Display for BigInt {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut repr = String::with_capacity(self.digits.len());
 
         let mut has_nonzero = false;
@@ -920,7 +920,7 @@ impl<T, P> Punctuated<T, P> {
     ///
     /// *This function is available only if Syn is built with the `"parsing"`
     /// feature.*
-    pub fn parse_terminated<U>(input: ParseStream, meta: &U) -> ParseResult<Self>
+    pub fn parse_terminated<U>(input: Stream, meta: &U) -> Result<Self>
     where
         T: Parse<U>,
         P: Parse<U>,
@@ -941,10 +941,10 @@ impl<T, P> Punctuated<T, P> {
     /// *This function is available only if Syn is built with the `"parsing"`
     /// feature.*
     pub fn parse_terminated_with<U>(
-        input: ParseStream,
-        parser: fn(ParseStream, &U) -> ParseResult<T>,
+        input: Stream,
+        parser: fn(Stream, &U) -> Result<T>,
         meta: &U,
-    ) -> ParseResult<Self>
+    ) -> Result<Self>
     where
         P: Parse<U>,
         U: ?Sized,
@@ -977,7 +977,7 @@ impl<T, P> Punctuated<T, P> {
     ///
     /// *This function is available only if Syn is built with the `"parsing"`
     /// feature.*
-    pub fn parse_separated_nonempty<U>(input: ParseStream, meta: &U) -> ParseResult<Self>
+    pub fn parse_separated_nonempty<U>(input: Stream, meta: &U) -> Result<Self>
     where
         T: Parse<U>,
         P: PToken + Parse<U>,
@@ -998,10 +998,10 @@ impl<T, P> Punctuated<T, P> {
     /// *This function is available only if Syn is built with the `"parsing"`
     /// feature.*
     pub fn parse_separated_nonempty_with<U>(
-        input: ParseStream,
-        parser: fn(ParseStream, &U) -> ParseResult<T>,
+        input: Stream,
+        parser: fn(Stream, &U) -> Result<T>,
         meta: &U,
-    ) -> ParseResult<Self>
+    ) -> Result<Self>
     where
         P: Peek + Parse<U>,
         U: ?Sized,

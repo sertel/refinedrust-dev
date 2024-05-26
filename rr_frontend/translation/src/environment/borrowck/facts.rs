@@ -18,8 +18,8 @@ pub type PointIndex = <RustcFacts as FactTypes>::Point;
 pub type Variable = <RustcFacts as FactTypes>::Variable;
 pub type Path = <RustcFacts as FactTypes>::Path;
 
-pub type AllInputFacts = rustc_borrowck::consumers::PoloniusInput;
-pub type AllOutputFacts = rustc_borrowck::consumers::PoloniusOutput;
+pub type AllInput = rustc_borrowck::consumers::PoloniusInput;
+pub type AllOutput = rustc_borrowck::consumers::PoloniusOutput;
 
 trait LocationTableExt {
     fn to_mir_location(self, point: PointIndex) -> mir::Location;
@@ -33,11 +33,11 @@ impl LocationTableExt for LocationTable {
     }
 }
 
-pub struct BorrowckFacts {
+pub struct Borrowck {
     /// Polonius input facts.
-    pub input_facts: RefCell<Option<Box<AllInputFacts>>>,
+    pub input_facts: RefCell<Option<Box<AllInput>>>,
     /// Polonius output facts.
-    pub output_facts: Rc<AllOutputFacts>,
+    pub output_facts: Rc<AllOutput>,
     /// The table that maps Polonius points to locations in the table.
     pub location_table: RefCell<Option<LocationTable>>,
 }

@@ -25,7 +25,7 @@ impl<U> parse::Parse<U> for IdentOrTerm
 where
     U: ?Sized,
 {
-    fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &U) -> parse::Result<Self> {
         if let Ok(ident) = parse::Ident::parse(input, meta) {
             // it's an identifer
             Ok(Self::Ident(ident.value()))
@@ -54,7 +54,7 @@ pub struct LiteralTypeWithRef {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         // check if a #raw annotation is present
         let loc = input.pos();
         let mut raw = specs::TypeIsRaw::No;
@@ -65,7 +65,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
                 "raw" => {
                     raw = specs::TypeIsRaw::Yes;
                 },
-                _ => return Err(parse::ParseError::OtherErr(loc.unwrap(), "Unsupported flag".to_owned())),
+                _ => return Err(parse::Error::OtherErr(loc.unwrap(), "Unsupported flag".to_owned())),
             }
         }
 
@@ -103,7 +103,7 @@ pub struct LiteralType {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for LiteralType {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let ty: parse::LitStr = input.parse(meta)?;
         let (ty, meta) = process_coq_literal(&ty.value(), *meta);
 
@@ -121,7 +121,7 @@ impl From<IProp> for specs::IProp {
 
 /// Parse an iProp string, e.g. `"P ∗ Q ∨ R"`
 impl<'a> parse::Parse<ParseMeta<'a>> for IProp {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let lit: parse::LitStr = input.parse(meta)?;
         let (lit, _) = process_coq_literal(&lit.value(), *meta);
 
@@ -141,7 +141,7 @@ pub struct RRParam {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for RRParam {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let name: IdentOrTerm = input.parse(meta)?;
         let name = coq::Name::Named(name.to_string());
 
@@ -167,7 +167,7 @@ pub struct RRParams {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for RRParams {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let params: parse::Punctuated<RRParam, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
         Ok(Self {
@@ -186,7 +186,7 @@ impl From<CoqModule> for coq::Module {
 
 /// Parse a `CoqModule`.
 impl<U> parse::Parse<U> for CoqModule {
-    fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &U) -> parse::Result<Self> {
         let path_or_module: parse::LitStr = input.parse(meta)?;
         let path_or_module = path_or_module.value();
 
@@ -212,7 +212,7 @@ pub struct RRCoqContextItem {
     pub at_end: bool,
 }
 impl<'a> parse::Parse<ParseMeta<'a>> for RRCoqContextItem {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta<'a>) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta<'a>) -> parse::Result<Self> {
         let item: parse::LitStr = input.parse(meta)?;
         let (item_str, annot_meta) = process_coq_literal(&item.value(), *meta);
 
@@ -233,7 +233,7 @@ pub struct RRGlobalCoqContextItem {
 }
 
 impl<U> parse::Parse<U> for RRGlobalCoqContextItem {
-    fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &U) -> parse::Result<Self> {
         let item: parse::LitStr = input.parse(meta)?;
 
         Ok(Self { item: item.value() })
@@ -241,7 +241,7 @@ impl<U> parse::Parse<U> for RRGlobalCoqContextItem {
 }
 
 #[allow(clippy::needless_pass_by_value)]
-pub fn str_err(e: parse::ParseError) -> String {
+pub fn str_err(e: parse::Error) -> String {
     format!("{:?}", e)
 }
 
