@@ -164,9 +164,10 @@ pub struct ShimRegistry<'a> {
 
 impl<'a> ShimRegistry<'a> {
     fn get_shim_kind(v: &serde_json::Value) -> Result<ShimKind, String> {
-        let obj = v.as_object().ok_or(format!("element is not an object"))?;
-        let vk = obj.get("kind").ok_or(format!("object does not have \"kind\" attribute"))?;
-        let kind_str = vk.as_str().ok_or(format!("\"kind\" attribute is not a string"))?;
+        let obj = v.as_object().ok_or_else(|| "element is not an object".to_owned())?;
+        let vk = obj.get("kind").ok_or_else(|| "object does not have \"kind\" attribute".to_owned())?;
+        let kind_str = vk.as_str().ok_or_else(|| "\"kind\" attribute is not a string".to_owned())?;
+
         match kind_str {
             "function" => Ok(ShimKind::Function),
             "method" => Ok(ShimKind::Method),
@@ -219,42 +220,42 @@ impl<'a> ShimRegistry<'a> {
             serde_json::Value::Object(obj) => {
                 let path = obj
                     .get("refinedrust_path")
-                    .ok_or(format!("Missing attribute \"refinedrust_path\""))?
+                    .ok_or_else(|| "Missing attribute \"refinedrust_path\"".to_owned())?
                     .as_str()
-                    .ok_or(format!("Expected string for \"refinedrust_path\" attribute"))?;
+                    .ok_or_else(|| "Expected string for \"refinedrust_path\" attribute".to_owned())?;
 
                 let module = obj
                     .get("refinedrust_module")
-                    .ok_or(format!("Missing attribute \"refinedrust_module\""))?
+                    .ok_or_else(|| "Missing attribute \"refinedrust_module\"".to_owned())?
                     .as_str()
-                    .ok_or(format!("Expected string for \"refinedrust_module\" attribute"))?;
+                    .ok_or_else(|| "Expected string for \"refinedrust_module\" attribute".to_owned())?;
 
                 obj.get("refinedrust_name")
-                    .ok_or(format!("Missing attribute \"refinedrust_name\""))?
+                    .ok_or_else(|| "Missing attribute \"refinedrust_name\"".to_owned())?
                     .as_str()
-                    .ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
+                    .ok_or_else(|| "Expected string for \"refinedrust_name\" attribute".to_owned())?;
 
                 let module = coq::Module::new_with_path(module, coq::Path::new(path));
                 self.exports.push(coq::Export::new(module));
 
                 let dependencies = obj
                     .get("module_dependencies")
-                    .ok_or(format!("Missing attribute \"module_dependencies\""))?
+                    .ok_or_else(|| "Missing attribute \"module_dependencies\"".to_owned())?
                     .as_array()
-                    .ok_or(format!("Expected array for \"module_dependencies\" attribute"))?;
+                    .ok_or_else(|| "Expected array for \"module_dependencies\" attribute".to_owned())?;
 
                 for dependency in dependencies {
-                    let path = dependency
-                        .as_str()
-                        .ok_or(format!("Expected string for element of \"module_dependencies\" array"))?;
+                    let path = dependency.as_str().ok_or_else(|| {
+                        "Expected string for element of \"module_dependencies\" array".to_owned()
+                    })?;
 
                     self.dependencies.push(coq::Path::new(path));
                 }
 
                 obj.get("items")
-                    .ok_or(format!("Missing attribute \"items\""))?
+                    .ok_or_else(|| "Missing attribute \"items\"".to_owned())?
                     .as_array()
-                    .ok_or(format!("Expected array for \"items\" attribute"))?
+                    .ok_or_else(|| "Expected array for \"items\" attribute".to_owned())?
                     .clone()
             },
 

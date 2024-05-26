@@ -57,7 +57,7 @@ impl ConstAttrParser for VerboseConstAttrParser {
                 "name" => {
                     let parsed_name: parse::LitStr = buffer.parse(&()).map_err(str_err)?;
                     if name.is_some() {
-                        return Err(format!("name attribute has already been specified"));
+                        return Err("name attribute has already been specified".to_owned());
                     }
                     name = Some(parsed_name.value());
                 },
@@ -68,7 +68,7 @@ impl ConstAttrParser for VerboseConstAttrParser {
         }
 
         let Some(name) = name else {
-            return Err(format!("no name attribute specified on const"));
+            return Err("no name attribute specified on const".to_owned());
         };
 
         Ok(ConstAttrs { name })

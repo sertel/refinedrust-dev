@@ -440,7 +440,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 if fun.spec.args.len() != fun.code.get_argument_count() {
                     warn!("Function specification for {} is missing arguments", fun.name());
                 }
-                spec_file.write(format!("{}", fun.spec).as_bytes()).unwrap();
+                spec_file.write(fun.spec.to_string().as_bytes()).unwrap();
                 spec_file.write("\n\n".as_bytes()).unwrap();
             } else {
                 warn!("No specification for {}", fun.name());
@@ -453,7 +453,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // also write only-spec functions specs
         for (_, spec) in self.procedure_registry.iter_only_spec() {
             if spec.has_spec {
-                spec_file.write(format!("{}", spec).as_bytes()).unwrap();
+                spec_file.write(spec.to_string().as_bytes()).unwrap();
                 spec_file.write("\n\n".as_bytes()).unwrap();
             } else {
                 spec_file
@@ -646,7 +646,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let proof_module_path = format!("{}.proofs", coq_module_path);
 
         // write gitignore file
-        let gitignore_path = base_dir_path.as_path().join(format!(".gitignore"));
+        let gitignore_path = base_dir_path.as_path().join(".gitignore");
         {
             let mut gitignore_file = io::BufWriter::new(File::create(gitignore_path.as_path()).unwrap());
             write!(
@@ -692,7 +692,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 let (project_name, dune_project_package) = if let Some(dune_package) = &self.dune_package {
                     (dune_package.to_string(), format!("(package (name {dune_package}))\n"))
                 } else {
-                    (stem.to_owned(), format!(""))
+                    (stem.to_owned(), String::new())
                 };
 
                 write!(
@@ -740,8 +740,9 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let dune_package = if let Some(dune_package) = &self.dune_package {
             format!("(package {dune_package})\n")
         } else {
-            format!("")
+            String::new()
         };
+
         write!(
             dune_file,
             "\

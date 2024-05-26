@@ -20,9 +20,6 @@ rustflags = [
     "-Aunused_mut",
     "-Aunused_variables",
 
-    # clippy::complexity
-    "-Aclippy::useless_format",
-
     # clippy::correctness
     "-Aclippy::unused_io_amount",
 

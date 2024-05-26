@@ -277,7 +277,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 ty::BoundRegionKind::BrNamed(_, sym) => {
                     let mut region_name = strip_coq_ident(sym.as_str());
                     if region_name == "_" {
-                        region_name = format!("{}", next_id.as_usize());
+                        region_name = next_id.as_usize().to_string();
                         universal_lifetimes.insert(next_id, (format!("ulft_{}", region_name), None));
                     } else {
                         universal_lifetimes
@@ -1328,7 +1328,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         if let Some((n, ..)) = self.collected_procedures.get(&tup) {
             trace!("leave register_use_procedure");
 
-            return Ok(format!("{}", n));
+            return Ok(n.to_owned());
         }
 
         // lookup the name in the procedure registry
@@ -3461,7 +3461,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             },
 
             traits::TraitResolutionKind::Param => Err(TranslationError::Unimplemented {
-                description: format!("Implement trait invocation for Param"),
+                description: "Implement trait invocation for Param".to_owned(),
             }),
 
             traits::TraitResolutionKind::Closure => {

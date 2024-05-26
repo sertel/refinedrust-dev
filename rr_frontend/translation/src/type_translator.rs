@@ -1384,7 +1384,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     lft
                 } else {
                     warn!("Failed to translate region {:?}", region);
-                    format!("placeholder_lft")
+                    "placeholder_lft".to_owned()
                 };
 
                 match mutability {

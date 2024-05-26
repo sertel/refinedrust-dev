@@ -29,7 +29,7 @@ fn fmt_comment(o: &Option<String>) -> String {
 
 fn fmt_option<T: Display>(o: &Option<T>) -> String {
     match o {
-        None => format!("None"),
+        None => "None".to_owned(),
         Some(x) => format!("Some ({})", x),
     }
 }
@@ -948,7 +948,7 @@ impl<'def> Function<'def> {
                 }
                 ip_params.push(' ');
                 p_count += 1;
-                ip_params.push_str(format!("{}", n).as_str());
+                ip_params.push_str(&n.to_string());
             }
             for (n, _) in ty_params {
                 write!(f, "let {} := fresh \"{}\" in\n", n, n)?;

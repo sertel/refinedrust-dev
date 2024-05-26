@@ -363,7 +363,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
         format!("{}{}", &c[1], lft)
     });
 
-    let cs = RE_LIT.replace_all(&cs, |c: &Captures<'_>| format!("{}", &c[1]));
+    let cs = RE_LIT.replace_all(&cs, |c: &Captures<'_>| c[1].to_string());
 
     (cs.to_string(), specs::TypeAnnotMeta::new(literal_tyvars, literal_lfts))
 }

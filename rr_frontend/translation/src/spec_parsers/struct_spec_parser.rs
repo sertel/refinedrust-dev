@@ -188,7 +188,7 @@ impl InvariantSpecParser for VerboseInvariantSpecParser {
         lfts: &'a [(Option<String>, specs::Lft)],
     ) -> Result<(specs::InvariantSpec, bool), String> {
         if attrs.is_empty() {
-            return Err(format!("no invariant specifications given"));
+            return Err("no invariant specifications given".to_owned());
         }
 
         let meta: ParseMeta<'_> = (params, lfts);

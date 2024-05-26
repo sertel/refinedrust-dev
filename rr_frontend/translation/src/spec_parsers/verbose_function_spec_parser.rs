@@ -93,7 +93,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for ClosureCaptureSpec {
             if post_spec.ty.is_some() {
                 Err(parse::Error::OtherErr(
                     current_pos,
-                    format!("Did not expect type specification for capture postcondition"),
+                    "Did not expect type specification for capture postcondition".to_owned(),
                 ))
             } else {
                 Ok(Self {

@@ -238,7 +238,7 @@ impl SynType {
             Self::Unit | Self::Never => Layout::Unit,
 
             Self::Literal(ca) => {
-                let rhs = format!("{}", ca);
+                let rhs = ca.to_string();
                 Layout::Literal(coq::AppTerm::new("use_layout_alg'".to_owned(), vec![rhs]))
             },
 
@@ -278,7 +278,7 @@ impl SynType {
             Self::Never => OpType::Untyped(Layout::Unit),
 
             Self::Literal(ca) => {
-                let rhs = format!("{}", ca);
+                let rhs = ca.to_string();
                 OpType::Literal(coq::AppTerm::new("use_op_alg'".to_owned(), vec![rhs]))
             },
 
@@ -1160,7 +1160,8 @@ impl InvariantSpec {
         write!(out, "End {}.\n", self.type_name).unwrap();
         write!(out, "Global Arguments {} : clear implicits.\n", self.rt_def_name()).unwrap();
         if !context_names.is_empty() {
-            let dep_sigma_str = if dep_sigma { format!("{{_}} ") } else { format!("") };
+            let dep_sigma_str = if dep_sigma { "{_} " } else { "" };
+
             write!(
                 out,
                 "Global Arguments {} {}{} {{{}}}.\n",
@@ -1319,7 +1320,7 @@ impl<'def> AbstractVariant<'def> {
         let mut typarams_use = Vec::new();
         for names in ty_params {
             typarams.push(format!("({} : syn_type)", names.syn_type));
-            typarams_use.push(format!("{}", names.syn_type));
+            typarams_use.push(names.syn_type.clone());
         }
         out.push('\n');
 
@@ -1427,7 +1428,8 @@ impl<'def> AbstractVariant<'def> {
         write!(out, "End {}.\n", self.plain_ty_name).unwrap();
         write!(out, "Global Arguments {} : clear implicits.\n", self.plain_rt_def_name).unwrap();
         if !context_names.is_empty() {
-            let dep_sigma_str = if dep_sigma { format!("{{_}} ") } else { format!("") };
+            let dep_sigma_str = if dep_sigma { "{_} " } else { "" };
+
             write!(
                 out,
                 "Global Arguments {} {}{} {{{}}}.\n",
@@ -1832,7 +1834,7 @@ impl<'def> AbstractStructUse<'def> {
         // TODO generates too many apps
 
         let specialized_spec = coq::AppTerm::new(def.st_def_name().to_owned(), param_sts);
-        SynType::Literal(format!("{}", specialized_spec))
+        SynType::Literal(specialized_spec.to_string())
     }
 
     /// Generate a string representation of this struct use.
@@ -2072,14 +2074,14 @@ impl<'def> AbstractEnum<'def> {
 
         let mut v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_lfts {})", p.type_term)).collect();
         v.push("[]".to_owned());
-        format!("{}", v.join(" ++ "))
+        v.join(" ++ ")
     }
 
     fn generate_wf_elctx(&self) -> String {
         // TODO: probably should build this up modularly over the fields
         let mut v: Vec<_> = self.ty_params.iter().map(|p| format!("(ty_wf_E {})", p.type_term)).collect();
         v.push("[]".to_owned());
-        format!("{}", v.join(" ++ "))
+        v.join(" ++ ")
     }
 
     fn generate_construct_enum(&self) -> String {
@@ -2184,7 +2186,7 @@ impl<'def> AbstractEnum<'def> {
                 params: coq::ParamList::new(vec![]),
                 ty: coq::Type::Literal(format!("Inhabited {}", ind.name)),
                 body: coq::DefBody::Script(
-                    coq::ProofScript(vec![coq::ProofItem::Literal(format!("solve_inhabited"))]),
+                    coq::ProofScript(vec![coq::ProofItem::Literal("solve_inhabited".to_owned())]),
                     coq::ProofScriptTerminator::Qed,
                 ),
             };
@@ -2429,7 +2431,7 @@ impl<'def> AbstractEnumUse<'def> {
 
         // [my_spec] [params]
         let specialized_spec = coq::AppTerm::new(self.def.st_def_name.clone(), param_sts);
-        SynType::Literal(format!("{}", specialized_spec))
+        SynType::Literal(specialized_spec.to_string())
     }
 
     /// Generate a string representation of this enum use.
