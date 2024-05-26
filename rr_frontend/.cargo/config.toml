@@ -48,7 +48,6 @@ rustflags = [
 
     # clippy::pedantic
     "-Aclippy::cast_possible_truncation",
-    "-Aclippy::enum_glob_use",
     "-Aclippy::manual_assert",
     "-Aclippy::missing_errors_doc",
     "-Aclippy::missing_panics_doc",

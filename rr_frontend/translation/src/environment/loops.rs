@@ -10,7 +10,7 @@ use log::{debug, info, trace};
 use rustc_data_structures::graph::dominators::{dominators, Dominators};
 use rustc_index::{Idx, IndexVec};
 use rustc_middle::mir;
-use rustc_middle::mir::visit::Visitor;
+use rustc_middle::mir::visit::{PlaceContext, Visitor};
 
 use crate::environment::mir_sets::place_set::PlaceSet;
 use crate::environment::mir_utils::real_edges::RealEdges;
@@ -94,8 +94,6 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
         context: mir::visit::PlaceContext,
         location: mir::Location,
     ) {
-        use rustc_middle::mir::visit::PlaceContext::*;
-
         // TODO: using `location`, skip the places that are used for typechecking
         // because that part of the generated code contains closures.
         if !(self.body.contains(&location.block) && context.is_use()) {
@@ -106,19 +104,26 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
 
         #[allow(clippy::unnested_or_patterns)]
         let access_kind = match context {
-            MutatingUse(mir::visit::MutatingUseContext::Store)
-            | MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
+            PlaceContext::MutatingUse(mir::visit::MutatingUseContext::Store)
+            | PlaceContext::MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
 
-            NonMutatingUse(mir::visit::NonMutatingUseContext::Move)
-            | MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
+            PlaceContext::NonMutatingUse(mir::visit::NonMutatingUseContext::Move)
+            | PlaceContext::MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
 
-            NonMutatingUse(mir::visit::NonMutatingUseContext::Copy)
-            | NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => PlaceAccessKind::Read,
+            PlaceContext::NonMutatingUse(mir::visit::NonMutatingUseContext::Copy)
+            | PlaceContext::NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => {
+                PlaceAccessKind::Read
+            },
 
-            MutatingUse(mir::visit::MutatingUseContext::Borrow) => PlaceAccessKind::MutableBorrow,
-            NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => PlaceAccessKind::SharedBorrow,
+            PlaceContext::MutatingUse(mir::visit::MutatingUseContext::Borrow) => {
+                PlaceAccessKind::MutableBorrow
+            },
 
-            NonUse(_) => unreachable!(),
+            PlaceContext::NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => {
+                PlaceAccessKind::SharedBorrow
+            },
+
+            PlaceContext::NonUse(_) => unreachable!(),
             x => unimplemented!("{:?}", x),
         };
 
