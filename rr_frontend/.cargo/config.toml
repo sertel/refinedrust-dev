@@ -101,9 +101,7 @@ rustflags = [
     "-Aclippy::min_ident_chars",
     "-Aclippy::missing_inline_in_public_items",
     "-Aclippy::missing_trait_methods",
-    "-Aclippy::pub_with_shorthand", # ("pub_without_shortand" is allowed)
     "-Aclippy::question_mark_used",
-    "-Aclippy::semicolon_outside_block", # ("semicolon_outside_block" is allowed)
     "-Aclippy::shadow_reuse",
     "-Aclippy::shadow_same",
     "-Aclippy::shadow_unrelated",
@@ -123,10 +121,10 @@ rustflags = [
 
     # `clippy::restriction` is enabled globally, but used carefully.
     "-Aclippy::blanket_clippy_restriction_lints",
-    "-Aclippy::mod_module_files", # see: self_named_module_files
 
-    # These lints could be false positives, and should be caught by other lints.
-    "-Aclippy::let_unit_value",
+    "-Aclippy::mod_module_files", # see: self_named_module_files
+    "-Aclippy::pub_with_shorthand", # see: pub_without_shortand
+    "-Aclippy::semicolon_outside_block", # see: semicolon_inline_block
 ]
 
 [unstable.gitoxide]

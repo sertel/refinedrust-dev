@@ -25,9 +25,6 @@ impl<F> parse::Parse<F> for RustPath {
 }
 
 pub fn get_export_as_attr(attrs: &[&AttrItem]) -> Result<Vec<String>, String> {
-    let meta: () = ();
-    let meta = &meta;
-
     for &it in attrs {
         let path_segs = &it.path.segments;
 
@@ -35,7 +32,7 @@ pub fn get_export_as_attr(attrs: &[&AttrItem]) -> Result<Vec<String>, String> {
             let buffer = parse::Buffer::new(&it.args.inner_tokens());
 
             if seg.ident.name.as_str() == "export_as" {
-                let path = RustPath::parse(&buffer, meta).map_err(parse_utils::str_err)?;
+                let path = RustPath::parse(&buffer, &()).map_err(parse_utils::str_err)?;
                 return Ok(path.path);
             }
         }
@@ -74,9 +71,6 @@ where
 
 /// Extract a shim annotation from a list of annotations of a function or method.
 pub fn get_shim_attrs(attrs: &[&AttrItem]) -> Result<ShimAnnot, String> {
-    let meta: () = ();
-    let meta = &meta;
-
     for &it in attrs {
         let path_segs = &it.path.segments;
 
@@ -84,7 +78,7 @@ pub fn get_shim_attrs(attrs: &[&AttrItem]) -> Result<ShimAnnot, String> {
             let buffer = parse::Buffer::new(&it.args.inner_tokens());
 
             if seg.ident.name.as_str() == "shim" {
-                let annot = ShimAnnot::parse(&buffer, meta).map_err(parse_utils::str_err)?;
+                let annot = ShimAnnot::parse(&buffer, &()).map_err(parse_utils::str_err)?;
                 return Ok(annot);
             }
         }

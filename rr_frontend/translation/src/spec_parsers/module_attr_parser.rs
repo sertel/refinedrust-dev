@@ -44,7 +44,6 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
         _did: LocalDefId,
         attrs: &'a [&'a AttrItem],
     ) -> Result<ModuleAttrs, String> {
-        let meta = ();
         let mut exports: Vec<coq::Export> = Vec::new();
         let mut includes: Vec<String> = Vec::new();
         let mut context_params = Vec::new();
@@ -60,15 +59,15 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
             let buffer = parse::Buffer::new(&it.args.inner_tokens());
             match seg.ident.name.as_str() {
                 "import" => {
-                    let path: parse_utils::CoqModule = buffer.parse(&meta).map_err(str_err)?;
+                    let path: parse_utils::CoqModule = buffer.parse(&()).map_err(str_err)?;
                     exports.push(coq::Export::new(path.into()));
                 },
                 "include" => {
-                    let name: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                    let name: parse::LitStr = buffer.parse(&()).map_err(str_err)?;
                     includes.push(name.value());
                 },
                 "context" => {
-                    let param: parse_utils::RRGlobalCoqContextItem = buffer.parse(&meta).map_err(str_err)?;
+                    let param: parse_utils::RRGlobalCoqContextItem = buffer.parse(&()).map_err(str_err)?;
                     context_params.push(coq::Param::new(
                         coq::Name::Unnamed,
                         coq::Type::Literal(param.item),

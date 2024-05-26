@@ -41,7 +41,6 @@ impl ConstAttrParser for VerboseConstAttrParser {
         _did: LocalDefId,
         attrs: &'a [&'a AttrItem],
     ) -> Result<ConstAttrs, String> {
-        let meta = ();
         let mut name: Option<String> = None;
 
         for &it in attrs {
@@ -56,7 +55,7 @@ impl ConstAttrParser for VerboseConstAttrParser {
 
             match seg.ident.name.as_str() {
                 "name" => {
-                    let parsed_name: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
+                    let parsed_name: parse::LitStr = buffer.parse(&()).map_err(str_err)?;
                     if name.is_some() {
                         return Err(format!("name attribute has already been specified"));
                     }
