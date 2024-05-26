@@ -585,17 +585,15 @@ mod value {
                                 let suffix = &s[1 + i..];
                                 if has_exp && super::xid_ok(suffix) {
                                     return None;
-                                } else {
-                                    break 'outer;
                                 }
+                                break 'outer;
                             },
                         }
                     }
                     if has_exp {
                         return None;
-                    } else {
-                        break;
                     }
+                    break;
                 },
                 _ => break,
             };

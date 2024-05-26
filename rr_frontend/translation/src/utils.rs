@@ -387,42 +387,47 @@ where
                 //info!("items to look at: {:?}", items);
                 for item in mem::take(&mut items) {
                     let item: &rustc_middle::metadata::ModChild = item;
-                    if item.ident.name.as_str() == segment.as_ref() {
-                        info!("taking path: {:?}", segment.as_ref());
-                        if path_it.peek().is_none() {
-                            return Some(item.res.def_id());
-                        }
 
-                        // just the method remaining
-                        if path_it.len() == 1 {
-                            let did: DefId = item.res.def_id();
-                            let impls: &[DefId] = tcx.inherent_impls(did);
-                            info!("trying to find method among impls {:?}", impls);
-
-                            let find = path_it.next().unwrap();
-                            for impl_did in impls {
-                                //let ty = tcx.type_of(*impl_did);
-                                //info!("type of impl: {:?}", ty);
-                                let items: &ty::AssocItems = tcx.associated_items(impl_did);
-                                //info!("items here: {:?}", items);
-                                // TODO more robust error handling if there are multiple matches.
-                                for item in items.in_definition_order() {
-                                    //info!("comparing: {:?} with {:?}", item.name.as_str(), find);
-                                    if item.name.as_str() == find.as_ref() {
-                                        return Some(item.def_id);
-                                    }
-                                }
-                                //info!("impl items: {:?}", items);
-                            }
-                            //info!("inherent impls for {:?}: {:?}", did, impls);
-                            return None;
-                        } else {
-                            items = tcx.module_children(item.res.def_id());
-                            break;
-                        }
+                    if item.ident.name.as_str() != segment.as_ref() {
+                        continue;
                     }
+
+                    info!("taking path: {:?}", segment.as_ref());
+                    if path_it.peek().is_none() {
+                        return Some(item.res.def_id());
+                    }
+
+                    // just the method remaining
+                    if path_it.len() != 1 {
+                        items = tcx.module_children(item.res.def_id());
+                        break;
+                    }
+
+                    let did: DefId = item.res.def_id();
+                    let impls: &[DefId] = tcx.inherent_impls(did);
+                    info!("trying to find method among impls {:?}", impls);
+
+                    let find = path_it.next().unwrap();
+                    for impl_did in impls {
+                        //let ty = tcx.type_of(*impl_did);
+                        //info!("type of impl: {:?}", ty);
+                        let items: &ty::AssocItems = tcx.associated_items(impl_did);
+                        //info!("items here: {:?}", items);
+                        // TODO more robust error handling if there are multiple matches.
+                        for item in items.in_definition_order() {
+                            //info!("comparing: {:?} with {:?}", item.name.as_str(), find);
+                            if item.name.as_str() == find.as_ref() {
+                                return Some(item.def_id);
+                            }
+                        }
+                        //info!("impl items: {:?}", items);
+                    }
+
+                    //info!("inherent impls for {:?}: {:?}", did, impls);
+                    return None;
                 }
             }
+
             None
         })
 }

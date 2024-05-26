@@ -625,13 +625,15 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             // this is a universal region
             if region.index() == 0 {
                 return RegionKind::Universal(UniversalRegionKind::Static);
-            } else if region.index() + 1 == self.borrowck_in_facts.placeholder.len() {
+            }
+
+            if region.index() + 1 == self.borrowck_in_facts.placeholder.len() {
                 // TODO check if this does the right thing
                 return RegionKind::Universal(UniversalRegionKind::Function);
-            } else {
-                // TODO: this ignores external regions
-                return RegionKind::Universal(UniversalRegionKind::Local);
             }
+
+            // TODO: this ignores external regions
+            return RegionKind::Universal(UniversalRegionKind::Local);
         }
 
         // check if this is a place region

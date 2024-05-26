@@ -1848,38 +1848,41 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         let relevant_constraints = polonius_info::compute_transitive_closure(relevant_constraints);
         for r in &new_regions_sorted {
             for (r1, r2) in &relevant_constraints {
-                if *r2 == *r {
-                    // i.e. (flipping it around when we are talking about lifetimes),
-                    // r needs to be a sublft of r1
-                    if relevant_constraints.contains(&(*r2, *r1)) {
-                        // if r1 is also a new region and r2 is ordered before it, we will
-                        // just define r1 in terms of r2
-                        if new_regions.contains(r1) && r2.as_u32() < r1.as_u32() {
-                            continue;
-                        }
-                        // need an equality constraint
-                        new_regions_classification.insert(*r, CallRegionKind::EqR(*r1));
-                        // do not consider the rest of the constraints as r is already
-                        // fully specified
-                        break;
-                    } else {
-                        // the intersection also needs to contain r1
-                        if new_regions.contains(r1) {
-                            // we do not need this constraint, since we already computed the
-                            // transitive closure.
-                            continue;
-                        }
-                        let kind = new_regions_classification
-                            .entry(*r)
-                            .or_insert(CallRegionKind::Intersection(HashSet::new()));
-                        match kind {
-                            CallRegionKind::Intersection(s) => {
-                                s.insert(*r1);
-                            },
-                            _ => unreachable!(),
-                        }
-                    }
+                if *r2 != *r {
+                    continue;
                 }
+
+                // i.e. (flipping it around when we are talking about lifetimes),
+                // r needs to be a sublft of r1
+                if relevant_constraints.contains(&(*r2, *r1)) {
+                    // if r1 is also a new region and r2 is ordered before it, we will
+                    // just define r1 in terms of r2
+                    if new_regions.contains(r1) && r2.as_u32() < r1.as_u32() {
+                        continue;
+                    }
+                    // need an equality constraint
+                    new_regions_classification.insert(*r, CallRegionKind::EqR(*r1));
+                    // do not consider the rest of the constraints as r is already
+                    // fully specified
+                    break;
+                }
+
+                // the intersection also needs to contain r1
+                if new_regions.contains(r1) {
+                    // we do not need this constraint, since we already computed the
+                    // transitive closure.
+                    continue;
+                }
+
+                let kind = new_regions_classification
+                    .entry(*r)
+                    .or_insert(CallRegionKind::Intersection(HashSet::new()));
+
+                let CallRegionKind::Intersection(s) = kind else {
+                    unreachable!();
+                };
+
+                s.insert(*r1);
             }
         }
         info!("call arg classification: {:?}", new_regions_classification);
