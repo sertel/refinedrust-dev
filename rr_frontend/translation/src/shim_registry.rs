@@ -229,8 +229,7 @@ impl<'a> ShimRegistry<'a> {
                     .as_str()
                     .ok_or(format!("Expected string for \"refinedrust_module\" attribute"))?;
 
-                let _ = obj
-                    .get("refinedrust_name")
+                obj.get("refinedrust_name")
                     .ok_or(format!("Missing attribute \"refinedrust_name\""))?
                     .as_str()
                     .ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;

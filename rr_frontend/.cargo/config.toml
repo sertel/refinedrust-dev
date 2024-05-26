@@ -126,7 +126,6 @@ rustflags = [
     "-Aclippy::mod_module_files", # see: self_named_module_files
 
     # These lints could be false positives, and should be caught by other lints.
-    "-Aclippy::let_underscore_untyped",
     "-Aclippy::let_unit_value",
 ]
 

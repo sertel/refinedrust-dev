@@ -251,30 +251,31 @@ impl<'tcx> Environment<'tcx> {
     /// Get the MIR body of a local procedure.
     pub fn local_mir(&self, def_id: LocalDefId) -> Rc<mir::Body<'tcx>> {
         let mut bodies = self.bodies.borrow_mut();
+
         if let Some(body) = bodies.get(&def_id) {
-            body.clone()
-        } else {
-            // SAFETY: This is safe because we are feeding in the same `tcx`
-            // that was used to store the data.
-            let body_with_facts = unsafe { self::mir_storage::retrieve_mir_body(self.tcx, def_id) };
-            let body = body_with_facts.body;
-            let facts = facts::Borrowck {
-                input_facts: RefCell::new(body_with_facts.input_facts),
-                output_facts: body_with_facts.output_facts.unwrap(),
-                location_table: RefCell::new(body_with_facts.location_table),
-            };
-
-            let mut borrowck_facts = self.borrowck_facts.borrow_mut();
-            borrowck_facts.insert(def_id, Rc::new(facts));
-
-            bodies.entry(def_id).or_insert_with(|| Rc::new(body)).clone()
+            return body.clone();
         }
+
+        // SAFETY: This is safe because we are feeding in the same `tcx`
+        // that was used to store the data.
+        let body_with_facts = unsafe { self::mir_storage::retrieve_mir_body(self.tcx, def_id) };
+        let body = body_with_facts.body;
+        let facts = facts::Borrowck {
+            input_facts: RefCell::new(body_with_facts.input_facts),
+            output_facts: body_with_facts.output_facts.unwrap(),
+            location_table: RefCell::new(body_with_facts.location_table),
+        };
+
+        let mut borrowck_facts = self.borrowck_facts.borrow_mut();
+        borrowck_facts.insert(def_id, Rc::new(facts));
+
+        bodies.entry(def_id).or_insert_with(|| Rc::new(body)).clone()
     }
 
     /// Get Polonius facts of a local procedure.
     pub fn local_mir_borrowck_facts(&self, def_id: LocalDefId) -> Rc<facts::Borrowck> {
         // ensure that we have already fetched the body & facts
-        let _ = self.local_mir(def_id);
+        self.local_mir(def_id);
         let borrowck_facts = self.borrowck_facts.borrow();
         borrowck_facts.get(&def_id).unwrap().clone()
     }
