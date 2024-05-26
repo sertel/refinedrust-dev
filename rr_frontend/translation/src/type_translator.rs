@@ -418,16 +418,15 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             ty::RegionKind::ReStatic => Some("static".to_owned()),
             ty::RegionKind::ReErased => Some("erased".to_owned()),
 
-            ty::RegionKind::ReVar(v) => match &translation_state {
-                TranslationStateInner::InFunction(scope) => {
-                    let r = scope.lookup_universal_region(v);
-                    info!("Translating region: ReVar {:?} as {:?}", v, r);
-                    r
-                },
-                _ => {
+            ty::RegionKind::ReVar(v) => {
+                let TranslationStateInner::InFunction(scope) = translation_state else {
                     info!("Translating region: ReVar {:?} as None (outside of function)", v);
-                    None
-                },
+                    return None;
+                };
+
+                let r = scope.lookup_universal_region(v);
+                info!("Translating region: ReVar {:?} as {:?}", v, r);
+                r
             },
 
             _ => {
@@ -1999,24 +1998,20 @@ pub fn format_atomic_region_direct(
     scope: Option<&TypeTranslationScope<'_>>,
 ) -> String {
     match r {
-        info::AtomicRegion::Loan(_, r) => {
-            format!("llft{}", r.index())
-        },
+        info::AtomicRegion::Loan(_, r) => format!("llft{}", r.index()),
+        info::AtomicRegion::PlaceRegion(r) => format!("plft{}", r.index()),
+        info::AtomicRegion::Unknown(r) => format!("vlft{}", r.index()),
+
         info::AtomicRegion::Universal(_, r) => {
-            if let Some(scope) = scope {
-                match scope.lookup_universal_region(*r) {
-                    Some(s) => s,
-                    None => format!("ulft{}", r.index()),
-                }
-            } else {
-                format!("ulft{}", r.index())
-            }
-        },
-        info::AtomicRegion::PlaceRegion(r) => {
-            format!("plft{}", r.index())
-        },
-        info::AtomicRegion::Unknown(r) => {
-            format!("vlft{}", r.index())
+            let Some(scope) = scope else {
+                return format!("ulft{}", r.index());
+            };
+
+            let Some(s) = scope.lookup_universal_region(*r) else {
+                return format!("ulft{}", r.index());
+            };
+
+            s
         },
     }
 }

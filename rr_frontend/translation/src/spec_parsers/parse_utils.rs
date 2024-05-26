@@ -306,59 +306,63 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
     let cs = RE_RT_OF.replace_all(cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
-        match param {
-            Some(param) => {
-                literal_tyvars.insert(param.clone());
-                format!("{}{}", &c[1], &param.refinement_type)
-            },
-            None => format!("ERR"),
-        }
+
+        let Some(param) = param else {
+            return "ERR".to_owned();
+        };
+
+        literal_tyvars.insert(param.clone());
+        format!("{}{}", &c[1], &param.refinement_type)
     });
 
     let cs = RE_ST_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
-        match param {
-            Some(param) => {
-                literal_tyvars.insert(param.clone());
-                format!("{}(ty_syn_type {})", &c[1], &param.type_term)
-            },
-            None => "ERR".to_owned(),
-        }
+
+        let Some(param) = param else {
+            return "ERR".to_owned();
+        };
+
+        literal_tyvars.insert(param.clone());
+        format!("{}(ty_syn_type {})", &c[1], &param.type_term)
     });
+
     let cs = RE_LY_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
-        match param {
-            Some(param) => {
-                literal_tyvars.insert(param.clone());
-                format!("{}(use_layout_alg' (ty_syn_type {}))", &c[1], &param.type_term)
-            },
-            None => "ERR".to_owned(),
-        }
+
+        let Some(param) = param else {
+            return "ERR".to_owned();
+        };
+
+        literal_tyvars.insert(param.clone());
+        format!("{}(use_layout_alg' (ty_syn_type {}))", &c[1], &param.type_term)
     });
+
     let cs = RE_TY_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let param = specs::lookup_ty_param(t, params);
-        match param {
-            Some(param) => {
-                literal_tyvars.insert(param.clone());
-                format!("{}{}", &c[1], &param.type_term)
-            },
-            None => format!("ERR"),
-        }
+
+        let Some(param) = param else {
+            return "ERR".to_owned();
+        };
+
+        literal_tyvars.insert(param.clone());
+        format!("{}{}", &c[1], &param.type_term)
     });
+
     let cs = RE_LFT_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
         let lft = lookup_lft_name(t);
-        match lft {
-            Some(lft) => {
-                literal_lfts.insert(lft.clone());
-                format!("{}{}", &c[1], lft)
-            },
-            None => "ERR".to_owned(),
-        }
+
+        let Some(lft) = lft else {
+            return "ERR".to_owned();
+        };
+
+        literal_lfts.insert(lft.clone());
+        format!("{}{}", &c[1], lft)
     });
+
     let cs = RE_LIT.replace_all(&cs, |c: &Captures<'_>| format!("{}", &c[1]));
 
     (cs.to_string(), specs::TypeAnnotMeta::new(literal_tyvars, literal_lfts))

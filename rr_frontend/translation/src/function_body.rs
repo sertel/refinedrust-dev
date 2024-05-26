@@ -768,26 +768,23 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         info!("translated function type: {:?} → {}", translated_arg_types, translated_ret_type);
 
         let parser = rrconfig::attribute_parser();
-        match parser.as_str() {
-            "verbose" => {
-                let ty_translator = &self.ty_translator;
-                let mut parser: VerboseFunctionSpecParser<'_, 'def, _> =
-                    VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, |lit| {
-                        ty_translator.translator.intern_literal(lit)
-                    });
 
-                parser
-                    .parse_closure_spec(v, &mut self.translated_fn, meta, |x| ty_translator.make_tuple_use(x))
-                    .map_err(TranslationError::AttributeError)?;
-
-                trace!("leaving process_closure_attrs");
-                Ok(())
-            },
-            _ => {
-                trace!("leaving process_closure_attrs");
-                Err(TranslationError::UnknownAttributeParser(parser))
-            },
+        if parser.as_str() != "verbose" {
+            trace!("leaving process_closure_attrs");
+            return Err(TranslationError::UnknownAttributeParser(parser));
         }
+
+        let ty_translator = &self.ty_translator;
+        let mut parser = VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, |lit| {
+            ty_translator.translator.intern_literal(lit)
+        });
+
+        parser
+            .parse_closure_spec(v, &mut self.translated_fn, meta, |x| ty_translator.make_tuple_use(x))
+            .map_err(TranslationError::AttributeError)?;
+
+        trace!("leaving process_closure_attrs");
+        Ok(())
     }
 
     /// Parse and process attributes of this function.
