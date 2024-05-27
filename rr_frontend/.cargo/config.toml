@@ -20,36 +20,16 @@ rustflags = [
     "-Aunused_mut",
     "-Aunused_variables",
 
-    # clippy::complexity
-    "-Aclippy::useless_format",
-
     # clippy::correctness
     "-Aclippy::unused_io_amount",
 
     # clippy::nursery
     "-Aclippy::empty_line_after_doc_comments",
     "-Aclippy::option_if_let_else",
-    "-Aclippy::string_lit_as_bytes",
 
     # clippy::restriction
-    "-Aclippy::create_dir",
-    "-Aclippy::empty_structs_with_brackets",
-    "-Aclippy::get_unwrap",
-    "-Aclippy::if_then_some_else_none",
-    "-Aclippy::impl_trait_in_params",
-    "-Aclippy::mod_module_files",
     "-Aclippy::non_ascii_literal",
     "-Aclippy::panic_in_result_fn",
-    "-Aclippy::partial_pub_fields",
-    "-Aclippy::pub_use",
-    "-Aclippy::pub_with_shorthand",
-    "-Aclippy::redundant_type_annotations",
-    "-Aclippy::ref_patterns",
-    "-Aclippy::semicolon_inside_block",
-    "-Aclippy::str_to_string",
-    "-Aclippy::string_to_string",
-    "-Aclippy::tests_outside_test_module",
-    "-Aclippy::unneeded_field_pattern",
     "-Aclippy::unwrap_in_result",
 
     # clippy::style
@@ -64,18 +44,13 @@ rustflags = [
 
     # clippy::pedantic
     "-Aclippy::cast_possible_truncation",
-    "-Aclippy::enum_glob_use",
     "-Aclippy::manual_assert",
     "-Aclippy::missing_errors_doc",
     "-Aclippy::missing_panics_doc",
-    "-Aclippy::module_name_repetitions",
-    "-Aclippy::redundant_else",
-    "-Aclippy::single_match_else",
     "-Aclippy::uninlined_format_args",
     "-Aclippy::wildcard_imports",
 
     # clippy::restriction
-    "-Aclippy::absolute_paths",
     "-Aclippy::arithmetic_side_effects",
     "-Aclippy::as_conversions",
     "-Aclippy::clone_on_ref_ptr",
@@ -95,9 +70,6 @@ rustflags = [
     "-Aclippy::unnecessary_safety_comment",
     "-Aclippy::unwrap_used",
     "-Aclippy::use_debug",
-
-    # clippy::style
-    "-Aclippy::enum_variant_names",
 
     # === AVOIDABLE LINTS ===
 
@@ -125,10 +97,7 @@ rustflags = [
     "-Aclippy::min_ident_chars",
     "-Aclippy::missing_inline_in_public_items",
     "-Aclippy::missing_trait_methods",
-    "-Aclippy::pub_with_shorthand", # ("pub_without_shortand" is allowed)
     "-Aclippy::question_mark_used",
-    "-Aclippy::self_named_module_files", # ("mod_module_files" is allowed)
-    "-Aclippy::semicolon_outside_block", # ("semicolon_outside_block" is allowed)
     "-Aclippy::shadow_reuse",
     "-Aclippy::shadow_same",
     "-Aclippy::shadow_unrelated",
@@ -149,10 +118,9 @@ rustflags = [
     # `clippy::restriction` is enabled globally, but used carefully.
     "-Aclippy::blanket_clippy_restriction_lints",
 
-    # These lints could be false positives, and should be caught by other lints.
-    "-Aclippy::ignored_unit_patterns",
-    "-Aclippy::let_underscore_untyped",
-    "-Aclippy::let_unit_value",
+    "-Aclippy::mod_module_files", # see: self_named_module_files
+    "-Aclippy::pub_with_shorthand", # see: pub_without_shortand
+    "-Aclippy::semicolon_outside_block", # see: semicolon_inline_block
 ]
 
 [unstable.gitoxide]

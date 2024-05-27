@@ -10,10 +10,10 @@ use std::ops::Deref;
 
 /// If a command-line option matches `find_arg`, then apply the predicate `pred` on its value. If
 /// true, then return it. The parameter is assumed to be either `--arg=value` or `--arg value`.
-pub fn arg_value<'a, T: Deref<Target = str>>(
+pub fn arg_value<'a, T: Deref<Target = str>, F: Fn(&str) -> bool>(
     args: &'a [T],
     find_arg: &str,
-    pred: impl Fn(&str) -> bool,
+    pred: F,
 ) -> Option<&'a str> {
     let mut args = args.iter().map(Deref::deref);
     while let Some(arg) = args.next() {
@@ -30,16 +30,21 @@ pub fn arg_value<'a, T: Deref<Target = str>>(
     None
 }
 
-#[test]
-fn test_arg_value() {
-    let args = &["--bar=bar", "--foobar", "123", "--foo"];
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    assert_eq!(arg_value(&[] as &[&str], "--foobar", |_| true), None);
-    assert_eq!(arg_value(args, "--bar", |_| false), None);
-    assert_eq!(arg_value(args, "--bar", |_| true), Some("bar"));
-    assert_eq!(arg_value(args, "--bar", |p| p == "bar"), Some("bar"));
-    assert_eq!(arg_value(args, "--bar", |p| p == "foo"), None);
-    assert_eq!(arg_value(args, "--foobar", |p| p == "foo"), None);
-    assert_eq!(arg_value(args, "--foobar", |p| p == "123"), Some("123"));
-    assert_eq!(arg_value(args, "--foo", |_| true), None);
+    #[test]
+    fn test_arg_value() {
+        let args = &["--bar=bar", "--foobar", "123", "--foo"];
+
+        assert_eq!(arg_value(&[] as &[&str], "--foobar", |_| true), None);
+        assert_eq!(arg_value(args, "--bar", |_| false), None);
+        assert_eq!(arg_value(args, "--bar", |_| true), Some("bar"));
+        assert_eq!(arg_value(args, "--bar", |p| p == "bar"), Some("bar"));
+        assert_eq!(arg_value(args, "--bar", |p| p == "foo"), None);
+        assert_eq!(arg_value(args, "--foobar", |p| p == "foo"), None);
+        assert_eq!(arg_value(args, "--foobar", |p| p == "123"), Some("123"));
+        assert_eq!(arg_value(args, "--foo", |_| true), None);
+    }
 }

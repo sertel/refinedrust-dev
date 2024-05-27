@@ -5,6 +5,8 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::fs::File;
+use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 
@@ -16,17 +18,18 @@ use rustc_middle::ty::fold::TypeFolder;
 use rustc_middle::{mir, ty};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
-use {datafrog, rrconfig as config};
+use {datafrog, rrconfig};
 
-use super::borrowck::{facts, regions};
-use super::procedure::Procedure;
-use super::{loops, Environment};
 use crate::environment::borrowck::facts::PointType;
-use crate::environment::borrowck::regions::{PlaceRegions, PlaceRegionsError};
-use crate::environment::mir_utils::{
-    AllPlaces, RealEdges, SplitAggregateAssignment, StatementAsAssign, StatementAt,
-};
-use crate::environment::polonius_info::facts::AllInputFacts;
+use crate::environment::borrowck::place_regions::PlaceRegions;
+use crate::environment::borrowck::{facts, place_regions};
+use crate::environment::mir_utils::all_places::AllPlaces;
+use crate::environment::mir_utils::real_edges::RealEdges;
+use crate::environment::mir_utils::split_aggregate_assignment::SplitAggregateAssignment;
+use crate::environment::mir_utils::statement_as_assign::StatementAsAssign;
+use crate::environment::mir_utils::statement_at::StatementAt;
+use crate::environment::procedure::Procedure;
+use crate::environment::{loops, Environment};
 use crate::utils;
 
 /// This represents the assignment in which a loan was created. The `source`
@@ -155,7 +158,7 @@ impl RegionGraph {
 */
 
 #[derive(Clone, Debug)]
-pub enum PoloniusInfoError {
+pub enum Error {
     /// Loans depending on branches inside loops are not implemented yet
     UnsupportedLoanInLoop {
         loop_head: mir::BasicBlock,
@@ -166,7 +169,7 @@ pub enum PoloniusInfoError {
     /// We currently support only one reborrowing chain per loop
     MultipleMagicWandsPerLoop(mir::Location),
     MagicWandHasNoRepresentativeLoan(mir::Location),
-    PlaceRegionsError(PlaceRegionsError, Span),
+    PlaceRegions(place_regions::Error, Span),
     LoanInUnsupportedStatement(String, mir::Location),
 }
 
@@ -175,7 +178,7 @@ pub fn graphviz<'tcx>(
     def_path: &rustc_hir::definitions::DefPath,
     def_id: DefId,
     info: &PoloniusInfo<'_, 'tcx>,
-) -> std::io::Result<()> {
+) -> io::Result<()> {
     macro_rules! to_html {
         ( $o:expr ) => {{
             format!("{:?}", $o)
@@ -206,13 +209,13 @@ pub fn graphviz<'tcx>(
     let borrowck_out_facts = &info.borrowck_out_facts;
     //let borrowck_out_facts = Output::compute(&borrowck_in_facts, Algorithm::Naive, true);
 
-    let graph_path = config::log_dir()
+    let graph_path = rrconfig::log_dir()
         .join("nll-facts")
         .join(def_path.to_filename_friendly_no_crate())
         .join("polonius.dot");
 
-    let graph_file = std::fs::File::create(graph_path).expect("Unable to create file");
-    let mut graph = std::io::BufWriter::new(graph_file);
+    let graph_file = File::create(graph_path).expect("Unable to create file");
+    let mut graph = io::BufWriter::new(graph_file);
 
     let mut blocks: HashMap<_, _> = HashMap::new();
     let mut block_edges = HashSet::new();
@@ -302,13 +305,13 @@ pub fn compute_transitive_closure(
 pub struct PoloniusInfo<'a, 'tcx: 'a> {
     pub(crate) tcx: ty::TyCtxt<'tcx>,
     pub(crate) mir: &'a mir::Body<'tcx>,
-    pub(crate) borrowck_in_facts: facts::AllInputFacts,
-    pub(crate) borrowck_out_facts: facts::AllOutputFacts,
+    pub(crate) borrowck_in_facts: facts::AllInput,
+    pub(crate) borrowck_out_facts: facts::AllOutput,
     pub(crate) interner: facts::Interner,
     /// Position at which a specific loan was created.
     pub(crate) loan_position: HashMap<facts::Loan, mir::Location>,
     pub(crate) loan_at_position: HashMap<mir::Location, facts::Loan>,
-    pub place_regions: PlaceRegions,
+    pub(crate) place_regions: PlaceRegions,
     pub(crate) additional_facts: AdditionalFacts,
     /// Loans that are created inside loops. Loan → loop head.
     pub(crate) loops: loops::ProcedureLoops,
@@ -324,10 +327,10 @@ pub struct PoloniusInfo<'a, 'tcx: 'a> {
 /// Remove back edges to make MIR uncyclic so that we can compute reborrowing dags at the end of
 /// the loop body.
 fn remove_back_edges(
-    mut all_facts: facts::AllInputFacts,
+    mut all_facts: facts::AllInput,
     interner: &facts::Interner,
     back_edges: &HashSet<(mir::BasicBlock, mir::BasicBlock)>,
-) -> facts::AllInputFacts {
+) -> facts::AllInput {
     let cfg_edge = all_facts.cfg_edge;
     let cfg_edge = cfg_edge
         .into_iter()
@@ -352,68 +355,70 @@ fn get_borrowed_places<'a, 'tcx: 'a>(
     mir: &'a mir::Body<'tcx>,
     loan_position: &HashMap<facts::Loan, mir::Location>,
     loan: facts::Loan,
-) -> Result<Vec<&'a mir::Place<'tcx>>, PoloniusInfoError> {
+) -> Result<Vec<&'a mir::Place<'tcx>>, Error> {
     let Some(location) = loan_position.get(&loan) else {
         // FIXME (Vytautas): This is likely to be wrong.
         debug!("Not found: {:?}", loan);
         return Ok(Vec::new());
     };
 
-    let mir::BasicBlockData { ref statements, .. } = mir[location.block];
+    let mir::BasicBlockData { statements, .. } = &mir[location.block];
+
     if statements.len() == location.statement_index {
         return Ok(Vec::new());
     }
 
-    let statement = &statements[location.statement_index];
-    match statement.kind {
-        mir::StatementKind::Assign(box (ref _lhs, ref rhs)) => match *rhs {
-            mir::Rvalue::Use(mir::Operand::Copy(ref place) | mir::Operand::Move(ref place))
-            | mir::Rvalue::Ref(_, _, ref place)
-            | mir::Rvalue::Discriminant(ref place) => Ok(vec![place]),
+    let kind = &statements[location.statement_index].kind;
+    let mir::StatementKind::Assign(box (_, rhs)) = kind else {
+        unreachable!("{:?}", kind);
+    };
 
-            mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
+    match rhs {
+        mir::Rvalue::Use(mir::Operand::Copy(place) | mir::Operand::Move(place))
+        | mir::Rvalue::Ref(_, _, place)
+        | mir::Rvalue::Discriminant(place) => Ok(vec![place]),
 
-            mir::Rvalue::Aggregate(_, ref operands) => Ok(operands
-                .iter()
-                .filter_map(|operand| match *operand {
-                    mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => Some(place),
-                    mir::Operand::Constant(_) => None,
-                })
-                .collect()),
+        mir::Rvalue::Use(mir::Operand::Constant(_)) => Ok(Vec::new()),
 
-            // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
-            mir::Rvalue::Cast(
-                mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize),
-                ref operand,
-                ref ty,
-            ) if ty.is_slice() && !ty.is_unsafe_ptr() => {
-                trace!("slice: operand={:?}, ty={:?}", operand, ty);
-                Ok(match *operand {
-                    mir::Operand::Copy(ref place) | mir::Operand::Move(ref place) => vec![place],
-                    mir::Operand::Constant(_) => vec![],
-                })
-            },
+        mir::Rvalue::Aggregate(_, operands) => Ok(operands
+            .iter()
+            .filter_map(|operand| match operand {
+                mir::Operand::Copy(place) | mir::Operand::Move(place) => Some(place),
+                mir::Operand::Constant(_) => None,
+            })
+            .collect()),
 
-            mir::Rvalue::Cast(..) => {
-                // all other loan-casts are unsupported
-                Err(PoloniusInfoError::LoanInUnsupportedStatement(
-                    "cast statements that create loans are not supported".to_string(),
-                    *location,
-                ))
-            },
-
-            ref x => unreachable!("{:?}", x),
+        // slice creation involves an unsize pointer cast like [i32; 3] -> &[i32]
+        mir::Rvalue::Cast(
+            mir::CastKind::PointerCoercion(ty::adjustment::PointerCoercion::Unsize),
+            operand,
+            ty,
+        ) if ty.is_slice() && !ty.is_unsafe_ptr() => {
+            trace!("slice: operand={:?}, ty={:?}", operand, ty);
+            Ok(match operand {
+                mir::Operand::Copy(place) | mir::Operand::Move(place) => vec![place],
+                mir::Operand::Constant(_) => vec![],
+            })
         },
-        ref x => unreachable!("{:?}", x),
+
+        mir::Rvalue::Cast(..) => {
+            // all other loan-casts are unsupported
+            Err(Error::LoanInUnsupportedStatement(
+                "cast statements that create loans are not supported".to_owned(),
+                *location,
+            ))
+        },
+
+        x => unreachable!("{:?}", x),
     }
 }
 
 fn compute_loan_conflict_sets(
     procedure: &Procedure,
     loan_position: &HashMap<facts::Loan, mir::Location>,
-    borrowck_in_facts: &facts::AllInputFacts,
-    borrowck_out_facts: &facts::AllOutputFacts,
-) -> Result<HashMap<facts::Loan, HashSet<facts::Loan>>, PoloniusInfoError> {
+    borrowck_in_facts: &facts::AllInput,
+    borrowck_out_facts: &facts::AllOutput,
+) -> Result<HashMap<facts::Loan, HashSet<facts::Loan>>, Error> {
     trace!("[enter] compute_loan_conflict_sets");
 
     let mut loan_conflict_sets = HashMap::new();
@@ -455,10 +460,7 @@ fn compute_loan_conflict_sets(
 }
 
 impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
-    pub fn new(
-        env: &'a Environment<'tcx>,
-        procedure: &'a Procedure<'tcx>,
-    ) -> Result<Self, PoloniusInfoError> {
+    pub fn new(env: &'a Environment<'tcx>, procedure: &'a Procedure<'tcx>) -> Result<Self, Error> {
         let tcx = procedure.get_tcx();
         let def_id = procedure.get_id();
         let mir = procedure.get_mir();
@@ -467,7 +469,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         let facts = env.local_mir_borrowck_facts(def_id.expect_local());
 
         // // Read relations between region IDs and local variables.
-        // let renumber_path = PathBuf::from(config::log_dir())
+        // let renumber_path = PathBuf::from(rrconfig::log_dir()
         //     .join("mir")
         //     .join(format!(
         //         "{}.{}.-------.renumber.0.mir",
@@ -475,7 +477,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         //         def_path.to_filename_friendly_no_crate()
         //     ));
         // debug!("Renumber path: {:?}", renumber_path);
-        let place_regions = regions::load_place_regions(mir);
+        let place_regions = place_regions::load(mir);
 
         let interner = facts::Interner::new(facts.location_table.take().unwrap());
         let mut all_facts = facts.input_facts.take().unwrap();
@@ -484,11 +486,11 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         let loop_info = loops::ProcedureLoops::new(mir, &real_edges);
 
         Self::disconnect_universal_regions(tcx, mir, &place_regions, &mut all_facts)
-            .map_err(|(err, loc)| PoloniusInfoError::PlaceRegionsError(err, loc))?;
+            .map_err(|(err, loc)| Error::PlaceRegions(err, loc))?;
 
         let output = Output::compute(&all_facts, Algorithm::Naive, true);
         let all_facts_without_back_edges =
-            remove_back_edges(*all_facts.clone(), &interner, &loop_info.back_edges);
+            remove_back_edges(*all_facts.clone(), &interner, loop_info.get_back_edges());
         let output_without_back_edges =
             Output::compute(&all_facts_without_back_edges, Algorithm::Naive, true);
 
@@ -539,8 +541,8 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
         tcx: ty::TyCtxt<'tcx>,
         mir: &mir::Body<'tcx>,
         place_regions: &PlaceRegions,
-        all_facts: &mut AllInputFacts,
-    ) -> Result<(), (PlaceRegionsError, Span)> {
+        all_facts: &mut facts::AllInput,
+    ) -> Result<(), (place_regions::Error, Span)> {
         let mut return_regions = vec![];
         let return_span = mir.local_decls[mir::RETURN_PLACE].source_info.span;
         // find regions for all subplaces (e.g. fields of tuples)
@@ -603,7 +605,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             .borrowck_in_facts
             .loan_issued_at
             .iter()
-            .filter_map(|(r, loan, _)| if r == &region { Some(*loan) } else { None })
+            .filter_map(|(r, loan, _)| (r == &region).then_some(*loan))
             .collect();
 
         if !v.is_empty() {
@@ -619,13 +621,15 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             // this is a universal region
             if region.index() == 0 {
                 return RegionKind::Universal(UniversalRegionKind::Static);
-            } else if region.index() + 1 == self.borrowck_in_facts.placeholder.len() {
+            }
+
+            if region.index() + 1 == self.borrowck_in_facts.placeholder.len() {
                 // TODO check if this does the right thing
                 return RegionKind::Universal(UniversalRegionKind::Function);
-            } else {
-                // TODO: this ignores external regions
-                return RegionKind::Universal(UniversalRegionKind::Local);
             }
+
+            // TODO: this ignores external regions
+            return RegionKind::Universal(UniversalRegionKind::Local);
         }
 
         // check if this is a place region
@@ -795,7 +799,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     /// Flips the `subset` relation computed by Polonius for each point.
     #[must_use]
     pub fn compute_superset(
-        output: &facts::AllOutputFacts,
+        output: &facts::AllOutput,
     ) -> HashMap<facts::PointIndex, BTreeMap<facts::Region, BTreeSet<facts::Region>>> {
         let subset = &output.subset;
         let mut superset: HashMap<facts::PointIndex, BTreeMap<facts::Region, BTreeSet<facts::Region>>> =
@@ -1105,11 +1109,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     /// TODO: for aggregates, this only finds one loan
     #[must_use]
     pub fn get_optional_loan_at_location(&self, location: mir::Location) -> Option<facts::Loan> {
-        if self.loan_at_position.contains_key(&location) {
-            Some(self.loan_at_position[&location])
-        } else {
-            None
-        }
+        self.loan_at_position.contains_key(&location).then(|| self.loan_at_position[&location])
     }
 
     /// Get a map from loans to locations at which they were created.
@@ -1119,7 +1119,10 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     }
 
     /// Convert a `facts::Loan` to `LoanPlaces`<'tcx> (if possible)
-    pub fn get_loan_places(&self, loan: facts::Loan) -> Result<Option<LoanPlaces<'tcx>>, PlaceRegionsError> {
+    pub fn get_loan_places(
+        &self,
+        loan: facts::Loan,
+    ) -> Result<Option<LoanPlaces<'tcx>>, place_regions::Error> {
         // Implementing get_loan_places is a bit more complicated when there are tuples. This is
         // because an assignment like
         //   _3 = (move _4, move _5)
@@ -1151,7 +1154,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     pub fn get_assignment_for_loan(
         &self,
         loan: facts::Loan,
-    ) -> Result<Option<mir::Statement<'tcx>>, PlaceRegionsError> {
+    ) -> Result<Option<mir::Statement<'tcx>>, place_regions::Error> {
         let Some(&location) = self.loan_position.get(&loan) else {
             return Ok(None);
         };
@@ -1217,8 +1220,9 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             .borrowck_in_facts
             .loan_issued_at
             .iter()
-            .filter_map(|&(r, l, p)| if p == point && l == loan { Some(r) } else { None })
+            .filter_map(|&(r, l, p)| (p == point && l == loan).then_some(r))
             .collect::<Vec<_>>();
+
         if regions.len() == 1 {
             regions[0]
         } else {
@@ -1274,7 +1278,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
     pub fn get_loan_loops(
         &self,
         loans: &[facts::Loan],
-    ) -> Result<Vec<(facts::Loan, mir::BasicBlock)>, PoloniusInfoError> {
+    ) -> Result<Vec<(facts::Loan, mir::BasicBlock)>, Error> {
         let pairs: Vec<_> = loans
             .iter()
             .filter_map(|loan| {
@@ -1293,7 +1297,7 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
             for (loan2, loop2) in &pairs {
                 let location2 = self.loan_position[loan2];
                 if loop1 != loop2 {
-                    return Err(PoloniusInfoError::LoansInNestedLoops(location1, *loop1, location2, *loop2));
+                    return Err(Error::LoansInNestedLoops(location1, *loop1, location2, *loop2));
                 }
             }
         }
@@ -1346,85 +1350,93 @@ impl<'a, 'tcx: 'a> PoloniusInfo<'a, 'tcx> {
 
 /// Check if the statement is assignment.
 fn is_assignment(mir: &mir::Body<'_>, location: mir::Location) -> bool {
-    let mir::BasicBlockData { ref statements, .. } = mir[location.block];
+    let mir::BasicBlockData { statements, .. } = &mir[location.block];
+
     if statements.len() == location.statement_index {
         return false;
     }
+
     matches!(statements[location.statement_index].kind, mir::StatementKind::Assign { .. })
 }
 
 /// Check if the terminator is return.
 fn is_return(mir: &mir::Body<'_>, location: mir::Location) -> bool {
     let mir::BasicBlockData {
-        ref statements,
-        ref terminator,
+        statements,
+        terminator,
         ..
-    } = mir[location.block];
+    } = &mir[location.block];
+
     if statements.len() != location.statement_index {
         return false;
     }
+
     matches!(terminator.as_ref().unwrap().kind, mir::TerminatorKind::Return)
 }
 
 fn is_call(mir: &mir::Body<'_>, location: mir::Location) -> bool {
     let mir::BasicBlockData {
-        ref statements,
-        ref terminator,
+        statements,
+        terminator,
         ..
-    } = mir[location.block];
+    } = &mir[location.block];
+
     if statements.len() != location.statement_index {
         return false;
     }
+
     matches!(terminator.as_ref().unwrap().kind, mir::TerminatorKind::Call { .. })
 }
 
 /// Extract the call terminator at the location. Otherwise return None.
 fn get_call_destination<'tcx>(mir: &mir::Body<'tcx>, location: mir::Location) -> Option<mir::Place<'tcx>> {
     let mir::BasicBlockData {
-        ref statements,
-        ref terminator,
+        statements,
+        terminator,
         ..
-    } = mir[location.block];
+    } = &mir[location.block];
+
     if statements.len() != location.statement_index {
         return None;
     }
-    match terminator.as_ref().unwrap().kind {
-        mir::TerminatorKind::Call {
-            ref destination, ..
-        } => Some(*destination),
-        ref x => {
-            panic!("Expected call, got {:?} at {:?}", x, location);
-        },
-    }
+
+    let kind = &terminator.as_ref().unwrap().kind;
+    let mir::TerminatorKind::Call { destination, .. } = kind else {
+        panic!("Expected call, got {:?} at {:?}", kind, location);
+    };
+
+    Some(*destination)
 }
 
 /// Extract reference-typed arguments of the call at the given location.
 fn get_call_arguments(mir: &mir::Body<'_>, location: mir::Location) -> Vec<mir::Local> {
     let mir::BasicBlockData {
-        ref statements,
-        ref terminator,
+        statements,
+        terminator,
         ..
-    } = mir[location.block];
+    } = &mir[location.block];
+
     assert!(statements.len() == location.statement_index);
-    match terminator.as_ref().unwrap().kind {
-        mir::TerminatorKind::Call { ref args, .. } => {
-            let mut reference_args = Vec::new();
-            for arg in args {
-                match arg {
-                    mir::Operand::Copy(place) | mir::Operand::Move(place) => {
-                        if place.projection.len() == 0 {
-                            reference_args.push(place.local);
-                        }
-                    },
-                    mir::Operand::Constant(_) => {},
+
+    let kind = &terminator.as_ref().unwrap().kind;
+    let mir::TerminatorKind::Call { args, .. } = kind else {
+        panic!("Expected call, got {:?} at {:?}", kind, location);
+    };
+
+    let mut reference_args = Vec::new();
+
+    for arg in args {
+        match arg {
+            mir::Operand::Copy(place) | mir::Operand::Move(place) => {
+                if place.projection.len() == 0 {
+                    reference_args.push(place.local);
                 }
-            }
-            reference_args
-        },
-        ref x => {
-            panic!("Expected call, got {:?} at {:?}", x, location);
-        },
+            },
+            mir::Operand::Constant(_) => {},
+        }
     }
+
+    reference_args
 }
 
 /// Additional facts derived from the borrow checker facts.
@@ -1485,8 +1497,8 @@ impl AdditionalFacts {
     /// Derive ``zombie_requires``.
     #[allow(clippy::type_complexity)]
     fn derive_zombie_requires(
-        all_facts: &facts::AllInputFacts,
-        output: &facts::AllOutputFacts,
+        all_facts: &facts::AllInput,
+        output: &facts::AllOutput,
     ) -> (
         FxHashMap<facts::PointIndex, BTreeMap<facts::Region, BTreeSet<facts::Loan>>>,
         FxHashMap<facts::PointIndex, Vec<facts::Loan>>,
@@ -1630,7 +1642,7 @@ impl AdditionalFacts {
 
     /// Derive additional facts from the borrow checker facts.
     #[must_use]
-    pub fn new(all_facts: &facts::AllInputFacts, output: &facts::AllOutputFacts) -> Self {
+    pub fn new(all_facts: &facts::AllInput, output: &facts::AllOutput) -> Self {
         let (zombie_requires, zombie_borrow_live_at, borrow_become_zombie_at) =
             Self::derive_zombie_requires(all_facts, output);
 

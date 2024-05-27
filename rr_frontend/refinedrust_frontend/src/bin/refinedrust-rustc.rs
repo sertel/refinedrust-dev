@@ -14,8 +14,9 @@ extern crate rustc_interface;
 extern crate rustc_middle;
 extern crate rustc_session;
 
-use std::env;
+use std::path::PathBuf;
 use std::process::Command;
+use std::{env, process};
 
 use log::{debug, info};
 use rustc_driver::Compilation;
@@ -40,7 +41,7 @@ fn get_rr_version_info() -> String {
 }
 
 /// Callbacks for the `RefinedRust` frontend.
-struct RRCompilerCalls {}
+struct RRCompilerCalls;
 
 // From Prusti.
 fn mir_borrowck(tcx: TyCtxt<'_>, def_id: LocalDefId) -> mir_borrowck::ProvidedValue<'_> {
@@ -71,36 +72,33 @@ fn override_queries(_session: &Session, local: &mut Providers, _: &mut ExternPro
 /// This translates a crate.
 pub fn analyze(tcx: TyCtxt<'_>) {
     match translation::generate_coq_code(tcx, |vcx| vcx.write_coq_files()) {
-        Ok(_) => (),
+        Ok(()) => (),
         Err(e) => {
             println!("Frontend failed with error {:?}", e);
-            std::process::exit(1)
+            process::exit(1)
         },
     }
 
-    match rrconfig::post_generation_hook() {
-        None => (),
-        Some(s) => {
-            if let Some(parts) = shlex::split(&s) {
-                let work_dir = rrconfig::absolute_work_dir();
-                let dir_path = std::path::PathBuf::from(&work_dir);
-                info!("running post-generation hook in {:?}: {:?}", dir_path, s);
+    if let Some(s) = rrconfig::post_generation_hook() {
+        if let Some(parts) = shlex::split(&s) {
+            let work_dir = rrconfig::absolute_work_dir();
+            let dir_path = PathBuf::from(&work_dir);
+            info!("running post-generation hook in {:?}: {:?}", dir_path, s);
 
-                let status = Command::new(&parts[0])
-                    .args(&parts[1..])
-                    .current_dir(&dir_path)
-                    .status()
-                    .expect("failed to execute process");
-                println!("Post-generation hook finished with {status}");
-            }
-        },
+            let status = Command::new(&parts[0])
+                .args(&parts[1..])
+                .current_dir(&dir_path)
+                .status()
+                .expect("failed to execute process");
+            println!("Post-generation hook finished with {status}");
+        }
     }
 
     if rrconfig::check_proofs() {
         if cfg!(target_os = "windows") {
             println!("Cannot run proof checker on Windows.");
         } else if let Some(dir_str) = rrconfig::output_dir() {
-            let dir_path = std::path::PathBuf::from(&dir_str);
+            let dir_path = PathBuf::from(&dir_str);
 
             info!("calling type checker in {:?}", dir_path);
 
@@ -198,7 +196,7 @@ fn main() {
     debug!("rustc arguments: {:?}", rustc_args);
 
     let exit_code = rustc_driver::catch_with_exit_code(move || {
-        if rustc_args.get(1) == Some(&"-vV".to_string()) {
+        if rustc_args.get(1) == Some(&"-vV".to_owned()) {
             // When cargo queries the verbose rustc version,
             // also print the RR version to stdout.
             // This ensures that the cargo build cache is
@@ -232,7 +230,7 @@ fn main() {
                 rustc_args.push("-Zidentify-regions=yes".to_owned());
             }
             if rrconfig::dump_borrowck_info() {
-                rustc_args.push("-Znll-facts=yes".to_string());
+                rustc_args.push("-Znll-facts=yes".to_owned());
                 rustc_args.push(format!(
                     "-Znll-facts-dir={}",
                     rrconfig::log_dir()
@@ -248,5 +246,5 @@ fn main() {
         rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks).run()
     });
 
-    std::process::exit(exit_code)
+    process::exit(exit_code)
 }

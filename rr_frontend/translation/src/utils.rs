@@ -149,7 +149,7 @@ pub fn get_cleaned_def_path(tcx: TyCtxt<'_>, did: DefId) -> Vec<String> {
             // this is a generic specialization, skip
             continue;
         }
-        components.push(i.to_string());
+        components.push(i.to_owned());
     }
     info!("split def path {:?} to {:?}", def_path, components);
 
@@ -162,7 +162,7 @@ fn extract_def_path(path: &rustc_hir::definitions::DefPath) -> Vec<String> {
     let mut components = Vec::new();
     for p in &path.data {
         if let Some(name) = p.data.get_opt_name() {
-            components.push(name.as_str().to_string());
+            components.push(name.as_str().to_owned());
         }
     }
     components
@@ -243,13 +243,13 @@ where
 
     // if the first component is "std", try if we can replace it with "alloc" or "core"
     if path[0].as_ref() == "std" {
-        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_string()).collect();
-        components[0] = "core".to_string();
+        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_owned()).collect();
+        components[0] = "core".to_owned();
         if let Some(did) = try_resolve_did_direct(tcx, &components) {
             return Some(did);
         }
         // try "alloc"
-        components[0] = "alloc".to_string();
+        components[0] = "alloc".to_owned();
         try_resolve_did_direct(tcx, &components)
     } else {
         None
@@ -387,42 +387,47 @@ where
                 //info!("items to look at: {:?}", items);
                 for item in mem::take(&mut items) {
                     let item: &rustc_middle::metadata::ModChild = item;
-                    if item.ident.name.as_str() == segment.as_ref() {
-                        info!("taking path: {:?}", segment.as_ref());
-                        if path_it.peek().is_none() {
-                            return Some(item.res.def_id());
-                        }
 
-                        // just the method remaining
-                        if path_it.len() == 1 {
-                            let did: DefId = item.res.def_id();
-                            let impls: &[DefId] = tcx.inherent_impls(did);
-                            info!("trying to find method among impls {:?}", impls);
-
-                            let find = path_it.next().unwrap();
-                            for impl_did in impls {
-                                //let ty = tcx.type_of(*impl_did);
-                                //info!("type of impl: {:?}", ty);
-                                let items: &ty::AssocItems = tcx.associated_items(impl_did);
-                                //info!("items here: {:?}", items);
-                                // TODO more robust error handling if there are multiple matches.
-                                for item in items.in_definition_order() {
-                                    //info!("comparing: {:?} with {:?}", item.name.as_str(), find);
-                                    if item.name.as_str() == find.as_ref() {
-                                        return Some(item.def_id);
-                                    }
-                                }
-                                //info!("impl items: {:?}", items);
-                            }
-                            //info!("inherent impls for {:?}: {:?}", did, impls);
-                            return None;
-                        } else {
-                            items = tcx.module_children(item.res.def_id());
-                            break;
-                        }
+                    if item.ident.name.as_str() != segment.as_ref() {
+                        continue;
                     }
+
+                    info!("taking path: {:?}", segment.as_ref());
+                    if path_it.peek().is_none() {
+                        return Some(item.res.def_id());
+                    }
+
+                    // just the method remaining
+                    if path_it.len() != 1 {
+                        items = tcx.module_children(item.res.def_id());
+                        break;
+                    }
+
+                    let did: DefId = item.res.def_id();
+                    let impls: &[DefId] = tcx.inherent_impls(did);
+                    info!("trying to find method among impls {:?}", impls);
+
+                    let find = path_it.next().unwrap();
+                    for impl_did in impls {
+                        //let ty = tcx.type_of(*impl_did);
+                        //info!("type of impl: {:?}", ty);
+                        let items: &ty::AssocItems = tcx.associated_items(impl_did);
+                        //info!("items here: {:?}", items);
+                        // TODO more robust error handling if there are multiple matches.
+                        for item in items.in_definition_order() {
+                            //info!("comparing: {:?} with {:?}", item.name.as_str(), find);
+                            if item.name.as_str() == find.as_ref() {
+                                return Some(item.def_id);
+                            }
+                        }
+                        //info!("impl items: {:?}", items);
+                    }
+
+                    //info!("inherent impls for {:?}: {:?}", did, impls);
+                    return None;
                 }
             }
+
             None
         })
 }
@@ -437,13 +442,13 @@ where
 
     // if the first component is "std", try if we can replace it with "alloc" or "core"
     if path[0].as_ref() == "std" {
-        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_string()).collect();
-        components[0] = "core".to_string();
+        let mut components: Vec<_> = path.iter().map(|x| x.as_ref().to_owned()).collect();
+        components[0] = "core".to_owned();
         if let Some(did) = try_resolve_method_did_direct(tcx, &components) {
             return Some(did);
         }
         // try "alloc"
-        components[0] = "alloc".to_string();
+        components[0] = "alloc".to_owned();
         try_resolve_method_did_direct(tcx, &components)
     } else {
         None
@@ -554,22 +559,23 @@ pub fn try_pop_one_level<'tcx>(
     tcx: TyCtxt<'tcx>,
     place: mir::Place<'tcx>,
 ) -> Option<(mir::PlaceElem<'tcx>, mir::Place<'tcx>)> {
-    if place.projection.len() > 0 {
-        let last_index = place.projection.len() - 1;
-        let new_place = mir::Place {
-            local: place.local,
-            projection: tcx.mk_place_elems(&place.projection[..last_index]),
-        };
-        Some((place.projection[last_index], new_place))
-    } else {
-        None
+    if place.projection.is_empty() {
+        return None;
     }
+
+    let last_index = place.projection.len() - 1;
+    let new_place = mir::Place {
+        local: place.local,
+        projection: tcx.mk_place_elems(&place.projection[..last_index]),
+    };
+
+    Some((place.projection[last_index], new_place))
 }
 
 /// Pop the last element from the place if it is a dereference.
 pub fn try_pop_deref<'tcx>(tcx: TyCtxt<'tcx>, place: mir::Place<'tcx>) -> Option<mir::Place<'tcx>> {
     try_pop_one_level(tcx, place)
-        .and_then(|(elem, base)| if elem == mir::ProjectionElem::Deref { Some(base) } else { None })
+        .and_then(|(elem, base)| (elem == mir::ProjectionElem::Deref).then_some(base))
 }
 
 /// Subtract the `subtrahend` place from the `minuend` place. The
@@ -718,13 +724,13 @@ pub fn has_any_tool_attr(attrs: &[ast::Attribute]) -> bool {
 pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
     attrs
         .iter()
-        .filter_map(|attr| match attr.kind {
-            ast::AttrKind::Normal(ref na) => {
+        .filter_map(|attr| match &attr.kind {
+            ast::AttrKind::Normal(na) => {
                 let item = &na.item;
 
                 let seg = item.path.segments.get(0)?;
 
-                if seg.ident.name.as_str() == config::spec_hotword() { Some(item) } else { None }
+                (seg.ident.name.as_str() == config::spec_hotword()).then_some(item)
             },
             _ => None,
         })

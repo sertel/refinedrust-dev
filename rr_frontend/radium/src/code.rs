@@ -29,7 +29,7 @@ fn fmt_comment(o: &Option<String>) -> String {
 
 fn fmt_option<T: Display>(o: &Option<T>) -> String {
     match o {
-        None => format!("None"),
+        None => "None".to_owned(),
         Some(x) => format!("Some ({})", x),
     }
 }
@@ -79,7 +79,7 @@ impl RustType {
         match ty {
             Type::Var(var) => {
                 // this must be a generic type variable
-                let ty = env.get(*var).unwrap().as_ref().unwrap();
+                let ty = env[*var].as_ref().unwrap();
                 Self::TyVar(ty.rust_name.clone())
             },
 
@@ -113,13 +113,13 @@ impl RustType {
                 let typarams: Vec<_> = as_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
                 let ty_name = if is_raw { def.plain_ty_name() } else { def.public_type_name() };
 
-                Self::Lit(vec![ty_name.to_string()], typarams)
+                Self::Lit(vec![ty_name.to_owned()], typarams)
             },
 
             Type::Enum(ae_use) => {
                 let typarams: Vec<_> = ae_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
 
-                Self::Lit(vec![ae_use.def.public_type_name().to_string()], typarams)
+                Self::Lit(vec![ae_use.def.public_type_name().to_owned()], typarams)
             },
 
             Type::LiteralParam(lit) => Self::TyVar(lit.rust_name.clone()),
@@ -139,7 +139,7 @@ impl RustType {
                 panic!("RustType::of_type: cannot translate Never type");
             },
 
-            Type::RawPtr => Self::Lit(vec!["alias_ptr_t".to_string()], vec![]),
+            Type::RawPtr => Self::Lit(vec!["alias_ptr_t".to_owned()], vec![]),
         }
     }
 }
@@ -154,45 +154,45 @@ impl RustType {
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Literal {
     #[display("I2v ({}) {}", _0, IntType::I8)]
-    LitI8(i8),
+    I8(i8),
 
     #[display("I2v ({}) {}", _0, IntType::I16)]
-    LitI16(i16),
+    I16(i16),
 
     #[display("I2v ({}) {}", _0, IntType::I32)]
-    LitI32(i32),
+    I32(i32),
 
     #[display("I2v ({}) {}", _0, IntType::I64)]
-    LitI64(i64),
+    I64(i64),
 
     #[display("I2v ({}) {}", _0, IntType::I128)]
-    LitI128(i128),
+    I128(i128),
 
     #[display("I2v ({}) {}", _0, IntType::U8)]
-    LitU8(u8),
+    U8(u8),
 
     #[display("I2v ({}) {}", _0, IntType::U16)]
-    LitU16(u16),
+    U16(u16),
 
     #[display("I2v ({}) {}", _0, IntType::U32)]
-    LitU32(u32),
+    U32(u32),
 
     #[display("I2v ({}) {}", _0, IntType::U64)]
-    LitU64(u64),
+    U64(u64),
 
     #[display("I2v ({}) {}", _0, IntType::U128)]
-    LitU128(u128),
+    U128(u128),
 
     #[display("val_of_bool {}", _0)]
-    LitBool(bool),
+    Bool(bool),
 
     /// name of the loc
     #[display("{}", _0)]
-    LitLoc(String),
+    Loc(String),
 
     /// dummy literal for ZST values (e.g. ())
     #[display("zst_val")]
-    LitZST,
+    ZST,
 }
 
 /**
@@ -452,7 +452,7 @@ pub enum Stmt {
     #[display("expr: {};\n{}", e, &s)]
     ExprS { e: Expr, s: Box<Stmt> },
 
-    #[display("assert{{ {} }}: {};\n{}", OpType::BoolOp, e, &s)]
+    #[display("assert{{ {} }}: {};\n{}", OpType::Bool, e, &s)]
     AssertS { e: Expr, s: Box<Stmt> },
 
     #[display("annot: {};{}\n{}", a, fmt_comment(why), &s)]
@@ -484,79 +484,84 @@ impl Stmt {
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Unop {
     #[display("NegOp")]
-    NegOp,
+    Neg,
 
     #[display("NotBoolOp")]
-    NotBoolOp,
+    NotBool,
 
     #[display("NotIntOp")]
-    NotIntOp,
+    NotInt,
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub enum Binop {
     //arithmetic
-    AddOp,
-    SubOp,
-    MulOp,
-    DivOp,
-    ModOp,
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Mod,
+
     // logical
-    AndOp,
-    OrOp,
+    And,
+    Or,
+
     //bitwise
-    BitAndOp,
-    BitOrOp,
-    BitXorOp,
-    ShlOp,
-    ShrOp,
+    BitAnd,
+    BitOr,
+    BitXor,
+    Shl,
+    Shr,
+
     // comparison
-    EqOp,
-    NeOp,
-    LtOp,
-    GtOp,
-    LeOp,
-    GeOp,
+    Eq,
+    Ne,
+    Lt,
+    Gt,
+    Le,
+    Ge,
+
     // pointer operations
-    PtrOffsetOp(Layout),
-    PtrNegOffsetOp(Layout),
-    PtrDiffOp(Layout),
+    PtrOffset(Layout),
+    PtrNegOffset(Layout),
+    PtrDiff(Layout),
+
     // checked ops
-    CheckedAddOp,
-    CheckedSubOp,
-    CheckedMulOp,
+    CheckedAdd,
+    CheckedSub,
+    CheckedMul,
 }
 
 impl Binop {
     fn caesium_fmt(&self, ot1: &OpType, ot2: &OpType) -> String {
         let format_prim = |st: &str| format!("{} {} , {} }}", st, ot1, ot2);
-        let format_bool = |st: &str| format!("{} {} , {} , {} }}", st, ot1, ot2, crate::specs::BOOL_REPR);
+        let format_bool = |st: &str| format!("{} {} , {} , {} }}", st, ot1, ot2, BOOL_REPR);
 
         match self {
-            Self::AddOp => format_prim("+{"),
-            Self::SubOp => format_prim("-{"),
-            Self::MulOp => format_prim("×{"),
-            Self::CheckedAddOp => format_prim("+c{"),
-            Self::CheckedSubOp => format_prim("-c{"),
-            Self::CheckedMulOp => format_prim("×c{"),
-            Self::DivOp => format_prim("/{"),
-            Self::ModOp => format_prim("%{"),
-            Self::AndOp => format_bool("&&{"),
-            Self::OrOp => format_bool("||{"),
-            Self::BitAndOp => format_prim("&b{"),
-            Self::BitOrOp => format_prim("|{"),
-            Self::BitXorOp => format_prim("^{"),
-            Self::ShlOp => format_prim("<<{"),
-            Self::ShrOp => format_prim(">>{"),
-            Self::EqOp => format_bool("= {"),
-            Self::NeOp => format_bool("!= {"),
-            Self::LtOp => format_bool("<{"),
-            Self::GtOp => format_bool(">{"),
-            Self::LeOp => format_bool("≤{"),
-            Self::GeOp => format_bool("≥{"),
-            Self::PtrOffsetOp(ly) => format!("at_offset{{ {} , {} , {} }}", ly, ot1, ot2),
-            Self::PtrNegOffsetOp(ly) => format!("at_neg_offset{{ {} , {} , {} }}", ly, ot1, ot2),
-            Self::PtrDiffOp(ly) => format!("sub_ptr{{ {} , {} , {} }}", ly, ot1, ot2),
+            Self::Add => format_prim("+{"),
+            Self::Sub => format_prim("-{"),
+            Self::Mul => format_prim("×{"),
+            Self::CheckedAdd => format_prim("+c{"),
+            Self::CheckedSub => format_prim("-c{"),
+            Self::CheckedMul => format_prim("×c{"),
+            Self::Div => format_prim("/{"),
+            Self::Mod => format_prim("%{"),
+            Self::And => format_bool("&&{"),
+            Self::Or => format_bool("||{"),
+            Self::BitAnd => format_prim("&b{"),
+            Self::BitOr => format_prim("|{"),
+            Self::BitXor => format_prim("^{"),
+            Self::Shl => format_prim("<<{"),
+            Self::Shr => format_prim(">>{"),
+            Self::Eq => format_bool("= {"),
+            Self::Ne => format_bool("!= {"),
+            Self::Lt => format_bool("<{"),
+            Self::Gt => format_bool(">{"),
+            Self::Le => format_bool("≤{"),
+            Self::Ge => format_bool("≥{"),
+            Self::PtrOffset(ly) => format!("at_offset{{ {} , {} , {} }}", ly, ot1, ot2),
+            Self::PtrNegOffset(ly) => format!("at_neg_offset{{ {} , {} , {} }}", ly, ot1, ot2),
+            Self::PtrDiff(ly) => format!("sub_ptr{{ {} , {} , {} }}", ly, ot1, ot2),
         }
     }
 }
@@ -597,7 +602,7 @@ impl StackMap {
         if self.used_names.contains(&name) {
             return false;
         }
-        self.used_names.insert(name.to_string());
+        self.used_names.insert(name.clone());
         self.locals.push(Variable::new(name, st));
         true
     }
@@ -606,7 +611,7 @@ impl StackMap {
         if self.used_names.contains(&name) {
             return false;
         }
-        self.used_names.insert(name.to_string());
+        self.used_names.insert(name.clone());
         self.args.push(Variable::new(name, st));
         true
     }
@@ -634,6 +639,7 @@ impl StackMap {
 }
 
 /// Representation of a Caesium function's source code
+#[allow(clippy::module_name_repetitions)]
 pub struct FunctionCode {
     name: String,
     stack_layout: StackMap,
@@ -683,10 +689,6 @@ impl Display for FunctionCode {
                 name,
                 bb.indented_skip_initial(&make_indent(1))
             )
-        }
-
-        if self.basic_blocks.is_empty() {
-            panic!("Function has no basic block");
         }
 
         let params = display_list!(&self.required_parameters, " ", fmt_params);
@@ -741,11 +743,11 @@ impl FunctionCodeBuilder {
     }
 
     pub fn add_argument(&mut self, name: &str, st: SynType) {
-        self.stack_layout.insert_arg(name.to_string(), st);
+        self.stack_layout.insert_arg(name.to_owned(), st);
     }
 
     pub fn add_local(&mut self, name: &str, st: SynType) {
-        self.stack_layout.insert_local(name.to_string(), st);
+        self.stack_layout.insert_local(name.to_owned(), st);
     }
 
     pub fn add_basic_block(&mut self, index: usize, bb: Stmt) {
@@ -761,6 +763,7 @@ struct InvariantMap(HashMap<usize, LoopSpec>);
 
 /// A Caesium function bundles up the Caesium code itself as well as the generated specification
 /// for it.
+#[allow(clippy::partial_pub_fields)]
 pub struct Function<'def> {
     pub code: FunctionCode,
     pub spec: FunctionSpec<'def>,
@@ -945,7 +948,7 @@ impl<'def> Function<'def> {
                 }
                 ip_params.push(' ');
                 p_count += 1;
-                ip_params.push_str(format!("{}", n).as_str());
+                ip_params.push_str(&n.to_string());
             }
             for (n, _) in ty_params {
                 write!(f, "let {} := fresh \"{}\" in\n", n, n)?;
@@ -1015,7 +1018,7 @@ impl<'def> Function<'def> {
             &self
                 .generic_types
                 .iter()
-                .map(|names| (names.rust_name.to_string(), format!("existT _ ({})", names.type_term)))
+                .map(|names| (names.rust_name.clone(), format!("existT _ ({})", names.type_term)))
                 .collect(),
         );
 
@@ -1081,6 +1084,7 @@ pub struct StaticMeta<'def> {
 /// A `CaesiumFunctionBuilder` allows to incrementally construct the functions's code and the spec
 /// at the same time. It ensures that both definitions line up in the right way (for instance, by
 /// ensuring that other functions are linked up in a consistent way).
+#[allow(clippy::partial_pub_fields)]
 pub struct FunctionBuilder<'def> {
     pub code: FunctionCodeBuilder,
     pub spec: FunctionSpecBuilder<'def>,
@@ -1115,8 +1119,8 @@ impl<'def> FunctionBuilder<'def> {
         let code_builder = FunctionCodeBuilder::new();
         let spec_builder = FunctionSpecBuilder::new();
         FunctionBuilder {
-            function_name: name.to_string(),
-            spec_name: spec_name.to_string(),
+            function_name: name.to_owned(),
+            spec_name: spec_name.to_owned(),
             other_functions: Vec::new(),
             generic_types: Vec::new(),
             generic_lifetimes: Vec::new(),
@@ -1148,7 +1152,7 @@ impl<'def> FunctionBuilder<'def> {
 
     /// Adds a lifetime parameter to the function.
     pub fn add_universal_lifetime(&mut self, name: Option<String>, lft: Lft) -> Result<(), String> {
-        self.generic_lifetimes.push((name, lft.to_string()));
+        self.generic_lifetimes.push((name, lft.clone()));
         self.spec.add_lifetime(lft)
     }
 
@@ -1163,7 +1167,7 @@ impl<'def> FunctionBuilder<'def> {
 
     /// Add a manual tactic used for a sidecondition proof.
     pub fn add_manual_tactic(&mut self, tac: &str) {
-        self.tactics.push(tac.to_string());
+        self.tactics.push(tac.to_owned());
     }
 
     /// Add a generic type used by this function.
@@ -1203,7 +1207,7 @@ impl<'def> FunctionBuilder<'def> {
             // TODO(cleanup): this currently regenerates the names for ty + rt, instead of using
             // the existing names
             self.spec
-                .add_coq_param(coq::Name::Named(names.refinement_type.to_string()), coq::Type::Type, false)
+                .add_coq_param(coq::Name::Named(names.refinement_type.clone()), coq::Type::Type, false)
                 .unwrap();
             self.spec
                 .add_coq_param(
@@ -1213,7 +1217,7 @@ impl<'def> FunctionBuilder<'def> {
                 )
                 .unwrap();
             self.spec
-                .add_coq_param(coq::Name::Named(names.syn_type.to_string()), coq::Type::SynType, false)
+                .add_coq_param(coq::Name::Named(names.syn_type.clone()), coq::Type::SynType, false)
                 .unwrap();
             self.spec
                 .add_ty_param(
@@ -1251,14 +1255,14 @@ impl<'def> From<FunctionBuilder<'def>> for Function<'def> {
         let mut parameters: Vec<(coq::Name, coq::Type)> = builder
             .other_functions
             .iter()
-            .map(|f_inst| (coq::Name::Named(f_inst.0.to_string()), coq::Type::Loc))
+            .map(|f_inst| (coq::Name::Named(f_inst.0.clone()), coq::Type::Loc))
             .collect();
 
         // generate location parameters for statics used by this function
         let mut statics_parameters = builder
             .used_statics
             .iter()
-            .map(|s| (coq::Name::Named(s.loc_name.to_string()), coq::Type::Loc))
+            .map(|s| (coq::Name::Named(s.loc_name.clone()), coq::Type::Loc))
             .collect();
         parameters.append(&mut statics_parameters);
 
@@ -1266,7 +1270,7 @@ impl<'def> From<FunctionBuilder<'def>> for Function<'def> {
         let mut gen_st_parameters = builder
             .generic_types
             .iter()
-            .map(|names| (coq::Name::Named(names.syn_type.to_string()), coq::Type::SynType))
+            .map(|names| (coq::Name::Named(names.syn_type.clone()), coq::Type::SynType))
             .collect();
         parameters.append(&mut gen_st_parameters);
 

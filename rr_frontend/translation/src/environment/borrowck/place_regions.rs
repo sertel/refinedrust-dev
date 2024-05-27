@@ -18,7 +18,7 @@ use crate::environment::borrowck::facts;
 pub struct PlaceRegions(HashMap<(mir::Local, Vec<usize>), facts::Region>);
 
 #[derive(Clone, Debug)]
-pub enum PlaceRegionsError {
+pub enum Error {
     Unsupported(String),
 }
 
@@ -43,48 +43,48 @@ impl PlaceRegions {
 
     /// Determines the region of a MIR place. Right now, the only supported places are locals and tuples.
     /// Tuples cannot be nested inside other tuples.
-    pub fn for_place(&self, place: mir::Place) -> Result<Option<facts::Region>, PlaceRegionsError> {
+    pub fn for_place(&self, place: mir::Place) -> Result<Option<facts::Region>, Error> {
         let (local, fields) = Self::translate_place(place)?;
         Ok(self.0.get(&(local, fields)).copied())
     }
 
     /// Translates a place like _3.0.3.1 into a local (here _3) and a list of field projections like (here [0,
     /// 3, 1]).
-    fn translate_place(place: mir::Place) -> Result<(mir::Local, Vec<usize>), PlaceRegionsError> {
+    fn translate_place(place: mir::Place) -> Result<(mir::Local, Vec<usize>), Error> {
         let indices = place
             .projection
             .iter()
             .map(|elem| match elem {
                 mir::ProjectionElem::Field(f, _) => Ok(f.index()),
-                mir::ProjectionElem::Deref => Err(PlaceRegionsError::Unsupported(
+                mir::ProjectionElem::Deref => Err(Error::Unsupported(
                     "determining the region of a dereferentiation is \
                         not supported"
-                        .to_string(),
+                        .to_owned(),
                 )),
-                mir::ProjectionElem::Index(_) => Err(PlaceRegionsError::Unsupported(
+                mir::ProjectionElem::Index(_) => Err(Error::Unsupported(
                     "determining the region of array indexing is \
                         not supported"
-                        .to_string(),
+                        .to_owned(),
                 )),
-                mir::ProjectionElem::ConstantIndex { .. } => Err(PlaceRegionsError::Unsupported(
+                mir::ProjectionElem::ConstantIndex { .. } => Err(Error::Unsupported(
                     "determining the region of constant indexing is \
                         not supported"
-                        .to_string(),
+                        .to_owned(),
                 )),
-                mir::ProjectionElem::Subslice { .. } => Err(PlaceRegionsError::Unsupported(
+                mir::ProjectionElem::Subslice { .. } => Err(Error::Unsupported(
                     "determining the region of a subslice is \
                         not supported"
-                        .to_string(),
+                        .to_owned(),
                 )),
-                mir::ProjectionElem::Downcast(_, _) => Err(PlaceRegionsError::Unsupported(
+                mir::ProjectionElem::Downcast(_, _) => Err(Error::Unsupported(
                     "determining the region of a downcast is \
                         not supported"
-                        .to_string(),
+                        .to_owned(),
                 )),
-                mir::ProjectionElem::OpaqueCast(_) => Err(PlaceRegionsError::Unsupported(
+                mir::ProjectionElem::OpaqueCast(_) => Err(Error::Unsupported(
                     "determining the region of an opaque cast is \
                         not supported"
-                        .to_string(),
+                        .to_owned(),
                 )),
             })
             .collect::<Result<_, _>>()?;
@@ -124,8 +124,8 @@ fn extract_region(place_regions: &mut PlaceRegions, local: mir::Local, ty: ty::T
     }
 }
 
-pub fn load_place_regions(body: &mir::Body<'_>) -> PlaceRegions {
-    trace!("[enter] load_place_regions()");
+pub fn load(body: &mir::Body<'_>) -> PlaceRegions {
+    trace!("[enter] place_regions::load");
     let mut place_regions = PlaceRegions::new();
 
     for (local, local_decl) in body.local_decls.iter_enumerated() {
@@ -134,6 +134,6 @@ pub fn load_place_regions(body: &mir::Body<'_>) -> PlaceRegions {
         extract_region(&mut place_regions, local, ty);
     }
 
-    trace!("[exit] load_place_regions");
+    trace!("[exit] place_regions::load");
     place_regions
 }

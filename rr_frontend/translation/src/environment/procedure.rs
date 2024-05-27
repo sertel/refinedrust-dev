@@ -14,7 +14,7 @@ use rustc_span::Span;
 
 use super::loops;
 use crate::data::ProcedureDefId;
-use crate::environment::mir_utils::RealEdges;
+use crate::environment::mir_utils::real_edges::RealEdges;
 use crate::environment::Environment;
 
 /// Index of a Basic Block
@@ -116,14 +116,14 @@ impl<'tcx> Procedure<'tcx> {
         self.ty_params
     }
 
-    /// Get an absolute `def_path`. Note: not preserved across compilations!
-    #[must_use]
-    pub fn get_def_path(&self) -> String {
-        let def_path = self.tcx.def_path(self.proc_def_id);
-        let mut crate_name = self.tcx.crate_name(def_path.krate).to_string();
-        crate_name.push_str(&def_path.to_string_no_crate_verbose());
-        crate_name
-    }
+    // /// Get an absolute `def_path`. Note: not preserved across compilations!
+    // #[must_use]
+    // pub fn get_def_path(&self) -> String {
+    //     let def_path = self.tcx.def_path(self.proc_def_id);
+    //     let mut crate_name = self.tcx.crate_name(def_path.krate).to_string();
+    //     crate_name.push_str(&def_path.to_string_no_crate_verbose());
+    //     crate_name
+    // }
 
     // /// Get a short name of the procedure
     // pub fn get_short_name(&self) -> String {
@@ -135,49 +135,45 @@ impl<'tcx> Procedure<'tcx> {
     //     self.tcx.absolute_item_path_str(self.proc_def_id)
     // }
 
-    /// Get the span of the procedure
-    #[must_use]
-    pub fn get_span(&self) -> Span {
-        self.mir.span
-    }
+    // /// Get the span of the procedure
+    // #[must_use]
+    // pub fn get_span(&self) -> Span {
+    //     self.mir.span
+    // }
 
-    /// Get the first CFG block
-    #[must_use]
-    pub fn get_first_cfg_block(&self) -> BasicBlock {
-        self.mir.basic_blocks.indices().next().unwrap()
-    }
+    // /// Get the first CFG block
+    // #[must_use]
+    // pub fn get_first_cfg_block(&self) -> BasicBlock {
+    //     self.mir.basic_blocks.indices().next().unwrap()
+    // }
 
-    /// Iterate over all CFG basic blocks
-    #[must_use]
-    pub fn get_all_cfg_blocks(&self) -> Vec<BasicBlock> {
-        self.loop_info.ordered_blocks.clone()
-    }
+    // /// Iterate over all CFG basic blocks
+    // #[must_use]
+    // pub fn get_all_cfg_blocks(&self) -> Vec<BasicBlock> {
+    //     self.loop_info.ordered_blocks.clone()
+    // }
 
-    /// Iterate over all reachable CFG basic blocks
-    #[must_use]
-    pub fn get_reachable_cfg_blocks(&self) -> Vec<BasicBlock> {
-        self.get_all_cfg_blocks()
-            .into_iter()
-            .filter(|bbi| self.is_reachable_block(*bbi))
-            .collect()
-    }
+    // /// Iterate over all reachable CFG basic blocks
+    // #[must_use]
+    // pub fn get_reachable_cfg_blocks(&self) -> Vec<BasicBlock> {
+    //     self.get_all_cfg_blocks()
+    //         .into_iter()
+    //         .filter(|bbi| self.is_reachable_block(*bbi))
+    //         .collect()
+    // }
 
-    /*
-    /// Iterate over all reachable CFG basic blocks that are not part of the specification type checking
-    pub fn get_reachable_nonspec_cfg_blocks(&self) -> Vec<BasicBlock> {
-        self.get_reachable_cfg_blocks()
-            .into_iter()
-            .filter(|bbi| !self.is_spec_block(*bbi))
-            .collect()
-    }
-    */
+    // /// Iterate over all reachable CFG basic blocks that are not part of the specification type checking
+    // pub fn get_reachable_nonspec_cfg_blocks(&self) -> Vec<BasicBlock> {
+    //     self.get_reachable_cfg_blocks()
+    //         .into_iter()
+    //         .filter(|bbi| !self.is_spec_block(*bbi))
+    //         .collect()
+    // }
 
-    /*
-    /// Check whether the block is used for typechecking the specification
-    pub fn is_spec_block(&self, bbi: BasicBlockIndex) -> bool {
-        !self.nonspec_basic_blocks.contains(&bbi)
-    }
-    */
+    // /// Check whether the block is used for typechecking the specification
+    // pub fn is_spec_block(&self, bbi: BasicBlockIndex) -> bool {
+    //     !self.nonspec_basic_blocks.contains(&bbi)
+    // }
 
     /// Check whether the block is reachable
     #[must_use]
@@ -187,29 +183,28 @@ impl<'tcx> Procedure<'tcx> {
 
     #[must_use]
     pub fn is_panic_block(&self, bbi: BasicBlockIndex) -> bool {
-        if let TerminatorKind::Call {
-            args: ref _args,
-            destination: ref _destination,
-            func:
-                mir::Operand::Constant(box mir::Constant {
-                    literal: mir::ConstantKind::Ty(c),
-                    ..
-                }),
-            ..
-        } = self.mir[bbi].terminator().kind
-        {
-            if let ty::TyKind::FnDef(def_id, ..) = c.ty().kind() {
-                // let func_proc_name = self.tcx.absolute_item_path_str(def_id);
-                let func_proc_name = self.tcx.def_path_str(*def_id);
-                &func_proc_name == "std::rt::begin_panic"
-                    || &func_proc_name == "core::panicking::panic"
-                    || &func_proc_name == "core::panicking::panic_fmt"
-            } else {
-                false
-            }
-        } else {
-            false
-        }
+        let TerminatorKind::Call { func, .. } = &self.mir[bbi].terminator().kind else {
+            return false;
+        };
+
+        let mir::Operand::Constant(box mir::Constant { literal, .. }) = func else {
+            return false;
+        };
+
+        let mir::ConstantKind::Ty(c) = literal else {
+            return false;
+        };
+
+        let ty::TyKind::FnDef(def_id, ..) = c.ty().kind() else {
+            return false;
+        };
+
+        // let func_proc_name = self.tcx.absolute_item_path_str(def_id);
+        let func_proc_name = self.tcx.def_path_str(*def_id);
+
+        func_proc_name == "std::rt::begin_panic"
+            || func_proc_name == "core::panicking::panic"
+            || func_proc_name == "core::panicking::panic_fmt"
     }
 
     /// Get the successors of a basic block.

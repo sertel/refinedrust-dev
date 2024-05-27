@@ -6,9 +6,9 @@
 
 use std::collections::HashMap;
 
-use attribute_parse as parse;
+use attribute_parse::{parse, MToken};
 use log::{info, warn};
-use parse::{MToken, Parse, ParseResult, ParseStream, Peek};
+use parse::{Parse, Peek};
 use radium::{coq, push_str_list, specs};
 use rustc_ast::ast::AttrItem;
 use rustc_middle::ty;
@@ -57,8 +57,9 @@ pub trait FunctionSpecParser<'def> {
 struct RRArgs {
     args: Vec<LiteralTypeWithRef>,
 }
-impl<'a> Parse<ParseMeta<'a>> for RRArgs {
-    fn parse(input: ParseStream, meta: &ParseMeta) -> ParseResult<Self> {
+
+impl<'a> parse::Parse<ParseMeta<'a>> for RRArgs {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let args: parse::Punctuated<LiteralTypeWithRef, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
         Ok(Self {
@@ -77,22 +78,22 @@ struct ClosureCaptureSpec {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for ClosureCaptureSpec {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let name_str: parse::LitStr = input.parse(meta)?;
         let name = name_str.value();
-        input.parse::<_, parse::MToken![:]>(meta)?;
+        input.parse::<_, MToken![:]>(meta)?;
 
         let pre_spec: LiteralTypeWithRef = input.parse(meta)?;
 
         if parse::RArrow::peek(input) {
-            input.parse::<_, parse::MToken![->]>(meta)?;
+            input.parse::<_, MToken![->]>(meta)?;
             let current_pos = input.pos().unwrap();
 
             let post_spec: LiteralTypeWithRef = input.parse(meta)?;
             if post_spec.ty.is_some() {
-                Err(parse::ParseError::OtherErr(
+                Err(parse::Error::OtherErr(
                     current_pos,
-                    format!("Did not expect type specification for capture postcondition"),
+                    "Did not expect type specification for capture postcondition".to_owned(),
                 ))
             } else {
                 Ok(Self {
@@ -126,23 +127,23 @@ enum MetaIProp {
 }
 
 impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
-    fn parse(input: parse::ParseStream, meta: &ParseMeta) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         if parse::Pound::peek(input) {
-            input.parse::<_, parse::MToken![#]>(meta)?;
+            input.parse::<_, MToken![#]>(meta)?;
             let macro_cmd: parse::Ident = input.parse(meta)?;
             match macro_cmd.value().as_str() {
                 "type" => {
                     let loc_str: parse::LitStr = input.parse(meta)?;
                     let (loc_str, mut annot_meta) = process_coq_literal(&loc_str.value(), *meta);
 
-                    input.parse::<_, parse::MToken![:]>(meta)?;
+                    input.parse::<_, MToken![:]>(meta)?;
 
                     let rfn_str: parse::LitStr = input.parse(meta)?;
                     let (rfn_str, annot_meta2) = process_coq_literal(&rfn_str.value(), *meta);
 
                     annot_meta.join(&annot_meta2);
 
-                    input.parse::<_, parse::MToken![@]>(meta)?;
+                    input.parse::<_, MToken![@]>(meta)?;
 
                     let type_str: parse::LitStr = input.parse(meta)?;
                     let (type_str, annot_meta3) = process_coq_literal(&type_str.value(), *meta);
@@ -157,7 +158,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 },
                 "observe" => {
                     let gname: parse::LitStr = input.parse(meta)?;
-                    input.parse::<_, parse::MToken![:]>(meta)?;
+                    input.parse::<_, MToken![:]>(meta)?;
 
                     let term: parse::LitStr = input.parse(meta)?;
                     let (term, _meta) = process_coq_literal(&term.value(), *meta);
@@ -169,9 +170,10 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                     let (term, _meta) = process_coq_literal(&term.value(), *meta);
                     Ok(Self::Linktime(term))
                 },
-                _ => {
-                    panic!("invalid macro command: {:?}", macro_cmd.value());
-                },
+                _ => Err(parse::Error::OtherErr(
+                    input.pos().unwrap(),
+                    format!("invalid macro command: {:?}", macro_cmd.value()),
+                )),
             }
         } else {
             let name_or_prop_str: parse::LitStr = input.parse(meta)?;
@@ -179,7 +181,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 // this is a name
                 let name_str = name_or_prop_str.value();
 
-                input.parse::<_, parse::MToken![:]>(meta)?;
+                input.parse::<_, MToken![:]>(meta)?;
 
                 let pure_prop: parse::LitStr = input.parse(meta)?;
                 let (pure_str, _annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
@@ -250,7 +252,7 @@ where
         lit: &LiteralTypeWithRef,
         ty: &specs::Type<'def>,
     ) -> (specs::TypeWithRef<'def>, Option<coq::Type>) {
-        if let Some(ref lit_ty) = lit.ty {
+        if let Some(lit_ty) = &lit.ty {
             // literal type given, we use this literal type as the RR semantic type
             // just use the syntype from the Rust type
             let st = ty.get_syn_type();
@@ -289,7 +291,7 @@ where
     fn handle_common_attributes(
         &mut self,
         name: &str,
-        buffer: &parse::ParseBuffer,
+        buffer: &parse::Buffer,
         builder: &mut radium::FunctionBuilder<'def>,
         lfts: &[(Option<String>, String)],
     ) -> Result<bool, String> {
@@ -320,7 +322,7 @@ where
                     builder.spec.add_arg(ty);
                     if let Some(cty) = hint {
                         // potentially add a typing hint to the refinement
-                        if let IdentOrTerm::Ident(ref i) = arg.rfn {
+                        if let IdentOrTerm::Ident(i) = arg.rfn {
                             info!("Trying to add a typing hint for {}", i);
                             builder.spec.add_param_type_annot(&coq::Name::Named(i.clone()), cty)?;
                         }
@@ -338,7 +340,7 @@ where
             "observe" => {
                 let m = || {
                     let gname: parse::LitStr = buffer.parse(&meta)?;
-                    buffer.parse::<_, parse::MToken![:]>(&meta)?;
+                    buffer.parse::<_, MToken![:]>(&meta)?;
 
                     let term: parse::LitStr = buffer.parse(&meta)?;
                     let (term, _) = process_coq_literal(&term.value(), meta);
@@ -540,7 +542,7 @@ where
             ty::ClosureKind::FnMut => {
                 // wrap the argument in a mutable reference
                 let post_name = "__γclos";
-                builder.spec.add_param(coq::Name::Named(post_name.to_string()), coq::Type::Gname).unwrap();
+                builder.spec.add_param(coq::Name::Named(post_name.to_owned()), coq::Type::Gname).unwrap();
 
                 let lft = meta.closure_lifetime.unwrap();
                 let ref_ty = specs::Type::MutRef(Box::new(tuple), lft);
@@ -560,9 +562,7 @@ where
                 });
                 post_term.push(']');
 
-                builder
-                    .spec
-                    .add_postcondition(MetaIProp::Observe(post_name.to_string(), post_term).into());
+                builder.spec.add_postcondition(MetaIProp::Observe(post_name.to_owned(), post_term).into());
             },
         }
         Ok(())
@@ -607,7 +607,7 @@ where
             let meta: ParseMeta = (&meta, &lfts);
 
             if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&args.inner_tokens());
+                let buffer = parse::Buffer::new(&args.inner_tokens());
 
                 if seg.ident.name.as_str() == "capture" {
                     let spec: ClosureCaptureSpec = buffer.parse(&meta).map_err(str_err)?;
@@ -623,7 +623,7 @@ where
             let args = &it.args;
 
             if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
+                let buffer = parse::Buffer::new(&it.args.inner_tokens());
                 let name = seg.ident.name.as_str();
 
                 match self.handle_common_attributes(name, &buffer, builder, &lfts) {
@@ -662,24 +662,27 @@ where
             let path_segs = &it.path.segments;
             let args = &it.args;
 
-            if let Some(seg) = path_segs.get(1) {
-                let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
+            let Some(seg) = path_segs.get(1) else {
+                continue;
+            };
 
-                match self.handle_common_attributes(seg.ident.name.as_str(), &buffer, builder, &lfts) {
-                    Ok(b) => {
-                        if !b {
-                            let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
-                            let _meta: ParseMeta = (&meta, &lfts);
+            let buffer = parse::Buffer::new(&it.args.inner_tokens());
 
-                            info!("ignoring function attribute: {:?}", args);
-                        }
-                    },
-                    Err(e) => {
-                        return Err(e);
-                    },
-                }
+            match self.handle_common_attributes(seg.ident.name.as_str(), &buffer, builder, &lfts) {
+                Ok(b) => {
+                    if !b {
+                        let meta: &[specs::LiteralTyParam] = builder.get_ty_params();
+                        let _meta: ParseMeta = (&meta, &lfts);
+
+                        info!("ignoring function attribute: {:?}", args);
+                    }
+                },
+                Err(e) => {
+                    return Err(e);
+                },
             }
         }
+
         Ok(())
     }
 }

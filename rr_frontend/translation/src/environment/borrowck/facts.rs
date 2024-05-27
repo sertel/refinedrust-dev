@@ -6,6 +6,7 @@
 
 use std::cell::RefCell;
 use std::rc::Rc;
+use std::{cmp, fmt};
 
 use polonius_engine::FactTypes;
 use rustc_borrowck::consumers::{LocationTable, RichLocation, RustcFacts};
@@ -17,8 +18,8 @@ pub type PointIndex = <RustcFacts as FactTypes>::Point;
 pub type Variable = <RustcFacts as FactTypes>::Variable;
 pub type Path = <RustcFacts as FactTypes>::Path;
 
-pub type AllInputFacts = rustc_borrowck::consumers::PoloniusInput;
-pub type AllOutputFacts = rustc_borrowck::consumers::PoloniusOutput;
+pub type AllInput = rustc_borrowck::consumers::PoloniusInput;
+pub type AllOutput = rustc_borrowck::consumers::PoloniusOutput;
 
 trait LocationTableExt {
     fn to_mir_location(self, point: PointIndex) -> mir::Location;
@@ -32,11 +33,11 @@ impl LocationTableExt for LocationTable {
     }
 }
 
-pub struct BorrowckFacts {
+pub struct Borrowck {
     /// Polonius input facts.
-    pub input_facts: RefCell<Option<Box<AllInputFacts>>>,
+    pub input_facts: RefCell<Option<Box<AllInput>>>,
     /// Polonius output facts.
-    pub output_facts: Rc<AllOutputFacts>,
+    pub output_facts: Rc<AllOutput>,
     /// The table that maps Polonius points to locations in the table.
     pub location_table: RefCell<Option<LocationTable>>,
 }
@@ -49,21 +50,21 @@ pub enum PointType {
     Mid,
 }
 
-impl std::cmp::PartialOrd for PointType {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+impl cmp::PartialOrd for PointType {
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> {
         let res = match (self, other) {
-            (Self::Start, Self::Mid) => std::cmp::Ordering::Less,
-            (Self::Mid, Self::Start) => std::cmp::Ordering::Greater,
+            (Self::Start, Self::Mid) => cmp::Ordering::Less,
+            (Self::Mid, Self::Start) => cmp::Ordering::Greater,
 
-            (Self::Start, Self::Start) | (Self::Mid, Self::Mid) => std::cmp::Ordering::Equal,
+            (Self::Start, Self::Start) | (Self::Mid, Self::Mid) => cmp::Ordering::Equal,
         };
 
         Some(res)
     }
 }
 
-impl std::cmp::Ord for PointType {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+impl cmp::Ord for PointType {
+    fn cmp(&self, other: &Self) -> cmp::Ordering {
         self.partial_cmp(other).unwrap()
     }
 }
@@ -75,8 +76,8 @@ pub struct Point {
     pub typ: PointType,
 }
 
-impl std::fmt::Display for Point {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for Point {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}:{:?}:{:?}", self.location.block, self.location.statement_index, self.typ)
     }
 }

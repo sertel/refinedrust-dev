@@ -26,7 +26,7 @@ pub struct Path(String);
 impl Path {
     #[must_use]
     pub fn new(path: &str) -> Self {
-        Self(path.to_string())
+        Self(path.to_owned())
     }
 
     #[must_use]
@@ -46,7 +46,7 @@ impl Module {
     #[must_use]
     pub fn new(name: &str) -> Self {
         Self {
-            name: name.to_string(),
+            name: name.to_owned(),
             path: None,
         }
     }
@@ -54,7 +54,7 @@ impl Module {
     #[must_use]
     pub fn new_with_path(name: &str, path: Path) -> Self {
         Self {
-            name: name.to_string(),
+            name: name.to_owned(),
             path: Some(path),
         }
     }
@@ -127,7 +127,9 @@ fn fmt_modules(f: &mut fmt::Formatter<'_>, modules: &[&Module], kind: &str) -> f
     for path in get_modules_path(modules) {
         let modules: Vec<_> = modules.iter().filter_map(|x| is(x, Some(&path))).collect();
 
-        assert!(!modules.is_empty());
+        if modules.is_empty() {
+            unreachable!("get_modules_path() gave the path {path} but no modules matched it.");
+        }
 
         writeln!(f, "From {} Require {} {}.", path, kind, modules.join(" "))?;
     }
@@ -210,7 +212,7 @@ pub type Pattern = String;
 
 fn fmt_prod(v: &Vec<Type>) -> String {
     match v.as_slice() {
-        [] => "unit".to_string(),
+        [] => "unit".to_owned(),
         [t] => t.to_string(),
         _ => format!("({})%type", display_list!(v, " * ")),
     }
@@ -389,7 +391,7 @@ pub struct Param {
 impl Param {
     #[must_use]
     pub fn new(name: Name, ty: Type, implicit: bool) -> Self {
-        let depends_on_sigma = if let Type::Literal(ref lit) = ty { lit.contains('Σ') } else { false };
+        let depends_on_sigma = if let Type::Literal(lit) = &ty { lit.contains('Σ') } else { false };
 
         Self {
             name,
@@ -412,13 +414,13 @@ impl Param {
         }
 
         if make_implicits {
-            if let Name::Named(ref name) = self.name {
+            if let Name::Named(name) = &self.name {
                 format!("`{{{} : !{}}}", name, self.ty)
             } else {
                 format!("`{{!{}}}", self.ty)
             }
         } else {
-            if let Name::Named(ref name) = self.name {
+            if let Name::Named(name) = &self.name {
                 format!("`({} : !{})", name, self.ty)
             } else {
                 format!("`(!{})", self.ty)
@@ -558,8 +560,8 @@ pub struct InstanceDecl {
 
 impl Display for InstanceDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self.name {
-            Some(ref name) => {
+        match &self.name {
+            Some(name) => {
                 write!(f, "{} Instance {} {} : {}{}", self.attrs, name, self.params, self.ty, self.body)
             },
             None => write!(f, "{} Instance {} : {}{}", self.attrs, self.params, self.ty, self.body),

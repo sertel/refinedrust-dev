@@ -7,6 +7,7 @@
 #![feature(box_patterns)]
 #![feature(let_chains)]
 #![feature(rustc_private)]
+extern crate polonius_engine;
 extern crate rustc_abi;
 extern crate rustc_ast;
 extern crate rustc_attr;
@@ -25,19 +26,6 @@ extern crate rustc_target;
 extern crate rustc_trait_selection;
 extern crate rustc_type_ir;
 
-extern crate polonius_engine;
-
-use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::io::{self, Read, Write};
-use std::path::Path;
-
-use log::{info, trace, warn};
-use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_middle::ty;
-use rustc_middle::ty::TyCtxt;
-use typed_arena::Arena;
-
 mod arg_folder;
 mod base;
 mod checked_op_analysis;
@@ -53,20 +41,24 @@ mod type_translator;
 mod tyvars;
 mod utils;
 
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
+use std::io::{Read, Write};
+use std::path::{Path, PathBuf};
+use std::{fs, io, process};
 
-use const_parser::ConstAttrParser;
-use crate_parser::CrateAttrParser;
 use environment::Environment;
 use function_body::{ConstScope, FunctionTranslator, ProcedureMode, ProcedureScope};
-use mod_parser::ModuleAttrParser;
+use log::{info, trace, warn};
 use radium::coq;
-use spec_parsers::{
-    const_attr_parser as const_parser, crate_attr_parser as crate_parser, get_shim_attrs,
-    module_attr_parser as mod_parser,
-};
+use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_middle::ty;
+use spec_parsers::const_attr_parser::{ConstAttrParser, VerboseConstAttrParser};
+use spec_parsers::crate_attr_parser::{CrateAttrParser, VerboseCrateAttrParser};
+use spec_parsers::module_attr_parser::{ModuleAttrParser, ModuleAttrs, VerboseModuleAttrParser};
 use topological_sort::TopologicalSort;
 use type_translator::{normalize_in_function, TypeTranslator};
+use typed_arena::Arena;
 
 /// Order ADT definitions topologically.
 fn order_adt_defs(deps: &HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
@@ -131,27 +123,24 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             return None;
         }
 
-        match self.env.tcx().visibility(did) {
-            // only export public items
-            ty::Visibility::Public => {
-                let is_method = self.env.tcx().impl_of_method(did).is_some();
-                let interned_path = self.get_path_for_shim(did);
-
-                let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
-                info!("Found function path {:?} for did {:?} with name {:?}", interned_path, did, name);
-
-                Some(shim_registry::FunctionShim {
-                    path: interned_path,
-                    is_method,
-                    name,
-                    spec_name: spec_name.to_string(),
-                })
-            },
-            ty::Visibility::Restricted(_) => {
-                // don't  export
-                None
-            },
+        if self.env.tcx().visibility(did) != ty::Visibility::Public {
+            // don't export
+            return None;
         }
+
+        // only export public items
+        let is_method = self.env.tcx().impl_of_method(did).is_some();
+        let interned_path = self.get_path_for_shim(did);
+
+        let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
+        info!("Found function path {:?} for did {:?} with name {:?}", interned_path, did, name);
+
+        Some(shim_registry::FunctionShim {
+            path: interned_path,
+            is_method,
+            name,
+            spec_name: spec_name.to_owned(),
+        })
     }
 
     fn make_shim_trait_method_entry(
@@ -211,7 +200,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     return None;
                 };
 
-                let method_ident = ident.as_str().to_string();
+                let method_ident = ident.as_str().to_owned();
                 let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
 
                 trace!("leave make_shim_trait_method_entry (success)");
@@ -220,7 +209,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                     method_ident,
                     for_type,
                     name,
-                    spec_name: spec_name.to_string(),
+                    spec_name: spec_name.to_owned(),
                 })
             },
             ty::Visibility::Restricted(_) => {
@@ -349,8 +338,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             coq::Import::new(coq::Module::new_with_path("shims", coq::Path::new("refinedrust"))),
         ];
 
-        let mut spec_file = io::BufWriter::new(fs::File::create(spec_path).unwrap());
-        let mut code_file = io::BufWriter::new(fs::File::create(code_path).unwrap());
+        let mut spec_file = io::BufWriter::new(File::create(spec_path).unwrap());
+        let mut code_file = io::BufWriter::new(File::create(code_path).unwrap());
 
         {
             let mut spec_exports = vec![coq::Export::new(coq::Module::new_with_path(
@@ -378,43 +367,39 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write structs and enums
         // we need to do a bit of work to order them right
-        let struct_defs = self.type_translator.get_struct_defs();
-        let enum_defs = self.type_translator.get_enum_defs();
-        let adt_deps = self.type_translator.get_adt_deps();
+        {
+            let struct_defs = self.type_translator.get_struct_defs();
+            let enum_defs = self.type_translator.get_enum_defs();
+            let adt_deps = self.type_translator.get_adt_deps();
 
-        let ordered = order_adt_defs(&adt_deps);
-        info!("ordered ADT defns: {:?}", ordered);
+            let ordered = order_adt_defs(&adt_deps);
+            info!("ordered ADT defns: {:?}", ordered);
 
-        for did in &ordered {
-            if let Some(su_ref) = struct_defs.get(did) {
-                info!("writing struct {:?}, {:?}", did, su_ref);
-                let su = su_ref.as_ref().unwrap();
+            for did in &ordered {
+                if let Some(su_ref) = struct_defs.get(did) {
+                    info!("writing struct {:?}, {:?}", did, su_ref);
+                    let su = su_ref.as_ref().unwrap();
 
-                // layout specs
-                code_file.write(su.generate_coq_sls_def().as_bytes()).unwrap();
-                code_file.write("\n".as_bytes()).unwrap();
+                    // layout specs
+                    writeln!(code_file, "{}", su.generate_coq_sls_def()).unwrap();
 
-                // type aliases
-                spec_file.write(su.generate_coq_type_def().as_bytes()).unwrap();
-                spec_file.write("\n".as_bytes()).unwrap();
+                    // type aliases
+                    writeln!(spec_file, "{}", su.generate_coq_type_def()).unwrap();
 
-                // abstracted type
-                if let Some(inv_spec) = su.generate_optional_invariant_def() {
-                    spec_file.write(inv_spec.as_bytes()).unwrap();
-                    spec_file.write("\n".as_bytes()).unwrap();
+                    // abstracted type
+                    if let Some(inv_spec) = su.generate_optional_invariant_def() {
+                        writeln!(spec_file, "{}", inv_spec).unwrap();
+                    }
+                } else {
+                    let eu = enum_defs[did].unwrap();
+                    info!("writing enum {:?}, {:?}", did, eu);
+
+                    // layout specs
+                    writeln!(code_file, "{}", eu.generate_coq_els_def()).unwrap();
+
+                    // type definition
+                    writeln!(spec_file, "{}", eu.generate_coq_type_def()).unwrap();
                 }
-            } else {
-                let eu_ref = enum_defs.get(did).unwrap();
-                info!("writing enum {:?}, {:?}", did, eu_ref);
-                let eu = eu_ref.as_ref().unwrap();
-
-                // layout specs
-                code_file.write(eu.generate_coq_els_def().as_bytes()).unwrap();
-                code_file.write("\n".as_bytes()).unwrap();
-
-                // type definition
-                spec_file.write(eu.generate_coq_type_def().as_bytes()).unwrap();
-                spec_file.write("\n".as_bytes()).unwrap();
             }
         }
 
@@ -422,79 +407,80 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // TODO
 
         // write translated source code of functions
-        code_file
-            .write(
-                "Section code.\n\
-            Context `{!refinedrustGS Σ}.\n\
-            Open Scope printing_sugar.\n\n"
-                    .as_bytes(),
-            )
-            .unwrap();
+        {
+            writeln!(code_file, "Section code.").unwrap();
+            writeln!(code_file, "Context `{{!refinedrustGS Σ}}.").unwrap();
+            writeln!(code_file, "Open Scope printing_sugar.").unwrap();
+            writeln!(code_file).unwrap();
 
-        for (_, fun) in self.procedure_registry.iter_code() {
-            code_file.write(fun.code.to_string().as_bytes()).unwrap();
-            code_file.write("\n\n".as_bytes()).unwrap();
+            for (_, fun) in self.procedure_registry.iter_code() {
+                writeln!(code_file, "{}", fun.code).unwrap();
+                writeln!(code_file).unwrap();
+            }
+
+            write!(code_file, "End code.").unwrap();
         }
 
-        code_file.write("End code.".as_bytes()).unwrap();
-
         // write function specs
-        spec_file
-            .write(
-                "\
-            Section specs.\n\
-            Context `{!refinedrustGS Σ}.\n\n"
-                    .as_bytes(),
-            )
-            .unwrap();
-        for (_, fun) in self.procedure_registry.iter_code() {
-            if fun.spec.has_spec() {
-                if fun.spec.args.len() != fun.code.get_argument_count() {
-                    warn!("Function specification for {} is missing arguments", fun.name());
+        {
+            writeln!(spec_file, "Section specs.").unwrap();
+            writeln!(spec_file, "Context `{{!refinedrustGS Σ}}.").unwrap();
+            writeln!(spec_file).unwrap();
+
+            for (_, fun) in self.procedure_registry.iter_code() {
+                if fun.spec.has_spec {
+                    if fun.spec.args.len() != fun.code.get_argument_count() {
+                        warn!("Function specification for {} is missing arguments", fun.name());
+                    }
+
+                    writeln!(spec_file, "{}", fun.spec).unwrap();
+                } else {
+                    warn!("No specification for {}", fun.name());
+
+                    writeln!(spec_file, "(* No specification provided for {} *)", fun.name()).unwrap();
                 }
-                spec_file.write(format!("{}", fun.spec).as_bytes()).unwrap();
-                spec_file.write("\n\n".as_bytes()).unwrap();
-            } else {
-                warn!("No specification for {}", fun.name());
-                spec_file
-                    .write(format!("(* No specification provided for {} *)\n\n", fun.name()).as_bytes())
-                    .unwrap();
             }
+            writeln!(spec_file).unwrap();
         }
 
         // also write only-spec functions specs
-        for (_, spec) in self.procedure_registry.iter_only_spec() {
-            if spec.has_spec() {
-                spec_file.write(format!("{}", spec).as_bytes()).unwrap();
-                spec_file.write("\n\n".as_bytes()).unwrap();
-            } else {
-                spec_file
-                    .write(
-                        format!("(* No specification provided for {} *)\n\n", spec.function_name).as_bytes(),
-                    )
-                    .unwrap();
+        {
+            for (_, spec) in self.procedure_registry.iter_only_spec() {
+                if spec.has_spec {
+                    writeln!(spec_file, "{}", spec).unwrap();
+                } else {
+                    writeln!(spec_file, "(* No specification provided for {} *)", spec.function_name)
+                        .unwrap();
+                }
             }
+            writeln!(spec_file).unwrap();
         }
 
         // Include extra specs
-        if let Some(extra_specs_path) = rrconfig::extra_specs_file() {
-            writeln!(spec_file, "(* Included specifications from configured file {:?} *)", extra_specs_path)
+        {
+            if let Some(extra_specs_path) = rrconfig::extra_specs_file() {
+                writeln!(
+                    spec_file,
+                    "(* Included specifications from configured file {:?} *)",
+                    extra_specs_path
+                )
                 .unwrap();
-            let mut extra_specs_file = io::BufReader::new(fs::File::open(extra_specs_path).unwrap());
 
-            let mut extra_specs_string = String::new();
-            extra_specs_file.read_to_string(&mut extra_specs_string).unwrap();
+                let mut extra_specs_file = io::BufReader::new(File::open(extra_specs_path).unwrap());
+                let mut extra_specs_string = String::new();
+                extra_specs_file.read_to_string(&mut extra_specs_string).unwrap();
 
-            write!(spec_file, "{}", extra_specs_string).unwrap();
+                write!(spec_file, "{}", extra_specs_string).unwrap();
+            }
         }
 
-        spec_file.write("End specs.".as_bytes()).unwrap();
+        write!(spec_file, "End specs.").unwrap();
     }
 
     /// Write proof templates for a verification unit.
     fn write_templates<F>(&self, file_path: F, stem: &str)
     where
-        F: Fn(&str) -> std::path::PathBuf,
+        F: Fn(&str) -> PathBuf,
     {
         let common_imports = vec![
             coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
@@ -507,11 +493,11 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // each function gets a separate file in order to parallelize
         for (did, fun) in self.procedure_registry.iter_code() {
             let path = file_path(fun.name());
-            let mut template_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
+            let mut template_file = io::BufWriter::new(File::create(path.as_path()).unwrap());
 
             let mode = self.procedure_registry.lookup_function_mode(*did).unwrap();
 
-            if fun.spec.has_spec() && mode.needs_proof() {
+            if fun.spec.has_spec && mode.needs_proof() {
                 let mut imports = common_imports.clone();
 
                 imports.append(&mut vec![
@@ -529,26 +515,23 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
                 write!(template_file, "{}", coq::ImportList(&imports)).unwrap();
                 write!(template_file, "{}", coq::ExportList(&exports)).unwrap();
+                write!(template_file, "\n").unwrap();
 
-                template_file.write("\n".as_bytes()).unwrap();
-
-                template_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
-
-                template_file
-                    .write(
-                        "\
+                write!(template_file, "Set Default Proof Using \"Type\".\n\n").unwrap();
+                write!(
+                    template_file,
+                    "\
                     Section proof.\n\
-                    Context `{!refinedrustGS Σ}.\n"
-                            .as_bytes(),
-                    )
-                    .unwrap();
+                    Context `{{!refinedrustGS Σ}}.\n"
+                )
+                .unwrap();
 
                 fun.generate_lemma_statement(&mut template_file).unwrap();
 
                 write!(template_file, "End proof.\n\n").unwrap();
 
                 fun.generate_proof_prelude(&mut template_file).unwrap();
-            } else if !fun.spec.has_spec() {
+            } else if !fun.spec.has_spec {
                 write!(template_file, "(* No specification provided *)").unwrap();
             } else {
                 write!(template_file, "(* Function is trusted *)").unwrap();
@@ -558,13 +541,13 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
     fn check_function_needs_proof(&self, did: DefId, fun: &radium::Function) -> bool {
         let mode = self.procedure_registry.lookup_function_mode(did).unwrap();
-        fun.spec.has_spec() && mode.needs_proof()
+        fun.spec.has_spec && mode.needs_proof()
     }
 
     /// Write proofs for a verification unit.
     fn write_proofs<F>(&self, file_path: F, stem: &str)
     where
-        F: Fn(&str) -> std::path::PathBuf,
+        F: Fn(&str) -> PathBuf,
     {
         let common_imports = vec![
             coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
@@ -589,7 +572,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
             info!("Proof file for function {} does not yet exist, creating", fun.name());
 
-            let mut proof_file = io::BufWriter::new(fs::File::create(path.as_path()).unwrap());
+            let mut proof_file = io::BufWriter::new(File::create(path.as_path()).unwrap());
 
             let mut imports = common_imports.clone();
 
@@ -608,27 +591,22 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 )),
             ]);
 
-            write!(proof_file, "{}", coq::ImportList(&imports)).unwrap();
+            writeln!(proof_file, "{}", coq::ImportList(&imports)).unwrap();
 
             // Note: we do not export the self.extra_exports explicitly, as we rely on them
             // being re-exported from the template -- we want to be stable under changes of the
             // extras
-            proof_file.write("\n".as_bytes()).unwrap();
 
-            proof_file.write("Set Default Proof Using \"Type\".\n\n".as_bytes()).unwrap();
+            writeln!(proof_file, "Set Default Proof Using \"Type\".").unwrap();
+            writeln!(proof_file).unwrap();
 
-            proof_file
-                .write(
-                    "\
-                Section proof.\n\
-                Context `{!refinedrustGS Σ}.\n"
-                        .as_bytes(),
-                )
-                .unwrap();
+            writeln!(proof_file, "Section proof.").unwrap();
+            writeln!(proof_file, "Context `{{!refinedrustGS Σ}}.").unwrap();
+            writeln!(proof_file).unwrap();
 
             fun.generate_proof(&mut proof_file, rrconfig::admit_proofs()).unwrap();
 
-            proof_file.write("End proof.".as_bytes()).unwrap();
+            writeln!(proof_file, "End proof.").unwrap();
         }
     }
 
@@ -652,15 +630,15 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             fs::create_dir_all(base_dir_path.as_path()).unwrap();
         }
 
-        let toplevel_module_path = self.coq_path_prefix.to_string();
+        let toplevel_module_path = self.coq_path_prefix.clone();
         let coq_module_path = format!("{}.{}", toplevel_module_path, stem);
         let generated_module_path = format!("{}.generated", coq_module_path);
         let proof_module_path = format!("{}.proofs", coq_module_path);
 
         // write gitignore file
-        let gitignore_path = base_dir_path.as_path().join(format!(".gitignore"));
+        let gitignore_path = base_dir_path.as_path().join(".gitignore");
         {
-            let mut gitignore_file = io::BufWriter::new(fs::File::create(gitignore_path.as_path()).unwrap());
+            let mut gitignore_file = io::BufWriter::new(File::create(gitignore_path.as_path()).unwrap());
             write!(
                 gitignore_file,
                 "\
@@ -699,13 +677,14 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
             if !dune_project_path.exists() {
                 let mut dune_project_file =
-                    io::BufWriter::new(fs::File::create(dune_project_path.as_path()).unwrap());
+                    io::BufWriter::new(File::create(dune_project_path.as_path()).unwrap());
 
-                let (project_name, dune_project_package) = if let Some(ref dune_package) = self.dune_package {
+                let (project_name, dune_project_package) = if let Some(dune_package) = &self.dune_package {
                     (dune_package.to_string(), format!("(package (name {dune_package}))\n"))
                 } else {
-                    (stem.to_string(), format!(""))
+                    (stem.to_owned(), String::new())
                 };
+
                 write!(
                     dune_project_file,
                     "\
@@ -721,13 +700,12 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         info!("outputting generated code to {}", generated_dir_path.to_str().unwrap());
         if fs::read_dir(generated_dir_path).is_err() {
             warn!("Output directory {:?} does not exist, creating directory", generated_dir_path);
-            fs::create_dir_all(generated_dir_path).unwrap();
         } else {
             // purge contents
             info!("Removing the contents of the generated directory");
             fs::remove_dir_all(generated_dir_path).unwrap();
-            fs::create_dir(generated_dir_path).unwrap();
         }
+        fs::create_dir_all(generated_dir_path).unwrap();
 
         let code_path = generated_dir_path.join(format!("generated_code_{}.v", stem));
         let spec_path = generated_dir_path.join(format!("generated_specs_{}.v", stem));
@@ -740,7 +718,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         self.write_templates(|name| generated_dir_path.join(format!("generated_template_{name}.v")), stem);
 
         // write dune meta file
-        let mut dune_file = io::BufWriter::new(fs::File::create(generated_dune_path.as_path()).unwrap());
+        let mut dune_file = io::BufWriter::new(File::create(generated_dune_path.as_path()).unwrap());
 
         let mut extra_theories: HashSet<coq::Path> =
             self.extra_exports.iter().filter_map(|(export, _)| export.get_path()).collect();
@@ -749,11 +727,12 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         let extra_theories: Vec<String> = extra_theories.into_iter().map(|x| x.to_string()).collect();
 
-        let dune_package = if let Some(ref dune_package) = self.dune_package {
+        let dune_package = if let Some(dune_package) = &self.dune_package {
             format!("(package {dune_package})\n")
         } else {
-            format!("")
+            String::new()
         };
+
         write!(
             dune_file,
             "\
@@ -816,7 +795,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write proof dune file
         let proof_dune_path = proof_dir_path.join("dune");
-        let mut dune_file = io::BufWriter::new(fs::File::create(proof_dune_path.as_path()).unwrap());
+        let mut dune_file = io::BufWriter::new(File::create(proof_dune_path.as_path()).unwrap());
         write!(dune_file, "\
             ; Generated by [refinedrust], do not edit.\n\
             (coq.theory\n\
@@ -842,8 +821,8 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
                 // register as usual in the procedure registry
                 info!("registering shim for {:?}", shim.path);
                 let meta = function_body::ProcedureMeta::new(
-                    shim.spec_name.to_string(),
-                    shim.name.to_string(),
+                    shim.spec_name.clone(),
+                    shim.name.clone(),
                     function_body::ProcedureMode::Shim,
                 );
                 vcx.procedure_registry.register_function(did, meta)?;
@@ -915,8 +894,8 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
         );
 
         let meta = function_body::ProcedureMeta::new(
-            shim.spec_name.to_string(),
-            shim.name.to_string(),
+            shim.spec_name.clone(),
+            shim.name.clone(),
             function_body::ProcedureMode::Shim,
         );
 
@@ -939,19 +918,19 @@ fn get_most_restrictive_function_mode(
     let attrs = get_attributes_of_function(vcx.env, did);
 
     // check if this is a purely spec function; if so, skip.
-    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
+    if utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
         return function_body::ProcedureMode::Shim;
     }
 
-    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "trust_me") {
+    if utils::has_tool_attr_filtered(attrs.as_slice(), "trust_me") {
         return function_body::ProcedureMode::TrustMe;
     }
 
-    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "only_spec") {
+    if utils::has_tool_attr_filtered(attrs.as_slice(), "only_spec") {
         return function_body::ProcedureMode::OnlySpec;
     }
 
-    if crate::utils::has_tool_attr_filtered(attrs.as_slice(), "ignore") {
+    if utils::has_tool_attr_filtered(attrs.as_slice(), "ignore") {
         info!("Function {:?} will be ignored", did);
         return function_body::ProcedureMode::Ignore;
     }
@@ -967,8 +946,8 @@ fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> 
         if mode == function_body::ProcedureMode::Shim {
             // TODO better error message
             let attrs = vcx.env.get_attributes(f.to_def_id());
-            let v = crate::utils::filter_tool_attrs(attrs);
-            let annot = get_shim_attrs(v.as_slice()).unwrap();
+            let v = utils::filter_tool_attrs(attrs);
+            let annot = spec_parsers::get_shim_attrs(v.as_slice()).unwrap();
 
             info!(
                 "Registering shim: {:?} as spec: {}, code: {}",
@@ -1015,11 +994,11 @@ fn propagate_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
 
 fn get_attributes_of_function<'a>(env: &'a Environment, did: DefId) -> Vec<&'a rustc_ast::ast::AttrItem> {
     let attrs = env.get_attributes(did);
-    let mut filtered_attrs = crate::utils::filter_tool_attrs(attrs);
+    let mut filtered_attrs = utils::filter_tool_attrs(attrs);
     // also add selected attributes from the surrounding impl
     if let Some(impl_did) = env.tcx().impl_of_method(did) {
         let impl_attrs = env.get_attributes(impl_did);
-        let filtered_impl_attrs = crate::utils::filter_tool_attrs(impl_attrs);
+        let filtered_impl_attrs = utils::filter_tool_attrs(impl_attrs);
         filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
     }
     filtered_attrs
@@ -1066,7 +1045,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                 &vcx.procedure_registry,
                 &vcx.const_registry,
             ),
-            _ => Err(function_body::TranslationError::UnknownError("unknown function kind".to_string())),
+            _ => Err(base::TranslationError::UnknownError("unknown function kind".to_owned())),
         };
 
         if mode.is_only_spec() {
@@ -1076,7 +1055,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                     println!("Successfully generated spec for {}", fname);
                     vcx.procedure_registry.provide_specced_function(f.to_def_id(), spec);
                 },
-                Err(function_body::TranslationError::FatalError(err)) => {
+                Err(base::TranslationError::FatalError(err)) => {
                     println!("Encountered fatal cross-function error in translation: {:?}", err);
                     println!("Aborting...");
                     return;
@@ -1099,7 +1078,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                     println!("Successfully translated {}", fname);
                     vcx.procedure_registry.provide_translated_function(f.to_def_id(), fun);
                 },
-                Err(function_body::TranslationError::FatalError(err)) => {
+                Err(base::TranslationError::FatalError(err)) => {
                     println!("Encountered fatal cross-function error in translation: {:?}", err);
                     println!("Aborting...");
                     return;
@@ -1121,7 +1100,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
 
 fn exit_with_error(s: &str) {
     eprintln!("{s}");
-    std::process::exit(-1);
+    process::exit(-1);
 }
 
 /// Get all functions and closures in the current crate that have attributes on them and are not
@@ -1180,7 +1159,7 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
             Ok(translated_ty) => {
                 let _full_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(s.to_def_id()));
 
-                let mut const_parser = const_parser::VerboseConstAttrParser::new();
+                let mut const_parser = VerboseConstAttrParser::new();
                 let const_spec = const_parser.parse_const_attrs(*s, &const_attrs)?;
 
                 let name = const_spec.name;
@@ -1202,16 +1181,14 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
 }
 
 /// Get and parse all module attributes.
-pub fn get_module_attributes(
-    env: &Environment<'_>,
-) -> Result<HashMap<LocalDefId, mod_parser::ModuleAttrs>, String> {
+pub fn get_module_attributes(env: &Environment<'_>) -> Result<HashMap<LocalDefId, ModuleAttrs>, String> {
     let modules = env.get_modules();
     let mut attrs = HashMap::new();
     info!("collected modules: {:?}", modules);
 
     for m in &modules {
         let module_attrs = utils::filter_tool_attrs(env.get_attributes(m.to_def_id()));
-        let mut module_parser = mod_parser::VerboseModuleAttrParser::new();
+        let mut module_parser = VerboseModuleAttrParser::new();
         let module_spec = module_parser.parse_module_attrs(*m, &module_attrs)?;
         attrs.insert(*m, module_spec);
     }
@@ -1220,7 +1197,7 @@ pub fn get_module_attributes(
 }
 
 /// Find `RefinedRust` modules in the given loadpath.
-fn scan_loadpath(path: &Path, storage: &mut HashMap<String, std::path::PathBuf>) -> io::Result<()> {
+fn scan_loadpath(path: &Path, storage: &mut HashMap<String, PathBuf>) -> io::Result<()> {
     if path.is_dir() {
         for entry in fs::read_dir(path)? {
             let entry = entry?;
@@ -1245,8 +1222,8 @@ fn scan_loadpath(path: &Path, storage: &mut HashMap<String, std::path::PathBuf>)
 }
 
 /// Find `RefinedRust` modules in the given loadpaths.
-fn scan_loadpaths(paths: &[std::path::PathBuf]) -> io::Result<HashMap<String, std::path::PathBuf>> {
-    let mut found_lib_files: HashMap<String, std::path::PathBuf> = HashMap::new();
+fn scan_loadpaths(paths: &[PathBuf]) -> io::Result<HashMap<String, PathBuf>> {
+    let mut found_lib_files: HashMap<String, PathBuf> = HashMap::new();
 
     for path in paths {
         scan_loadpath(path, &mut found_lib_files)?;
@@ -1256,7 +1233,7 @@ fn scan_loadpaths(paths: &[std::path::PathBuf]) -> io::Result<HashMap<String, st
 }
 
 /// Translate a crate, creating a `VerificationCtxt` in the process.
-pub fn generate_coq_code<'tcx, F>(tcx: TyCtxt<'tcx>, continuation: F) -> Result<(), String>
+pub fn generate_coq_code<'tcx, F>(tcx: ty::TyCtxt<'tcx>, continuation: F) -> Result<(), String>
 where
     F: Fn(VerificationCtxt<'tcx, '_>),
 {
@@ -1268,10 +1245,10 @@ where
     let crate_attrs = utils::filter_tool_attrs(crate_attrs);
     info!("Found crate attributes: {:?}", crate_attrs);
     // parse crate attributes
-    let mut crate_parser = crate_parser::VerboseCrateAttrParser::new();
+    let mut crate_parser = VerboseCrateAttrParser::new();
     let crate_spec = crate_parser.parse_crate_attrs(&crate_attrs)?;
 
-    let path_prefix = crate_spec.prefix.unwrap_or_else(|| "refinedrust.examples".to_string());
+    let path_prefix = crate_spec.prefix.unwrap_or_else(|| "refinedrust.examples".to_owned());
     info!("Setting Coq path prefix: {:?}", path_prefix);
 
     let package = crate_spec.package;

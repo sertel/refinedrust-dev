@@ -4,11 +4,13 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+use std::mem;
+
 use rr_rustc_interface::data_structures::fx::FxHashSet;
 use rr_rustc_interface::middle::mir;
 use rr_rustc_interface::middle::ty::TyCtxt;
 
-use crate::utils::{self, is_prefix};
+use crate::utils;
 
 /// A set of MIR places.
 ///
@@ -33,7 +35,7 @@ impl<'tcx> PlaceSet<'tcx> {
 
     #[must_use]
     pub fn contains_prefix_of(&self, place: mir::Place<'tcx>) -> bool {
-        self.places.iter().any(|potential_prefix| is_prefix(&place, potential_prefix))
+        self.places.iter().any(|potential_prefix| utils::is_prefix(&place, potential_prefix))
     }
 
     pub fn check_invariant(&self) {
@@ -41,13 +43,13 @@ impl<'tcx> PlaceSet<'tcx> {
             for place2 in &self.places {
                 if place1 != place2 {
                     assert!(
-                        !is_prefix(place1, place2),
+                        !utils::is_prefix(place1, place2),
                         "The place {:?} is a prefix of the place {:?}",
                         place2,
                         place1
                     );
                     assert!(
-                        !is_prefix(place2, place1),
+                        !utils::is_prefix(place2, place1),
                         "The place {:?} is a prefix of the place {:?}",
                         place1,
                         place2
@@ -71,11 +73,11 @@ impl<'tcx> PlaceSet<'tcx> {
         self.check_invariant();
         // First, check that the place is not already marked as
         // definitely initialized.
-        if !self.places.iter().any(|other| is_prefix(&place, other)) {
+        if !self.places.iter().any(|other| utils::is_prefix(&place, other)) {
             // To maintain the invariant that we do not have a place and its
             // prefix in the set, we remove all places for which the given
             // one is a prefix.
-            self.places.retain(|other| !is_prefix(other, &place));
+            self.places.retain(|other| !utils::is_prefix(other, &place));
             self.places.insert(place);
             // If all fields of a struct are definitely initialized,
             // just keep info that the struct is definitely initialized.
@@ -88,14 +90,14 @@ impl<'tcx> PlaceSet<'tcx> {
     pub fn remove(&mut self, place: mir::Place<'tcx>, mir: &mir::Body<'tcx>, tcx: TyCtxt<'tcx>) {
         self.check_invariant();
         let mut places = Vec::new();
-        let old_places = std::mem::take(&mut self.places);
+        let old_places = mem::take(&mut self.places);
         // If needed, split the place whose part got uninitialized into
         // multiple places.
         for other in old_places {
-            if is_prefix(&place, &other) {
+            if utils::is_prefix(&place, &other) {
                 // We are uninitializing a field of the place `other`.
                 places.extend(utils::expand(mir, tcx, &other, &place));
-            } else if is_prefix(&other, &place) {
+            } else if utils::is_prefix(&other, &place) {
                 // We are uninitializing a place of which only some
                 // fields are initialized. Just remove all initialized
                 // fields.
@@ -108,7 +110,7 @@ impl<'tcx> PlaceSet<'tcx> {
         // Check the invariant.
         for place1 in &places {
             assert!(
-                !is_prefix(place1, &place) && !is_prefix(&place, place1),
+                !utils::is_prefix(place1, &place) && !utils::is_prefix(&place, place1),
                 "Bug: failed to ensure that there are no prefixes: place={:?} place1={:?}",
                 place,
                 place1
@@ -116,13 +118,13 @@ impl<'tcx> PlaceSet<'tcx> {
             for place2 in &places {
                 if place1 != place2 {
                     assert!(
-                        !is_prefix(place1, place2),
+                        !utils::is_prefix(place1, place2),
                         "The place {:?} is a prefix of the place {:?}",
                         place2,
                         place1
                     );
                     assert!(
-                        !is_prefix(place2, place1),
+                        !utils::is_prefix(place2, place1),
                         "The place {:?} is a prefix of the place {:?}",
                         place1,
                         place2
@@ -144,7 +146,7 @@ impl<'tcx> PlaceSet<'tcx> {
         let mut propage_places = |place_set1: &PlaceSet<'tcx>, place_set2: &PlaceSet<'tcx>| {
             for place in place_set1.iter() {
                 for potential_prefix in place_set2.iter() {
-                    if is_prefix(place, potential_prefix) {
+                    if utils::is_prefix(place, potential_prefix) {
                         places.insert(*place);
                         break;
                     }
@@ -160,7 +162,7 @@ impl<'tcx> PlaceSet<'tcx> {
 
     /// This function fixes the invariant.
     pub fn deduplicate(&mut self) {
-        let old_places = std::mem::take(&mut self.places);
+        let old_places = mem::take(&mut self.places);
         let places: Vec<_> = old_places.into_iter().collect();
         let mut to_remove = FxHashSet::default();
         for (i, place) in places.iter().enumerate() {
@@ -170,9 +172,9 @@ impl<'tcx> PlaceSet<'tcx> {
                 }
                 if place == other {
                     to_remove.insert(j);
-                } else if is_prefix(place, other) {
+                } else if utils::is_prefix(place, other) {
                     to_remove.insert(i);
-                } else if is_prefix(other, place) {
+                } else if utils::is_prefix(other, place) {
                     to_remove.insert(j);
                 }
             }

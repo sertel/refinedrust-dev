@@ -58,7 +58,7 @@ lazy_static! {
                 builder = builder.add_source(File::with_name(&file));
 
                 // set override for workdir to the config file path
-                let path_to_file = std::path::PathBuf::from(file);
+                let path_to_file = PathBuf::from(file);
                 let parent = path_to_file.parent().unwrap();
                 let filepath = parent.to_str().unwrap();
                 builder = builder.set_default("work_dir", filepath)?;
@@ -85,13 +85,13 @@ pub fn dump() -> String {
 /// Makes the path absolute with respect to the `work_dir`.
 fn make_path_absolute(path: &str) -> PathBuf {
     // read the base path we set
-    let base_path: String = work_dir();
+    let base_path = work_dir();
 
-    let path_buf = std::path::PathBuf::from(path);
+    let path_buf = PathBuf::from(path);
     if path_buf.is_absolute() {
         path_buf
     } else {
-        let base_path_buf = std::path::PathBuf::from(base_path);
+        let base_path_buf = PathBuf::from(base_path);
         if base_path_buf.is_absolute() {
             base_path_buf.join(path_buf).clean()
         } else {

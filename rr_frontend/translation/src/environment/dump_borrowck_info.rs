@@ -4,11 +4,11 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use std::cell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::File;
-use std::io::{self, BufWriter, Write};
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
+use std::{cell, fs, io};
 
 use log::{debug, trace};
 use rustc_hash::FxHashMap;
@@ -25,7 +25,7 @@ use super::polonius_info::PoloniusInfo;
 use super::procedure::Procedure;
 use super::{loops, Environment};
 use crate::data::ProcedureDefId;
-use crate::environment::mir_utils::RealEdges;
+use crate::environment::mir_utils::real_edges::RealEdges;
 
 /*
 pub fn dump_borrowck_info(env: &Environment<'_>, procedures: &[ProcedureDefId]) {
@@ -68,10 +68,7 @@ struct InfoPrinter<'a, 'tcx: 'a> {
 }
 
 impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
-    fn dump_borrowck_facts(
-        info: &'a PoloniusInfo<'a, 'tcx>,
-        writer: &mut BufWriter<File>,
-    ) -> std::io::Result<()> {
+    fn dump_borrowck_facts(info: &'a PoloniusInfo<'a, 'tcx>, writer: &mut BufWriter<File>) -> io::Result<()> {
         let input_facts = &info.borrowck_in_facts;
         let interner = &info.interner;
         write!(writer, "======== Borrowck facts ========\n\n")?;
@@ -194,7 +191,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         debug!("Writing raw polonius info to {:?}", raw_path);
 
         let prefix = raw_path.parent().expect("Unable to determine parent dir");
-        std::fs::create_dir_all(prefix).expect("Unable to create parent dir");
+        fs::create_dir_all(prefix).expect("Unable to create parent dir");
         let raw_file = File::create(raw_path).expect("Unable to create file");
         let mut raw = BufWriter::new(raw_file);
         Self::dump_borrowck_facts(info, &mut raw).unwrap();
@@ -210,7 +207,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         debug!("Writing graph to {:?}", graph_path);
 
         let prefix = graph_path.parent().expect("Unable to determine parent dir");
-        std::fs::create_dir_all(prefix).expect("Unable to create parent dir");
+        fs::create_dir_all(prefix).expect("Unable to create parent dir");
         let graph_file = File::create(graph_path).expect("Unable to create file");
         let graph = BufWriter::new(graph_file);
 
@@ -524,7 +521,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 
     fn visit_basic_block(&mut self, bb: mir::BasicBlock) -> Result<(), io::Error> {
         write_graph!(self, "\"{:?}\" [ shape = \"record\"", bb);
-        if self.loops.loop_heads.contains(&bb) {
+        if self.loops.is_loop_head(bb) {
             write_graph!(self, "color=green");
         }
         write_graph!(self, "label =<<table>");
@@ -546,14 +543,16 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         write_graph!(self, "</th>");
 
         let mir::BasicBlockData {
-            ref statements,
-            ref terminator,
+            statements,
+            terminator,
             ..
-        } = self.mir[bb];
+        } = &self.mir[bb];
+
         let mut location = mir::Location {
             block: bb,
             statement_index: 0,
         };
+
         let terminator_index = statements.len();
 
         while location.statement_index < terminator_index {
@@ -575,11 +574,11 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
         write_graph!(self, "</tr>");
         write_graph!(self, "</table>> ];");
 
-        if let Some(ref terminator) = &terminator {
+        if let Some(terminator) = &terminator {
             self.visit_terminator(bb, terminator)?;
         }
 
-        if !self.loops.loop_heads.contains(&bb) {
+        if !self.loops.is_loop_head(bb) {
             return Ok(());
         }
 
@@ -783,11 +782,11 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
 
     fn visit_terminator(&self, bb: mir::BasicBlock, terminator: &mir::Terminator) -> Result<(), io::Error> {
         use rustc_middle::mir::TerminatorKind;
-        match terminator.kind {
+        match &terminator.kind {
             TerminatorKind::Goto { target } => {
                 write_edge!(self, bb, target);
             },
-            TerminatorKind::SwitchInt { ref targets, .. } => {
+            TerminatorKind::SwitchInt { targets, .. } => {
                 for target in targets.all_targets() {
                     write_edge!(self, bb, target);
                 }
@@ -802,18 +801,14 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             TerminatorKind::UnwindTerminate(_) => {
                 write_edge!(self, bb, str terminate);
             },
-            TerminatorKind::Drop {
-                ref target, unwind, ..
-            } => {
+            TerminatorKind::Drop { target, unwind, .. } => {
                 write_edge!(self, bb, target);
                 //if let Some(target) = unwind {
                 //write_edge!(self, bb, unwind target);
                 //}
             },
-            TerminatorKind::Call {
-                ref target, unwind, ..
-            } => {
-                if let Some(target) = *target {
+            TerminatorKind::Call { target, unwind, .. } => {
+                if let Some(target) = target {
                     write_edge!(self, bb, target);
                 }
                 //if let Some(target) = unwind {
@@ -829,8 +824,8 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
             TerminatorKind::Yield { .. } => unimplemented!(),
             TerminatorKind::GeneratorDrop => unimplemented!(),
             TerminatorKind::FalseEdge {
-                ref real_target,
-                ref imaginary_target,
+                real_target,
+                imaginary_target,
             } => {
                 write_edge!(self, bb, real_target);
                 write_edge!(self, bb, imaginary_target);

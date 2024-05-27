@@ -6,14 +6,14 @@
 
 use std::collections::{HashMap, HashSet};
 
-use log::{debug, trace};
+use log::{debug, info, trace};
 use rustc_data_structures::graph::dominators::{dominators, Dominators};
 use rustc_index::{Idx, IndexVec};
 use rustc_middle::mir;
-use rustc_middle::mir::visit::Visitor;
+use rustc_middle::mir::visit::{PlaceContext, Visitor};
 
 use crate::environment::mir_sets::place_set::PlaceSet;
-use crate::environment::mir_utils::RealEdges;
+use crate::environment::mir_utils::real_edges::RealEdges;
 use crate::environment::procedure::BasicBlockIndex;
 use crate::utils;
 
@@ -94,8 +94,6 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
         context: mir::visit::PlaceContext,
         location: mir::Location,
     ) {
-        use rustc_middle::mir::visit::PlaceContext::*;
-
         // TODO: using `location`, skip the places that are used for typechecking
         // because that part of the generated code contains closures.
         if !(self.body.contains(&location.block) && context.is_use()) {
@@ -106,19 +104,26 @@ impl<'b, 'tcx> Visitor<'tcx> for AccessCollector<'b, 'tcx> {
 
         #[allow(clippy::unnested_or_patterns)]
         let access_kind = match context {
-            MutatingUse(mir::visit::MutatingUseContext::Store)
-            | MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
+            PlaceContext::MutatingUse(mir::visit::MutatingUseContext::Store)
+            | PlaceContext::MutatingUse(mir::visit::MutatingUseContext::Call) => PlaceAccessKind::Store,
 
-            NonMutatingUse(mir::visit::NonMutatingUseContext::Move)
-            | MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
+            PlaceContext::NonMutatingUse(mir::visit::NonMutatingUseContext::Move)
+            | PlaceContext::MutatingUse(mir::visit::MutatingUseContext::Drop) => PlaceAccessKind::Move,
 
-            NonMutatingUse(mir::visit::NonMutatingUseContext::Copy)
-            | NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => PlaceAccessKind::Read,
+            PlaceContext::NonMutatingUse(mir::visit::NonMutatingUseContext::Copy)
+            | PlaceContext::NonMutatingUse(mir::visit::NonMutatingUseContext::Inspect) => {
+                PlaceAccessKind::Read
+            },
 
-            MutatingUse(mir::visit::MutatingUseContext::Borrow) => PlaceAccessKind::MutableBorrow,
-            NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => PlaceAccessKind::SharedBorrow,
+            PlaceContext::MutatingUse(mir::visit::MutatingUseContext::Borrow) => {
+                PlaceAccessKind::MutableBorrow
+            },
 
-            NonUse(_) => unreachable!(),
+            PlaceContext::NonMutatingUse(mir::visit::NonMutatingUseContext::SharedBorrow) => {
+                PlaceAccessKind::SharedBorrow
+            },
+
+            PlaceContext::NonUse(_) => unreachable!(),
             x => unimplemented!("{:?}", x),
         };
 
@@ -204,15 +209,16 @@ fn order_basic_blocks(
 }
 
 /// Struct that contains information about all loops in the procedure.
+#[allow(clippy::module_name_repetitions)]
 #[derive(Clone)]
 pub struct ProcedureLoops {
     /// A list of basic blocks that are loop heads.
-    pub loop_heads: HashSet<BasicBlockIndex>,
+    loop_heads: HashSet<BasicBlockIndex>,
     /// The depth of each loop head, starting from one for a simple single loop.
-    pub loop_head_depths: HashMap<BasicBlockIndex, usize>,
+    loop_head_depths: HashMap<BasicBlockIndex, usize>,
     /// A map from loop heads to the corresponding bodies.
-    pub loop_bodies: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>>,
-    pub ordered_loop_bodies: HashMap<BasicBlockIndex, Vec<BasicBlockIndex>>,
+    loop_bodies: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>>,
+    ordered_loop_bodies: HashMap<BasicBlockIndex, Vec<BasicBlockIndex>>,
     /// A map from loop bodies to the ordered vector of enclosing loop heads (from outer to inner).
     enclosing_loop_heads: HashMap<BasicBlockIndex, Vec<BasicBlockIndex>>,
     /// A map from loop heads to the ordered blocks from which a CFG edge exits from the loop.
@@ -221,11 +227,11 @@ pub struct ProcedureLoops {
     /// in any loop iteration).
     nonconditional_loop_blocks: HashMap<BasicBlockIndex, HashSet<BasicBlockIndex>>,
     /// Back edges.
-    pub back_edges: HashSet<(BasicBlockIndex, BasicBlockIndex)>,
+    back_edges: HashSet<(BasicBlockIndex, BasicBlockIndex)>,
     /// Dominators graph.
     dominators: Dominators<BasicBlockIndex>,
     /// The list of basic blocks ordered in the topological order (ignoring back edges).
-    pub ordered_blocks: Vec<BasicBlockIndex>,
+    ordered_blocks: Vec<BasicBlockIndex>,
 }
 
 impl ProcedureLoops {
@@ -364,6 +370,20 @@ impl ProcedureLoops {
         self.loop_heads.len()
     }
 
+    pub fn dump_body_head(&self) {
+        info!("loop heads: {:?}", self.loop_heads);
+        for (head, bodies) in &self.loop_bodies {
+            info!("loop {:?} -> {:?}", head, bodies);
+        }
+    }
+
+    #[must_use]
+    pub const fn get_back_edges(
+        &self,
+    ) -> &HashSet<(rustc_middle::mir::BasicBlock, rustc_middle::mir::BasicBlock)> {
+        &self.back_edges
+    }
+
     #[must_use]
     pub fn max_loop_nesting(&self) -> usize {
         self.loop_head_depths.values().max().copied().unwrap_or(0)
@@ -448,7 +468,7 @@ impl ProcedureLoops {
         loop_head: BasicBlockIndex,
         mir: &'a mir::Body<'tcx>,
     ) -> Vec<PlaceAccess<'tcx>> {
-        let body = self.loop_bodies.get(&loop_head).unwrap();
+        let body = &self.loop_bodies[&loop_head];
         let mut visitor = AccessCollector {
             body,
             accessed_places: Vec::new(),

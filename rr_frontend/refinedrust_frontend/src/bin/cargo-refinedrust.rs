@@ -6,13 +6,13 @@
 #![feature(let_chains)]
 
 //use prusti_utils::{config, launch};
-use std::env;
 use std::path::PathBuf;
 use std::process::Command;
+use std::{env, process};
 
 fn main() {
     if let Err(code) = process(env::args().skip(1)) {
-        std::process::exit(code);
+        process::exit(code);
     }
 }
 
@@ -40,15 +40,15 @@ where
     let command = rrconfig::cargo_command();
 
     // TODO: If we're using workspaces, we should figure out the right dir for the workspace
-    let cargo_target_path = env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_string());
-    let cargo_target = PathBuf::from(cargo_target_path.to_string());
+    let cargo_target_path = env::var("CARGO_TARGET_DIR").unwrap_or_else(|_| "target".to_owned());
+    let cargo_target = PathBuf::from(cargo_target_path.clone());
 
     let maybe_output_dir = rrconfig::output_dir();
     let output_dir;
     if let Some(old_output_dir) = maybe_output_dir {
         output_dir = old_output_dir;
     } else {
-        output_dir = [cargo_target_path, "verify".to_string()].into_iter().collect();
+        output_dir = [cargo_target_path, "verify".to_owned()].into_iter().collect();
     }
 
     let exit_status = Command::new(cargo_path)

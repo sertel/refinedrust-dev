@@ -1,5 +1,6 @@
 #![feature(box_patterns)]
 #![feature(let_chains)]
+#![allow(clippy::pub_use)]
 
 pub mod code;
 pub mod coq;

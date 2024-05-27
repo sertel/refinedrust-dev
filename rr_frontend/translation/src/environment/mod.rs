@@ -5,21 +5,6 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 //! This module defines the interface provided to a verifier.
-
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
-use std::rc::Rc;
-
-use rustc_ast::ast::Attribute;
-use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_hir::hir_id::HirId;
-use rustc_middle::mir;
-use rustc_middle::ty::{self, ParamEnv, TyCtxt};
-use rustc_span::symbol::Symbol;
-use rustc_span::Span;
-use rustc_trait_selection::infer::{InferCtxtExt, TyCtxtInferExt};
-
 pub mod borrowck;
 mod collect_closure_defs_visitor;
 mod collect_prusti_spec_visitor;
@@ -32,19 +17,27 @@ pub mod mir_utils;
 pub mod polonius_info;
 pub mod procedure;
 
-// use syntax::codemap::CodeMap;
-// use syntax::codemap::Span;
-// use utils::get_attr_value;
-use rustc_span::source_map::SourceMap;
+use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
+use std::rc::Rc;
 
-use self::borrowck::facts::BorrowckFacts;
+use rustc_ast::ast::Attribute;
+use rustc_hir::def_id::{DefId, LocalDefId};
+use rustc_hir::hir_id::HirId;
+use rustc_middle::{mir, ty};
+use rustc_span::source_map::SourceMap;
+use rustc_span::symbol::Symbol;
+use rustc_span::Span;
+use rustc_trait_selection::infer::{InferCtxtExt, TyCtxtInferExt};
+
+use self::borrowck::facts;
 use self::collect_closure_defs_visitor::CollectClosureDefsVisitor;
 use self::collect_prusti_spec_visitor::CollectPrustiSpecVisitor;
-pub use self::dump_borrowck_info::dump_borrowck_info;
-pub use self::loops::{PlaceAccess, PlaceAccessKind, ProcedureLoops};
-pub use self::procedure::{BasicBlockIndex, Procedure};
-// use config;
+use self::loops::{PlaceAccess, PlaceAccessKind, ProcedureLoops};
+use self::procedure::{BasicBlockIndex, Procedure};
 use crate::data::ProcedureDefId;
+use crate::utils;
 
 /// Facade to the Rust compiler.
 // #[derive(Copy, Clone)]
@@ -52,14 +45,14 @@ pub struct Environment<'tcx> {
     /// Cached MIR bodies.
     bodies: RefCell<HashMap<LocalDefId, Rc<mir::Body<'tcx>>>>,
     /// Cached borrowck information.
-    borrowck_facts: RefCell<HashMap<LocalDefId, Rc<BorrowckFacts>>>,
-    tcx: TyCtxt<'tcx>,
+    borrowck_facts: RefCell<HashMap<LocalDefId, Rc<facts::Borrowck>>>,
+    tcx: ty::TyCtxt<'tcx>,
 }
 
 impl<'tcx> Environment<'tcx> {
     /// Builds an environment given a compiler state.
     #[must_use]
-    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
+    pub fn new(tcx: ty::TyCtxt<'tcx>) -> Self {
         Environment {
             tcx,
             bodies: RefCell::new(HashMap::new()),
@@ -84,7 +77,7 @@ impl<'tcx> Environment<'tcx> {
     }
 
     /// Returns the typing context
-    pub const fn tcx(&self) -> TyCtxt<'tcx> {
+    pub const fn tcx(&self) -> ty::TyCtxt<'tcx> {
         self.tcx
     }
 
@@ -200,14 +193,14 @@ impl<'tcx> Environment<'tcx> {
     pub fn has_tool_attribute(&self, def_id: ProcedureDefId, name: &str) -> bool {
         let tcx = self.tcx();
         // TODO: migrate to get_attrs
-        crate::utils::has_tool_attr(tcx.get_attrs_unchecked(def_id), name)
+        utils::has_tool_attr(tcx.get_attrs_unchecked(def_id), name)
     }
 
     /// Check whether the procedure has any `[tool]` attribute.
     pub fn has_any_tool_attribute(&self, def_id: ProcedureDefId) -> bool {
         let tcx = self.tcx();
         // TODO: migrate to get_attrs
-        crate::utils::has_any_tool_attr(tcx.get_attrs_unchecked(def_id))
+        utils::has_any_tool_attr(tcx.get_attrs_unchecked(def_id))
     }
 
     /// Get the attributes of an item (e.g. procedures).
@@ -258,30 +251,31 @@ impl<'tcx> Environment<'tcx> {
     /// Get the MIR body of a local procedure.
     pub fn local_mir(&self, def_id: LocalDefId) -> Rc<mir::Body<'tcx>> {
         let mut bodies = self.bodies.borrow_mut();
+
         if let Some(body) = bodies.get(&def_id) {
-            body.clone()
-        } else {
-            // SAFETY: This is safe because we are feeding in the same `tcx`
-            // that was used to store the data.
-            let body_with_facts = unsafe { self::mir_storage::retrieve_mir_body(self.tcx, def_id) };
-            let body = body_with_facts.body;
-            let facts = BorrowckFacts {
-                input_facts: RefCell::new(body_with_facts.input_facts),
-                output_facts: body_with_facts.output_facts.unwrap(),
-                location_table: RefCell::new(body_with_facts.location_table),
-            };
-
-            let mut borrowck_facts = self.borrowck_facts.borrow_mut();
-            borrowck_facts.insert(def_id, Rc::new(facts));
-
-            bodies.entry(def_id).or_insert_with(|| Rc::new(body)).clone()
+            return body.clone();
         }
+
+        // SAFETY: This is safe because we are feeding in the same `tcx`
+        // that was used to store the data.
+        let body_with_facts = unsafe { self::mir_storage::retrieve_mir_body(self.tcx, def_id) };
+        let body = body_with_facts.body;
+        let facts = facts::Borrowck {
+            input_facts: RefCell::new(body_with_facts.input_facts),
+            output_facts: body_with_facts.output_facts.unwrap(),
+            location_table: RefCell::new(body_with_facts.location_table),
+        };
+
+        let mut borrowck_facts = self.borrowck_facts.borrow_mut();
+        borrowck_facts.insert(def_id, Rc::new(facts));
+
+        bodies.entry(def_id).or_insert_with(|| Rc::new(body)).clone()
     }
 
     /// Get Polonius facts of a local procedure.
-    pub fn local_mir_borrowck_facts(&self, def_id: LocalDefId) -> Rc<BorrowckFacts> {
+    pub fn local_mir_borrowck_facts(&self, def_id: LocalDefId) -> Rc<facts::Borrowck> {
         // ensure that we have already fetched the body & facts
-        let _ = self.local_mir(def_id);
+        self.local_mir(def_id);
         let borrowck_facts = self.borrowck_facts.borrow();
         borrowck_facts.get(&def_id).unwrap().clone()
     }
@@ -446,4 +440,12 @@ impl<'tcx> Environment<'tcx> {
             )
         }
     */
+}
+
+pub fn dump_borrowck_info<'a, 'tcx>(
+    env: &'a Environment<'tcx>,
+    procedure: ProcedureDefId,
+    info: &'a polonius_info::PoloniusInfo<'a, 'tcx>,
+) {
+    dump_borrowck_info::dump_borrowck_info(env, procedure, info);
 }

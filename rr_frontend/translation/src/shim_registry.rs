@@ -84,8 +84,8 @@ pub struct FunctionShim<'a> {
 impl<'a> From<FunctionShim<'a>> for ShimFunctionEntry {
     fn from(shim: FunctionShim<'a>) -> Self {
         Self {
-            path: shim.path.iter().map(|x| (*x).to_string()).collect(),
-            kind: if shim.is_method { "method".to_string() } else { "function".to_string() },
+            path: shim.path.iter().map(|x| (*x).to_owned()).collect(),
+            kind: if shim.is_method { "method".to_owned() } else { "function".to_owned() },
             name: shim.name,
             spec: shim.spec_name,
         }
@@ -107,7 +107,7 @@ impl From<TraitMethodImplShim> for ShimTraitMethodImplEntry {
             trait_path: shim.trait_path,
             method_ident: shim.method_ident,
             for_type: shim.for_type,
-            kind: "trait_method".to_string(),
+            kind: "trait_method".to_owned(),
             name: shim.name,
             spec: shim.spec_name,
         }
@@ -125,8 +125,8 @@ pub struct AdtShim<'a> {
 impl<'a> From<AdtShim<'a>> for ShimAdtEntry {
     fn from(shim: AdtShim<'a>) -> Self {
         Self {
-            path: shim.path.iter().map(|x| (*x).to_string()).collect(),
-            kind: "adt".to_string(),
+            path: shim.path.iter().map(|x| (*x).to_owned()).collect(),
+            kind: "adt".to_owned(),
             syntype: shim.syn_type,
             semtype: shim.sem_type,
             rtype: shim.refinement_type,
@@ -164,9 +164,10 @@ pub struct ShimRegistry<'a> {
 
 impl<'a> ShimRegistry<'a> {
     fn get_shim_kind(v: &serde_json::Value) -> Result<ShimKind, String> {
-        let obj = v.as_object().ok_or(format!("element is not an object"))?;
-        let vk = obj.get("kind").ok_or(format!("object does not have \"kind\" attribute"))?;
-        let kind_str = vk.as_str().ok_or(format!("\"kind\" attribute is not a string"))?;
+        let obj = v.as_object().ok_or_else(|| "element is not an object".to_owned())?;
+        let vk = obj.get("kind").ok_or_else(|| "object does not have \"kind\" attribute".to_owned())?;
+        let kind_str = vk.as_str().ok_or_else(|| "\"kind\" attribute is not a string".to_owned())?;
+
         match kind_str {
             "function" => Ok(ShimKind::Function),
             "method" => Ok(ShimKind::Method),
@@ -196,7 +197,7 @@ impl<'a> ShimRegistry<'a> {
         }
     }
 
-    pub fn new(arena: &'a Arena<String>) -> std::result::Result<ShimRegistry<'a>, String> {
+    pub fn new(arena: &'a Arena<String>) -> Result<ShimRegistry<'a>, String> {
         let mut reg = Self::empty(arena);
 
         match rrconfig::shim_file() {
@@ -219,49 +220,48 @@ impl<'a> ShimRegistry<'a> {
             serde_json::Value::Object(obj) => {
                 let path = obj
                     .get("refinedrust_path")
-                    .ok_or(format!("Missing attribute \"refinedrust_path\""))?
+                    .ok_or_else(|| "Missing attribute \"refinedrust_path\"".to_owned())?
                     .as_str()
-                    .ok_or(format!("Expected string for \"refinedrust_path\" attribute"))?;
+                    .ok_or_else(|| "Expected string for \"refinedrust_path\" attribute".to_owned())?;
 
                 let module = obj
                     .get("refinedrust_module")
-                    .ok_or(format!("Missing attribute \"refinedrust_module\""))?
+                    .ok_or_else(|| "Missing attribute \"refinedrust_module\"".to_owned())?
                     .as_str()
-                    .ok_or(format!("Expected string for \"refinedrust_module\" attribute"))?;
+                    .ok_or_else(|| "Expected string for \"refinedrust_module\" attribute".to_owned())?;
 
-                let _ = obj
-                    .get("refinedrust_name")
-                    .ok_or(format!("Missing attribute \"refinedrust_name\""))?
+                obj.get("refinedrust_name")
+                    .ok_or_else(|| "Missing attribute \"refinedrust_name\"".to_owned())?
                     .as_str()
-                    .ok_or(format!("Expected string for \"refinedrust_name\" attribute"))?;
+                    .ok_or_else(|| "Expected string for \"refinedrust_name\" attribute".to_owned())?;
 
                 let module = coq::Module::new_with_path(module, coq::Path::new(path));
                 self.exports.push(coq::Export::new(module));
 
                 let dependencies = obj
                     .get("module_dependencies")
-                    .ok_or(format!("Missing attribute \"module_dependencies\""))?
+                    .ok_or_else(|| "Missing attribute \"module_dependencies\"".to_owned())?
                     .as_array()
-                    .ok_or(format!("Expected array for \"module_dependencies\" attribute"))?;
+                    .ok_or_else(|| "Expected array for \"module_dependencies\" attribute".to_owned())?;
 
                 for dependency in dependencies {
-                    let path = dependency
-                        .as_str()
-                        .ok_or(format!("Expected string for element of \"module_dependencies\" array"))?;
+                    let path = dependency.as_str().ok_or_else(|| {
+                        "Expected string for element of \"module_dependencies\" array".to_owned()
+                    })?;
 
                     self.dependencies.push(coq::Path::new(path));
                 }
 
                 obj.get("items")
-                    .ok_or(format!("Missing attribute \"items\""))?
+                    .ok_or_else(|| "Missing attribute \"items\"".to_owned())?
                     .as_array()
-                    .ok_or(format!("Expected array for \"items\" attribute"))?
+                    .ok_or_else(|| "Expected array for \"items\" attribute".to_owned())?
                     .clone()
             },
 
             serde_json::Value::Array(arr) => arr,
 
-            _ => return Err("invalid Json format".to_string()),
+            _ => return Err("invalid Json format".to_owned()),
         };
 
         for i in v {
@@ -393,7 +393,7 @@ pub fn is_valid_refinedrust_module(f: File) -> Option<String> {
             let name = obj.get("refinedrust_name")?;
             let name = name.as_str()?;
 
-            Some(name.to_string())
+            Some(name.to_owned())
         },
         _ => None,
     }

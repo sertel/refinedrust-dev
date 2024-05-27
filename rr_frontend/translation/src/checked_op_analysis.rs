@@ -52,7 +52,7 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
     fn successors_of_bb(bb: &BasicBlockData<'tcx>) -> Vec<BasicBlock> {
         let mut v = Vec::new();
 
-        let Some(ref term) = bb.terminator else {
+        let Some(term) = &bb.terminator else {
             return v;
         };
 
@@ -66,26 +66,17 @@ impl<'def, 'tcx> CheckedOpLocalAnalysis<'def, 'tcx> {
             } => v.push(*target),
 
             TerminatorKind::InlineAsm {
-                template: _,
-                operands: _,
-                options: _,
-                line_spans: _,
                 destination: Some(destination),
-                unwind: _,
+                ..
             } => v.push(*destination),
 
-            TerminatorKind::SwitchInt { discr: _, targets } => {
+            TerminatorKind::SwitchInt { targets, .. } => {
                 for target in targets.all_targets() {
                     v.push(*target);
                 }
             },
 
-            TerminatorKind::Yield {
-                value: _,
-                resume,
-                resume_arg: _,
-                drop: _,
-            } => v.push(*resume),
+            TerminatorKind::Yield { resume, .. } => v.push(*resume),
 
             _ => (),
         }

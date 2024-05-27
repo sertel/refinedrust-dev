@@ -6,8 +6,8 @@ mod parse_utils;
 pub mod struct_spec_parser;
 pub mod verbose_function_spec_parser;
 
-use attribute_parse as parse;
-use parse::{MToken, Parse};
+use attribute_parse::{parse, MToken};
+use parse::Parse;
 use rustc_ast::ast::AttrItem;
 
 /// For parsing of `RustPaths`
@@ -16,8 +16,8 @@ pub struct RustPath {
 }
 
 impl<F> parse::Parse<F> for RustPath {
-    fn parse(input: parse::ParseStream, meta: &F) -> parse::ParseResult<Self> {
-        let x: parse::Punctuated<parse::Ident, parse::MToken![::]> =
+    fn parse(input: parse::Stream, meta: &F) -> parse::Result<Self> {
+        let x: parse::Punctuated<parse::Ident, MToken![::]> =
             parse::Punctuated::parse_separated_nonempty(input, meta)?;
         let path = x.into_iter().map(|x| x.value()).collect();
         Ok(Self { path })
@@ -25,21 +25,19 @@ impl<F> parse::Parse<F> for RustPath {
 }
 
 pub fn get_export_as_attr(attrs: &[&AttrItem]) -> Result<Vec<String>, String> {
-    let meta: () = ();
-    let meta = &meta;
     for &it in attrs {
         let path_segs = &it.path.segments;
 
         if let Some(seg) = path_segs.get(1) {
-            let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
+            let buffer = parse::Buffer::new(&it.args.inner_tokens());
 
             if seg.ident.name.as_str() == "export_as" {
-                let path = RustPath::parse(&buffer, meta).map_err(parse_utils::str_err)?;
+                let path = RustPath::parse(&buffer, &()).map_err(parse_utils::str_err)?;
                 return Ok(path.path);
             }
         }
     }
-    Err("Did not find export_as annotation".to_string())
+    Err("Did not find export_as annotation".to_owned())
 }
 
 /// Parser for getting shim attributes
@@ -53,16 +51,13 @@ impl<U> parse::Parse<U> for ShimAnnot
 where
     U: ?Sized,
 {
-    fn parse(input: parse::ParseStream, meta: &U) -> parse::ParseResult<Self> {
+    fn parse(input: parse::Stream, meta: &U) -> parse::Result<Self> {
         let pos = input.pos().unwrap();
         let args: parse::Punctuated<parse::LitStr, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
 
         if args.len() != 2 {
-            return Err(parse::ParseError::OtherErr(
-                pos,
-                "Expected exactly two arguments to rr::shim".to_string(),
-            ));
+            return Err(parse::Error::OtherErr(pos, "Expected exactly two arguments to rr::shim".to_owned()));
         }
 
         let args: Vec<_> = args.into_iter().collect();
@@ -76,19 +71,17 @@ where
 
 /// Extract a shim annotation from a list of annotations of a function or method.
 pub fn get_shim_attrs(attrs: &[&AttrItem]) -> Result<ShimAnnot, String> {
-    let meta: () = ();
-    let meta = &meta;
     for &it in attrs {
         let path_segs = &it.path.segments;
 
         if let Some(seg) = path_segs.get(1) {
-            let buffer = parse::ParseBuffer::new(&it.args.inner_tokens());
+            let buffer = parse::Buffer::new(&it.args.inner_tokens());
 
             if seg.ident.name.as_str() == "shim" {
-                let annot = ShimAnnot::parse(&buffer, meta).map_err(parse_utils::str_err)?;
+                let annot = ShimAnnot::parse(&buffer, &()).map_err(parse_utils::str_err)?;
                 return Ok(annot);
             }
         }
     }
-    Err("Did not find shim annotation".to_string())
+    Err("Did not find shim annotation".to_owned())
 }
