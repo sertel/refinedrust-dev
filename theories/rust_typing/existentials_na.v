@@ -848,14 +848,43 @@ Section generated_code.
     Qed.
 
     Lemma stratify_ltype_alias_shared π E L mu mdu ma {M} (m : M) l l2 rt''' st r κ (T : stratify_ltype_cont_t) :
-      T L True _ (AliasLtype rt''' st l2) r
+      ( if decide (ma = StratNoRefold)
+        then
+          T L True _ (AliasLtype rt''' st l2) r
+        else
+          find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)),
+            ⌜π = π2⌝ ∗ ⌜ltype_st lt2 = st⌝ ∗ ⌜b2 = Owned false⌝ ∗
+            (* recursively stratify *)
+            stratify_ltype π E L mu mdu ma m l2 lt2 r2 b2
+              (λ L2 R rt2' lt2' r2',
+                 (T L2 ((l2 ◁ₗ[π, Owned false] r2' @ lt2') ∗ R) rt''' (AliasLtype rt''' st l2) r))))
       ⊢ stratify_ltype π E L mu mdu ma m l (AliasLtype rt''' st l2) r (Shared κ) T.
     Proof.
-      unfold stratify_ltype.
-
+      rewrite /stratify_ltype /find_in_context.
       iIntros "HT".
-      iIntros (????) "#CTX #HE HL Hl". iModIntro. iExists _, _, _, _, _. iFrame.
-      iSplitR; first done. iApply logical_step_intro. by iFrame.
+
+      destruct (decide (ma = StratNoRefold)) as [-> | ].
+      { iIntros (????) "#CTX #HE HL Hl". iModIntro. iExists _, _, _, _, _. iFrame.
+        iSplitR; first done. iApply logical_step_intro. by iFrame. }
+
+      iDestruct "HT" as ([rt2 [[[lt2 r2] b2] π2]]) "(Hl2 & <- & <- & -> & HT)"; simpl.
+
+      iIntros (????) "#CTX #HE HL Hl".
+      rewrite ltype_own_alias_unfold /alias_lty_own.
+      simp_ltypes.
+
+      iDestruct "Hl" as "(%ly & %Halg & -> & %Hly & Hlb)".
+
+      iMod ("HT" with "[//] [//] [//] CTX HE HL Hl2") as (L3 R rt2' lt2' r2') "(HL & %Hst & Hstep & HT)".
+      iModIntro. iExists _, _, _, _, _.
+      iFrame; iR.
+
+      iApply (logical_step_compose with "Hstep").
+      iApply logical_step_intro.
+      iIntros "($ & $)".
+
+      rewrite ltype_own_alias_unfold /alias_lty_own.
+      by iExists ly; iFrame.
     Qed.
 
     Lemma stratify_ltype_magic_Owned {rt_cur rt_inner} π E L mu mdu ma {M} (ml : M) l
@@ -1003,12 +1032,6 @@ Section generated_code.
       liSimpl; liShow.
 
       repeat liRStep; liShow.
-      unfold weak_subtype.
-
-      all: print_remaining_goal.
-      Unshelve. all: sidecond_solver.
-      Unshelve. all: sidecond_hammer.
-      Unshelve. all: print_remaining_sidecond.
     Admitted.
 
     Lemma UnsafeCell_get_old_proof (π : thread_id) :
@@ -1017,6 +1040,7 @@ Section generated_code.
       UnsafeCell_get_old_prelude.
 
       repeat liRStep; liShow.
+
       iApply na_typed_place_ex_plain_t_shared.
 
       do 6 liRStep; liShow.
@@ -1028,18 +1052,11 @@ Section generated_code.
 
       iApply typed_place_magic_owned.
 
-      do 20 liRStep; liShow.
-      do 7 liRStep.
-      do 100 liRStep; liShow.
-
-      replace [arg_self; local___0] with [arg_self; local___0; l']; last admit.
-
       rep <- 1 liRStep; liShow.
 
       iApply stratify_ltype_alias_shared.
 
-      do 8 liRStep; liShow. (* <<< Will prevent a pattern match here *)
-      do 4 liRStep; liShow.
+      do 7 liRStep; liShow.
 
       iApply stratify_ltype_magic_Owned.
 
@@ -1047,8 +1064,8 @@ Section generated_code.
 
       Unshelve. all: sidecond_solver.
       Unshelve. all: sidecond_hammer.
-      Unshelve. all: try solve_ndisj.
-    Admitted.
+      Unshelve. all: solve_ndisj.
+    Qed.
   End proof.
 
 End generated_code.
