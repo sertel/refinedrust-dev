@@ -11,13 +11,14 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use log::{debug, trace};
-use polonius_engine::{Algorithm, Output};
-use rustc_data_structures::fx::FxHashMap;
-use rustc_index::Idx;
-use rustc_middle::ty::fold::TypeFolder;
-use rustc_middle::{mir, ty};
-use rustc_span::def_id::DefId;
-use rustc_span::Span;
+use rr_rustc_interface::data_structures::fx::FxHashMap;
+use rr_rustc_interface::hir;
+use rr_rustc_interface::index::Idx;
+use rr_rustc_interface::middle::ty::fold::TypeFolder;
+use rr_rustc_interface::middle::{mir, ty};
+use rr_rustc_interface::polonius_engine::{Algorithm, Output};
+use rr_rustc_interface::span::def_id::DefId;
+use rr_rustc_interface::span::Span;
 
 use crate::environment::borrowck::facts::PointType;
 use crate::environment::borrowck::place_regions::PlaceRegions;
@@ -85,7 +86,7 @@ impl AtomicRegion {
     }
 }
 
-/// for an overview fo universal regions, see also `rustc_borrowck/src/universal_regions.rs`
+/// for an overview fo universal regions, see also `borrowck/src/universal_regions.rs`
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum UniversalRegionKind {
     /// the static region
@@ -174,7 +175,7 @@ pub enum Error {
 
 pub fn graphviz<'tcx>(
     env: &Environment<'tcx>,
-    def_path: &rustc_hir::definitions::DefPath,
+    def_path: &hir::definitions::DefPath,
     def_id: DefId,
     info: &PoloniusInfo<'_, 'tcx>,
 ) -> io::Result<()> {

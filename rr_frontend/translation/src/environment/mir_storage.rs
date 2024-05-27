@@ -16,9 +16,9 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::{mem, thread_local};
 
-use rustc_borrowck::consumers::BodyWithBorrowckFacts;
-use rustc_hir::def_id::LocalDefId;
-use rustc_middle::ty::TyCtxt;
+use rr_rustc_interface::borrowck::consumers::BodyWithBorrowckFacts;
+use rr_rustc_interface::hir::def_id::LocalDefId;
+use rr_rustc_interface::middle::ty::TyCtxt;
 
 thread_local! {
     pub static SHARED_STATE:

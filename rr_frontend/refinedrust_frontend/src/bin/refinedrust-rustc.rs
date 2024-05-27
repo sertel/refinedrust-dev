@@ -7,25 +7,19 @@
 
 #![feature(box_patterns)]
 #![feature(rustc_private)]
-extern crate rustc_borrowck;
-extern crate rustc_driver;
-extern crate rustc_hir;
-extern crate rustc_interface;
-extern crate rustc_middle;
-extern crate rustc_session;
-
 use std::path::PathBuf;
 use std::process::Command;
 use std::{env, process};
 
 use log::{debug, info};
-use rustc_driver::Compilation;
-use rustc_hir::def_id::LocalDefId;
-use rustc_interface::Config;
-use rustc_middle::query::queries::mir_borrowck;
-use rustc_middle::query::{ExternProviders, Providers};
-use rustc_middle::ty::TyCtxt;
-use rustc_session::Session;
+use rr_rustc_interface::driver::Compilation;
+use rr_rustc_interface::hir::def_id::LocalDefId;
+use rr_rustc_interface::interface::Config;
+use rr_rustc_interface::middle::query::queries::mir_borrowck;
+use rr_rustc_interface::middle::query::{ExternProviders, Providers};
+use rr_rustc_interface::middle::ty::TyCtxt;
+use rr_rustc_interface::session::Session;
+use rr_rustc_interface::{borrowck, driver, interface};
 use translation::environment::mir_storage;
 
 const BUG_REPORT_URL: &str = "https://gitlab.mpi-sws.org/lgaeher/refinedrust-dev/-/issues/new";
@@ -45,10 +39,10 @@ struct RRCompilerCalls;
 
 // From Prusti.
 fn mir_borrowck(tcx: TyCtxt<'_>, def_id: LocalDefId) -> mir_borrowck::ProvidedValue<'_> {
-    let body_with_facts = rustc_borrowck::consumers::get_body_with_borrowck_facts(
+    let body_with_facts = borrowck::consumers::get_body_with_borrowck_facts(
         tcx,
         def_id,
-        rustc_borrowck::consumers::ConsumerOptions::PoloniusOutputFacts,
+        borrowck::consumers::ConsumerOptions::PoloniusOutputFacts,
     );
     // SAFETY: This is safe because we are feeding in the same `tcx` that is
     // going to be used as a witness when pulling out the data.
@@ -56,7 +50,7 @@ fn mir_borrowck(tcx: TyCtxt<'_>, def_id: LocalDefId) -> mir_borrowck::ProvidedVa
         mir_storage::store_mir_body(tcx, def_id, body_with_facts);
     }
     let mut providers = Providers::default();
-    rustc_borrowck::provide(&mut providers);
+    borrowck::provide(&mut providers);
     let original_mir_borrowck = providers.mir_borrowck;
     original_mir_borrowck(tcx, def_id)
 }
@@ -113,7 +107,7 @@ pub fn analyze(tcx: TyCtxt<'_>) {
     }
 }
 
-impl rustc_driver::Callbacks for RRCompilerCalls {
+impl driver::Callbacks for RRCompilerCalls {
     fn config(&mut self, config: &mut Config) {
         assert!(config.override_queries.is_none());
         if !rrconfig::no_verify() {
@@ -123,8 +117,8 @@ impl rustc_driver::Callbacks for RRCompilerCalls {
 
     fn after_analysis<'tcx>(
         &mut self,
-        _: &rustc_interface::interface::Compiler,
-        queries: &'tcx rustc_interface::Queries<'tcx>,
+        _: &interface::interface::Compiler,
+        queries: &'tcx interface::Queries<'tcx>,
     ) -> Compilation {
         if rrconfig::no_verify() {
             // TODO: We also need this to properly compile deps.
@@ -142,11 +136,11 @@ impl rustc_driver::Callbacks for RRCompilerCalls {
 }
 
 fn main() {
-    rustc_driver::install_ice_hook(BUG_REPORT_URL, |_handler| ());
+    driver::install_ice_hook(BUG_REPORT_URL, |_handler| ());
 
     // If we should act like rustc, just run the main function of the driver
     if rrconfig::be_rustc() {
-        rustc_driver::main();
+        driver::main();
     }
 
     // otherwise, initialize our loggers
@@ -195,7 +189,7 @@ fn main() {
     }
     debug!("rustc arguments: {:?}", rustc_args);
 
-    let exit_code = rustc_driver::catch_with_exit_code(move || {
+    let exit_code = driver::catch_with_exit_code(move || {
         if rustc_args.get(1) == Some(&"-vV".to_owned()) {
             // When cargo queries the verbose rustc version,
             // also print the RR version to stdout.
@@ -243,7 +237,7 @@ fn main() {
 
         let mut callbacks = RRCompilerCalls {};
 
-        rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks).run()
+        driver::RunCompiler::new(&rustc_args, &mut callbacks).run()
     });
 
     process::exit(exit_code)

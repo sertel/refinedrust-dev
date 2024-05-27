@@ -4,7 +4,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-use rustc_middle::mir;
+use rr_rustc_interface::middle::mir;
 
 pub trait StatementAsAssign<'tcx> {
     /// If this statement is an assignment, returns the LHS and RHS. If not, returns `None`.

@@ -6,8 +6,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rustc_middle::ty;
-use rustc_middle::ty::{Ty, TyCtxt, TyKind};
+use rr_rustc_interface::middle::ty;
+use rr_rustc_interface::middle::ty::{Ty, TyCtxt, TyKind};
 use ty::TypeSuperFoldable;
 
 use crate::base::*;

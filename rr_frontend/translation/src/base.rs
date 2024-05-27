@@ -4,9 +4,9 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use polonius_engine::FactTypes;
-use rustc_borrowck::consumers::RustcFacts;
-use rustc_middle::mir::Location;
+use rr_rustc_interface::borrowck::consumers::RustcFacts;
+use rr_rustc_interface::middle::mir::Location;
+use rr_rustc_interface::polonius_engine::FactTypes;
 
 pub type Region = <RustcFacts as FactTypes>::Origin;
 pub type Loan = <RustcFacts as FactTypes>::Loan;

@@ -5,10 +5,10 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use log::trace;
-use rr_rustc_interface::hir;
-use rustc_hir::def_id::LocalDefId;
-use rustc_hir::intravisit::Visitor;
-use rustc_middle::ty::TyCtxt;
+use rr_rustc_interface::hir::def_id::LocalDefId;
+use rr_rustc_interface::hir::intravisit::Visitor;
+use rr_rustc_interface::middle::ty::TyCtxt;
+use rr_rustc_interface::{hir, middle};
 
 use crate::environment::Environment;
 
@@ -39,7 +39,7 @@ impl<'a, 'tcx> CollectPrustiSpecVisitor<'a, 'tcx> {
 
     pub fn run(&mut self) {
         //self.tcx.hir().visit_all_item_likes_in_crate
-        let it: &rustc_middle::hir::ModuleItems = self.tcx.hir_crate_items(());
+        let it: &middle::hir::ModuleItems = self.tcx.hir_crate_items(());
         for id in it.items() {
             self.visit_item(self.tcx.hir().item(id));
         }

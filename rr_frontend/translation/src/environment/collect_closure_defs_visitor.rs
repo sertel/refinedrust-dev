@@ -1,9 +1,9 @@
 use log::trace;
-use rustc_hir as hir;
-use rustc_hir::def_id::LocalDefId;
-use rustc_hir::intravisit::{walk_expr, Visitor};
-use rustc_middle::hir::map::Map;
-use rustc_middle::hir::nested_filter::OnlyBodies;
+use rr_rustc_interface::hir;
+use rr_rustc_interface::hir::def_id::LocalDefId;
+use rr_rustc_interface::hir::intravisit::{walk_expr, Visitor};
+use rr_rustc_interface::middle::hir::map::Map;
+use rr_rustc_interface::middle::hir::nested_filter::OnlyBodies;
 
 use crate::environment::Environment;
 

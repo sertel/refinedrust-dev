@@ -8,6 +8,8 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
+rr_rustc_interface.workspace = true
+
 unicode-xid.workspace = true
 
 [package.metadata.rust-analyzer]

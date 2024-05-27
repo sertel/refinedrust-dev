@@ -7,10 +7,11 @@
 use std::collections::{HashMap, HashSet};
 
 use log::{debug, info, trace};
-use rustc_data_structures::graph::dominators::{dominators, Dominators};
-use rustc_index::{Idx, IndexVec};
-use rustc_middle::mir;
-use rustc_middle::mir::visit::{PlaceContext, Visitor};
+use rr_rustc_interface::data_structures::graph::dominators::{dominators, Dominators};
+use rr_rustc_interface::index::{Idx, IndexVec};
+use rr_rustc_interface::middle;
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::mir::visit::{PlaceContext, Visitor};
 
 use crate::environment::mir_sets::place_set::PlaceSet;
 use crate::environment::mir_utils::real_edges::RealEdges;
@@ -378,9 +379,7 @@ impl ProcedureLoops {
     }
 
     #[must_use]
-    pub const fn get_back_edges(
-        &self,
-    ) -> &HashSet<(rustc_middle::mir::BasicBlock, rustc_middle::mir::BasicBlock)> {
+    pub const fn get_back_edges(&self) -> &HashSet<(middle::mir::BasicBlock, middle::mir::BasicBlock)> {
         &self.back_edges
     }
 

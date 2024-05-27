@@ -1,13 +1,14 @@
 /// Inspired by (in terms of rustc APIs used) by
 /// <https://github.com/xldenis/creusot/blob/9d8b1822cd0c43154a6d5d4d05460be56710399c/creusot/src/translation/traits.rs>
 use log::info;
-use rustc_hir::def_id::DefId;
-use rustc_infer::infer::TyCtxtInferExt;
-use rustc_middle::ty;
-use rustc_middle::ty::{
+use rr_rustc_interface::hir::def_id::DefId;
+use rr_rustc_interface::infer::infer::TyCtxtInferExt;
+use rr_rustc_interface::middle::ty;
+use rr_rustc_interface::middle::ty::{
     AssocItem, AssocItemContainer, GenericArgsRef, ParamEnv, TraitRef, TyCtxt, TypeVisitableExt,
 };
-use rustc_trait_selection::traits::{ImplSource, NormalizeExt};
+use rr_rustc_interface::trait_selection::traits::{ImplSource, NormalizeExt};
+use rr_rustc_interface::{middle, trait_selection};
 
 pub fn associated_items(tcx: TyCtxt, def_id: DefId) -> impl Iterator<Item = &AssocItem> {
     tcx.associated_items(def_id).in_definition_order()
@@ -18,14 +19,14 @@ pub fn normalize_type<'tcx, T>(
     tcx: TyCtxt<'tcx>,
     param_env: ParamEnv<'tcx>,
     ty: T,
-) -> Result<T, Vec<rustc_trait_selection::traits::FulfillmentError<'tcx>>>
+) -> Result<T, Vec<trait_selection::traits::FulfillmentError<'tcx>>>
 where
     T: ty::TypeFoldable<ty::TyCtxt<'tcx>>,
 {
     let infer_ctx = tcx.infer_ctxt().build();
-    rustc_trait_selection::traits::fully_normalize(
+    trait_selection::traits::fully_normalize(
         &infer_ctx,
-        rustc_middle::traits::ObligationCause::dummy(),
+        middle::traits::ObligationCause::dummy(),
         param_env,
         ty,
     )
@@ -138,7 +139,7 @@ pub fn resolve_assoc_item<'tcx>(
             // this is a user-defined trait, and we found the right impl
             // now map back to the item we were looking for
             let trait_did = tcx.trait_id_of_impl(impl_data.impl_def_id).unwrap();
-            let trait_def: &'tcx rustc_middle::ty::TraitDef = tcx.trait_def(trait_did);
+            let trait_def: &'tcx middle::ty::TraitDef = tcx.trait_def(trait_did);
 
             // Find the id of the actual associated method we will be running
             let ancestors = trait_def.ancestors(tcx, impl_data.impl_def_id).unwrap();
@@ -157,7 +158,7 @@ pub fn resolve_assoc_item<'tcx>(
 
             let param_env = param_env.with_reveal_all_normalized(tcx);
             let substs = substs.rebase_onto(tcx, trait_did, impl_data.args);
-            let substs = rustc_trait_selection::traits::translate_args(
+            let substs = trait_selection::traits::translate_args(
                 &infcx,
                 param_env,
                 impl_data.impl_def_id,
@@ -176,7 +177,7 @@ pub fn resolve_assoc_item<'tcx>(
         {
             match *substs[0].as_type().unwrap().kind() {
                 // try to get the body
-                rustc_middle::ty::Closure(closure_def_id, closure_substs) => {
+                middle::ty::Closure(closure_def_id, closure_substs) => {
                     Some((closure_def_id, closure_substs, TraitResolutionKind::Closure))
                 },
                 _ => unimplemented!(),

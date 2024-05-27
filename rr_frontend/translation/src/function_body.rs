@@ -8,17 +8,18 @@ use std::collections::{btree_map, BTreeMap, HashMap, HashSet};
 
 use log::{info, trace, warn};
 use radium::coq;
-use rustc_hir::def_id::DefId;
-use rustc_middle::mir::interpret::{ConstValue, Scalar};
-use rustc_middle::mir::tcx::PlaceTy;
-use rustc_middle::mir::{
+use rr_rustc_interface::hir::def_id::DefId;
+use rr_rustc_interface::middle::mir::interpret::{ConstValue, Scalar};
+use rr_rustc_interface::middle::mir::tcx::PlaceTy;
+use rr_rustc_interface::middle::mir::{
     BasicBlock, BasicBlockData, BinOp, Body, BorrowKind, Constant, ConstantKind, Local, LocalKind, Location,
     Mutability, Operand, Place, ProjectionElem, Rvalue, StatementKind, Terminator, TerminatorKind, UnOp,
     VarDebugInfoContents,
 };
-use rustc_middle::ty::fold::TypeFolder;
-use rustc_middle::ty::{ConstKind, Ty, TyKind, TypeFoldable};
-use rustc_middle::{mir, ty};
+use rr_rustc_interface::middle::ty::fold::TypeFolder;
+use rr_rustc_interface::middle::ty::{ConstKind, Ty, TyKind, TypeFoldable};
+use rr_rustc_interface::middle::{mir, ty};
+use rr_rustc_interface::{abi, ast, middle};
 
 use crate::arg_folder::*;
 use crate::base::*;
@@ -215,7 +216,7 @@ pub struct FunctionTranslator<'a, 'def, 'tcx> {
     /// registry of consts
     const_registry: &'a ConstScope<'def>,
     /// attributes on this function
-    attrs: &'a [&'a rustc_ast::ast::AttrItem],
+    attrs: &'a [&'a ast::ast::AttrItem],
     /// polonius info for this function
     info: &'a PoloniusInfo<'a, 'tcx>,
     /// translator for types
@@ -342,7 +343,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         env: &'def Environment<'tcx>,
         meta: &ProcedureMeta,
         proc: Procedure<'tcx>,
-        attrs: &'a [&'a rustc_ast::ast::AttrItem],
+        attrs: &'a [&'a ast::ast::AttrItem],
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
         proc_registry: &'a ProcedureScope<'def>,
         const_registry: &'a ConstScope<'def>,
@@ -585,7 +586,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         env: &'def Environment<'tcx>,
         meta: &ProcedureMeta,
         proc: Procedure<'tcx>,
-        attrs: &'a [&'a rustc_ast::ast::AttrItem],
+        attrs: &'a [&'a ast::ast::AttrItem],
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
         proc_registry: &'a ProcedureScope<'def>,
         const_registry: &'a ConstScope<'def>,
@@ -1118,7 +1119,7 @@ struct BodyTranslator<'a, 'def, 'tcx> {
     /// scope of used consts
     const_registry: &'a ConstScope<'def>,
     /// attributes on this function
-    attrs: &'a [&'a rustc_ast::ast::AttrItem],
+    attrs: &'a [&'a ast::ast::AttrItem],
     /// polonius info for this function
     info: &'a PoloniusInfo<'a, 'tcx>,
     /// local lifetimes: the LHS is the lifetime name, the RHS are the super lifetimes
@@ -1887,7 +1888,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         func: &Operand<'tcx>,
         args: &[Operand<'tcx>],
         destination: &Place<'tcx>,
-        target: Option<rustc_middle::mir::BasicBlock>,
+        target: Option<middle::mir::BasicBlock>,
         loc: Location,
         dying_loans: &[facts::Loan],
     ) -> Result<radium::Stmt, TranslationError> {
@@ -3466,7 +3467,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             traits::TraitResolutionKind::Closure => {
                 // TODO: here, we should first generate an instance of the trait
                 //self.env.tcx().
-                // mir_shims(rustc_middle::ty::InstanceDef::Item(resolved_did));
+                // mir_shims(middle::ty::InstanceDef::Item(resolved_did));
                 // the args are just the closure args. We can ignore them.
                 let _clos_args = resolved_params.as_closure();
                 let param_name = self.register_use_procedure(resolved_did, ty::List::empty())?;
@@ -3532,7 +3533,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 Scalar::Ptr(pointer, _) => {
                     let glob_alloc = self.env.tcx().global_alloc(pointer.provenance);
                     match glob_alloc {
-                        rustc_middle::mir::interpret::GlobalAlloc::Static(did) => {
+                        middle::mir::interpret::GlobalAlloc::Static(did) => {
                             info!(
                                 "Found static GlobalAlloc {:?} for Ref scalar {:?} at type {:?}",
                                 did, sc, ty
@@ -3651,7 +3652,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     let name = self.ty_translator.translator.get_field_name_of(
                         *f,
                         cur_ty.ty,
-                        cur_ty.variant_index.map(rustc_abi::VariantIdx::as_usize),
+                        cur_ty.variant_index.map(abi::VariantIdx::as_usize),
                     )?;
 
                     acc_expr = radium::Expr::FieldOf {

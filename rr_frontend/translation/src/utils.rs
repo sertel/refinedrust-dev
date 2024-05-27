@@ -11,12 +11,13 @@
 use std::mem;
 
 use log::{info, trace};
+use rr_rustc_interface::ast::ast;
+use rr_rustc_interface::data_structures::fx::FxHashSet;
+use rr_rustc_interface::hir::def_id::{DefId, CRATE_DEF_INDEX};
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::ty::{self, TyCtxt};
+use rr_rustc_interface::{hir, middle, span};
 use rrconfig as config;
-use rustc_ast::ast;
-use rustc_data_structures::fx::FxHashSet;
-use rustc_hir::def_id::{DefId, CRATE_DEF_INDEX};
-use rustc_middle::mir;
-use rustc_middle::ty::{self, TyCtxt};
 use serde::{Deserialize, Serialize};
 
 use crate::spec_parsers::get_export_as_attr;
@@ -158,7 +159,7 @@ pub fn get_cleaned_def_path(tcx: TyCtxt<'_>, did: DefId) -> Vec<String> {
 
 // Alternative implementation of `get_cleaned_def_path`, but this doesn't always yield a rooted
 // path (but only a suffix of the full path)
-fn extract_def_path(path: &rustc_hir::definitions::DefPath) -> Vec<String> {
+fn extract_def_path(path: &hir::definitions::DefPath) -> Vec<String> {
     let mut components = Vec::new();
     for p in &path.data {
         if let Some(name) = p.data.get_opt_name() {
@@ -213,12 +214,12 @@ where
                 index: CRATE_DEF_INDEX,
             };
 
-            let mut items: &[rustc_middle::metadata::ModChild] = tcx.module_children(krate);
+            let mut items: &[middle::metadata::ModChild] = tcx.module_children(krate);
             let mut path_it = path.iter().skip(1).peekable();
 
             while let Some(segment) = path_it.next() {
                 for item in mem::take(&mut items) {
-                    let item: &rustc_middle::metadata::ModChild = item;
+                    let item: &middle::metadata::ModChild = item;
                     if item.ident.name.as_str() == segment.as_ref() {
                         if path_it.peek().is_none() {
                             return Some(item.res.def_id());
@@ -305,11 +306,8 @@ pub fn try_resolve_trait_method_did<'tcx>(
     // get all impls of this trait
     let impls: &ty::trait_def::TraitImpls = tcx.trait_impls_of(trait_did);
 
-    let simplified_type = rustc_middle::ty::fast_reject::simplify_type(
-        tcx,
-        for_type,
-        ty::fast_reject::TreatParams::AsCandidateKey,
-    )?;
+    let simplified_type =
+        middle::ty::fast_reject::simplify_type(tcx, for_type, ty::fast_reject::TreatParams::AsCandidateKey)?;
     let defs = impls.non_blanket_impls().get(&simplified_type)?;
     info!("found implementations: {:?}", impls);
 
@@ -340,7 +338,7 @@ pub fn try_resolve_trait_method_did<'tcx>(
                 // find the right item
                 if let Some(item) = impl_assoc_items.find_by_name_and_kind(
                     tcx,
-                    rustc_span::symbol::Ident::from_str(method_name),
+                    span::symbol::Ident::from_str(method_name),
                     ty::AssocKind::Fn,
                     trait_did,
                 ) {
@@ -380,13 +378,13 @@ where
                 index: CRATE_DEF_INDEX,
             };
 
-            let mut items: &[rustc_middle::metadata::ModChild] = tcx.module_children(krate);
+            let mut items: &[middle::metadata::ModChild] = tcx.module_children(krate);
             let mut path_it = path.iter().skip(1).peekable();
 
             while let Some(segment) = path_it.next() {
                 //info!("items to look at: {:?}", items);
                 for item in mem::take(&mut items) {
-                    let item: &rustc_middle::metadata::ModChild = item;
+                    let item: &middle::metadata::ModChild = item;
 
                     if item.ident.name.as_str() != segment.as_ref() {
                         continue;

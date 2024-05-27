@@ -6,11 +6,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use rustc_middle::mir::tcx::PlaceTy;
-use rustc_middle::mir::{
+use rr_rustc_interface::middle::mir::tcx::PlaceTy;
+use rr_rustc_interface::middle::mir::{
     BasicBlock, BasicBlockData, Body, Local, Place, Rvalue, StatementKind, TerminatorKind,
 };
-use rustc_middle::ty::{Ty, TyCtxt};
+use rr_rustc_interface::middle::ty::{Ty, TyCtxt};
 
 /// Analysis for determining which locals are the temporaries used as the result of a checked-op.
 pub struct CheckedOpLocalAnalysis<'def, 'tcx> {

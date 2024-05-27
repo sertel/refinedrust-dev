@@ -7,7 +7,7 @@
 use attribute_parse::{parse, MToken};
 use parse::{Parse, Peek};
 use radium::{coq, specs};
-use rustc_ast::ast::AttrItem;
+use rr_rustc_interface::ast::ast::AttrItem;
 
 use crate::spec_parsers::parse_utils::*;
 

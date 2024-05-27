@@ -8,9 +8,9 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use log::{debug, trace};
-use rustc_middle::mir::{self, BasicBlock, Body as Mir, TerminatorKind};
-use rustc_middle::ty::{self, Ty, TyCtxt};
-use rustc_span::Span;
+use rr_rustc_interface::middle::mir::{self, BasicBlock, Body as Mir, TerminatorKind};
+use rr_rustc_interface::middle::ty::{self, Ty, TyCtxt};
+use rr_rustc_interface::span::Span;
 
 use crate::data::ProcedureDefId;
 use crate::environment::mir_utils::real_edges::RealEdges;

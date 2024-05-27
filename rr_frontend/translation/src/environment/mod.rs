@@ -22,14 +22,15 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
 
-use rustc_ast::ast::Attribute;
-use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_hir::hir_id::HirId;
-use rustc_middle::{mir, ty};
-use rustc_span::source_map::SourceMap;
-use rustc_span::symbol::Symbol;
-use rustc_span::Span;
-use rustc_trait_selection::infer::{InferCtxtExt, TyCtxtInferExt};
+use rr_rustc_interface::ast::ast::Attribute;
+use rr_rustc_interface::hir::def_id::{DefId, LocalDefId};
+use rr_rustc_interface::hir::hir_id::HirId;
+use rr_rustc_interface::middle::{mir, ty};
+use rr_rustc_interface::span;
+use rr_rustc_interface::span::source_map::SourceMap;
+use rr_rustc_interface::span::symbol::Symbol;
+use rr_rustc_interface::span::Span;
+use rr_rustc_interface::trait_selection::infer::{InferCtxtExt, TyCtxtInferExt};
 
 use crate::data::ProcedureDefId;
 use crate::environment::borrowck::facts;
@@ -73,7 +74,7 @@ impl<'tcx> Environment<'tcx> {
 
     /// Returns the name of the crate that is being compiled
     pub fn crate_name(&self) -> String {
-        self.tcx.crate_name(rustc_span::def_id::LOCAL_CRATE).to_string()
+        self.tcx.crate_name(span::def_id::LOCAL_CRATE).to_string()
     }
 
     /// Returns the typing context

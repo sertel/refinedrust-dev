@@ -7,25 +7,6 @@
 #![feature(box_patterns)]
 #![feature(let_chains)]
 #![feature(rustc_private)]
-extern crate polonius_engine;
-extern crate rustc_abi;
-extern crate rustc_ast;
-extern crate rustc_attr;
-extern crate rustc_borrowck;
-extern crate rustc_data_structures;
-extern crate rustc_driver;
-extern crate rustc_errors;
-extern crate rustc_hir;
-extern crate rustc_index;
-extern crate rustc_infer;
-extern crate rustc_interface;
-extern crate rustc_middle;
-extern crate rustc_session;
-extern crate rustc_span;
-extern crate rustc_target;
-extern crate rustc_trait_selection;
-extern crate rustc_type_ir;
-
 mod arg_folder;
 mod base;
 mod checked_op_analysis;
@@ -49,8 +30,9 @@ use std::{fs, io, process};
 
 use log::{info, trace, warn};
 use radium::coq;
-use rustc_hir::def_id::{DefId, LocalDefId};
-use rustc_middle::ty;
+use rr_rustc_interface::hir::def_id::{DefId, LocalDefId};
+use rr_rustc_interface::middle::ty;
+use rr_rustc_interface::{ast, span};
 use topological_sort::TopologicalSort;
 use typed_arena::Arena;
 
@@ -614,8 +596,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     /// Write Coq files for this verification unit.
     pub fn write_coq_files(&self) {
         // use the crate_name for naming
-        let crate_name: rustc_span::symbol::Symbol =
-            self.env.tcx().crate_name(rustc_span::def_id::LOCAL_CRATE);
+        let crate_name: span::symbol::Symbol = self.env.tcx().crate_name(span::def_id::LOCAL_CRATE);
         let stem = crate_name.as_str();
 
         // create output directory
@@ -985,7 +966,7 @@ fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> 
     Ok(())
 }
 
-fn propagate_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
+fn propagate_attr_from_impl(it: &ast::ast::AttrItem) -> bool {
     let Some(ident) = it.path.segments.get(1) else {
         return false;
     };
@@ -993,7 +974,7 @@ fn propagate_attr_from_impl(it: &rustc_ast::ast::AttrItem) -> bool {
     matches!(ident.ident.as_str(), "context")
 }
 
-fn get_attributes_of_function<'a>(env: &'a Environment, did: DefId) -> Vec<&'a rustc_ast::ast::AttrItem> {
+fn get_attributes_of_function<'a>(env: &'a Environment, did: DefId) -> Vec<&'a ast::ast::AttrItem> {
     let attrs = env.get_attributes(did);
     let mut filtered_attrs = utils::filter_tool_attrs(attrs);
     // also add selected attributes from the surrounding impl

@@ -29,9 +29,9 @@ use std::cell::Cell;
 use std::str::FromStr;
 use std::{fmt, result, vec};
 
-use rustc_ast::token::{BinOpToken, Lit, LitKind, TokenKind};
-use rustc_ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
-use rustc_span::{Span, Symbol};
+use rr_rustc_interface::ast::token::{BinOpToken, Lit, LitKind, TokenKind};
+use rr_rustc_interface::ast::tokenstream::{DelimSpan, TokenStream, TokenTree};
+use rr_rustc_interface::span::{Span, Symbol};
 use unicode_xid::UnicodeXID;
 
 pub trait IntoSpans<S> {

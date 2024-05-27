@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::io;
 
 use log::{debug, trace};
-use rustc_middle::{mir, ty};
+use rr_rustc_interface::middle::{mir, ty};
 
 use crate::environment::borrowck::facts;
 

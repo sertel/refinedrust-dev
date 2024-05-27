@@ -11,11 +11,12 @@ use std::path::PathBuf;
 use std::{cell, fs, io};
 
 use log::{debug, trace};
-use rustc_hash::FxHashMap;
-use rustc_index::Idx;
-use rustc_middle::mir;
-use rustc_middle::ty::TyCtxt;
-use {rrconfig as config, rustc_hir as hir};
+use rr_rustc_interface::hash::FxHashMap;
+use rr_rustc_interface::index::Idx;
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::middle::ty::TyCtxt;
+use rr_rustc_interface::{hir, middle};
+use rrconfig as config;
 
 use crate::data::ProcedureDefId;
 use crate::environment::borrowck::facts;
@@ -23,7 +24,7 @@ use crate::environment::mir_analyses::initialization::{
     compute_definitely_initialized, DefinitelyInitializedAnalysisResult,
 };
 use crate::environment::mir_utils::real_edges::RealEdges;
-use crate::environment::polonius_info::PoloniusInfo;
+use crate::environment::polonius_info::{graphviz, PoloniusInfo};
 use crate::environment::procedure::Procedure;
 use crate::environment::{loops, Environment};
 
@@ -217,7 +218,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         //let loop_invariant_block = HashMap::new();
 
         // print polonius.dot
-        crate::environment::polonius_info::graphviz(self.env, &def_path, def_id, info).unwrap();
+        graphviz(self.env, &def_path, def_id, info).unwrap();
 
         // print graph.dot
         let mir_info_printer = MirInfoPrinter {
@@ -781,7 +782,7 @@ impl<'a, 'tcx> MirInfoPrinter<'a, 'tcx> {
     }
 
     fn visit_terminator(&self, bb: mir::BasicBlock, terminator: &mir::Terminator) -> Result<(), io::Error> {
-        use rustc_middle::mir::TerminatorKind;
+        use middle::mir::TerminatorKind;
         match &terminator.kind {
             TerminatorKind::Goto { target } => {
                 write_edge!(self, bb, target);

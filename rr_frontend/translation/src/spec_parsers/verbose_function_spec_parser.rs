@@ -10,8 +10,8 @@ use attribute_parse::{parse, MToken};
 use log::{info, warn};
 use parse::{Parse, Peek};
 use radium::{coq, push_str_list, specs};
-use rustc_ast::ast::AttrItem;
-use rustc_middle::ty;
+use rr_rustc_interface::ast::ast::AttrItem;
+use rr_rustc_interface::middle::ty;
 
 use crate::spec_parsers::parse_utils::{ParseMeta, *};
 

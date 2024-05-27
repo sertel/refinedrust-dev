@@ -10,9 +10,10 @@ use std::fmt::Write;
 
 use log::{info, trace, warn};
 use radium::{self, coq, push_str_list};
-use rustc_hir::def_id::DefId;
-use rustc_middle::ty;
-use rustc_middle::ty::{IntTy, Ty, TyKind, TypeFoldable, UintTy};
+use rr_rustc_interface::hir::def_id::DefId;
+use rr_rustc_interface::middle::ty;
+use rr_rustc_interface::middle::ty::{IntTy, Ty, TyKind, TypeFoldable, UintTy};
+use rr_rustc_interface::{abi, ast, attr, middle, target};
 use typed_arena::Arena;
 
 use crate::base::*;
@@ -498,7 +499,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     fn generate_structlike_use_internal<'a, 'b>(
         &self,
         ty: Ty<'tcx>,
-        variant: Option<rustc_target::abi::VariantIdx>,
+        variant: Option<target::abi::VariantIdx>,
         adt_deps: TranslationState<'a, 'b, 'def>,
     ) -> Result<radium::Type<'def>, TranslationError> {
         match ty.kind() {
@@ -672,7 +673,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     fn generate_enum_variant_use_noshim<'a, 'b, F>(
         &self,
         adt_id: DefId,
-        variant_idx: rustc_target::abi::VariantIdx,
+        variant_idx: target::abi::VariantIdx,
         args: F,
         state: TranslationState<'a, 'b, 'def>,
     ) -> Result<radium::AbstractStructUse<'def>, TranslationError>
@@ -977,14 +978,14 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         did: DefId,
         env: &'a [ty::GenericArg<'tcx>],
-    ) -> rustc_middle::mir::interpret::GlobalId<'tcx> {
-        rustc_middle::mir::interpret::GlobalId {
+    ) -> middle::mir::interpret::GlobalId<'tcx> {
+        middle::mir::interpret::GlobalId {
             instance: ty::Instance::new(did, self.env.tcx().mk_args(env)),
             promoted: None,
         }
     }
 
-    fn try_scalar_int_to_i128(s: rustc_middle::ty::ScalarInt) -> Option<i128> {
+    fn try_scalar_int_to_i128(s: middle::ty::ScalarInt) -> Option<i128> {
         s.try_to_int(s.size()).ok()
     }
 
@@ -1387,7 +1388,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 };
 
                 match mutability {
-                    rustc_ast::ast::Mutability::Mut => Ok(radium::Type::MutRef(Box::new(translated_ty), lft)),
+                    ast::ast::Mutability::Mut => Ok(radium::Type::MutRef(Box::new(translated_ty), lft)),
                     _ => Ok(radium::Type::ShrRef(Box::new(translated_ty), lft)),
                 }
             },
@@ -1535,51 +1536,53 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         }
     }
 
-    /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
-    const fn translate_int_type(it: rustc_attr::IntType) -> radium::IntType {
+    /// Translate a `attr::IntType` (this is different from the `ty`
+    /// `IntType`).
+    const fn translate_int_type(it: attr::IntType) -> radium::IntType {
         match it {
-            rustc_attr::IntType::SignedInt(it) => match it {
-                rustc_ast::IntTy::I8 => radium::IntType::I8,
-                rustc_ast::IntTy::I16 => radium::IntType::I16,
-                rustc_ast::IntTy::I32 => radium::IntType::I32,
-                rustc_ast::IntTy::I64 => radium::IntType::I64,
-                rustc_ast::IntTy::I128 => radium::IntType::I128,
-                rustc_ast::IntTy::Isize => radium::IntType::ISize,
+            attr::IntType::SignedInt(it) => match it {
+                ast::IntTy::I8 => radium::IntType::I8,
+                ast::IntTy::I16 => radium::IntType::I16,
+                ast::IntTy::I32 => radium::IntType::I32,
+                ast::IntTy::I64 => radium::IntType::I64,
+                ast::IntTy::I128 => radium::IntType::I128,
+                ast::IntTy::Isize => radium::IntType::ISize,
             },
-            rustc_attr::IntType::UnsignedInt(it) => match it {
-                rustc_ast::UintTy::U8 => radium::IntType::U8,
-                rustc_ast::UintTy::U16 => radium::IntType::U16,
-                rustc_ast::UintTy::U32 => radium::IntType::U32,
-                rustc_ast::UintTy::U64 => radium::IntType::U64,
-                rustc_ast::UintTy::U128 => radium::IntType::U128,
-                rustc_ast::UintTy::Usize => radium::IntType::USize,
+            attr::IntType::UnsignedInt(it) => match it {
+                ast::UintTy::U8 => radium::IntType::U8,
+                ast::UintTy::U16 => radium::IntType::U16,
+                ast::UintTy::U32 => radium::IntType::U32,
+                ast::UintTy::U64 => radium::IntType::U64,
+                ast::UintTy::U128 => radium::IntType::U128,
+                ast::UintTy::Usize => radium::IntType::USize,
             },
         }
     }
 
-    /// Translate a `rustc_attr::IntType` (this is different from the `rustc_ty` `IntType`).
-    const fn translate_integer_type(it: rustc_abi::IntegerType) -> radium::IntType {
+    /// Translate a `attr::IntType` (this is different from the `ty`
+    /// `IntType`).
+    const fn translate_integer_type(it: abi::IntegerType) -> radium::IntType {
         match it {
-            rustc_abi::IntegerType::Fixed(size, sign) => {
+            abi::IntegerType::Fixed(size, sign) => {
                 if sign {
                     match size {
-                        rustc_abi::Integer::I8 => radium::IntType::I8,
-                        rustc_abi::Integer::I16 => radium::IntType::I16,
-                        rustc_abi::Integer::I32 => radium::IntType::I32,
-                        rustc_abi::Integer::I64 => radium::IntType::I64,
-                        rustc_abi::Integer::I128 => radium::IntType::I128,
+                        abi::Integer::I8 => radium::IntType::I8,
+                        abi::Integer::I16 => radium::IntType::I16,
+                        abi::Integer::I32 => radium::IntType::I32,
+                        abi::Integer::I64 => radium::IntType::I64,
+                        abi::Integer::I128 => radium::IntType::I128,
                     }
                 } else {
                     match size {
-                        rustc_abi::Integer::I8 => radium::IntType::U8,
-                        rustc_abi::Integer::I16 => radium::IntType::U16,
-                        rustc_abi::Integer::I32 => radium::IntType::U32,
-                        rustc_abi::Integer::I64 => radium::IntType::U64,
-                        rustc_abi::Integer::I128 => radium::IntType::U128,
+                        abi::Integer::I8 => radium::IntType::U8,
+                        abi::Integer::I16 => radium::IntType::U16,
+                        abi::Integer::I32 => radium::IntType::U32,
+                        abi::Integer::I64 => radium::IntType::U64,
+                        abi::Integer::I128 => radium::IntType::U128,
                     }
                 }
             },
-            rustc_abi::IntegerType::Pointer(sign) => {
+            abi::IntegerType::Pointer(sign) => {
                 if sign {
                     radium::IntType::ISize
                 } else {
@@ -1592,7 +1595,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Get the name for a field of an ADT or tuple type
     pub fn get_field_name_of(
         &self,
-        f: rustc_target::abi::FieldIdx,
+        f: target::abi::FieldIdx,
         ty: Ty<'tcx>,
         variant: Option<usize>,
     ) -> Result<String, TranslationError> {
@@ -1601,13 +1604,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             TyKind::Adt(def, _) => {
                 info!("getting field name of {:?} at {} (variant {:?})", f, ty, variant);
                 if def.is_struct() {
-                    let i = def.variants().get(rustc_target::abi::VariantIdx::from_usize(0)).unwrap();
+                    let i = def.variants().get(target::abi::VariantIdx::from_usize(0)).unwrap();
                     i.fields.get(f).map(|f| f.ident(tcx).to_string()).ok_or_else(|| {
                         TranslationError::UnknownError(format!("could not get field {:?} of {}", f, ty))
                     })
                 } else if def.is_enum() {
                     let variant = variant.unwrap();
-                    let i = def.variants().get(rustc_target::abi::VariantIdx::from_usize(variant)).unwrap();
+                    let i = def.variants().get(target::abi::VariantIdx::from_usize(variant)).unwrap();
                     i.fields.get(f).map(|f| f.ident(tcx).to_string()).ok_or_else(|| {
                         TranslationError::UnknownError(format!("could not get field {:?} of {}", f, ty))
                     })
@@ -1632,7 +1635,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Get the name of a variant of an enum.
     pub fn get_variant_name_of(
         ty: Ty<'tcx>,
-        variant: rustc_target::abi::VariantIdx,
+        variant: target::abi::VariantIdx,
     ) -> Result<String, TranslationError> {
         match ty.kind() {
             TyKind::Adt(def, _) => {
@@ -1684,7 +1687,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     pub fn generate_structlike_use<'a>(
         &self,
         ty: Ty<'tcx>,
-        variant: Option<rustc_target::abi::VariantIdx>,
+        variant: Option<target::abi::VariantIdx>,
         scope: InFunctionState<'a, 'def>,
     ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError> {
         match ty.kind() {
@@ -1886,7 +1889,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
     pub fn generate_structlike_use(
         &self,
         ty: Ty<'tcx>,
-        variant: Option<rustc_target::abi::VariantIdx>,
+        variant: Option<target::abi::VariantIdx>,
     ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError> {
         let mut scope = self.scope.borrow_mut();
         self.translator.generate_structlike_use(ty, variant, &mut scope)

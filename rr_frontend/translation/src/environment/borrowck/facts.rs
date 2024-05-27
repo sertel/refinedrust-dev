@@ -8,9 +8,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::{cmp, fmt};
 
-use polonius_engine::FactTypes;
-use rustc_borrowck::consumers::{LocationTable, RichLocation, RustcFacts};
-use rustc_middle::mir;
+use rr_rustc_interface::borrowck;
+use rr_rustc_interface::borrowck::consumers::{LocationTable, RichLocation, RustcFacts};
+use rr_rustc_interface::middle::mir;
+use rr_rustc_interface::polonius_engine::FactTypes;
 
 pub type Region = <RustcFacts as FactTypes>::Origin;
 pub type Loan = <RustcFacts as FactTypes>::Loan;
@@ -18,8 +19,8 @@ pub type PointIndex = <RustcFacts as FactTypes>::Point;
 pub type Variable = <RustcFacts as FactTypes>::Variable;
 pub type Path = <RustcFacts as FactTypes>::Path;
 
-pub type AllInput = rustc_borrowck::consumers::PoloniusInput;
-pub type AllOutput = rustc_borrowck::consumers::PoloniusOutput;
+pub type AllInput = borrowck::consumers::PoloniusInput;
+pub type AllOutput = borrowck::consumers::PoloniusOutput;
 
 trait LocationTableExt {
     fn to_mir_location(self, point: PointIndex) -> mir::Location;

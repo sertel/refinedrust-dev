@@ -8,7 +8,7 @@ pub mod verbose_function_spec_parser;
 
 use attribute_parse::{parse, MToken};
 use parse::Parse;
-use rustc_ast::ast::AttrItem;
+use rr_rustc_interface::ast::ast::AttrItem;
 
 /// For parsing of `RustPaths`
 pub struct RustPath {
