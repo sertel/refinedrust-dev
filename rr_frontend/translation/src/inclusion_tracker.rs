@@ -7,10 +7,11 @@
 use datafrog as df;
 
 use crate::base::*;
+use crate::environment::polonius_info::PoloniusInfo;
+
 /// The `InclusionTracker` maintains a set of dynamic lifetime inclusions holding in the `RefinedRust`
 /// type system at given program points.
 /// This is used for the lifetime annotation generation.
-use crate::environment::polonius_info::PoloniusInfo;
 /// Track inclusions between regions that are known to hold at the current point of the translation.
 /// Distinguishes static and dynamic inclusions for the purpose of the translation.
 pub struct InclusionTracker<'a, 'tcx: 'a> {

@@ -18,7 +18,6 @@ use rustc_middle::ty::fold::TypeFolder;
 use rustc_middle::{mir, ty};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
-use {datafrog, rrconfig};
 
 use crate::environment::borrowck::facts::PointType;
 use crate::environment::borrowck::place_regions::PlaceRegions;
@@ -1505,8 +1504,7 @@ impl AdditionalFacts {
         FxHashMap<facts::PointIndex, Vec<facts::Loan>>,
     ) {
         use datafrog::{Iteration, Relation};
-
-        use self::facts::{Loan, PointIndex as Point, Region};
+        use facts::{Loan, PointIndex as Point, Region};
 
         let mut iteration = Iteration::new();
 
@@ -1678,7 +1676,7 @@ impl AdditionalFacts {
         >,
         loan_issued_ats: impl Iterator<Item = &'a (facts::Region, facts::Loan, facts::PointIndex)>,
     ) -> Vec<(facts::Loan, facts::Loan)> {
-        use self::facts::{Loan, PointIndex as Point, Region};
+        use facts::{Loan, PointIndex as Point, Region};
 
         let mut iteration = datafrog::Iteration::new();
 

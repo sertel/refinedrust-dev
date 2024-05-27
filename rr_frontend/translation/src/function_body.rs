@@ -17,7 +17,7 @@ use rustc_middle::mir::{
     VarDebugInfoContents,
 };
 use rustc_middle::ty::fold::TypeFolder;
-use rustc_middle::ty::{ConstKind, Ty, TyKind};
+use rustc_middle::ty::{ConstKind, Ty, TyKind, TypeFoldable};
 use rustc_middle::{mir, ty};
 
 use crate::arg_folder::*;
@@ -28,7 +28,6 @@ use crate::environment::polonius_info::PoloniusInfo;
 use crate::environment::procedure::Procedure;
 use crate::environment::{dump_borrowck_info, polonius_info, Environment};
 use crate::inclusion_tracker::*;
-use crate::rustc_middle::ty::TypeFoldable;
 use crate::spec_parsers::verbose_function_spec_parser::{
     ClosureMetaInfo, FunctionSpecParser, VerboseFunctionSpecParser,
 };

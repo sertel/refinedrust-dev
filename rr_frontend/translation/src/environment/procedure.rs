@@ -12,10 +12,9 @@ use rustc_middle::mir::{self, BasicBlock, Body as Mir, TerminatorKind};
 use rustc_middle::ty::{self, Ty, TyCtxt};
 use rustc_span::Span;
 
-use super::loops;
 use crate::data::ProcedureDefId;
 use crate::environment::mir_utils::real_edges::RealEdges;
-use crate::environment::Environment;
+use crate::environment::{loops, Environment};
 
 /// Index of a Basic Block
 pub type BasicBlockIndex = mir::BasicBlock;

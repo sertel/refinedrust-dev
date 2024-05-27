@@ -17,15 +17,15 @@ use rustc_middle::mir;
 use rustc_middle::ty::TyCtxt;
 use {rrconfig as config, rustc_hir as hir};
 
-use super::borrowck::facts;
-use super::mir_analyses::initialization::{
+use crate::data::ProcedureDefId;
+use crate::environment::borrowck::facts;
+use crate::environment::mir_analyses::initialization::{
     compute_definitely_initialized, DefinitelyInitializedAnalysisResult,
 };
-use super::polonius_info::PoloniusInfo;
-use super::procedure::Procedure;
-use super::{loops, Environment};
-use crate::data::ProcedureDefId;
 use crate::environment::mir_utils::real_edges::RealEdges;
+use crate::environment::polonius_info::PoloniusInfo;
+use crate::environment::procedure::Procedure;
+use crate::environment::{loops, Environment};
 
 /*
 pub fn dump_borrowck_info(env: &Environment<'_>, procedures: &[ProcedureDefId]) {
@@ -217,7 +217,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         //let loop_invariant_block = HashMap::new();
 
         // print polonius.dot
-        super::polonius_info::graphviz(self.env, &def_path, def_id, info).unwrap();
+        crate::environment::polonius_info::graphviz(self.env, &def_path, def_id, info).unwrap();
 
         // print graph.dot
         let mir_info_printer = MirInfoPrinter {

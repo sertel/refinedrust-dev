@@ -12,12 +12,11 @@ use log::{info, trace, warn};
 use radium::{self, coq, push_str_list};
 use rustc_hir::def_id::DefId;
 use rustc_middle::ty;
-use rustc_middle::ty::{IntTy, Ty, TyKind, UintTy};
+use rustc_middle::ty::{IntTy, Ty, TyKind, TypeFoldable, UintTy};
 use typed_arena::Arena;
 
 use crate::base::*;
 use crate::environment::{polonius_info as info, Environment};
-use crate::rustc_middle::ty::TypeFoldable;
 use crate::spec_parsers::enum_spec_parser::{EnumSpecParser, VerboseEnumSpecParser};
 use crate::spec_parsers::struct_spec_parser::{self, InvariantSpecParser, StructFieldSpecParser};
 use crate::traits::normalize_type;

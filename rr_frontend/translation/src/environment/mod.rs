@@ -31,12 +31,12 @@ use rustc_span::symbol::Symbol;
 use rustc_span::Span;
 use rustc_trait_selection::infer::{InferCtxtExt, TyCtxtInferExt};
 
-use self::borrowck::facts;
-use self::collect_closure_defs_visitor::CollectClosureDefsVisitor;
-use self::collect_prusti_spec_visitor::CollectPrustiSpecVisitor;
-use self::loops::{PlaceAccess, PlaceAccessKind, ProcedureLoops};
-use self::procedure::{BasicBlockIndex, Procedure};
 use crate::data::ProcedureDefId;
+use crate::environment::borrowck::facts;
+use crate::environment::collect_closure_defs_visitor::CollectClosureDefsVisitor;
+use crate::environment::collect_prusti_spec_visitor::CollectPrustiSpecVisitor;
+use crate::environment::loops::{PlaceAccess, PlaceAccessKind, ProcedureLoops};
+use crate::environment::procedure::{BasicBlockIndex, Procedure};
 use crate::utils;
 
 /// Facade to the Rust compiler.

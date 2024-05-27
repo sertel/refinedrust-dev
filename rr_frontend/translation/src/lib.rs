@@ -47,18 +47,19 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::{fs, io, process};
 
-use environment::Environment;
-use function_body::{ConstScope, FunctionTranslator, ProcedureMode, ProcedureScope};
 use log::{info, trace, warn};
 use radium::coq;
 use rustc_hir::def_id::{DefId, LocalDefId};
 use rustc_middle::ty;
-use spec_parsers::const_attr_parser::{ConstAttrParser, VerboseConstAttrParser};
-use spec_parsers::crate_attr_parser::{CrateAttrParser, VerboseCrateAttrParser};
-use spec_parsers::module_attr_parser::{ModuleAttrParser, ModuleAttrs, VerboseModuleAttrParser};
 use topological_sort::TopologicalSort;
-use type_translator::{normalize_in_function, TypeTranslator};
 use typed_arena::Arena;
+
+use crate::environment::Environment;
+use crate::function_body::{ConstScope, FunctionTranslator, ProcedureMode, ProcedureScope};
+use crate::spec_parsers::const_attr_parser::{ConstAttrParser, VerboseConstAttrParser};
+use crate::spec_parsers::crate_attr_parser::{CrateAttrParser, VerboseCrateAttrParser};
+use crate::spec_parsers::module_attr_parser::{ModuleAttrParser, ModuleAttrs, VerboseModuleAttrParser};
+use crate::type_translator::{normalize_in_function, TypeTranslator};
 
 /// Order ADT definitions topologically.
 fn order_adt_defs(deps: &HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
