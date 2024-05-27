@@ -4,8 +4,6 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-use datafrog as df;
-
 use crate::base::*;
 use crate::environment::polonius_info::PoloniusInfo;
 
@@ -72,7 +70,7 @@ impl<'a, 'tcx: 'a> InclusionTracker<'a, 'tcx> {
 
     /// Recompute static inclusion constraints.
     fn recompute_static_incl(&mut self) {
-        let mut iteration = df::Iteration::new();
+        let mut iteration = datafrog::Iteration::new();
 
         // static_incl(r1, r2, p) :- static_incl_base(r1, r2, p)
         let static_incl = iteration.variable::<(Region, Region, PointIndex)>("static_incl");
@@ -91,8 +89,8 @@ impl<'a, 'tcx: 'a> InclusionTracker<'a, 'tcx> {
 
     fn compute_transitive_closure(
         &self,
-        iteration: &mut df::Iteration,
-        base: &df::Variable<(Region, Region, PointIndex)>,
+        iteration: &mut datafrog::Iteration,
+        base: &datafrog::Variable<(Region, Region, PointIndex)>,
     ) {
         let incl1 = iteration.variable_indistinct::<(PointIndex, (Region, Region))>("incl1");
         let incl2 = iteration.variable_indistinct::<((Region, PointIndex), Region)>("incl2");
@@ -102,7 +100,7 @@ impl<'a, 'tcx: 'a> InclusionTracker<'a, 'tcx> {
         let incl5 = iteration.variable_indistinct::<((Region, PointIndex), Region)>("incl5");
         //let incl2 = iteration.variable_indistinct::<((Region, PointIndex), Region)>("incl4");
 
-        let barriers = df::Relation::from_iter(self.barriers.iter().map(|(r, p)| (*r, *p)));
+        let barriers = datafrog::Relation::from_iter(self.barriers.iter().map(|(r, p)| (*r, *p)));
 
         let cfg_edge = iteration.variable::<(PointIndex, PointIndex)>("cfg_edge");
         cfg_edge.extend(self.info.borrowck_in_facts.cfg_edge.iter());
@@ -135,7 +133,7 @@ impl<'a, 'tcx: 'a> InclusionTracker<'a, 'tcx> {
     pub fn recompute(&mut self) {
         self.recompute_static_incl();
 
-        let mut iteration = df::Iteration::new();
+        let mut iteration = datafrog::Iteration::new();
 
         // incl(r1, r2, p) :- static_incl_base(r1, r2, p)
         // incl(r1, r2, p) :- dynamic_incl_base(r1, r2, p)

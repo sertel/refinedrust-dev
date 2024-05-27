@@ -17,7 +17,6 @@ use rr_rustc_interface::hir::def_id::{DefId, CRATE_DEF_INDEX};
 use rr_rustc_interface::middle::mir;
 use rr_rustc_interface::middle::ty::{self, TyCtxt};
 use rr_rustc_interface::{hir, middle, span};
-use rrconfig as config;
 use serde::{Deserialize, Serialize};
 
 use crate::spec_parsers::get_export_as_attr;
@@ -689,7 +688,7 @@ pub fn has_tool_attr(attrs: &[ast::Attribute], name: &str) -> bool {
         ast::AttrKind::Normal(na) => {
             let segments = &na.item.path.segments;
             segments.len() == 2
-                && segments[0].ident.as_str() == config::spec_hotword().as_str()
+                && segments[0].ident.as_str() == rrconfig::spec_hotword().as_str()
                 && segments[1].ident.as_str() == name
         },
         _ => false,
@@ -701,7 +700,7 @@ pub fn has_tool_attr_filtered(attrs: &[&ast::AttrItem], name: &str) -> bool {
     attrs.iter().any(|item| {
         let segments = &item.path.segments;
         segments.len() == 2
-            && segments[0].ident.as_str() == config::spec_hotword().as_str()
+            && segments[0].ident.as_str() == rrconfig::spec_hotword().as_str()
             && segments[1].ident.as_str() == name
     })
 }
@@ -711,7 +710,7 @@ pub fn has_any_tool_attr(attrs: &[ast::Attribute]) -> bool {
     attrs.iter().any(|attr| match &attr.kind {
         ast::AttrKind::Normal(na) => {
             let segments = &na.item.path.segments;
-            segments[0].ident.as_str() == config::spec_hotword().as_str()
+            segments[0].ident.as_str() == rrconfig::spec_hotword().as_str()
         },
         _ => false,
     })
@@ -728,7 +727,7 @@ pub fn filter_tool_attrs(attrs: &[ast::Attribute]) -> Vec<&ast::AttrItem> {
 
                 let seg = item.path.segments.get(0)?;
 
-                (seg.ident.name.as_str() == config::spec_hotword()).then_some(item)
+                (seg.ident.name.as_str() == rrconfig::spec_hotword()).then_some(item)
             },
             _ => None,
         })

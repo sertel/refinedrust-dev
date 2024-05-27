@@ -1505,21 +1505,21 @@ impl AdditionalFacts {
         FxHashMap<facts::PointIndex, Vec<facts::Loan>>,
     ) {
         use datafrog::{Iteration, Relation};
-        use facts::{Loan, PointIndex as Point, Region};
+        use facts::{Loan, PointIndex, Region};
 
         let mut iteration = Iteration::new();
 
         // Variables that are outputs of our computation.
-        let zombie_requires = iteration.variable::<(Region, Loan, Point)>("zombie_requires");
-        let zombie_borrow_live_at = iteration.variable::<(Loan, Point)>("zombie_borrow_live_at");
-        let borrow_become_zombie_at = iteration.variable::<(Loan, Point)>("borrow_become_zombie_at");
+        let zombie_requires = iteration.variable::<(Region, Loan, PointIndex)>("zombie_requires");
+        let zombie_borrow_live_at = iteration.variable::<(Loan, PointIndex)>("zombie_borrow_live_at");
+        let borrow_become_zombie_at = iteration.variable::<(Loan, PointIndex)>("borrow_become_zombie_at");
 
         // Variables for initial data.
-        let requires_lp = iteration.variable::<((Loan, Point), Region)>("requires_lp");
-        let loan_killed_at = iteration.variable::<((Loan, Point), ())>("loan_killed_at");
-        let cfg_edge_p = iteration.variable::<(Point, Point)>("cfg_edge_p");
-        let origin_live_on_entry = iteration.variable::<((Region, Point), ())>("origin_live_on_entry");
-        let subset_r1p = iteration.variable::<((Region, Point), Region)>("subset_r1p");
+        let requires_lp = iteration.variable::<((Loan, PointIndex), Region)>("requires_lp");
+        let loan_killed_at = iteration.variable::<((Loan, PointIndex), ())>("loan_killed_at");
+        let cfg_edge_p = iteration.variable::<(PointIndex, PointIndex)>("cfg_edge_p");
+        let origin_live_on_entry = iteration.variable::<((Region, PointIndex), ())>("origin_live_on_entry");
+        let subset_r1p = iteration.variable::<((Region, PointIndex), Region)>("subset_r1p");
 
         // Temporaries as we perform a multi-way join.
         let zombie_requires_rp = iteration.variable_indistinct("zombie_requires_rp");
@@ -1548,7 +1548,7 @@ impl AdditionalFacts {
             })
 
             // let mut origin_live_on_entry = output.origin_live_on_entry.clone();
-            // let all_points: BTreeSet<Point> = all_facts
+            // let all_points: BTreeSet<PointIndex> = all_facts
             //     .cfg_edge
             //     .iter()
             //     .map(|&(p, _)| p)
@@ -1677,7 +1677,7 @@ impl AdditionalFacts {
         >,
         loan_issued_ats: impl Iterator<Item = &'a (facts::Region, facts::Loan, facts::PointIndex)>,
     ) -> Vec<(facts::Loan, facts::Loan)> {
-        use facts::{Loan, PointIndex as Point, Region};
+        use facts::{Loan, PointIndex, Region};
 
         let mut iteration = datafrog::Iteration::new();
 
@@ -1685,8 +1685,8 @@ impl AdditionalFacts {
         let v_reborrows = iteration.variable::<(Loan, Loan)>("reborrows");
 
         // Variables for initial data.
-        let v_restricts = iteration.variable::<((Point, Region), Loan)>("origin_contains_loan_at");
-        let v_loan_issued_at = iteration.variable::<((Point, Region), Loan)>("loan_issued_at");
+        let v_restricts = iteration.variable::<((PointIndex, Region), Loan)>("origin_contains_loan_at");
+        let v_loan_issued_at = iteration.variable::<((PointIndex, Region), Loan)>("loan_issued_at");
 
         // Load initial data.
         let restricts_items = origin_contains_loan_at.flat_map(|(&point, region_map)| {

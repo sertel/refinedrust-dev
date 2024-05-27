@@ -17,7 +17,7 @@ use rr_rustc_interface::{abi, ast, attr, middle, target};
 use typed_arena::Arena;
 
 use crate::base::*;
-use crate::environment::{polonius_info as info, Environment};
+use crate::environment::{polonius_info, Environment};
 use crate::spec_parsers::enum_spec_parser::{EnumSpecParser, VerboseEnumSpecParser};
 use crate::spec_parsers::struct_spec_parser::{self, InvariantSpecParser, StructFieldSpecParser};
 use crate::traits::normalize_type;
@@ -1967,7 +1967,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
     }
 
     /// Format the Coq representation of an atomic region.
-    pub fn format_atomic_region(&self, r: &info::AtomicRegion) -> String {
+    pub fn format_atomic_region(&self, r: &polonius_info::AtomicRegion) -> String {
         let scope = self.scope.borrow();
         format_atomic_region_direct(r, Some(&*scope))
     }
@@ -1998,15 +1998,15 @@ where
 
 /// Format the Coq representation of an atomic region.
 pub fn format_atomic_region_direct(
-    r: &info::AtomicRegion,
+    r: &polonius_info::AtomicRegion,
     scope: Option<&TypeTranslationScope<'_>>,
 ) -> String {
     match r {
-        info::AtomicRegion::Loan(_, r) => format!("llft{}", r.index()),
-        info::AtomicRegion::PlaceRegion(r) => format!("plft{}", r.index()),
-        info::AtomicRegion::Unknown(r) => format!("vlft{}", r.index()),
+        polonius_info::AtomicRegion::Loan(_, r) => format!("llft{}", r.index()),
+        polonius_info::AtomicRegion::PlaceRegion(r) => format!("plft{}", r.index()),
+        polonius_info::AtomicRegion::Unknown(r) => format!("vlft{}", r.index()),
 
-        info::AtomicRegion::Universal(_, r) => {
+        polonius_info::AtomicRegion::Universal(_, r) => {
             let Some(scope) = scope else {
                 return format!("ulft{}", r.index());
             };

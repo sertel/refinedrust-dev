@@ -16,7 +16,6 @@ use rr_rustc_interface::index::Idx;
 use rr_rustc_interface::middle::mir;
 use rr_rustc_interface::middle::ty::TyCtxt;
 use rr_rustc_interface::{hir, middle};
-use rrconfig as config;
 
 use crate::data::ProcedureDefId;
 use crate::environment::borrowck::facts;
@@ -185,7 +184,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         let mir = procedure.get_mir();
 
         // write raw dump
-        let raw_path = config::log_dir()
+        let raw_path = rrconfig::log_dir()
             .join("nll-facts")
             .join(def_path.to_filename_friendly_no_crate())
             .join("polonius_info.txt");
@@ -201,7 +200,7 @@ impl<'a, 'tcx: 'a> InfoPrinter<'a, 'tcx> {
         let real_edges = RealEdges::new(mir);
         let loop_info = loops::ProcedureLoops::new(mir, &real_edges);
 
-        let graph_path = config::log_dir()
+        let graph_path = rrconfig::log_dir()
             .join("nll-facts")
             .join(def_path.to_filename_friendly_no_crate())
             .join("graph.dot");
