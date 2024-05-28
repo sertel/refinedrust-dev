@@ -435,7 +435,6 @@ name = "rrconfig"
 version = "0.1.0"
 dependencies = [
  "config",
- "lazy_static",
  "log",
  "path-clean",
  "serde",

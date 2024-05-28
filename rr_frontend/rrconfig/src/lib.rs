@@ -3,28 +3,22 @@
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
-//
+
+use std::cell::RefCell;
 use std::env;
 use std::path::PathBuf;
-use std::sync::RwLock;
 
 use config::{Config, Environment, File, FileFormat};
-use lazy_static::lazy_static;
 use path_clean::PathClean;
 use serde::Deserialize;
 
 pub mod arg_value;
 pub mod launch;
 
-lazy_static! {
-    // Is this RwLock<..> necessary?
-    static ref SETTINGS: RwLock<Config> = RwLock::new({
+thread_local! {
+    static SETTINGS: RefCell<Config> = {
         let mk_config = || {
             let mut builder = Config::builder();
-
-            // determine working dir
-            //let work_dir = std::env::current_dir().unwrap();
-            //let work_dir = work_dir.to_str().unwrap();
 
             // 1. Default values
             builder = builder.set_default("be_rustc", false)?
@@ -59,27 +53,27 @@ lazy_static! {
 
                 // set override for workdir to the config file path
                 let path_to_file = PathBuf::from(file);
-                let parent = path_to_file.parent().unwrap();
-                let filepath = parent.to_str().unwrap();
+                let filepath = path_to_file.parent().unwrap().to_str().unwrap();
+
                 builder = builder.set_default("work_dir", filepath)?;
             }
 
             // 4. Override with env variables (`RR_QUIET`, ...)
             let builder = builder.add_source(
-                Environment::with_prefix("RR")
-                    .ignore_empty(true)
+                Environment::with_prefix("RR").ignore_empty(true)
             );
 
             builder.build()
         };
-        mk_config().unwrap()
-    });
+
+        RefCell::new(mk_config().unwrap())
+    }
 }
 
 /// Generate a dump of the settings
 #[must_use]
 pub fn dump() -> String {
-    format!("{:#?}", SETTINGS.read().unwrap())
+    SETTINGS.with_borrow(|c| format!("{:#?}", c))
 }
 
 /// Makes the path absolute with respect to the `work_dir`.
@@ -104,7 +98,7 @@ fn read_optional_setting<T>(name: &'static str) -> Option<T>
 where
     T: Deserialize<'static>,
 {
-    SETTINGS.read().unwrap().get(name).ok()
+    SETTINGS.with_borrow(|c| c.get(name).ok())
 }
 
 fn read_setting<T>(name: &'static str) -> T
@@ -115,11 +109,9 @@ where
 }
 
 fn write_setting<T: Into<config::Value>>(key: &'static str, value: T) {
-    SETTINGS
-        .write()
-        .unwrap()
-        .set(key, value)
-        .unwrap_or_else(|e| panic!("Failed to write setting {key} due to {e}"));
+    let builder = Config::builder().set_override(key, value).unwrap();
+
+    SETTINGS.set(builder.add_source(SETTINGS.take()).build().unwrap());
 }
 
 #[must_use]

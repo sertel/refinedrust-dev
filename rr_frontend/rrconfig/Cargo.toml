@@ -9,7 +9,6 @@ version.workspace = true
 
 [dependencies]
 config.workspace = true
-lazy_static.workspace = true
 log.workspace = true
 path-clean.workspace = true
 serde.workspace = true

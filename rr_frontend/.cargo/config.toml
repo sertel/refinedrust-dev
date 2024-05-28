@@ -15,7 +15,6 @@ rustflags = [
 
     # Rust warnings
     "-Adead_code",
-    "-Adeprecated",
     "-Aunused_imports",
     "-Aunused_mut",
     "-Aunused_variables",
