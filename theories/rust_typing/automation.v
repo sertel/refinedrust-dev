@@ -10,6 +10,40 @@ Set Default Proof Using "Type".
 
 
 (** * Registering extensions to Lithium *)
+(** More automation for sets *)
+Lemma difference_union_subseteq (E F H H': coPset):
+  E ⊆ F →
+  F ∖ H ∪ H' = F →
+  (F ∖ H ∖ E) ∪ H' ∪ E = F.
+Proof.
+  set_unfold.
+  intros ? Hcond x.
+  specialize Hcond with x.
+  split; first intuition.
+  destruct (decide (x ∈ E)); intuition.
+Qed.
+
+Lemma difference_union_subseteq' (E F: coPset):
+  E ⊆ F →
+  F ∖ E ∪ E = F.
+Proof.
+  set_unfold.
+  intros ? x.
+  split; first intuition.
+  destruct (decide (x ∈ E)); intuition.
+Qed.
+
+Lemma difference_union_comm (E E' A B: coPset):
+  A ∪ E' ∪ E = B →
+  A ∪ E ∪ E' = B.
+Proof.
+  set_solver.
+Qed.
+
+Global Hint Resolve difference_union_subseteq' | 30 : ndisj.
+Global Hint Resolve difference_union_subseteq | 50 : ndisj.
+Global Hint Resolve difference_union_comm | 80 : ndisj.
+
 (** More automation for modular arithmetics. *)
 Ltac Zify.zify_post_hook ::= Z.to_euclidean_division_equations.
 
@@ -870,6 +904,10 @@ Ltac sidecond_hook ::=
       solve_ty_allows
   | |- ty_allows_writes _ =>
       solve_ty_allows
+  | |- _ ## _ =>
+      solve_ndisj
+  | |- _ ∪ _ = _ =>
+      solve_ndisj
   | |- _ =>
       try solve_layout_alg;
       try solve_op_alg;

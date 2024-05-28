@@ -3,41 +3,6 @@ From refinedrust Require Import uninit int ltype_rules.
 From lrust.lifetime Require Import na_borrow.
 Set Default Proof Using "Type".
 
-Lemma difference_union_subseteq (E F H H': coPset):
-  E ⊆ F →
-  F ∖ H ∪ H' = F →
-  (F ∖ H ∖ E) ∪ H' ∪ E = F.
-Proof.
-  set_unfold.
-
-  intros ? Hcond x.
-  specialize Hcond with x.
-
-  split; first intuition.
-  destruct (decide (x ∈ E)); intuition.
-Qed.
-
-Lemma difference_union_subseteq' (E F: coPset):
-  E ⊆ F →
-  F ∖ E ∪ E = F.
-Proof.
-  set_unfold.
-  intros ? x.
-  split; first intuition.
-  destruct (decide (x ∈ E)); intuition.
-Qed.
-
-Lemma difference_union_comm (E E' A B: coPset):
-  A ∪ E' ∪ E = B →
-  A ∪ E ∪ E' = B.
-Proof.
-  set_solver.
-Qed.
-
-Global Hint Resolve difference_union_subseteq' | 30 : ndisj.
-Global Hint Resolve difference_union_subseteq | 50 : ndisj.
-Global Hint Resolve difference_union_comm | 80 : ndisj.
-
 Record na_ex_inv_def `{!typeGS Σ} (X : Type) (Y : Type) : Type := na_mk_ex_inv_def' {
   (* NOTE: Make persistent part (Timeless) + non-persistent part inside &na *)
   na_inv_P : thread_id → X → Y → iProp Σ;
@@ -1068,7 +1033,6 @@ Section generated_code.
 
       Unshelve. all: sidecond_solver.
       Unshelve. all: sidecond_hammer.
-      Unshelve. all: solve_ndisj.
     Qed.
   End proof.
 
