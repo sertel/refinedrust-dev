@@ -7,8 +7,6 @@
 /// Registry of shims for Rust functions that get mapped to custom `RefinedRust`
 /// implementations.
 /// Provides deserialization from a JSON file defining this registry.
-extern crate serde_json;
-
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
 
