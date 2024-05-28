@@ -259,3 +259,56 @@ pub fn set_no_verify(value: bool) {
 pub fn check_overflows() -> bool {
     read_setting("check_overflows")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // NOTE: These tests SHOULD NOT use the same key as the same SETTINGS variable is used
+
+    #[test]
+    fn read_default() {
+        assert_eq!(read_setting::<String>("work_dir"), ".");
+    }
+
+    #[test]
+    fn read_env() {
+        env::set_var("RR_simple_read", "true");
+
+        assert!(read_setting::<bool>("simple_read"));
+    }
+
+    #[test]
+    fn read_env_case() {
+        env::set_var("RR_CaSe_ChEcK", "true");
+
+        assert!(read_setting::<bool>("case_check"));
+    }
+
+    #[test]
+    fn read_env_value_bool() {
+        env::set_var("RR_CaSe_ChEcK", "1");
+
+        assert!(read_setting::<bool>("case_check"));
+    }
+
+    #[test]
+    fn write() {
+        write_setting("key", true);
+
+        assert!(read_setting::<bool>("key"));
+
+        write_setting("key", false);
+
+        assert!(!(read_setting::<bool>("key")));
+    }
+
+    #[test]
+    fn write_merge() {
+        write_setting("key1", "value1");
+        write_setting("key2", "value2");
+
+        assert_eq!(read_setting::<String>("key1"), "value1");
+        assert_eq!(read_setting::<String>("key2"), "value2");
+    }
+}
