@@ -312,13 +312,13 @@ Proof.
     iPoseProof (IH2 with "Hincl") as "(Ha1 & _)". by iApply "Ha1".
   - iIntros (rt_cur rt_inner lt_cur lt_inner Cpre Cpost IH1 IH2 r l b1 b2) "#Hincl".
     simp_ltypes.
-    iAssert (□ (l ◁ₗ[ π, b1] r @ MagicLtype lt_cur lt_inner Cpre Cpost -∗ l ◁ₗ[ π, b2] r @ MagicLtype lt_cur lt_inner Cpre Cpost))%I as "#Ha"; first last.
+    iAssert (□ (l ◁ₗ[ π, b1] r @ OpenedNaLtype lt_cur lt_inner Cpre Cpost -∗ l ◁ₗ[ π, b2] r @ OpenedNaLtype lt_cur lt_inner Cpre Cpost))%I as "#Ha"; first last.
     { iSplitL; eauto with iFrame. }
     iModIntro. destruct b1, b2; try done; unfold bor_kind_direct_incl.
     + iDestruct "Hincl" as "->"; eauto.
-    + rewrite !ltype_own_magic_unfold /magic_ltype_own.
+    + rewrite !ltype_own_opened_na_unfold /opened_na_ltype_own.
       by iIntros "(%ly & ? & ? & ? & ? & Ha)".
-    + rewrite !ltype_own_magic_unfold /magic_ltype_own.
+    + rewrite !ltype_own_opened_na_unfold /opened_na_ltype_own.
       by iIntros "(%ly & ? & ? & ? & ? & %)".
 Qed.
 Lemma ltype_bor_kind_direct_incl `{!typeGS Σ} {rt} (lt : ltype rt) b1 b2 π r l :

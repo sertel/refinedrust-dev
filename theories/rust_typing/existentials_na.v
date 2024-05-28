@@ -605,39 +605,39 @@ Section generated_code.
       simp_ltypes. done.
     Qed.
 
-    Lemma magic_ltype_acc_owned π {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) Cpre Cpost l wl r :
-      l ◁ₗ[π, Owned wl] r @ MagicLtype lt_cur lt_inner Cpre Cpost -∗
+    Lemma opened_na_ltype_acc_owned π {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) Cpre Cpost l wl r :
+      l ◁ₗ[π, Owned wl] r @ OpenedNaLtype lt_cur lt_inner Cpre Cpost -∗
       l ◁ₗ[π, Owned false] r @ lt_cur ∗
       (∀ rt_cur' (lt_cur' : ltype rt_cur') r',
         l ◁ₗ[π, Owned false] r' @ lt_cur' -∗
         ⌜ltype_st lt_cur' = ltype_st lt_cur⌝ -∗
-        l ◁ₗ[π, Owned wl] r' @ MagicLtype lt_cur' lt_inner Cpre Cpost).
+        l ◁ₗ[π, Owned wl] r' @ OpenedNaLtype lt_cur' lt_inner Cpre Cpost).
     Proof.
       (* Nothing has changed *)
 
-      rewrite ltype_own_magic_unfold /magic_ltype_own.
+      rewrite ltype_own_opened_na_unfold /opened_na_ltype_own.
       iIntros "(%ly & ? & ? & ? & ? & $ & Hcl)".
       iIntros (rt_cur' lt_cur' r') "Hown %Hst".
-      rewrite ltype_own_magic_unfold /opened_ltype_own.
+      rewrite ltype_own_opened_na_unfold /opened_ltype_own.
       iExists ly. rewrite Hst. eauto with iFrame.
     Qed.
 
-    Lemma typed_place_magic_owned π E L {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) Cpre Cpost r bmin0 l wl P''' T :
+    Lemma typed_place_opened_na_owned π E L {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) Cpre Cpost r bmin0 l wl P''' T :
       typed_place π E L l lt_cur r bmin0 (Owned false) P''' (λ L' κs l2 b2 bmin rti ltyi ri strong weak,
         T L' κs l2 b2 bmin rti ltyi ri
           (option_map (λ strong, mk_strong strong.(strong_rt)
-            (λ rti2 ltyi2 ri2, MagicLtype (strong.(strong_lt) _ ltyi2 ri2) lt_inner Cpre Cpost)
+            (λ rti2 ltyi2 ri2, OpenedNaLtype (strong.(strong_lt) _ ltyi2 ri2) lt_inner Cpre Cpost)
             (λ rti2 ri2, strong.(strong_rfn) _ ri2)
             strong.(strong_R)) strong)
           (* no weak access possible -- we currently don't have the machinery to restore and fold invariants at this point, though we could in principle enable this *)
           None)
-      ⊢ typed_place π E L l (MagicLtype lt_cur lt_inner Cpre Cpost) r bmin0 (Owned wl) P''' T.
+      ⊢ typed_place π E L l (OpenedNaLtype lt_cur lt_inner Cpre Cpost) r bmin0 (Owned wl) P''' T.
     Proof.
       unfold introduce_with_hooks, typed_place.
 
       (* Nothing has changed *)
       iIntros "HT". iIntros (Φ F ??) "#CTX #HE HL #Hincl0 Hl HR".
-      iPoseProof (magic_ltype_acc_owned with "Hl") as "(Hl & Hcl)".
+      iPoseProof (opened_na_ltype_acc_owned with "Hl") as "(Hl & Hcl)".
       iApply ("HT" with "[//] [//] CTX HE HL [] Hl").
       { destruct bmin0; done. }
       iIntros (L' ??????? strong weak) "? Hl Hv".
@@ -711,7 +711,11 @@ Section generated_code.
       iApply na_own_union.
       { set_solver. }
 
-      replace E with ((E ∖ E') ∪ E') at 1; solve_ndisj.
+      replace E with ((E ∖ E') ∪ E') at 1; first done.
+
+      set_unfold.
+      split; first intuition.
+      destruct (decide (x ∈ E')); intuition.
     Qed.
 
     Lemma na_typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
@@ -723,7 +727,7 @@ Section generated_code.
             ∀ r, introduce_with_hooks E L2
               (P.(na_inv_P) π r x ∗
               l ◁ₗ[π, Owned false] (#r) @
-                (MagicLtype (◁ ty) (◁ ty)
+                (OpenedNaLtype (◁ ty) (◁ ty)
                   (λ rfn, P.(na_inv_P) π rfn x)
                   (λ _, na_own π (↑shrN.@l) ∗ llft_elt_toks κs)) ∗
               na_own π (mask ∖ ↑shrN.@l))
@@ -760,7 +764,7 @@ Section generated_code.
       iDestruct "Hl" as (ly Halg Hly) "(#Hsc & #Hlb & _ & (% & <- & Hl))".
 
       iMod ("HT" with "[] HE HL [$HP Hl Htokcl Hvs Hna']") as "HT"; first solve_ndisj.
-      { rewrite ltype_own_magic_unfold /magic_ltype_own.
+      { rewrite ltype_own_opened_na_unfold /opened_na_ltype_own.
         iFrame.
         iExists ly; repeat iR.
 
@@ -887,14 +891,14 @@ Section generated_code.
       by iExists ly; iFrame.
     Qed.
 
-    Lemma stratify_ltype_magic_Owned {rt_cur rt_inner} π E L mu mdu ma {M} (ml : M) l
+    Lemma stratify_ltype_opened_na_Owned {rt_cur rt_inner} π E L mu mdu ma {M} (ml : M) l
         (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner)
         (Cpre Cpost : rt_inner → iProp Σ) r (T : stratify_ltype_cont_t) :
       stratify_ltype π E L mu mdu ma ml l lt_cur r (Owned false)
         (λ L' R rt_cur' lt_cur' (r' : place_rfn rt_cur'),
           if decide (ma = StratNoRefold)
           then (* keep it open *)
-            T L' R _ (MagicLtype lt_cur' lt_inner Cpre Cpost) r'
+            T L' R _ (OpenedNaLtype lt_cur' lt_inner Cpre Cpost) r'
           else (* fold the invariant *)
             ∃ ri,
               (* show that the core of lt_cur' is a subtype of lt_inner *)
@@ -902,12 +906,12 @@ Section generated_code.
                 (* re-establish the invariant *)
                 prove_with_subtype E L' true ProveDirect (Cpre ri)
                   (λ L'' _ R2, T L'' (Cpost ri ∗ R2 ∗ R) unit (AliasLtype unit (ltype_st lt_inner) l) #tt)))
-      ⊢ stratify_ltype π E L mu mdu ma ml l (MagicLtype lt_cur lt_inner Cpre Cpost) r (Owned false) T.
+      ⊢ stratify_ltype π E L mu mdu ma ml l (OpenedNaLtype lt_cur lt_inner Cpre Cpost) r (Owned false) T.
     Proof.
       rewrite /stratify_ltype /weak_subltype /prove_with_subtype.
 
       iIntros "Hstrat" (F ???) "#CTX #HE HL Hl".
-      rewrite ltype_own_magic_unfold /magic_ltype_own.
+      rewrite ltype_own_opened_na_unfold /opened_na_ltype_own.
 
       iDestruct "Hl" as "(%ly & %Halg & %Hly & #Hlb & %Hst & Hl & Hcl)".
       iMod ("Hstrat" with "[//] [//] [//] CTX HE HL Hl") as "(%L2 & %R & %rt_cur' & %lt_cur' & %r' & HL & %Hst' & Hstep & HT)".
@@ -921,7 +925,7 @@ Section generated_code.
         iApply logical_step_intro.
         iIntros "(Hl & $)".
 
-        rewrite ltype_own_magic_unfold /magic_ltype_own.
+        rewrite ltype_own_opened_na_unfold /opened_na_ltype_own.
         iExists ly; iFrame.
         rewrite -Hst'; do 3 iR.
         done.
@@ -1050,7 +1054,7 @@ Section generated_code.
 
       repeat liRStep; liShow.
 
-      iApply typed_place_magic_owned.
+      iApply typed_place_opened_na_owned.
 
       rep <- 1 liRStep; liShow.
 
@@ -1058,7 +1062,7 @@ Section generated_code.
 
       do 7 liRStep; liShow.
 
-      iApply stratify_ltype_magic_Owned.
+      iApply stratify_ltype_opened_na_Owned.
 
       repeat liRStep; liShow.
 

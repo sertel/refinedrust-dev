@@ -301,7 +301,6 @@ Section call.
 
     iDestruct ("Hfn" $! lsa' lsv') as "Hm". unfold introduce_typed_stmt.
 
-    (* TODO: MagicType - Change na_own π shrE into na_own π ⊤ *)
     set (RET_PROP v := (∃ κs',
         llctx_elt_interp (ϝ ⊑ₗ{ 0} κs') ∗
         credit_store 0 0 ∗
