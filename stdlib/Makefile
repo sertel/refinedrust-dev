@@ -10,7 +10,8 @@ generate_stdlib: $(STDLIB:=.crate)
 
 clean_stdlib: $(STDLIB:=.clean)
 
-stdlib.proof:	$(STDLIB:=.proof)
+stdlib.proof: generate_stdlib
+	dune build --display short
 
 %.proof:	%.crate
 	cd $* && dune build --display short

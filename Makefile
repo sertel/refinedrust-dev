@@ -2,7 +2,7 @@ COQ_PATH =	_build/lib/coq/user-contrib
 RUST_TARGET = $(shell rustc -vV | sed -n 's|host: ||p')
 RUST_PATH =	target/$(RUST_TARGET)/release
 
-CASE_STUDIES = case_studies/paper_examples case_studies/tests case_studies/minivec
+CASE_STUDIES = case_studies/paper_examples case_studies/tests case_studies/minivec case_studies/evenint
 
 ### Project setup
 setup-nix:
@@ -38,8 +38,8 @@ all: frontend typesystem stdlib.proof
 .PHONY: all
 
 ### case studies
-case_studies.proof: typesystem
-case_studies.proof:	$(CASE_STUDIES:=.proof)
+case_studies.proof: typesystem generate_case_studies
+	cd case_studies && dune build --display short
 .PHONY: case_studies.proof
 
 clean_case_studies: $(CASE_STUDIES:=.clean)
