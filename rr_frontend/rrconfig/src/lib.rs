@@ -5,18 +5,21 @@
 // file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 use std::cell::RefCell;
-use std::env;
 use std::path::PathBuf;
+use std::sync::RwLock;
+use std::{env, mem};
 
 use config::{Config, Environment, File, FileFormat};
+use lazy_static::lazy_static;
 use path_clean::PathClean;
 use serde::Deserialize;
 
 pub mod arg_value;
 pub mod launch;
 
-thread_local! {
-    static SETTINGS: RefCell<Config> = {
+lazy_static! {
+    // RwLock due to rustc parallelism
+    static ref SETTINGS: RwLock<Config> = RwLock::new({
         let mk_config = || {
             let mut builder = Config::builder();
 
@@ -66,14 +69,14 @@ thread_local! {
             builder.build()
         };
 
-        RefCell::new(mk_config().unwrap())
-    }
+        mk_config().unwrap()
+    });
 }
 
 /// Generate a dump of the settings
 #[must_use]
 pub fn dump() -> String {
-    SETTINGS.with_borrow(|c| format!("{:#?}", c))
+    format!("{:#?}", SETTINGS.read().unwrap())
 }
 
 /// Makes the path absolute with respect to the `work_dir`.
@@ -98,7 +101,7 @@ fn read_optional_setting<T>(name: &'static str) -> Option<T>
 where
     T: Deserialize<'static>,
 {
-    SETTINGS.with_borrow(|c| c.get(name).ok())
+    SETTINGS.read().unwrap().get(name).ok()
 }
 
 fn read_setting<T>(name: &'static str) -> T
@@ -110,8 +113,10 @@ where
 
 fn write_setting<T: Into<config::Value>>(key: &'static str, value: T) {
     let builder = Config::builder().set_override(key, value).unwrap();
-
-    SETTINGS.set(builder.add_source(SETTINGS.take()).build().unwrap());
+    let mut w = SETTINGS.write().unwrap();
+    let old_settings = mem::take(&mut *w);
+    let new_settings = builder.add_source(old_settings).build().unwrap();
+    *w = new_settings;
 }
 
 #[must_use]

@@ -158,7 +158,7 @@
             buildInputs = [rust.toolchain pkgs.gnupatch];
             nativeBuildInputs = with pkgs;
               [makeWrapper]
-              ++ lib.optionals stdenv.isDarwin [libzip];
+              ++ lib.optionals stdenv.isDarwin [libzip libiconv];
 
             postInstall = with pkgs.lib.strings; ''
               wrapProgram $out/bin/refinedrust-rustc \
