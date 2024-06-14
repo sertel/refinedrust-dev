@@ -395,13 +395,6 @@ Section generated_code.
       syn_type_is_layoutable ((UnsafeCell_sls : syn_type)) →
       UnsafeCell_new_loc ◁ᵥ{π} UnsafeCell_new_loc @ function_ptr [IntSynType I32] (type_of_UnsafeCell_new ) -∗
       typed_function π (Cell_new_def UnsafeCell_new_loc  ) [Cell_st; UnsafeCell_st; IntSynType I32] (type_of_Cell_new ).
-
-    Definition Cell_into_inner_lemma (π : thread_id) : Prop :=
-      ∀ (UnsafeCell_into_inner_loc : loc) ,
-      syn_type_is_layoutable ((Cell_sls : syn_type)) →
-      syn_type_is_layoutable ((UnsafeCell_sls : syn_type)) →
-      UnsafeCell_into_inner_loc ◁ᵥ{π} UnsafeCell_into_inner_loc @ function_ptr [UnsafeCell_st] (type_of_UnsafeCell_into_inner ) -∗
-      typed_function π (Cell_into_inner_def UnsafeCell_into_inner_loc  ) [IntSynType I32; UnsafeCell_st] (type_of_Cell_into_inner ).
   End proof.
 
   Ltac UnsafeCell_new_prelude :=
@@ -453,25 +446,13 @@ Section generated_code.
     init_lfts (∅ );
     init_tyvars ( ∅ ).
 
-  Ltac Cell_into_inner_prelude :=
-    unfold Cell_into_inner_lemma;
-    set (FN_NAME := FUNCTION_NAME "Cell_into_inner");
-    intros;
-    iStartProof;
-    start_function "Cell_into_inner" ( [] ) (  x );
-    set (loop_map := BB_INV_MAP (PolyNil));
-    intros arg_self local___0 local___2;
-    prepare_parameters ( x );
-    init_lfts (∅ );
-    init_tyvars ( ∅ ).
-
   (* === V TYPING RULES V === *)
 
   Section na_subtype.
     Context `{!typeGS Σ}.
     Context {rt X : Type} `{!Inhabited X} (P : na_ex_inv_def rt X).
 
-    Lemma na_owned_subtype_ex_plain_t π E L (ty : type rt) (r : rt) (r' : X) T :
+    Lemma owned_subtype_na_ex_plain_t π E L (ty : type rt) (r : rt) (r' : X) T :
       (prove_with_subtype E L false ProveDirect (P.(na_inv_P) π r r') (λ L1 _ R, R -∗ T L1))
       ⊢ owned_subtype π E L false r r' ty (∃na; P, ty) T.
     Proof.
@@ -490,6 +471,10 @@ Section generated_code.
         iEval (rewrite /ty_own_val/=).
         eauto with iFrame.
     Qed.
+
+    Global Instance owned_subtype_na_ex_plain_t_inst π E L (ty : type rt) (r : rt) (r' : X) :
+      OwnedSubtype π E L false r r' ty (∃na; P, ty) :=
+      λ T, i2p (owned_subtype_na_ex_plain_t π E L ty r r' T).
 
     Lemma na_ex_plain_t_open_owned F π (ty : type rt) (wl : bool) (l : loc) (x : X) :
       lftE ⊆ F →
@@ -543,7 +528,7 @@ Section generated_code.
       iExists v'. iFrame. iExists r0. by iFrame.
     Qed.
 
-    Lemma na_typed_place_ex_plain_t_owned π E L l (ty : type rt) x wl bmin K T :
+    Lemma typed_place_na_ex_plain_t_owned π E L l (ty : type rt) x wl bmin K T :
       (∀ r, introduce_with_hooks E L (P.(na_inv_P) π r x)
         (λ L2, typed_place π E L2 l
                 (OpenedLtype (◁ ty) (◁ ty) (◁ (∃na; P, ty)) (λ (r : rt) (x : X), P.(na_inv_P) π r x) (λ r x, True))
@@ -569,6 +554,11 @@ Section generated_code.
       destruct strong; last done.
       simp_ltypes. done.
     Qed.
+
+    Global Instance na_typed_place_ex_plain_t_owned_inst π E L l (ty : type rt) x wl bmin K `{!TCDone (K ≠ [])} :
+      TypedPlace E L π l (◁ (∃na; P, ty))%I #x bmin (Owned wl) K | 15 :=
+      λ T, i2p (typed_place_na_ex_plain_t_owned π E L l ty x wl bmin K T).
+
 
     Lemma opened_na_ltype_acc_owned π {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) Cpre Cpost l wl r :
       l ◁ₗ[π, Owned wl] r @ OpenedNaLtype lt_cur lt_inner Cpre Cpost -∗
@@ -615,6 +605,10 @@ Section generated_code.
       iPoseProof ("Hcl" with "Hl [//]") as "Hl".
       cbn. eauto with iFrame.
     Qed.
+
+    Global Instance typed_place_opened_na_owned_inst π E L {rt_cur rt_inner} (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) Cpre Cpost r bmin0 l wl P :
+      TypedPlace E L π l (OpenedNaLtype lt_cur lt_inner Cpre Cpost) r bmin0 (Owned wl) P | 5 :=
+          λ T, i2p (typed_place_opened_na_owned π E L lt_cur lt_inner Cpre Cpost r bmin0 l wl P T).
 
     Lemma na_ex_plain_t_open_shared E F π (ty : type rt) q κ l (x : X) :
       lftE ⊆ E →
@@ -683,7 +677,7 @@ Section generated_code.
       destruct (decide (x ∈ E')); intuition.
     Qed.
 
-    Lemma na_typed_place_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
+    Lemma typed_place_na_ex_plain_t_shared π E L l (ty : type rt) x κ bmin K T :
       find_in_context (FindNaOwn) (λ '(π', mask),
         ⌜π = π'⌝ ∗
         ⌜↑shrN.@l ⊆ mask⌝ ∗
@@ -779,6 +773,10 @@ Section generated_code.
       by simp_ltypes.
     Qed.
 
+    Global Instance typed_place_na_ex_plain_t_shared_inst π E L l (ty : type rt) x κ bmin K `{!TCDone (K ≠ [])} :
+      TypedPlace E L π l (◁ (∃na; P, ty))%I #x bmin (Shared κ) K | 15 :=
+      λ T, i2p (typed_place_na_ex_plain_t_shared π E L l ty x κ bmin K T).
+
     Lemma typed_place_alias_shared π E L l l2 rt''' (r : place_rfn rt''') st bmin0 κ P''' T :
       find_in_context (FindLoc l2) (λ '(existT rt2 (lt2, r2, b2, π2)),
         ⌜π = π2⌝ ∗
@@ -815,6 +813,9 @@ Section generated_code.
       iFrame. iSplit; [| done].
       iExists ly; by repeat iR.
     Qed.
+    Global Instance typed_place_alias_shared_inst π E L l l2 rt r st bmin0 κ P :
+      TypedPlace E L π l (AliasLtype rt st l2) r bmin0 (Shared κ) P :=
+      λ T, i2p (typed_place_alias_shared π E L l l2 rt r st bmin0 κ P T).
 
     Lemma stratify_ltype_alias_shared π E L mu mdu ma {M} (m : M) l l2 rt''' st r κ (T : stratify_ltype_cont_t) :
       ( if decide (ma = StratNoRefold)
@@ -855,6 +856,9 @@ Section generated_code.
       rewrite ltype_own_alias_unfold /alias_lty_own.
       by iExists ly; iFrame.
     Qed.
+    Global Instance stratify_ltype_alias_shared_inst π E L mu mdu ma {M} (m : M) l l2 rt st r κ :
+      StratifyLtype π E L mu mdu ma m l (AliasLtype rt st l2) r (Shared κ) :=
+      λ T, i2p (stratify_ltype_alias_shared π E L mu mdu ma m l l2 rt st r κ T).
 
     Lemma stratify_ltype_opened_na_Owned {rt_cur rt_inner} π E L mu mdu ma {M} (ml : M) l
         (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner)
@@ -925,6 +929,10 @@ Section generated_code.
         done.
     Qed.
 
+    Global Instance stratify_ltype_opened_na_owned_inst {rt_cur rt_inner} π E L mu mdu ma {M} (ml : M) l
+        (lt_cur : ltype rt_cur) (lt_inner : ltype rt_inner) (Cpre Cpost : rt_inner → iProp Σ) r:
+      StratifyLtype π E L mu mdu ma ml l (OpenedNaLtype lt_cur lt_inner Cpre Cpost) r (Owned false) := λ T, i2p (stratify_ltype_opened_na_Owned π E L mu mdu ma ml l lt_cur lt_inner Cpre Cpost r T).
+
   End na_subtype.
 
   (* === ^ TYPING RULES ^ === *)
@@ -936,13 +944,6 @@ Section generated_code.
       UnsafeCell_new_lemma π.
     Proof.
       UnsafeCell_new_prelude.
-
-      liRStep; liShow.
-
-      rep <- 1 liRStep; liShow.
-
-      iApply na_owned_subtype_ex_plain_t.
-      liSimpl; liShow.
 
       repeat liRStep; liShow.
 
@@ -959,11 +960,6 @@ Section generated_code.
 
       repeat liRStep; liShow.
 
-      iApply na_typed_place_ex_plain_t_owned.
-      liSimpl; liShow.
-
-      repeat liRStep; liShow.
-
       all: print_remaining_goal.
       Unshelve. all: sidecond_solver.
       Unshelve. all: sidecond_hammer.
@@ -975,11 +971,6 @@ Section generated_code.
     Proof.
       Cell_new_prelude.
 
-      rep <- 1 liRStep; liShow.
-
-      iApply na_owned_subtype_ex_plain_t.
-      liSimpl; liShow.
-
       repeat liRStep; liShow.
 
       all: print_remaining_goal.
@@ -990,19 +981,6 @@ Section generated_code.
       (* NOTE: The QED takes a lot of time *)
     Admitted.
 
-    Lemma Cell_into_inner_proof (π : thread_id) :
-      Cell_into_inner_lemma π.
-    Proof.
-      Cell_into_inner_prelude.
-
-      repeat liRStep; liShow.
-
-      iApply na_typed_place_ex_plain_t_owned.
-      liSimpl; liShow.
-
-      repeat liRStep; liShow.
-    Admitted.
-
     Lemma UnsafeCell_get_old_proof (π : thread_id) :
       UnsafeCell_get_old_lemma π.
     Proof.
@@ -1010,29 +988,9 @@ Section generated_code.
 
       repeat liRStep; liShow.
 
-      iApply na_typed_place_ex_plain_t_shared.
-
-      do 6 liRStep; liShow.
-      repeat liRStep; liShow.
-
-      iApply typed_place_alias_shared.
-
-      repeat liRStep; liShow.
-
-      iApply typed_place_opened_na_owned.
-
-      rep <- 1 liRStep; liShow.
-
-      iApply stratify_ltype_alias_shared.
-
-      do 7 liRStep; liShow.
-
-      iApply stratify_ltype_opened_na_Owned.
-
-      repeat liRStep; liShow.
-
       Unshelve. all: sidecond_solver.
       Unshelve. all: sidecond_hammer.
+      Unshelve. all: print_remaining_sidecond.
     Qed.
   End proof.
 
