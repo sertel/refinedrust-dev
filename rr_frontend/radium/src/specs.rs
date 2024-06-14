@@ -1371,7 +1371,7 @@ where
 
             write!(f, "{}", it.with_name(name.clone()))?;
             context_names.push(name);
-            depends_on_sigma = depends_on_sigma || it.depends_on_sigma;
+            depends_on_sigma = depends_on_sigma || it.is_dependent_on_sigma();
         }
         write!(f, ".\n")?;
     }
@@ -2079,21 +2079,18 @@ impl<'def> AbstractEnum<'def> {
 
             assertions.push(coq::TopLevelAssertion::Comment(format!(
                 "auto-generated representation of {}",
-                ind.name
+                ind.get_name()
             )));
             // TODO don't clone
             assertions.push(coq::TopLevelAssertion::InductiveDecl(ind.clone()));
             // prove that it is inhabited
-            let instance_decl = coq::InstanceDecl {
-                attrs: coq::Attributes::new(vec![coq::Attribute::Global]),
-                name: None,
-                params: coq::ParamList::new(vec![]),
-                ty: coq::Type::Literal(format!("Inhabited {}", ind.name)),
-                body: coq::DefBody::Script(
+            let instance_decl = coq::InstanceDecl::new(
+                coq::Type::Literal(format!("Inhabited {}", ind.get_name())),
+                coq::DefBody::Script(
                     coq::ProofScript(vec![coq::ProofItem::Literal("solve_inhabited".to_owned())]),
                     coq::ProofScriptTerminator::Qed,
                 ),
-            };
+            );
             assertions.push(coq::TopLevelAssertion::InstanceDecl(instance_decl));
 
             let mut code_fmt = IndentWriter::new(BASE_INDENT, &mut out);
@@ -2392,7 +2389,7 @@ impl Layout {
             Self::Int(it) => Some(it.size()),
             Self::Literal(n) => {
                 // TODO: this doesn't work if the layout is applied to things.
-                match env.get(&n.lhs) {
+                match env.get(n.get_lhs()) {
                     None => None,
                     Some(ly) => ly.size(env),
                 }
@@ -2410,7 +2407,7 @@ impl Layout {
             Self::Int(it) => Some(it.alignment()),
             Self::Literal(n) => {
                 // TODO: this doesn't work if the layout is applied to things.
-                match env.get(&n.lhs) {
+                match env.get(n.get_lhs()) {
                     None => None,
                     Some(ly) => ly.alignment(env),
                 }
@@ -3500,7 +3497,7 @@ fn make_trait_instance<'def>(
             write_list!(body, &scope.tys, " ", |x| { format!("{}", x.refinement_type) })?;
             write!(body, " ")?;
             // pass the function's own generics
-            write_list!(body, &params.0, " ", |x| { x.get_name().unwrap_or("unnamed").to_owned() })?;
+            write_list!(body, &params.0, " ", |x| { x.get_name_ref().unwrap_or("unnamed").to_owned() })?;
             write!(body, " ")?;
             // finally pass the associated types
             write_list!(body, &assoc_types, " ", |x| { format!("{}", x.refinement_type) })?;

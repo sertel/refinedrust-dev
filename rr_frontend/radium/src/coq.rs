@@ -180,9 +180,7 @@ impl<T: Display, U: Display> Display for AppTerm<T, U> {
             return write!(f, "{}", self.lhs);
         }
 
-        write!(f, "({}", self.lhs)?;
-        write_list!(f, &self.rhs, "", " ({})")?;
-        write!(f, ")")
+        write_list!(f, &self.rhs, " ", "({})")
     }
 }
 
@@ -196,6 +194,10 @@ impl<T, U> AppTerm<T, U> {
             lhs,
             rhs: Vec::new(),
         }
+    }
+
+    pub(crate) const fn get_lhs(&self) -> &T {
+        &self.lhs
     }
 }
 
@@ -306,16 +308,16 @@ pub enum Type {
 #[display("{}", self.format(true))]
 pub struct Param {
     /// the name
-    pub(crate) name: Name,
+    name: Name,
 
     /// the type
-    pub(crate) ty: Type,
+    ty: Type,
 
     /// implicit or not?
-    pub(crate) implicit: bool,
+    implicit: bool,
 
     /// does this depend on Σ?
-    pub(crate) depends_on_sigma: bool,
+    depends_on_sigma: bool,
 }
 
 impl Param {
@@ -337,7 +339,7 @@ impl Param {
     }
 
     #[must_use]
-    pub fn get_name(&self) -> Option<&str> {
+    pub fn get_name_ref(&self) -> Option<&str> {
         match &self.name {
             Name::Named(s) => Some(s),
             Name::Unnamed => None,
@@ -346,7 +348,7 @@ impl Param {
 
     #[allow(clippy::collapsible_else_if)]
     #[must_use]
-    pub fn format(&self, make_implicits: bool) -> String {
+    fn format(&self, make_implicits: bool) -> String {
         if !self.implicit {
             return format!("({} : {})", self.name, self.ty);
         }
@@ -364,6 +366,18 @@ impl Param {
                 format!("`(!{})", self.ty)
             }
         }
+    }
+
+    pub(crate) const fn get_name(&self) -> &Name {
+        &self.name
+    }
+
+    pub(crate) const fn is_implicit(&self) -> bool {
+        self.implicit
+    }
+
+    pub(crate) const fn is_dependent_on_sigma(&self) -> bool {
+        self.depends_on_sigma
     }
 }
 
@@ -396,8 +410,18 @@ impl ParamList {
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("{} {}", name, params)]
 pub struct Variant {
-    pub name: String,
-    pub params: ParamList,
+    name: String,
+    params: ParamList,
+}
+
+impl Variant {
+    #[must_use]
+    pub fn new(name: &str, params: Vec<Param>) -> Self {
+        Self {
+            name: name.to_owned(),
+            params: ParamList::new(params),
+        }
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
@@ -405,9 +429,24 @@ pub struct Variant {
     display_list!(variants, "\n| ").indented(&make_indent(1))
 )]
 pub struct Inductive {
-    pub name: String,
-    pub parameters: ParamList,
-    pub variants: Vec<Variant>,
+    name: String,
+    parameters: ParamList,
+    variants: Vec<Variant>,
+}
+
+impl Inductive {
+    #[must_use]
+    pub fn new(name: &str, parameters: Vec<Param>, variants: Vec<Variant>) -> Self {
+        Self {
+            name: name.to_owned(),
+            parameters: ParamList::new(parameters),
+            variants,
+        }
+    }
+
+    pub(crate) const fn get_name(&self) -> &String {
+        &self.name
+    }
 }
 
 /// A single tactic call.
@@ -586,23 +625,17 @@ impl Attributes {
 }
 
 /// A Coq typeclass instance declaration
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("#[global] Instance : {}{}", ty, body)]
 pub struct InstanceDecl {
-    pub attrs: Attributes,
-    pub name: Option<String>,
-    pub params: ParamList,
-    pub ty: Type,
-    pub body: DefBody,
+    ty: Type,
+    body: DefBody,
 }
 
-impl Display for InstanceDecl {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match &self.name {
-            Some(name) => {
-                write!(f, "{} Instance {} {} : {}{}", self.attrs, name, self.params, self.ty, self.body)
-            },
-            None => write!(f, "{} Instance {} : {}{}", self.attrs, self.params, self.ty, self.body),
-        }
+impl InstanceDecl {
+    #[must_use]
+    pub const fn new(ty: Type, body: DefBody) -> Self {
+        Self { ty, body }
     }
 }
 
@@ -755,11 +788,11 @@ pub struct TopLevelAssertions(pub Vec<TopLevelAssertion>);
 
 impl TopLevelAssertions {
     #[must_use]
-    pub const fn empty() -> Self {
+    pub(crate) const fn empty() -> Self {
         Self(vec![])
     }
 
-    pub fn push(&mut self, a: TopLevelAssertion) {
+    pub(crate) fn push(&mut self, a: TopLevelAssertion) {
         self.0.push(a);
     }
 }

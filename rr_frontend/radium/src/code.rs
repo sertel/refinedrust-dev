@@ -895,8 +895,8 @@ impl<'def> Function<'def> {
 
         // write type args (passed to the type definition)
         for param in &params.0 {
-            if !param.implicit {
-                write!(f, "{} ", param.name)?;
+            if !param.is_implicit() {
+                write!(f, "{} ", param.get_name())?;
             }
         }
 
@@ -921,10 +921,10 @@ impl<'def> Function<'def> {
         if !params.0.is_empty() {
             write!(f, "intros")?;
             for param in &params.0 {
-                if param.implicit {
+                if param.is_implicit() {
                     write!(f, " ?")?;
                 } else {
-                    write!(f, " {}", param.name)?;
+                    write!(f, " {}", param.get_name())?;
                 }
             }
             writeln!(f, ";")?;

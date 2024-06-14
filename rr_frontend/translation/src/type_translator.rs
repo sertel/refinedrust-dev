@@ -1608,21 +1608,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 (args, vec!["x".to_owned()], "x".to_owned())
             };
 
-            let variant_def = coq::Variant {
-                name: variant_name.to_string(),
-                params: coq::ParamList::new(variant_args),
-            };
+            variants.push(coq::Variant::new(variant_name, variant_args));
 
-            variants.push(variant_def);
             variant_patterns.push((variant_name.to_string(), variant_arg_binders, variant_rfn));
         }
 
         // We assume the generated Inductive def is placed in a context where the generic types are in scope.
-        let inductive = coq::Inductive {
-            name: inductive_name.clone(),
-            parameters: coq::ParamList::new(vec![]),
-            variants,
-        };
+        let inductive = coq::Inductive::new(&inductive_name, vec![], variants);
 
         let enum_spec = radium::EnumSpec {
             rfn_type: coq::Type::Literal(inductive_name),
