@@ -728,14 +728,14 @@ impl Display for Definition {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum TopLevelAssertion {
+pub enum TopLevelAssertion<'a> {
     /// A declaration of a Coq Inductive
     #[display("{}", _0)]
-    InductiveDecl(Inductive),
+    InductiveDecl(&'a Inductive),
 
     /// A declaration of a Coq instance
     #[display("{}", _0)]
-    InstanceDecl(InstanceDecl),
+    InstanceDecl(&'a InstanceDecl),
 
     /// A declaration of a Coq record
     #[display("{}", _0)]
@@ -751,11 +751,11 @@ pub enum TopLevelAssertion {
 
     /// A Coq comment
     #[display("(* {} *)", _0)]
-    Comment(String),
+    Comment(&'a str),
 
     /// A Coq section
     #[display("Section {}.\n{}End{}.", _0, Indented::new(_1), _0)]
-    Section(String, TopLevelAssertions),
+    Section(String, TopLevelAssertions<'a>),
 
     /// A Coq section start
     #[display("Section {}.", _0)]
@@ -784,15 +784,15 @@ impl<T: Display> Display for Indented<T> {
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("{}", display_list!(_0, "\n"))]
-pub struct TopLevelAssertions(pub Vec<TopLevelAssertion>);
+pub struct TopLevelAssertions<'a>(pub Vec<TopLevelAssertion<'a>>);
 
-impl TopLevelAssertions {
+impl<'a> TopLevelAssertions<'a> {
     #[must_use]
     pub(crate) const fn empty() -> Self {
         Self(vec![])
     }
 
-    pub(crate) fn push(&mut self, a: TopLevelAssertion) {
+    pub(crate) fn push(&mut self, a: TopLevelAssertion<'a>) {
         self.0.push(a);
     }
 }

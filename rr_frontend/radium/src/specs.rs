@@ -2075,26 +2075,32 @@ impl<'def> AbstractEnum<'def> {
 
         // write the Coq inductive, if applicable
         if let Some(ind) = &self.optional_inductive_def {
-            let mut assertions = coq::TopLevelAssertions::empty();
+            let mut out = IndentWriter::new(BASE_INDENT, &mut out);
+            writeln!(out).unwrap();
 
-            assertions.push(coq::TopLevelAssertion::Comment(format!(
-                "auto-generated representation of {}",
-                ind.get_name()
-            )));
-            // TODO don't clone
-            assertions.push(coq::TopLevelAssertion::InductiveDecl(ind.clone()));
+            let name = ind.get_name();
+            writeln!(
+                out,
+                "{}",
+                coq::TopLevelAssertion::Comment(&format!("auto-generated representation of {}", name))
+            )
+            .unwrap();
+
+            writeln!(out, "{}", coq::TopLevelAssertion::InductiveDecl(ind)).unwrap();
+
             // prove that it is inhabited
-            let instance_decl = coq::InstanceDecl::new(
-                coq::Type::Literal(format!("Inhabited {}", ind.get_name())),
-                coq::DefBody::Script(
-                    coq::ProofScript(vec![coq::ProofItem::Literal("solve_inhabited".to_owned())]),
-                    coq::ProofScriptTerminator::Qed,
-                ),
-            );
-            assertions.push(coq::TopLevelAssertion::InstanceDecl(instance_decl));
-
-            let mut code_fmt = IndentWriter::new(BASE_INDENT, &mut out);
-            write!(code_fmt, "\n{assertions}\n").unwrap();
+            writeln!(
+                out,
+                "{}",
+                coq::TopLevelAssertion::InstanceDecl(&coq::InstanceDecl::new(
+                    coq::Type::Literal(format!("Inhabited {}", name)),
+                    coq::DefBody::Script(
+                        coq::ProofScript(vec![coq::ProofItem::Literal("solve_inhabited".to_owned())]),
+                        coq::ProofScriptTerminator::Qed,
+                    ),
+                ))
+            )
+            .unwrap();
         }
 
         // build the els term applied to generics
@@ -3467,7 +3473,7 @@ fn make_trait_instance<'def>(
     is_base_spec: bool,
     spec_record_name: &str,
     spec_record_params_name: &str,
-) -> Result<coq::TopLevelAssertions, fmt::Error> {
+) -> Result<coq::TopLevelAssertions<'def>, fmt::Error> {
     let mut assertions = Vec::new();
 
     // write the param record decl
