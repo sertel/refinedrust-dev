@@ -188,9 +188,9 @@ impl<T: ParamLookup> parse::Parse<T> for RRParams {
     }
 }
 
-pub struct CoqModule(coq::Module);
+pub struct CoqModule(coq::module::Module);
 
-impl From<CoqModule> for coq::Module {
+impl From<CoqModule> for coq::module::Module {
     fn from(path: CoqModule) -> Self {
         path.0
     }
@@ -207,9 +207,9 @@ impl<U> parse::Parse<U> for CoqModule {
             let module: parse::LitStr = input.parse(meta)?;
             let module = module.value();
 
-            Ok(Self(coq::Module::new_with_path(&module, coq::Path::new(&path_or_module))))
+            Ok(Self(coq::module::Module::new_with_path(&module, coq::module::Path::new(&path_or_module))))
         } else {
-            Ok(Self(coq::Module::new(&path_or_module)))
+            Ok(Self(coq::module::Module::new(&path_or_module)))
         }
     }
 }
