@@ -359,13 +359,15 @@ impl Variant {
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("Inductive {} {} :=\n{}\n.", name, parameters,
-    display_list!(variants, "\n| ").indented(&make_indent(1))
-)]
+#[display("{}", display_list!(_0, "\n| "))]
+struct VariantList(Vec<Variant>);
+
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("Inductive {} {} :=\n{}\n.", name, parameters, variants.indented(&make_indent(1)))]
 pub struct Inductive {
     name: String,
     parameters: ParamList,
-    variants: Vec<Variant>,
+    variants: VariantList,
 }
 
 impl Inductive {
@@ -373,8 +375,8 @@ impl Inductive {
     pub fn new(name: &str, parameters: Vec<Param>, variants: Vec<Variant>) -> Self {
         Self {
             name: name.to_owned(),
-            parameters: ParamList::new(parameters),
-            variants,
+            parameters: ParamList(parameters),
+            variants: VariantList(variants),
         }
     }
 
