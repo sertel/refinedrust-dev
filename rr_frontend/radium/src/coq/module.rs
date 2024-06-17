@@ -4,13 +4,14 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-/// Rocq module system.
+/// The [module system].
+///
+/// [module system]: https://coq.inria.fr/doc/master/refman/language/core/modules.html
 use std::fmt;
-use std::ops::Deref;
 
-use derive_more::Display;
+use derive_more::{Deref, Display};
 
-/// A Rocq path of the form `A.B.C`.
+/// A path of the form `A.B.C`.
 #[derive(Clone, Eq, PartialEq, Hash, Debug, Display)]
 #[display("{}", _0)]
 pub struct Path(String);
@@ -27,7 +28,7 @@ impl Path {
     }
 }
 
-/// A Rocq module that contains a path `A.B.C` and a module name `D`.
+/// A module that contains a path `A.B.C` and a module name `D`.
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
 pub struct Module {
     path: Option<Path>,
@@ -57,10 +58,10 @@ impl Module {
     }
 }
 
-/// A Rocq import of the form `From A.B.C Require Import D`.
+/// An import of the form `From A.B.C Require Import D`.
 ///
 /// If the `path` is empty, it is of the form `Require Import A`.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Deref)]
 pub struct Import(Module);
 
 impl Import {
@@ -70,18 +71,10 @@ impl Import {
     }
 }
 
-impl Deref for Import {
-    type Target = Module;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-/// A Rocq export of the form `From A.B.C Require Export D`.
+/// An export of the form `From A.B.C Require Export D`.
 ///
 /// If the `path` is empty, it is of the form `Require Export A`.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Eq, PartialEq, Hash, Debug, Deref)]
 pub struct Export(Module);
 
 impl Export {
@@ -91,14 +84,7 @@ impl Export {
     }
 }
 
-impl Deref for Export {
-    type Target = Module;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
+/// Get every unique path from a list of modules.
 fn get_modules_path(modules: &[&Module]) -> Vec<Path> {
     let paths: Vec<_> = modules.iter().filter_map(|x| x.get_path()).collect();
 
@@ -111,6 +97,7 @@ fn get_modules_path(modules: &[&Module]) -> Vec<Path> {
     result
 }
 
+/// Pretty printing a list of modules, by merging the ones with the same path.
 fn fmt_modules(f: &mut fmt::Formatter<'_>, modules: &[&Module], kind: &str) -> fmt::Result {
     fn is(module: &Module, path: Option<&Path>) -> Option<String> {
         (module.get_path() == path.cloned()).then(|| module.name.clone())
