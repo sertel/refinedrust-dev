@@ -5,7 +5,7 @@
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
 use attribute_parse::parse;
-use radium::{coq, specs};
+use radium::coq;
 use rr_rustc_interface::ast::ast::AttrItem;
 use rr_rustc_interface::hir::def_id::LocalDefId;
 
@@ -26,7 +26,7 @@ pub trait ModuleAttrParser {
 pub struct ModuleAttrs {
     pub exports: Vec<coq::module::Export>,
     pub includes: Vec<String>,
-    pub context_params: Vec<coq::Param>,
+    pub context_params: Vec<coq::term::Param>,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -68,9 +68,9 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
                 },
                 "context" => {
                     let param: parse_utils::RRGlobalCoqContextItem = buffer.parse(&()).map_err(str_err)?;
-                    context_params.push(coq::Param::new(
-                        coq::Name::Unnamed,
-                        coq::Type::Literal(param.item),
+                    context_params.push(coq::term::Param::new(
+                        coq::term::Name::Unnamed,
+                        coq::term::Type::Literal(param.item),
                         true,
                     ));
                 },

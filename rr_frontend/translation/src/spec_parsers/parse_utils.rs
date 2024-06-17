@@ -4,13 +4,13 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
+/// This provides some general utilities for RefinedRust-specific attribute parsing.
 use std::collections::{HashMap, HashSet};
 
 use attribute_parse::{parse, MToken};
 use lazy_static::lazy_static;
 use log::info;
 use parse::{Parse, Peek};
-/// This provides some general utilities for RefinedRust-specific attribute parsing.
 use radium::{coq, specs};
 use regex::{self, Captures, Regex};
 
@@ -132,13 +132,13 @@ impl<T: ParamLookup> parse::Parse<T> for IProp {
 
 /// Parse a Coq type.
 pub struct RRCoqType {
-    pub ty: coq::Type,
+    pub ty: coq::term::Type,
 }
 impl<T: ParamLookup> parse::Parse<T> for RRCoqType {
     fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let ty: parse::LitStr = input.parse(meta)?;
         let (ty, _) = process_coq_literal(&ty.value(), meta);
-        let ty = coq::Type::Literal(ty);
+        let ty = coq::term::Type::Literal(ty);
         Ok(Self { ty })
     }
 }
@@ -150,14 +150,14 @@ impl<T: ParamLookup> parse::Parse<T> for RRCoqType {
 /// `w : "(Z * Z)%type"`
 #[derive(Debug)]
 pub struct RRParam {
-    pub name: coq::Name,
-    pub ty: coq::Type,
+    pub name: coq::term::Name,
+    pub ty: coq::term::Type,
 }
 
 impl<T: ParamLookup> parse::Parse<T> for RRParam {
     fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let name: IdentOrTerm = input.parse(meta)?;
-        let name = coq::Name::Named(name.to_string());
+        let name = coq::term::Name::Named(name.to_string());
 
         if parse::Colon::peek(input) {
             input.parse::<_, MToken![:]>(meta)?;
@@ -166,7 +166,7 @@ impl<T: ParamLookup> parse::Parse<T> for RRParam {
         } else {
             Ok(Self {
                 name,
-                ty: coq::Type::Infer,
+                ty: coq::term::Type::Infer,
             })
         }
     }

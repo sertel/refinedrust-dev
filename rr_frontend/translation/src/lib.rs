@@ -997,7 +997,7 @@ fn register_shims<'tcx>(vcx: &mut VerificationCtxt<'tcx, '_>) -> Result<(), base
             rust_name: None,
             type_term: shim.sem_type.clone(),
             syn_type: radium::SynType::Literal(shim.syn_type.clone()),
-            refinement_type: coq::Type::Literal(shim.refinement_type.clone()),
+            refinement_type: coq::term::Type::Literal(shim.refinement_type.clone()),
         };
 
         if let Err(e) = vcx.type_translator.register_adt_shim(did, &lit) {

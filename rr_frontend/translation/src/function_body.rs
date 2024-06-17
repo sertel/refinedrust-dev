@@ -1161,13 +1161,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 for ty in &assoc_tys {
                     param_ty_args.push(format!("{}", ty.get_rfn_type()));
                 }
-                let param_ty = format!(
-                    "{}",
-                    radium::coq::AppTerm::new(trait_ref.spec_attrs_record.clone(), param_ty_args)
-                );
-                let param = radium::coq::Param::new(
-                    radium::coq::Name::Named(param_name.clone()),
-                    radium::coq::Type::Literal(param_ty),
+                let param_ty =
+                    format!("{}", coq::term::App::new(trait_ref.spec_attrs_record.clone(), param_ty_args));
+                let param = coq::term::Param::new(
+                    coq::term::Name::Named(param_name.clone()),
+                    coq::term::Type::Literal(param_ty),
                     false,
                 );
 
@@ -1196,7 +1194,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     for ty in impl_ref.get_trait_param_inst().iter().chain(impl_ref.get_trait_assoc_inst()) {
                         param_ty_args.push(format!("{}", ty.get_rfn_type()));
                     }
-                    let param_ty = format!("{}", radium::coq::AppTerm::new(trait_ref.spec_attrs_record.clone(), param_ty_args));
+                    let param_ty = format!("{}", radium::coq::App::new(trait_ref.spec_attrs_record.clone(), param_ty_args));
                     let param = radium::coq::Param::new(radium::coq::Name::Named(param_name.clone()), radium::coq::Type::Literal(param_ty), false);
 
                     // add it as parameter to the function after the generics
@@ -2127,13 +2125,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             // get the refinement type
             let mut rfn_ty = ty.get_rfn_type();
             // wrap it in place_rfn, since we reason about places
-            rfn_ty = coq::Type::PlaceRfn(Box::new(rfn_ty));
+            rfn_ty = coq::term::Type::PlaceRfn(Box::new(rfn_ty));
 
             // determine their initialization status
             //let initialized = true; // TODO
             // determine the actual refinement type for the current initialization status.
 
-            let rfn_name = coq::Name::Named(format!("r_{}", name));
+            let rfn_name = coq::term::Name::Named(format!("r_{}", name));
             rfn_binders.push(radium::specs::CoqBinder::new(rfn_name, rfn_ty));
         }
 
@@ -3798,7 +3796,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
 
                         Ok(radium::Expr::StructInitE {
-                            sls: coq::AppTerm::new_lhs(sl.to_string()),
+                            sls: coq::term::App::new_lhs(sl.to_string()),
                             components: initializers,
                         })
                     },
@@ -3824,7 +3822,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 .collect();
 
                             return Ok(radium::Expr::StructInitE {
-                                sls: coq::AppTerm::new_lhs(sl.to_string()),
+                                sls: coq::term::App::new_lhs(sl.to_string()),
                                 components: initializers,
                             });
                         }
@@ -3843,7 +3841,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                                 .collect();
 
                             let variant_e = radium::Expr::StructInitE {
-                                sls: coq::AppTerm::new_lhs(sl.to_string()),
+                                sls: coq::term::App::new_lhs(sl.to_string()),
                                 components: initializers,
                             };
 
@@ -3855,7 +3853,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             let variant_name = variant_def.name.to_string();
 
                             return Ok(radium::Expr::EnumInitE {
-                                els: coq::AppTerm::new_lhs(els.to_string()),
+                                els: coq::term::App::new_lhs(els.to_string()),
                                 variant: variant_name,
                                 ty,
                                 initializer: Box::new(variant_e),
@@ -3887,7 +3885,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             translated_ops.into_iter().enumerate().map(|(i, o)| (i.to_string(), o)).collect();
 
                         Ok(radium::Expr::StructInitE {
-                            sls: coq::AppTerm::new_lhs(sl.to_string()),
+                            sls: coq::term::App::new_lhs(sl.to_string()),
                             components: initializers,
                         })
                     },

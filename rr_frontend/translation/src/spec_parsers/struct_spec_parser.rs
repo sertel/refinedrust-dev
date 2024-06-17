@@ -38,8 +38,8 @@ pub trait InvariantSpecParser {
 /// Parse a binder pattern with an optional Coq type annotation, e.g.
 /// `"(x, y)" : "(Z * Z)%type"`
 struct RfnPattern {
-    rfn_pat: coq::Pattern,
-    rfn_type: Option<coq::Type>,
+    rfn_pat: coq::term::Pattern,
+    rfn_type: Option<coq::term::Type>,
 }
 
 impl<T: ParamLookup> parse::Parse<T> for RfnPattern {
@@ -54,7 +54,7 @@ impl<T: ParamLookup> parse::Parse<T> for RfnPattern {
             let (ty, _) = process_coq_literal(ty.value().as_str(), meta);
             Ok(Self {
                 rfn_pat: pat,
-                rfn_type: Some(coq::Type::Literal(ty)),
+                rfn_type: Some(coq::term::Type::Literal(ty)),
             })
         } else {
             Ok(Self {
@@ -196,14 +196,14 @@ impl<'b, T: ParamLookup> InvariantSpecParser for VerboseInvariantSpecParser<'b, 
         let mut abstracted_refinement = None;
 
         let mut rfn_pat = "placeholder_pat".to_owned();
-        let mut rfn_type = coq::Type::Infer;
+        let mut rfn_type = coq::term::Type::Infer;
 
         let mut existentials: Vec<RRParam> = Vec::new();
 
         // use Plain as the default
         let mut inv_flags = specs::InvariantSpecFlags::Plain;
 
-        let mut params: Vec<coq::Param> = Vec::new();
+        let mut params: Vec<coq::term::Param> = Vec::new();
 
         for &it in attrs {
             let path_segs = &it.path.segments;
@@ -270,7 +270,11 @@ impl<'b, T: ParamLookup> InvariantSpecParser for VerboseInvariantSpecParser<'b, 
                 "context" => {
                     let param = RRCoqContextItem::parse(&buffer, self.scope).map_err(str_err)?;
 
-                    params.push(coq::Param::new(coq::Name::Unnamed, coq::Type::Literal(param.item), true));
+                    params.push(coq::term::Param::new(
+                        coq::term::Name::Unnamed,
+                        coq::term::Type::Literal(param.item),
+                        true,
+                    ));
                 },
                 _ => {
                     //skip, this may be part of an enum spec
@@ -334,7 +338,7 @@ where
 
     make_literal: F,
     //ty_scope: &'a [Option<specs::Type<'def>>],
-    //rfnty_scope: &'a [Option<coq::Type>],
+    //rfnty_scope: &'a [Option<coq::term::Type>],
 }
 
 impl<'a, 'def, T: ParamLookup, F> VerboseStructFieldSpecParser<'a, 'def, T, F>
@@ -367,7 +371,7 @@ where
         let lit_ty = specs::LiteralType {
             rust_name: None,
             type_term: lit.ty.clone(),
-            refinement_type: coq::Type::Infer,
+            refinement_type: coq::term::Type::Infer,
             syn_type: ty.into(),
         };
         let lit_ref = (self.make_literal)(lit_ty);

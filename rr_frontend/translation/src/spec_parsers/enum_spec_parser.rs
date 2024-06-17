@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 
 use attribute_parse::{parse, MToken};
-use parse::{Parse, Peek};
+use parse::Peek;
 use radium::{coq, specs};
 use rr_rustc_interface::ast::ast::{AttrArgs, AttrItem};
 
@@ -101,7 +101,7 @@ impl<'b, T: ParamLookup> EnumSpecParser for VerboseEnumSpecParser<'b, T> {
                 "refined_by" => {
                     let ty: parse::LitStr = buffer.parse(self.scope).map_err(str_err)?;
                     let (ty, _) = process_coq_literal(ty.value().as_str(), self.scope);
-                    rfn_type = Some(coq::Type::Literal(ty));
+                    rfn_type = Some(coq::term::Type::Literal(ty));
                 },
                 "export_as" => {},
                 _ => {

@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 use attribute_parse::{parse, MToken};
 use derive_more::Constructor;
+use radium::coq;
 use rr_rustc_interface::ast::ast::AttrItem;
 use rr_rustc_interface::hir::def_id::LocalDefId;
 
@@ -48,7 +49,7 @@ impl<'a, T: ParamLookup> ParamLookup for TraitAttrScope<'a, T> {
 #[derive(Clone, Debug)]
 pub struct TraitAttrs {
     pub attrs: radium::TraitSpecAttrsDecl,
-    pub context_items: Vec<radium::coq::Param>,
+    pub context_items: Vec<coq::term::Param>,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -107,9 +108,9 @@ where
                 },
                 "context" => {
                     let context_item: RRCoqContextItem = buffer.parse(&self.scope).map_err(str_err)?;
-                    let param = radium::coq::Param::new(
-                        radium::coq::Name::Unnamed,
-                        radium::coq::Type::Literal(context_item.item),
+                    let param = coq::term::Param::new(
+                        coq::term::Name::Unnamed,
+                        coq::term::Type::Literal(context_item.item),
                         true,
                     );
                     context_items.push(param);
