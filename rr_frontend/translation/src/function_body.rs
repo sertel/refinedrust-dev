@@ -9,7 +9,7 @@ use std::collections::{btree_map, BTreeMap, HashMap, HashSet};
 use log::{info, trace, warn};
 use radium::coq;
 use rr_rustc_interface::hir::def_id::DefId;
-use rr_rustc_interface::middle::mir::interpret::{ConstValue, Scalar};
+use rr_rustc_interface::middle::mir::interpret::{ConstValue, ErrorHandled, Scalar};
 use rr_rustc_interface::middle::mir::tcx::PlaceTy;
 use rr_rustc_interface::middle::mir::{
     BasicBlock, BasicBlockData, BinOp, Body, BorrowKind, Constant, ConstantKind, Local, LocalKind, Location,
@@ -3569,6 +3569,34 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
+    /// Translate a constant value from const evaluation.
+    fn translate_constant_value(
+        &mut self,
+        v: mir::interpret::ConstValue<'tcx>,
+        ty: Ty<'tcx>,
+    ) -> Result<radium::Expr, TranslationError> {
+        match v {
+            ConstValue::Scalar(sc) => self.translate_scalar(&sc, ty),
+            ConstValue::ZeroSized => {
+                // TODO are there more special cases we need to handle somehow?
+                match ty.kind() {
+                    TyKind::FnDef(_, _) => {
+                        info!("Translating ZST val for function call target: {:?}", ty);
+                        self.translate_fn_def_use(ty)
+                    },
+                    _ => Ok(radium::Expr::Literal(radium::Literal::ZST)),
+                }
+            },
+            _ => {
+                // TODO: do we actually care about this case or is this just something that can
+                // appear as part of CTFE/MIRI?
+                Err(TranslationError::UnsupportedFeature {
+                    description: format!("Unsupported Constant: ConstValue; {:?}", v),
+                })
+            },
+        }
+    }
+
     /// Translate a Constant to a `radium::Expr`.
     fn translate_constant(&mut self, constant: &Constant<'tcx>) -> Result<radium::Expr, TranslationError> {
         match constant.literal {
@@ -3591,31 +3619,22 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     }),
                 }
             },
-            ConstantKind::Val(val, ty) => {
-                match val {
-                    ConstValue::Scalar(sc) => self.translate_scalar(&sc, ty),
-                    ConstValue::ZeroSized => {
-                        // TODO are there more special cases we need to handle somehow?
-                        match ty.kind() {
-                            TyKind::FnDef(_, _) => {
-                                info!("Translating ZST val for function call target: {:?}", ty);
-                                self.translate_fn_def_use(ty)
-                            },
-                            _ => Ok(radium::Expr::Literal(radium::Literal::ZST)),
-                        }
-                    },
-                    _ => {
-                        // TODO: do we actually care about this case or is this just something that can
-                        // appear as part of CTFE/MIRI?
-                        Err(TranslationError::UnsupportedFeature {
-                            description: format!("Unsupported Constant: ConstValue; {:?}", constant.literal),
-                        })
+            ConstantKind::Val(val, ty) => self.translate_constant_value(val, ty),
+            ConstantKind::Unevaluated(c, ty) => {
+                // call const evaluation
+                let param_env: ty::ParamEnv<'tcx> = self.env.tcx().param_env(self.proc.get_id());
+                match self.env.tcx().const_eval_resolve(param_env, c, None) {
+                    Ok(res) => self.translate_constant_value(res, ty),
+                    Err(e) => match e {
+                        ErrorHandled::Reported(_) => Err(TranslationError::UnsupportedFeature {
+                            description: "Cannot interpret constant".to_owned(),
+                        }),
+                        ErrorHandled::TooGeneric => Err(TranslationError::UnsupportedFeature {
+                            description: "Const use is too generic".to_owned(),
+                        }),
                     },
                 }
             },
-            ConstantKind::Unevaluated(_, _) => Err(TranslationError::UnsupportedFeature {
-                description: format!("Unsupported Constant: Unevaluated; {:?}", constant.literal),
-            }),
         }
     }
 
