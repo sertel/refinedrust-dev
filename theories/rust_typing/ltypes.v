@@ -4272,18 +4272,18 @@ Ltac simp_ltype_st Heq :=
 
 Ltac simp_ltype :=
   match goal with
-  | |- context[ltype_core ?lt] =>
+  | |- context[@ltype_core _ _ ?rt ?lt] =>
       assert_fails (is_var lt);
       let ltc := fresh "ltc" in
       let Heq := fresh "Heq_lt" in
-      remember (ltype_core lt) as ltc eqn:Heq;
+      remember (ltype_core (rt:=rt) lt) as ltc eqn:Heq;
       simp_ltype_core Heq;
       subst ltc
-  | |- context[ltype_st ?lt] =>
+  | |- context[@ltype_st _ _ ?rt ?lt] =>
       assert_fails (is_var lt);
       let ltc := fresh "ltc" in
       let Heq := fresh "Heq_lt" in
-      remember (ltype_st lt) as ltc eqn:Heq;
+      remember (ltype_st (rt:=rt) lt) as ltc eqn:Heq;
       simp_ltype_st Heq;
       subst ltc
   end.
@@ -4291,18 +4291,18 @@ Ltac simp_ltypes := repeat simp_ltype.
 
 Tactic Notation "simp_ltype" "in" hyp(H) :=
   match type of H with
-  | context[ltype_core ?lt] =>
+  | context[@ltype_core _ _ ?rt ?lt] =>
       assert_fails (is_var lt);
       let ltc := fresh "ltc" in
       let Heq := fresh "Heq_lt" in
-      remember (ltype_core lt) as ltc eqn:Heq in H;
+      remember (ltype_core (rt:=rt) lt) as ltc eqn:Heq in H;
       simp_ltype_core Heq;
       subst ltc
-  | context[ltype_st ?lt] =>
+  | context[@ltype_st _ _ ?rt ?lt] =>
       assert_fails (is_var lt);
       let ltc := fresh "ltc" in
       let Heq := fresh "Heq_lt" in
-      remember (ltype_st lt) as ltc eqn:Heq in H;
+      remember (ltype_st (rt:=rt) lt) as ltc eqn:Heq in H;
       simp_ltype_st Heq;
       subst ltc
   end.

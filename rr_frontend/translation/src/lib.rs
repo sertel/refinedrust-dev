@@ -983,6 +983,14 @@ fn get_attributes_of_function<'a>(env: &'a Environment, did: DefId) -> Vec<&'a a
         let filtered_impl_attrs = utils::filter_tool_attrs(impl_attrs);
         filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
     }
+
+    // for closures, propagate from the surrounding function
+    if env.tcx().is_closure(did) {
+        let parent_did = env.tcx().parent(did);
+        let parent_attrs = get_attributes_of_function(env, parent_did);
+        filtered_attrs.extend(parent_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
+    }
+
     filtered_attrs
 }
 
@@ -1152,7 +1160,7 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
                     loc_name,
                     ty: translated_ty,
                 };
-                vcx.const_registry.statics.insert(s.to_def_id(), meta);
+                vcx.const_registry.register_static(s.to_def_id(), meta);
             },
             Err(e) => {
                 println!("Warning: static {:?} has unsupported type, skipping: {:?}", s, e);
@@ -1305,9 +1313,7 @@ where
         coq_path_prefix: path_prefix,
         shim_registry,
         dune_package: package,
-        const_registry: ConstScope {
-            statics: HashMap::new(),
-        },
+        const_registry: ConstScope::empty(),
     };
 
     register_functions(&mut vcx)?;

@@ -491,6 +491,9 @@ pub enum Unop {
 
     #[display("NotIntOp")]
     NotInt,
+
+    #[display("CastOp {}", _0)]
+    Cast(OpType),
 }
 
 #[derive(Clone, Eq, PartialEq, Debug)]
@@ -1076,6 +1079,14 @@ impl<'def> Function<'def> {
 /// Information on a used static variable
 #[derive(Clone, Debug)]
 pub struct StaticMeta<'def> {
+    pub ident: String,
+    pub loc_name: String,
+    pub ty: Type<'def>,
+}
+
+/// Information on a used const place
+#[derive(Clone, Debug)]
+pub struct ConstPlaceMeta<'def> {
     pub ident: String,
     pub loc_name: String,
     pub ty: Type<'def>,

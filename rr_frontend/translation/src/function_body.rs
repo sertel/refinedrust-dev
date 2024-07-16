@@ -183,7 +183,31 @@ impl<'def> ProcedureScope<'def> {
 
 /// Scope of consts that are available
 pub struct ConstScope<'def> {
-    pub statics: HashMap<DefId, radium::StaticMeta<'def>>,
+    // statics are explicitly declared
+    statics: HashMap<DefId, radium::StaticMeta<'def>>,
+    // const places are constants that lie in a static memory segment because they are referred to
+    // by-ref
+    const_places: HashMap<DefId, radium::ConstPlaceMeta<'def>>,
+}
+
+impl<'def> ConstScope<'def> {
+    /// Create a new const scope.
+    pub fn empty() -> Self {
+        Self {
+            statics: HashMap::new(),
+            const_places: HashMap::new(),
+        }
+    }
+
+    /// Register a static
+    pub fn register_static(&mut self, did: DefId, meta: radium::StaticMeta<'def>) {
+        self.statics.insert(did, meta);
+    }
+
+    /// Register a const place
+    pub fn register_const_place(&mut self, did: DefId, meta: radium::ConstPlaceMeta<'def>) {
+        self.const_places.insert(did, meta);
+    }
 }
 
 // solve the constraints for the new_regions
@@ -3260,9 +3284,15 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 }
             },
 
-            Rvalue::Cast(kind, op, ty) => {
+            Rvalue::Cast(kind, op, to_ty) => {
                 let op_ty = self.get_type_of_operand(op);
+                let op_st = self.ty_translator.translate_type_to_syn_type(op_ty)?;
+                let op_ot = self.ty_translator.translate_syn_type_to_op_type(&op_st);
+
                 let translated_op = self.translate_operand(op, true)?;
+
+                let target_st = self.ty_translator.translate_type_to_syn_type(*to_ty)?;
+                let target_ot = self.ty_translator.translate_syn_type_to_op_type(&target_st);
 
                 match kind {
                     mir::CastKind::PointerCoercion(x) => {
@@ -3292,9 +3322,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     }),
 
                     mir::CastKind::IntToInt => {
-                        // TODO
-                        Err(TranslationError::Unimplemented {
-                            description: "RefinedRust does currently not support int-to-int cast".to_owned(),
+                        // Cast integer to integer
+                        Ok(radium::Expr::UnOp {
+                            o: radium::Unop::Cast(target_ot),
+                            ot: op_ot,
+                            e: Box::new(translated_op),
                         })
                     },
 
@@ -3311,7 +3343,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     }),
 
                     mir::CastKind::PtrToPtr => {
-                        match (op_ty.kind(), ty.kind()) {
+                        match (op_ty.kind(), to_ty.kind()) {
                             (TyKind::RawPtr(_), TyKind::RawPtr(_)) => {
                                 // Casts between raw pointers are NOPs for us
                                 Ok(translated_op)
@@ -3343,14 +3375,21 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         ),
                     }),
 
-                    mir::CastKind::PointerExposeAddress | mir::CastKind::PointerFromExposedAddress => {
-                        Err(TranslationError::UnsupportedFeature {
-                            description: format!(
-                                "RefinedRust does currently not support this kind of cast (got: {:?})",
-                                rval
-                            ),
+                    mir::CastKind::PointerExposeAddress => {
+                        // Cast pointer to integer
+                        Ok(radium::Expr::UnOp {
+                            o: radium::Unop::Cast(target_ot),
+                            ot: radium::OpType::Ptr,
+                            e: Box::new(translated_op),
                         })
                     },
+
+                    mir::CastKind::PointerFromExposedAddress => Err(TranslationError::UnsupportedFeature {
+                        description: format!(
+                            "RefinedRust does currently not support this kind of cast (got: {:?})",
+                            rval
+                        ),
+                    }),
                 }
             },
 
@@ -3549,7 +3588,15 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             self.collected_statics.insert(did);
                             Ok(radium::Expr::Literal(radium::Literal::Loc(s.loc_name.clone())))
                         },
-
+                        middle::mir::interpret::GlobalAlloc::Memory(alloc) => {
+                            // TODO: this is needed
+                            Err(TranslationError::UnsupportedFeature {
+                                description: format!(
+                                    "RefinedRust does currently not support GlobalAlloc {:?} for scalar {:?} at type {:?}",
+                                    glob_alloc, sc, ty
+                                ),
+                            })
+                        },
                         _ => Err(TranslationError::UnsupportedFeature {
                             description: format!(
                                 "RefinedRust does currently not support GlobalAlloc {:?} for scalar {:?} at type {:?}",
