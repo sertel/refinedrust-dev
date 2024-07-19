@@ -4,9 +4,10 @@
 #![feature(stmt_expr_attributes)]
 #![allow(dead_code)]
 
-mod enums;
-mod structs;
 mod char;
+mod enums;
+mod inline;
+mod structs;
 mod traits;
 mod statics;
 
