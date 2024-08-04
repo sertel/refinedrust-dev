@@ -8,9 +8,11 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-typed-arena.workspace = true
+derive-new.workspace = true
 derive_more.workspace = true
+from_variants.workspace = true
 indent_write.workspace = true
 indoc.workspace = true
 log.workspace = true
 itertools.workspace = true
+typed-arena.workspace = true
