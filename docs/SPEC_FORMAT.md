@@ -38,10 +38,12 @@ Finally, the `returns` clause specifies a refinement (and optionally, a type) fo
 | `exists`  | specify an existential for the postcondition | multiple | `#[rr::exists("x" : "Z")]` |
 | `observe` | shortcut for specifying observations on ghost variables | single | `#[rr::observe("γ": "x + 2")]` |
 | `context` | add an unnamed implicit parameter to the context | single | `#[rr::context("ghost_varG Σ Z")]` |
+| `shim`  | replace the function with a shim with the given code an specification | single | `#[rr::shim("ptr_dangling", "type_of_ptr_dangling")]` |
 
 There are further attributes that influence the proof-checking behaviour:
 | Keyword   | Purpose                      | Properties | Example                          |
 |-----------|------------------------------|------------|----------------------------------|
+| `verify`  | Tell RefinedRust to verify this function with the default specification | none | `#[rr::verify]` | 
 | `trust_me`  | generate and type-check the specification and code, but do not generate a proof | none   | `#[rr::trust_me]` |
 | `only_spec`  | only generate and type-check the specification, but do not generate the code | none   | `#[rr::only_spec]` |
 | `skip`  | ignore annotations on this function completely | none   | `#[rr::skip]` |
@@ -49,7 +51,7 @@ There are further attributes that influence the proof-checking behaviour:
 
 ## Closure attributes
 RefinedRust has experimental support for closures.
-The same attributs as for functions apply, but in addition, you can specify assumptions and modifications on the captures of the closure using the `rr::capture` attribute.
+The same attributes as for functions apply, but in addition, you can specify assumptions and modifications on the captures of the closure using the `rr::capture` attribute.
 
 It semantics are best understood using some examples:
 ```

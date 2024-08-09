@@ -11,5 +11,4 @@ fn init_vec() {
 
     v.push(42);
     assert!(v.pop().unwrap() == 42);
-
 }

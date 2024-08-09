@@ -37,6 +37,9 @@ Proof.
     apply lctx_lft_incl_external.
     apply elem_of_cons; right.
     apply elem_of_cons; right.
+    apply elem_of_cons; right.
+    apply elem_of_app; right.
+    apply elem_of_app; right.
     apply elem_of_app; right.
     apply elem_of_app; left.
     unfold_opaque @ty_outlives_E.

@@ -17,6 +17,7 @@ mod function_body;
 mod inclusion_tracker;
 mod shim_registry;
 mod spec_parsers;
+mod trait_registry;
 mod traits;
 mod type_translator;
 mod tyvars;
@@ -32,7 +33,7 @@ use log::{info, trace, warn};
 use radium::coq;
 use rr_rustc_interface::hir::def_id::{DefId, LocalDefId};
 use rr_rustc_interface::middle::ty;
-use rr_rustc_interface::{ast, span};
+use rr_rustc_interface::{ast, hir, span};
 use topological_sort::TopologicalSort;
 use typed_arena::Arena;
 
@@ -41,6 +42,8 @@ use crate::function_body::{ConstScope, FunctionTranslator, ProcedureMode, Proced
 use crate::spec_parsers::const_attr_parser::{ConstAttrParser, VerboseConstAttrParser};
 use crate::spec_parsers::crate_attr_parser::{CrateAttrParser, VerboseCrateAttrParser};
 use crate::spec_parsers::module_attr_parser::{ModuleAttrParser, ModuleAttrs, VerboseModuleAttrParser};
+use crate::spec_parsers::*;
+use crate::trait_registry::TraitRegistry;
 use crate::type_translator::{normalize_in_function, TypeTranslator};
 
 /// Order ADT definitions topologically.
@@ -77,12 +80,13 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
     procedure_registry: ProcedureScope<'rcx>,
     const_registry: ConstScope<'rcx>,
     type_translator: &'rcx TypeTranslator<'rcx, 'tcx>,
+    trait_registry: &'rcx TraitRegistry<'tcx, 'rcx>,
     functions: &'rcx [LocalDefId],
 
     /// the second component determines whether to include it in the code file as well
     extra_exports: HashSet<(coq::Export, bool)>,
 
-    /// extra Coq module dependencies
+    /// extra Coq module dependencies (for generated dune files)
     extra_dependencies: HashSet<coq::Path>,
 
     coq_path_prefix: String,
@@ -203,29 +207,43 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         }
     }
 
+    /// Make a shim entry for a trait.
+    fn make_trait_shim_entry(
+        &self,
+        did: LocalDefId,
+        decl: radium::LiteralTraitSpecRef<'rcx>,
+    ) -> Option<shim_registry::TraitShim> {
+        info!("making shim entry for {did:?}");
+        if ty::Visibility::Public == self.env.tcx().visibility(did.to_def_id()) {
+            let interned_path = self.get_path_for_shim(did.into());
+            let a = shim_registry::TraitShim {
+                path: interned_path,
+                name: decl.name.clone(),
+                spec_record: decl.spec_record.clone(),
+                base_spec: decl.base_spec.clone(),
+                spec_subsumption: decl.spec_subsumption.clone(),
+            };
+            return Some(a);
+        }
+        None
+    }
+
     fn make_adt_shim_entry(&self, did: DefId, lit: radium::LiteralType) -> Option<shim_registry::AdtShim> {
-        info!("making shim entry for {:?}", did);
-        if did.is_local() {
-            match self.env.tcx().visibility(did) {
-                // only export public items
-                ty::Visibility::Public => {
-                    let interned_path = self.get_path_for_shim(did);
-                    let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
+        info!("making shim entry for {did:?}");
+        if did.is_local() && ty::Visibility::Public == self.env.tcx().visibility(did) {
+            // only export public items
+            let interned_path = self.get_path_for_shim(did);
+            let name = type_translator::strip_coq_ident(&self.env.get_item_name(did));
 
-                    info!("Found adt path {:?} for did {:?} with name {:?}", interned_path, did, name);
+            info!("Found adt path {:?} for did {:?} with name {:?}", interned_path, did, name);
 
-                    let a = shim_registry::AdtShim {
-                        path: interned_path,
-                        refinement_type: lit.refinement_type.to_string(),
-                        syn_type: lit.syn_type.to_string(),
-                        sem_type: lit.type_term,
-                    };
-                    return Some(a);
-                },
-                ty::Visibility::Restricted(_) => {
-                    // don't  export
-                },
-            }
+            let a = shim_registry::AdtShim {
+                path: interned_path,
+                refinement_type: lit.refinement_type.to_string(),
+                syn_type: lit.syn_type.to_string(),
+                sem_type: lit.type_term,
+            };
+            return Some(a);
         }
 
         None
@@ -235,7 +253,17 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let mut function_shims = Vec::new();
         let mut adt_shims = Vec::new();
         let mut trait_method_shims = Vec::new();
+        let mut trait_shims = Vec::new();
 
+        // traits
+        let decls = self.trait_registry.get_trait_decls();
+        for (did, decl) in &decls {
+            if let Some(entry) = self.make_trait_shim_entry(*did, decl.lit) {
+                trait_shims.push(entry);
+            }
+        }
+
+        // ADTs
         let variant_defs = self.type_translator.get_variant_defs();
         let enum_defs = self.type_translator.get_enum_defs();
 
@@ -254,9 +282,10 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
-        // trait method implementations are handled differently
+        // trait method implementations are handled differently, so we keep track of them here
         let mut trait_methods = Vec::new();
 
+        // functions and methods
         for (did, fun) in self.procedure_registry.iter_code() {
             if let Some(impl_did) = self.env.tcx().impl_of_method(*did) {
                 info!("found impl method: {:?}", did);
@@ -285,6 +314,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
+        // trait methods
         for (did, fun) in trait_methods {
             if let Some(shim) = self.make_shim_trait_method_entry(*did, &fun.spec_name) {
                 trait_method_shims.push(shim);
@@ -309,6 +339,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             adt_shims,
             function_shims,
             trait_method_shims,
+            trait_shims,
         );
     }
 
@@ -388,6 +419,15 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // write tuples up to the necessary size
         // TODO
+
+        // write trait specs
+        let trait_deps = self.trait_registry.get_registered_trait_deps();
+        let dep_order = order_adt_defs(&trait_deps);
+        let trait_decls = self.trait_registry.get_trait_decls();
+        for did in dep_order {
+            let decl = &trait_decls[&did.as_local().unwrap()];
+            write!(spec_file, "{decl}\n").unwrap();
+        }
 
         // write translated source code of functions
         {
@@ -790,7 +830,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 }
 
 /// Register shims in the procedure registry.
-fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
+fn register_shims<'tcx>(vcx: &mut VerificationCtxt<'tcx, '_>) -> Result<(), base::TranslationError<'tcx>> {
     for shim in vcx.shim_registry.get_function_shims() {
         let did = if shim.is_method {
             utils::try_resolve_method_did(vcx.env.tcx(), &shim.path)
@@ -833,6 +873,21 @@ fn register_shims(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
         }
 
         info!("Resolved ADT shim {:?} as {:?} did", shim, did);
+    }
+
+    for shim in vcx.shim_registry.get_trait_shims() {
+        if let Some(did) = utils::try_resolve_did(vcx.env.tcx(), &shim.path) {
+            let spec = radium::LiteralTraitSpec {
+                name: shim.name.clone(),
+                spec_record: shim.spec_record.clone(),
+                base_spec: shim.base_spec.clone(),
+                spec_subsumption: shim.spec_subsumption.clone(),
+            };
+
+            vcx.trait_registry.register_shim(did, spec)?;
+        } else {
+            println!("Warning: cannot find defid for shim {:?}, skipping", shim.path);
+        }
     }
 
     for shim in vcx.shim_registry.get_trait_method_shims() {
@@ -897,7 +952,7 @@ fn get_most_restrictive_function_mode(
     vcx: &VerificationCtxt<'_, '_>,
     did: DefId,
 ) -> function_body::ProcedureMode {
-    let attrs = get_attributes_of_function(vcx.env, did);
+    let attrs = vcx.env.get_attributes_of_function(did, &propagate_method_attr_from_impl);
 
     // check if this is a purely spec function; if so, skip.
     if utils::has_tool_attr_filtered(attrs.as_slice(), "shim") {
@@ -921,7 +976,9 @@ fn get_most_restrictive_function_mode(
 }
 
 /// Register functions of the crate in the procedure registry.
-fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> {
+fn register_functions<'tcx>(
+    vcx: &mut VerificationCtxt<'tcx, '_>,
+) -> Result<(), base::TranslationError<'tcx>> {
     for &f in vcx.functions {
         let mut mode = get_most_restrictive_function_mode(vcx, f.to_def_id());
 
@@ -966,34 +1023,6 @@ fn register_functions(vcx: &mut VerificationCtxt<'_, '_>) -> Result<(), String> 
     Ok(())
 }
 
-fn propagate_attr_from_impl(it: &ast::ast::AttrItem) -> bool {
-    let Some(ident) = it.path.segments.get(1) else {
-        return false;
-    };
-
-    matches!(ident.ident.as_str(), "context")
-}
-
-fn get_attributes_of_function<'a>(env: &'a Environment, did: DefId) -> Vec<&'a ast::ast::AttrItem> {
-    let attrs = env.get_attributes(did);
-    let mut filtered_attrs = utils::filter_tool_attrs(attrs);
-    // also add selected attributes from the surrounding impl
-    if let Some(impl_did) = env.tcx().impl_of_method(did) {
-        let impl_attrs = env.get_attributes(impl_did);
-        let filtered_impl_attrs = utils::filter_tool_attrs(impl_attrs);
-        filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
-    }
-
-    // for closures, propagate from the surrounding function
-    if env.tcx().is_closure(did) {
-        let parent_did = env.tcx().parent(did);
-        let parent_attrs = get_attributes_of_function(env, parent_did);
-        filtered_attrs.extend(parent_attrs.into_iter().filter(|x| propagate_attr_from_impl(x)));
-    }
-
-    filtered_attrs
-}
-
 /// Translate functions of the crate, assuming they were previously registered.
 fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
     for &f in vcx.functions {
@@ -1001,7 +1030,8 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
         let fname = vcx.env.get_item_name(f.to_def_id());
         let meta = vcx.procedure_registry.lookup_function(f.to_def_id()).unwrap();
 
-        let filtered_attrs = get_attributes_of_function(vcx.env, f.to_def_id());
+        let filtered_attrs =
+            vcx.env.get_attributes_of_function(f.to_def_id(), &propagate_method_attr_from_impl);
 
         let mode = meta.get_mode();
         if mode.is_shim() {
@@ -1023,6 +1053,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                 proc,
                 &filtered_attrs,
                 vcx.type_translator,
+                vcx.trait_registry,
                 &vcx.procedure_registry,
                 &vcx.const_registry,
             ),
@@ -1032,6 +1063,7 @@ fn translate_functions<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
                 proc,
                 &filtered_attrs,
                 vcx.type_translator,
+                vcx.trait_registry,
                 &vcx.procedure_registry,
                 &vcx.const_registry,
             ),
@@ -1170,6 +1202,46 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
     Ok(())
 }
 
+/// Register traits.
+fn register_traits(vcx: &VerificationCtxt<'_, '_>) -> Result<(), String> {
+    let mut traits = vcx.env.get_traits();
+
+    // order according to dependencies first
+    let deps = vcx.trait_registry.get_trait_deps(&traits);
+    let ordered_traits = order_adt_defs(&deps);
+
+    for t in &ordered_traits {
+        let t = t.as_local().unwrap();
+
+        info!("found trait {:?}", t);
+        let mut all_have_annots = true;
+        let mut some_has_annot = false;
+        // check that all children have a specification
+        let children = vcx.env.tcx().module_children_local(t);
+        for c in children {
+            if let hir::def::Res::Def(def_kind, def_id) = c.res {
+                if def_kind == hir::def::DefKind::AssocFn {
+                    if vcx.env.has_any_tool_attribute(def_id) {
+                        some_has_annot = true;
+                    } else {
+                        all_have_annots = false;
+                    }
+                }
+            }
+        }
+        if !all_have_annots && some_has_annot {
+            println!("Warning: not all of trait {t:?}'s items are annotated, skipping");
+            continue;
+        }
+
+        vcx.trait_registry
+            .register_trait(vcx.type_translator, t)
+            .map_err(|x| format!("{x:?}"))
+            .map_err(|e| format!("{e:?}"))?;
+    }
+    Ok(())
+}
+
 /// Get and parse all module attributes.
 pub fn get_module_attributes(env: &Environment<'_>) -> Result<HashMap<LocalDefId, ModuleAttrs>, String> {
     let modules = env.get_modules();
@@ -1272,7 +1344,9 @@ where
     let struct_arena = Arena::new();
     let enum_arena = Arena::new();
     let shim_arena = Arena::new();
+    let trait_arena = Arena::new();
     let type_translator = TypeTranslator::new(env, &struct_arena, &enum_arena, &shim_arena);
+    let trait_registry = TraitRegistry::new(env, &type_translator, &trait_arena);
     let procedure_registry = ProcedureScope::new();
     let shim_string_arena = Arena::new();
     let mut shim_registry = shim_registry::ShimRegistry::empty(&shim_string_arena);
@@ -1307,6 +1381,7 @@ where
         env,
         functions: functions.as_slice(),
         type_translator: &type_translator,
+        trait_registry: &trait_registry,
         procedure_registry,
         extra_exports: exports.into_iter().map(|x| (x, false)).collect(),
         extra_dependencies: HashSet::new(),
@@ -1316,9 +1391,11 @@ where
         const_registry: ConstScope::empty(),
     };
 
-    register_functions(&mut vcx)?;
+    register_functions(&mut vcx).map_err(|x| x.to_string())?;
 
-    register_shims(&mut vcx)?;
+    register_traits(&vcx)?;
+
+    register_shims(&mut vcx).map_err(|x| x.to_string())?;
 
     register_consts(&mut vcx)?;
 

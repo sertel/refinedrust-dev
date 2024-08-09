@@ -19,6 +19,7 @@ pub struct CollectPrustiSpecVisitor<'a, 'tcx: 'a> {
     modules: Vec<LocalDefId>,
     statics: Vec<LocalDefId>,
     consts: Vec<LocalDefId>,
+    traits: Vec<LocalDefId>,
 }
 
 impl<'a, 'tcx> CollectPrustiSpecVisitor<'a, 'tcx> {
@@ -30,11 +31,14 @@ impl<'a, 'tcx> CollectPrustiSpecVisitor<'a, 'tcx> {
             modules: Vec::new(),
             statics: Vec::new(),
             consts: Vec::new(),
+            traits: Vec::new(),
         }
     }
 
-    pub fn get_results(self) -> (Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>) {
-        (self.functions, self.modules, self.statics, self.consts)
+    pub fn get_results(
+        self,
+    ) -> (Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>) {
+        (self.functions, self.modules, self.statics, self.consts, self.traits)
     }
 
     pub fn run(&mut self) {
@@ -78,6 +82,11 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
             let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
             trace!("Add module {} to result", item_def_path);
             self.modules.push(def_id);
+        } else if let hir::ItemKind::Trait(..) = item.kind {
+            let def_id = item.hir_id().owner.def_id;
+            let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
+            trace!("Add trait {} to result", item_def_path);
+            self.traits.push(def_id);
         }
     }
 

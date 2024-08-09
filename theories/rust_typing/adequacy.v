@@ -102,7 +102,7 @@ Proof.
     iMod (na_alloc) as "(%π & Hna)".
     iDestruct ("Hfn" $! π) as (P) "[Hmain HP]".
     rewrite /initial_prog.
-    iApply (type_call_fnptr π [] [] 0 [] main main [] [] (λ _ _ _ _ _, True%I) (main_type P) [] with "[HP ] Hmain [] [] [] [] [Hna]").
+    iApply (type_call_fnptr π [] [] 0 [] main main [] [] (main_type P) [] (λ _ _ _ _ _, True%I) with "[HP ] Hmain [] [] [] [] [Hna]").
     + iIntros "_". iExists eq_refl, tt.
       iIntros (???) "#CTX #HE HL".
       iModIntro. iExists [], [], True%I.

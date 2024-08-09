@@ -38,12 +38,20 @@ pub trait Try: FromResidual {
     /// This should be implemented consistently with the `branch` method
     /// such that applying the `?` operator will get back the original value:
     /// `Try::from_output(x).branch() --> ControlFlow::Continue(x)`.
+    #[rr::params("x")]
+    #[rr::args("x")]
+    #[rr::exists("y")]
+    #[rr::returns("y")]
     fn from_output(output: Self::Output) -> Self;
 
     /// Used in `?` to decide whether the operator should produce a value
     /// (because this returned [`ControlFlow::Continue`])
     /// or propagate a value back to the caller
     /// (because this returned [`ControlFlow::Break`]).
+    #[rr::params("x")]
+    #[rr::args("x")]
+    #[rr::exists("y")]
+    #[rr::returns("y")]
     fn branch(self) -> ControlFlow<Self::Residual, Self::Output>;
 }
 

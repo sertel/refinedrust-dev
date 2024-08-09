@@ -5,6 +5,7 @@
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
 use std::collections::{btree_map, BTreeMap, HashMap, HashSet};
+use std::fmt::Write;
 
 use log::{info, trace, warn};
 use radium::coq;
@@ -13,8 +14,8 @@ use rr_rustc_interface::middle::mir::interpret::{ConstValue, ErrorHandled, Scala
 use rr_rustc_interface::middle::mir::tcx::PlaceTy;
 use rr_rustc_interface::middle::mir::{
     BasicBlock, BasicBlockData, BinOp, Body, BorrowKind, Constant, ConstantKind, Local, LocalKind, Location,
-    Mutability, Operand, Place, ProjectionElem, Rvalue, StatementKind, Terminator, TerminatorKind, UnOp,
-    VarDebugInfoContents,
+    Mutability, NonDivergingIntrinsic, Operand, Place, ProjectionElem, Rvalue, StatementKind, Terminator,
+    TerminatorKind, UnOp, VarDebugInfoContents,
 };
 use rr_rustc_interface::middle::ty::fold::TypeFolder;
 use rr_rustc_interface::middle::ty::{ConstKind, Ty, TyKind, TypeFoldable};
@@ -32,9 +33,86 @@ use crate::inclusion_tracker::*;
 use crate::spec_parsers::verbose_function_spec_parser::{
     ClosureMetaInfo, FunctionSpecParser, VerboseFunctionSpecParser,
 };
+use crate::trait_registry::{get_nontrivial_trait_requirements, TraitRegistry};
 use crate::type_translator::*;
 use crate::tyvars::*;
 use crate::{traits, utils};
+
+/// Mangle a name by appending type parameters to it.
+pub fn mangle_name_with_tys(method_name: &str, args: &[Ty<'_>]) -> String {
+    // TODO: maybe come up with some better way to generate names
+    let mut mangled_name = method_name.to_owned();
+    for arg in args {
+        mangled_name.push_str(format!("_{}", arg).as_str());
+    }
+    strip_coq_ident(&mangled_name)
+}
+
+/// Mangle a name by appending generic args to it.
+pub fn mangle_name_with_args(name: &str, args: &[ty::GenericArg<'_>]) -> String {
+    let mut mangled_base = name.to_owned();
+    for arg in args {
+        if let ty::GenericArgKind::Type(ty) = arg.unpack() {
+            write!(mangled_base, "_{}", strip_coq_ident(&format!("{ty}"))).unwrap();
+        }
+    }
+    mangled_base
+}
+
+/// Get the syntypes of function arguments for a procedure call.
+pub fn get_arg_syntypes_for_procedure_call<'tcx, 'def>(
+    tcx: ty::TyCtxt<'tcx>,
+    ty_translator: &LocalTypeTranslator<'def, 'tcx>,
+    callee_did: DefId,
+    ty_params: &[ty::GenericArg<'tcx>],
+) -> Result<Vec<radium::SynType>, TranslationError<'tcx>> {
+    let caller_did = ty_translator.get_proc_did();
+
+    // Get the type of the callee.
+    // Note: We will have to normalize the argument syntypes in the scope of the caller, as we
+    // might be specializing some generics to concretely resolve a trait.
+    let full_ty: ty::EarlyBinder<Ty<'tcx>> = tcx.type_of(callee_did);
+    let full_ty = full_ty.instantiate(tcx, ty_params);
+
+    let mut syntypes = Vec::new();
+    match full_ty.kind() {
+        ty::TyKind::FnDef(_, _) => {
+            let sig = full_ty.fn_sig(tcx);
+            // Important: Normalizing in caller environment.
+            let sig = normalize_in_function(caller_did, tcx, sig)?;
+            for ty in sig.inputs().skip_binder() {
+                let st = ty_translator.translate_type_to_syn_type_no_normalize(*ty)?;
+                syntypes.push(st);
+            }
+        },
+        ty::TyKind::Closure(_, args) => {
+            let clos_args = args.as_closure();
+            let sig = clos_args.sig();
+            // Important: Normalizing in caller environment.
+            let sig = normalize_in_function(caller_did, tcx, sig)?;
+            let pre_sig = sig.skip_binder();
+            // we also need to add the closure argument here
+
+            let tuple_ty = clos_args.tupled_upvars_ty();
+            match clos_args.kind() {
+                ty::ClosureKind::Fn | ty::ClosureKind::FnMut => {
+                    syntypes.push(radium::SynType::Ptr);
+                },
+                ty::ClosureKind::FnOnce => {
+                    let st = ty_translator.translate_type_to_syn_type_no_normalize(tuple_ty)?;
+                    syntypes.push(st);
+                },
+            }
+            for ty in pre_sig.inputs() {
+                let st = ty_translator.translate_type_to_syn_type_no_normalize(*ty)?;
+                syntypes.push(st);
+            }
+        },
+        _ => unimplemented!(),
+    }
+
+    Ok(syntypes)
+}
 
 /**
  * Tracks the functions we translated and the Coq names they are available under.
@@ -148,9 +226,16 @@ impl<'def> ProcedureScope<'def> {
     }
 
     /// Register a function.
-    pub fn register_function(&mut self, did: DefId, meta: ProcedureMeta) -> Result<(), String> {
+    pub fn register_function<'tcx>(
+        &mut self,
+        did: DefId,
+        meta: ProcedureMeta,
+    ) -> Result<(), TranslationError<'tcx>> {
         if self.name_map.insert(did, meta).is_some() {
-            Err(format!("function for defid {:?} has already been registered", did))
+            Err(TranslationError::ProcedureRegistry(format!(
+                "function for defid {:?} has already been registered",
+                did
+            )))
         } else {
             Ok(())
         }
@@ -178,6 +263,57 @@ impl<'def> ProcedureScope<'def> {
     /// Iterate over the functions we have generated only specs for.
     pub fn iter_only_spec(&self) -> btree_map::Iter<'_, DefId, radium::FunctionSpec<'def>> {
         self.specced_functions.iter()
+    }
+
+    /// Make a procedure use for this function.
+    ///
+    /// Arguments:
+    /// - `callee_did`: the `DefId` of the callee
+    /// - `ty_params`: the instantiation for the callee's type parameters
+    /// - `trait_spec_terms`: if the callee has any trait assumptions, these are specification parameter terms
+    ///   for these traits
+    /// - `trait_assoc_tys`: if the callee has any trait assumptions, these are the instantiations for all
+    ///   associated types
+    pub fn make_procedure_use<'tcx>(
+        &self,
+        tcx: ty::TyCtxt<'tcx>,
+        ty_translator: &LocalTypeTranslator<'def, 'tcx>,
+        callee_did: DefId,
+        ty_params: ty::GenericArgsRef<'tcx>,
+        trait_spec_terms: Vec<String>,
+        trait_assoc_tys: Vec<radium::Type<'def>>,
+    ) -> Result<radium::UsedProcedure<'def>, TranslationError<'tcx>> {
+        let args = generate_args_inst_key(tcx, ty_params)?;
+        let name = self
+            .lookup_function_mangled_name(callee_did)
+            .ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", callee_did)))?;
+        let spec_name = self
+            .lookup_function_spec_name(callee_did)
+            .ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", callee_did)))?;
+
+        let spec_term = coq::AppTerm::new(spec_name.to_owned(), trait_spec_terms);
+
+        let syntypes =
+            get_arg_syntypes_for_procedure_call(tcx, ty_translator, callee_did, ty_params.as_slice())?;
+
+        let mut translated_params = Vec::new();
+        info!("register_use_procedure: translating args {:?}", args);
+        for p in &args {
+            let translated_ty = ty_translator.translate_type(*p)?;
+            translated_params.push(translated_ty);
+        }
+        // also add the associated types now
+        translated_params.extend(trait_assoc_tys);
+
+        let mut mangled_name = mangle_name_with_tys(name, args.as_slice());
+        let loc_name = format!("{}_loc", mangled_name);
+        info!(
+            "Registered procedure instance {} of {:?} with {:?} and layouts {:?}",
+            mangled_name, callee_did, translated_params, syntypes
+        );
+        let proc_use =
+            radium::UsedProcedure::new(loc_name, spec_term.to_string(), translated_params, syntypes);
+        Ok(proc_use)
     }
 }
 
@@ -244,17 +380,546 @@ pub struct FunctionTranslator<'a, 'def, 'tcx> {
     /// polonius info for this function
     info: &'a PoloniusInfo<'a, 'tcx>,
     /// translator for types
-    ty_translator: LocalTypeTranslator<'a, 'def, 'tcx>,
+    ty_translator: LocalTypeTranslator<'def, 'tcx>,
+    /// trait registry in the current scope
+    trait_registry: &'def TraitRegistry<'tcx, 'def>,
     /// argument types (from the signature, with generics substituted)
     inputs: Vec<Ty<'tcx>>,
 }
 
 impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
-    pub fn process_lifetimes_of_args(
+    /// Generate a spec for a trait method.
+    pub fn spec_for_trait_method(
+        env: &'def Environment<'tcx>,
+        proc_did: DefId,
+        name: &str,
+        spec_name: &str,
+        attrs: &'a [&'a ast::ast::AttrItem],
+        ty_translator: &'def TypeTranslator<'def, 'tcx>,
+        trait_registry: &'def TraitRegistry<'tcx, 'def>,
+    ) -> Result<radium::FunctionSpec<'def>, TranslationError<'tcx>> {
+        let mut translated_fn = radium::FunctionBuilder::new(name, spec_name);
+
+        let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc_did);
+        let ty = ty.instantiate_identity();
+        // substs are the generic args of this function (including lifetimes)
+        // sig is the function signature
+        let sig = match ty.kind() {
+            TyKind::FnDef(_def, _args) => {
+                assert!(ty.is_fn());
+                let sig = ty.fn_sig(env.tcx());
+                sig
+            },
+            _ => panic!("can not handle non-fns"),
+        };
+        let sig = normalize_in_function(proc_did, env.tcx(), sig)?;
+        info!("Function signature: {:?}", sig);
+
+        let params = Self::get_proc_ty_params(env.tcx(), proc_did);
+        info!("Function generic args: {:?}", params);
+
+        let (inputs, output, universal_lifetimes) = Self::process_lifetimes_of_args(env, params, sig);
+        info!("Have lifetime parameters: {:?}", universal_lifetimes);
+        info!("inputs: {:?}, output: {:?}", inputs, output);
+
+        let type_scope = Self::setup_local_scope(
+            env,
+            ty_translator,
+            trait_registry,
+            proc_did,
+            params.as_slice(),
+            &mut translated_fn,
+            universal_lifetimes,
+            false,
+        )?;
+        let type_translator = LocalTypeTranslator::new(ty_translator, type_scope);
+
+        // TODO: add universal constraints (ideally in setup_local_scope)
+
+        Self::process_attrs(attrs, &type_translator, &mut translated_fn, inputs.as_slice(), output)?;
+
+        Ok(translated_fn.into())
+    }
+
+    /// Create a translation instance for a closure.
+    pub fn new_closure(
+        env: &'def Environment<'tcx>,
+        meta: &ProcedureMeta,
+        proc: Procedure<'tcx>,
+        attrs: &'a [&'a ast::ast::AttrItem],
+        ty_translator: &'def TypeTranslator<'def, 'tcx>,
+        trait_registry: &'def TraitRegistry<'tcx, 'def>,
+        proc_registry: &'a ProcedureScope<'def>,
+        const_registry: &'a ConstScope<'def>,
+    ) -> Result<Self, TranslationError<'tcx>> {
+        let mut translated_fn = radium::FunctionBuilder::new(&meta.name, &meta.spec_name);
+
+        // TODO can we avoid the leak
+        let proc: &'def Procedure = &*Box::leak(Box::new(proc));
+        let body = proc.get_mir();
+        Self::dump_body(body);
+
+        let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
+        let ty = ty.instantiate_identity();
+        let closure_kind = match ty.kind() {
+            TyKind::Closure(_def, closure_args) => {
+                assert!(ty.is_closure());
+                let clos = closure_args.as_closure();
+                clos.kind()
+            },
+            _ => panic!("can not handle non-closures"),
+        };
+
+        let local_decls = &body.local_decls;
+        let closure_arg = local_decls.get(Local::from_usize(1)).unwrap();
+        let closure_ty;
+
+        match closure_kind {
+            ty::ClosureKind::Fn => {
+                if let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() {
+                    closure_ty = ty;
+                } else {
+                    unreachable!();
+                }
+            },
+            ty::ClosureKind::FnMut => {
+                if let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() {
+                    closure_ty = ty;
+                } else {
+                    unreachable!("unexpected type {:?}", closure_arg.ty);
+                }
+            },
+            ty::ClosureKind::FnOnce => {
+                closure_ty = &closure_arg.ty;
+            },
+        }
+
+        let parent_args;
+        let mut capture_regions = Vec::new();
+        let sig;
+        let captures;
+        let upvars_tys;
+        if let ty::TyKind::Closure(did, closure_args) = closure_ty.kind() {
+            let clos = closure_args.as_closure();
+
+            let tupled_upvars_tys = clos.tupled_upvars_ty();
+            upvars_tys = clos.upvar_tys();
+            parent_args = clos.parent_args();
+            let unnormalized_sig = clos.sig();
+            sig = normalize_in_function(proc.get_id(), env.tcx(), unnormalized_sig)?;
+            info!("closure sig: {:?}", sig);
+
+            captures = env.tcx().closure_captures(did.as_local().unwrap());
+            info!("Closure has captures: {:?}", captures);
+
+            // find additional lifetime parameters
+            for (place, ty) in captures.iter().zip(clos.upvar_tys().iter()) {
+                if place.region.is_some() {
+                    // find region from ty
+                    if let ty::TyKind::Ref(region, _, _) = ty.kind() {
+                        capture_regions.push(*region);
+                    }
+                }
+            }
+            info!("Closure capture regions: {:?}", capture_regions);
+
+            info!("Closure arg upvar_tys: {:?}", tupled_upvars_tys);
+            info!("Function signature: {:?}", sig);
+            info!("Closure generic args: {:?}", parent_args);
+        } else {
+            unreachable!();
+        }
+
+        match PoloniusInfo::new(env, proc) {
+            Ok(info) => {
+                // TODO: avoid leak
+                let info: &'def PoloniusInfo = &*Box::leak(Box::new(info));
+
+                // For closures, we only handle the parent's args here!
+                // TODO: do we need to do something special for the parent's late-bound region
+                // parameters?
+                // TODO: should we always take the lifetime parameters?
+                let params = parent_args;
+                //proc.get_type_params();
+                info!("Function generic args: {:?}", params);
+
+                // dump graphviz files
+                // color code: red: dying loan, pink: becoming a zombie; green: is zombie
+                if rrconfig::dump_borrowck_info() {
+                    dump_borrowck_info(env, proc.get_id(), info);
+                }
+
+                let (tupled_inputs, output, mut universal_lifetimes) =
+                    Self::process_lifetimes_of_args(env, params, sig);
+
+                // Process the lifetime parameters that come from the captures
+                for r in capture_regions {
+                    // TODO: problem: we're introducing inconsistent names here.
+                    if let ty::RegionKind::ReVar(r) = r.kind() {
+                        let lft = info.mk_atomic_region(r);
+                        let name = format_atomic_region_direct(&lft, None);
+                        universal_lifetimes.insert(r, (name, None));
+                    } else {
+                        unreachable!();
+                    }
+                }
+                // also add the lifetime for the outer reference
+                let mut maybe_outer_lifetime = None;
+                if let ty::TyKind::Ref(r, _, _) = closure_arg.ty.kind() {
+                    if let ty::RegionKind::ReVar(r) = r.kind() {
+                        // We need to do some hacks here to find the right Polonius region:
+                        // `r` is the non-placeholder region that the variable gets, but we are
+                        // looking for the corresponding placeholder region
+                        let r2 = Self::find_placeholder_region_for(r, info).unwrap();
+
+                        info!("using lifetime {:?} for closure universal", r2);
+                        let lft = info.mk_atomic_region(r2);
+                        let name = format_atomic_region_direct(&lft, None);
+                        universal_lifetimes.insert(r2, (name, None));
+
+                        maybe_outer_lifetime = Some(r2);
+                    } else {
+                        unreachable!();
+                    }
+                }
+
+                // detuple the inputs
+                assert!(tupled_inputs.len() == 1);
+                let input_tuple_ty = tupled_inputs[0];
+                let mut inputs = Vec::new();
+
+                // push the closure as the first argument
+                /*
+                if let Some(r2) = maybe_outer_lifetime {
+                    // in this case, we need to patch the region first
+                    if let ty::TyKind::Ref(_, ty, m) = closure_arg.ty.kind() {
+                        let new_region = ty::Region::new_var(env.tcx(), r2);
+                        inputs.push(env.tcx().mk_ty_from_kind(ty::TyKind::Ref(new_region, *ty, *m)));
+                    }
+                }
+                else {
+                    inputs.push(closure_arg.ty);
+                }
+                */
+
+                if let ty::TyKind::Tuple(args) = input_tuple_ty.kind() {
+                    inputs.extend(args.iter());
+                }
+
+                info!("inputs({}): {:?}, output: {:?}", inputs.len(), inputs, output);
+                info!("Have lifetime parameters: {:?}", universal_lifetimes);
+
+                let mut inclusion_tracker = InclusionTracker::new(info);
+                // add placeholder subsets
+                let initial_point: facts::Point = facts::Point {
+                    location: BasicBlock::from_u32(0).start_location(),
+                    typ: facts::PointType::Start,
+                };
+                for (r1, r2) in &info.borrowck_in_facts.known_placeholder_subset {
+                    inclusion_tracker.add_static_inclusion(
+                        *r1,
+                        *r2,
+                        info.interner.get_point_index(&initial_point),
+                    );
+                }
+
+                let type_scope = Self::setup_local_scope(
+                    env,
+                    ty_translator,
+                    trait_registry,
+                    proc.get_id(),
+                    params,
+                    &mut translated_fn,
+                    universal_lifetimes,
+                    true,
+                )?;
+                let type_translator = LocalTypeTranslator::new(ty_translator, type_scope);
+
+                let mut t = Self {
+                    env,
+                    proc,
+                    info,
+                    translated_fn,
+                    inclusion_tracker,
+                    procedure_registry: proc_registry,
+                    attrs,
+                    ty_translator: type_translator,
+                    trait_registry,
+                    const_registry,
+                    inputs: inputs.clone(),
+                };
+
+                // add universal constraints
+                let universal_constraints = t.get_relevant_universal_constraints();
+                info!("univeral constraints: {:?}", universal_constraints);
+                for (lft1, lft2) in universal_constraints {
+                    t.translated_fn
+                        .add_universal_lifetime_constraint(lft1, lft2)
+                        .map_err(TranslationError::UnknownError)?;
+                }
+
+                // compute meta information needed to generate the spec
+                let mut translated_upvars_types = Vec::new();
+                for ty in upvars_tys {
+                    let translated_ty = t.ty_translator.translate_type(ty)?;
+                    translated_upvars_types.push(translated_ty);
+                }
+                let meta;
+                {
+                    let scope = t.ty_translator.scope.borrow();
+                    meta = ClosureMetaInfo {
+                        kind: closure_kind,
+                        captures,
+                        capture_tys: &translated_upvars_types,
+                        closure_lifetime: maybe_outer_lifetime
+                            .map(|x| scope.lookup_universal_region(x).unwrap()),
+                    };
+                }
+
+                // process attributes
+                t.process_closure_attrs(&inputs, output, meta)?;
+                Ok(t)
+            },
+            Err(err) => Err(TranslationError::UnknownError(format!("{:?}", err))),
+        }
+    }
+
+    /// Translate the body of a function.
+    pub fn new(
+        env: &'def Environment<'tcx>,
+        meta: &ProcedureMeta,
+        proc: Procedure<'tcx>,
+        attrs: &'a [&'a ast::ast::AttrItem],
+        ty_translator: &'def TypeTranslator<'def, 'tcx>,
+        trait_registry: &'def TraitRegistry<'tcx, 'def>,
+        proc_registry: &'a ProcedureScope<'def>,
+        const_registry: &'a ConstScope<'def>,
+    ) -> Result<Self, TranslationError<'tcx>> {
+        let mut translated_fn = radium::FunctionBuilder::new(&meta.name, &meta.spec_name);
+
+        // TODO can we avoid the leak
+        let proc: &'def Procedure = &*Box::leak(Box::new(proc));
+
+        let body = proc.get_mir();
+        Self::dump_body(body);
+
+        let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
+        let ty = ty.instantiate_identity();
+        // substs are the generic args of this function (including lifetimes)
+        // sig is the function signature
+        let sig = match ty.kind() {
+            TyKind::FnDef(_def, _args) => {
+                assert!(ty.is_fn());
+                let sig = ty.fn_sig(env.tcx());
+                sig
+            },
+            _ => panic!("can not handle non-fns"),
+        };
+        let sig = normalize_in_function(proc.get_id(), env.tcx(), sig)?;
+
+        info!("Function signature: {:?}", sig);
+
+        match PoloniusInfo::new(env, proc) {
+            Ok(info) => {
+                // TODO: avoid leak
+                let info: &'def PoloniusInfo = &*Box::leak(Box::new(info));
+
+                let params = Self::get_proc_ty_params(env.tcx(), proc.get_id());
+                info!("Function generic args: {:?}", params);
+
+                // dump graphviz files
+                // color code: red: dying loan, pink: becoming a zombie; green: is zombie
+                if rrconfig::dump_borrowck_info() {
+                    dump_borrowck_info(env, proc.get_id(), info);
+                }
+
+                let (inputs, output, universal_lifetimes) = Self::process_lifetimes_of_args(env, params, sig);
+                info!("Have lifetime parameters: {:?}", universal_lifetimes);
+                info!("inputs: {:?}, output: {:?}", inputs, output);
+
+                let mut inclusion_tracker = InclusionTracker::new(info);
+                // add placeholder subsets
+                let initial_point: facts::Point = facts::Point {
+                    location: BasicBlock::from_u32(0).start_location(),
+                    typ: facts::PointType::Start,
+                };
+                for (r1, r2) in &info.borrowck_in_facts.known_placeholder_subset {
+                    inclusion_tracker.add_static_inclusion(
+                        *r1,
+                        *r2,
+                        info.interner.get_point_index(&initial_point),
+                    );
+                }
+
+                let type_scope = Self::setup_local_scope(
+                    env,
+                    ty_translator,
+                    trait_registry,
+                    proc.get_id(),
+                    params.as_slice(),
+                    &mut translated_fn,
+                    universal_lifetimes,
+                    true,
+                )?;
+                let type_translator = LocalTypeTranslator::new(ty_translator, type_scope);
+
+                // process attributes
+                Self::process_attrs(attrs, &type_translator, &mut translated_fn, inputs.as_slice(), output)?;
+
+                let mut t = Self {
+                    env,
+                    proc,
+                    info,
+                    translated_fn,
+                    inclusion_tracker,
+                    procedure_registry: proc_registry,
+                    attrs,
+                    ty_translator: type_translator,
+                    trait_registry,
+                    const_registry,
+                    inputs: inputs.clone(),
+                };
+                // add universal constraints
+                let universal_constraints = t.get_relevant_universal_constraints();
+                info!("univeral constraints: {:?}", universal_constraints);
+                for (lft1, lft2) in universal_constraints {
+                    t.translated_fn
+                        .add_universal_lifetime_constraint(lft1, lft2)
+                        .map_err(TranslationError::UnknownError)?;
+                }
+
+                Ok(t)
+            },
+            Err(err) => Err(TranslationError::UnknownError(format!("{:?}", err))),
+        }
+    }
+
+    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError<'tcx>> {
+        let body = self.proc.get_mir();
+
+        // analyze which locals are used for the result of checked-ops, because we will
+        // override their types (eliminating the tuples)
+        let mut checked_op_analyzer = CheckedOpLocalAnalysis::new(self.env.tcx(), body);
+        checked_op_analyzer.analyze();
+        let checked_op_locals = checked_op_analyzer.results();
+
+        // map to translate between locals and the string names we use in radium::
+        let mut radium_name_map: HashMap<Local, String> = HashMap::new();
+
+        let local_decls = &body.local_decls;
+        info!("Have {} local decls\n", local_decls.len());
+
+        let debug_info = &body.var_debug_info;
+        info!("using debug info: {:?}", debug_info);
+
+        let mut return_synty = radium::SynType::Unit; // default
+        let mut fn_locals = Vec::new();
+        let mut opt_return_name =
+            Err(TranslationError::UnknownError("could not find local for return value".to_owned()));
+        let mut used_names = HashSet::new();
+        let mut arg_tys = Vec::new();
+
+        // go over local_decls and create the right radium:: stack layout
+        for (local, local_decl) in local_decls.iter_enumerated() {
+            let kind = body.local_kind(local);
+            let ty: Ty<'tcx>;
+            if let Some(rewritten_ty) = checked_op_locals.get(&local) {
+                ty = *rewritten_ty;
+            } else {
+                ty = local_decl.ty;
+            }
+
+            // check if the type is of a spec fn -- in this case, we can skip this temporary
+            if let TyKind::Closure(id, _) = ty.kind() {
+                if self.procedure_registry.lookup_function_mode(*id).map_or(false, ProcedureMode::is_ignore) {
+                    // this is a spec fn
+                    info!("skipping local which has specfn closure type: {:?}", local);
+                    continue;
+                }
+            }
+
+            // type:
+            let tr_ty = self.ty_translator.translate_type(ty)?;
+            let st = tr_ty.get_syn_type();
+
+            let name = Self::make_local_name(body, local, &mut used_names);
+            radium_name_map.insert(local, name.clone());
+
+            fn_locals.push((local, name.clone(), tr_ty));
+
+            match kind {
+                LocalKind::Arg => {
+                    self.translated_fn.code.add_argument(&name, st);
+                    arg_tys.push(ty);
+                },
+                //LocalKind::Var => translated_fn.code.add_local(&name, st),
+                LocalKind::Temp => self.translated_fn.code.add_local(&name, st),
+                LocalKind::ReturnPointer => {
+                    return_synty = st.clone();
+                    self.translated_fn.code.add_local(&name, st);
+                    opt_return_name = Ok(name);
+                },
+            }
+        }
+        info!("radium name map: {:?}", radium_name_map);
+        // create the function
+        let return_name = opt_return_name?;
+
+        // add lifetime parameters to the map
+        let inputs2 = self.inputs.clone();
+        let initial_constraints =
+            self.get_initial_universal_arg_constraints(inputs2.as_slice(), arg_tys.as_slice());
+        info!("initial constraints: {:?}", initial_constraints);
+
+        let translator = BodyTranslator {
+            env: self.env,
+            proc: self.proc,
+            info: self.info,
+            variable_map: radium_name_map,
+            translated_fn: self.translated_fn,
+            return_name,
+            return_synty,
+            inclusion_tracker: self.inclusion_tracker,
+            collected_procedures: HashMap::new(),
+            procedure_registry: self.procedure_registry,
+            attrs: self.attrs,
+            local_lifetimes: Vec::new(),
+            bb_queue: Vec::new(),
+            processed_bbs: HashSet::new(),
+            ty_translator: self.ty_translator,
+            loop_specs: HashMap::new(),
+            fn_locals,
+            checked_op_temporaries: checked_op_locals,
+            const_registry: self.const_registry,
+            trait_registry: self.trait_registry,
+            collected_statics: HashSet::new(),
+        };
+        translator.translate(initial_constraints)
+    }
+}
+
+impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
+    /// Get type parameters of the given procedure.
+    fn get_proc_ty_params(tcx: ty::TyCtxt<'tcx>, did: DefId) -> ty::GenericArgsRef<'tcx> {
+        let ty = tcx.type_of(did).instantiate_identity();
+        match ty.kind() {
+            ty::TyKind::FnDef(_, params) => params,
+            ty::TyKind::Closure(_, closure_args) => {
+                assert!(ty.is_closure());
+                let clos = closure_args.as_closure();
+                let parent_args = clos.parent_args();
+
+                // TODO: this doesn't include lifetime parameters specific to this closure...
+                tcx.mk_args(parent_args)
+            },
+            _ => panic!("Procedure::new called on a procedure whose type is not TyKind::FnDef!"),
+        }
+    }
+
+    fn process_lifetimes_of_args(
         env: &Environment<'tcx>,
         params: &[ty::GenericArg<'tcx>],
         sig: ty::Binder<'tcx, ty::FnSig<'tcx>>,
-        _body: &mir::Body<'tcx>,
     ) -> (Vec<ty::Ty<'tcx>>, ty::Ty<'tcx>, HashMap<ty::RegionVid, (String, Option<String>)>) {
         let mut universal_lifetimes = HashMap::new();
 
@@ -362,356 +1027,107 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         None
     }
 
-    /// Create a translation instance for a closure.
-    pub fn new_closure(
-        env: &'def Environment<'tcx>,
-        meta: &ProcedureMeta,
-        proc: Procedure<'tcx>,
-        attrs: &'a [&'a ast::ast::AttrItem],
+    /// Set up the local generic scope of the function, including type parameters, lifetime
+    /// parameters, and trait constraints.
+    fn setup_local_scope(
+        env: &Environment<'tcx>,
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
-        proc_registry: &'a ProcedureScope<'def>,
-        const_registry: &'a ConstScope<'def>,
-    ) -> Result<Self, TranslationError> {
-        let mut translated_fn = radium::FunctionBuilder::new(&meta.name, &meta.spec_name);
-
-        // TODO can we avoid the leak
-        let proc: &'def Procedure = &*Box::leak(Box::new(proc));
-        let body = proc.get_mir();
-        Self::dump_body(body);
-
-        let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
-        let ty = ty.instantiate_identity();
-
-        let closure_kind = match ty.kind() {
-            TyKind::Closure(_def, closure_args) => {
-                assert!(ty.is_closure());
-                closure_args.as_closure().kind()
-            },
-            _ => panic!("can not handle non-closures"),
-        };
-
-        let local_decls = &body.local_decls;
-        let closure_arg = local_decls.get(Local::from_usize(1)).unwrap();
-
-        let closure_ty = match closure_kind {
-            ty::ClosureKind::Fn => {
-                let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() else {
-                    unreachable!();
-                };
-
-                ty
-            },
-
-            ty::ClosureKind::FnMut => {
-                let ty::TyKind::Ref(_, ty, _) = closure_arg.ty.kind() else {
-                    unreachable!("unexpected type {:?}", closure_arg.ty);
-                };
-
-                ty
-            },
-
-            ty::ClosureKind::FnOnce => &closure_arg.ty,
-        };
-
-        let mut capture_regions = Vec::new();
-
-        let ty::TyKind::Closure(did, closure_args) = closure_ty.kind() else {
-            unreachable!();
-        };
-
-        let clos = closure_args.as_closure();
-
-        let tupled_upvars_tys = clos.tupled_upvars_ty();
-        let upvars_tys = clos.upvar_tys();
-        let parent_args = clos.parent_args();
-        let unnormalized_sig = clos.sig();
-
-        let sig = normalize_in_function(proc.get_id(), env.tcx(), unnormalized_sig)?;
-        info!("closure sig: {:?}", sig);
-
-        let captures = env.tcx().closure_captures(did.as_local().unwrap());
-        info!("Closure has captures: {:?}", captures);
-
-        // find additional lifetime parameters
-        for (place, ty) in captures.iter().zip(clos.upvar_tys().iter()) {
-            if place.region.is_some() {
-                // find region from ty
-                if let ty::TyKind::Ref(region, _, _) = ty.kind() {
-                    capture_regions.push(*region);
-                }
-            }
-        }
-
-        info!("Closure capture regions: {:?}", capture_regions);
-        info!("Closure arg upvar_tys: {:?}", tupled_upvars_tys);
-        info!("Function signature: {:?}", sig);
-        info!("Closure generic args: {:?}", parent_args);
-
-        let info = match PoloniusInfo::new(env, proc) {
-            Ok(info) => info,
-            Err(err) => return Err(TranslationError::UnknownError(format!("{:?}", err))),
-        };
-
-        // TODO: avoid leak
-        let info: &'def PoloniusInfo = &*Box::leak(Box::new(info));
-
-        // For closures, we only handle the parent's args here!
-        // TODO: do we need to do something special for the parent's late-bound region
-        // parameters?
-        // TODO: should we always take the lifetime parameters?
-        let params = parent_args;
-        //proc.get_type_params();
-        info!("Function generic args: {:?}", params);
-
-        // dump graphviz files
-        // color code: red: dying loan, pink: becoming a zombie; green: is zombie
-        if rrconfig::dump_borrowck_info() {
-            dump_borrowck_info(env, proc.get_id(), info);
-        }
-
-        let (tupled_inputs, output, mut universal_lifetimes) =
-            Self::process_lifetimes_of_args(env, params, sig, body);
-
-        // Process the lifetime parameters that come from the captures
-        for r in capture_regions {
-            // TODO: problem: we're introducing inconsistent names here.
-            let ty::RegionKind::ReVar(r) = r.kind() else {
-                unreachable!();
-            };
-
-            let lft = info.mk_atomic_region(r);
-            let name = format_atomic_region_direct(&lft, None);
-            universal_lifetimes.insert(r, (name, None));
-        }
-
-        // also add the lifetime for the outer reference
-        let mut maybe_outer_lifetime = None;
-        if let ty::TyKind::Ref(r, _, _) = closure_arg.ty.kind() {
-            let ty::RegionKind::ReVar(r) = r.kind() else {
-                unreachable!();
-            };
-
-            // We need to do some hacks here to find the right Polonius region:
-            // `r` is the non-placeholder region that the variable gets, but we are
-            // looking for the corresponding placeholder region
-            let r2 = Self::find_placeholder_region_for(r, info).unwrap();
-
-            info!("using lifetime {:?} for closure universal", r2);
-            let lft = info.mk_atomic_region(r2);
-            let name = format_atomic_region_direct(&lft, None);
-            universal_lifetimes.insert(r2, (name, None));
-
-            maybe_outer_lifetime = Some(r2);
-        }
-
-        // detuple the inputs
-        assert!(tupled_inputs.len() == 1);
-        let input_tuple_ty = tupled_inputs[0];
-        let mut inputs = Vec::new();
-
-        // push the closure as the first argument
-        /*
-        if let Some(r2) = maybe_outer_lifetime {
-            // in this case, we need to patch the region first
-            if let ty::TyKind::Ref(_, ty, m) = closure_arg.ty.kind() {
-                let new_region = ty::Region::new_var(env.tcx(), r2);
-                inputs.push(env.tcx().mk_ty_from_kind(ty::TyKind::Ref(new_region, *ty, *m)));
-            }
-        }
-        else {
-            inputs.push(closure_arg.ty);
-        }
-        */
-
-        if let ty::TyKind::Tuple(args) = input_tuple_ty.kind() {
-            inputs.extend(args.iter());
-        }
-
-        info!("inputs({}): {:?}, output: {:?}", inputs.len(), inputs, output);
-        info!("Have lifetime parameters: {:?}", universal_lifetimes);
-
-        // add universal lifetimes to the spec
+        trait_registry: &'def TraitRegistry<'tcx, 'def>,
+        proc_did: DefId,
+        params: &[ty::GenericArg<'tcx>],
+        translated_fn: &mut radium::FunctionBuilder<'def>,
+        universal_lifetimes: HashMap<ty::RegionVid, (String, Option<String>)>,
+        add_trait_specs: bool,
+    ) -> Result<TypeTranslationScope<'tcx, 'def>, TranslationError<'tcx>> {
         for (lft, name) in universal_lifetimes.values() {
-            //let lft = info::AtomicRegion::Universal(info::UniversalRegionKind::Local,
-            // ty::RegionVid::from_u32(1+r));
             translated_fn
                 .add_universal_lifetime(name.clone(), lft.to_string())
                 .map_err(TranslationError::UnknownError)?;
         }
 
-        let mut inclusion_tracker = InclusionTracker::new(info);
-        // add placeholder subsets
-        let initial_point: facts::Point = facts::Point {
-            location: BasicBlock::from_u32(0).start_location(),
-            typ: facts::PointType::Start,
-        };
-        for (r1, r2) in &info.borrowck_in_facts.known_placeholder_subset {
-            inclusion_tracker.add_static_inclusion(*r1, *r2, info.interner.get_point_index(&initial_point));
-        }
-
         // enter the procedure
         let universal_lifetime_map: HashMap<_, _> =
             universal_lifetimes.into_iter().map(|(x, y)| (x, y.0)).collect();
-        let type_scope =
-            TypeTranslationScope::new(proc.get_id(), env.tcx().mk_args(params), universal_lifetime_map)?;
+        let param_env: ty::ParamEnv<'tcx> = env.tcx().param_env(proc_did);
+        let type_scope = TypeTranslationScope::new_with_traits(
+            proc_did,
+            env,
+            env.tcx().mk_args(params),
+            universal_lifetime_map,
+            param_env,
+            ty_translator,
+            trait_registry,
+        )?;
         // add generic args to the fn
         let generics = &type_scope.generic_scope;
         for t in generics.iter().flatten() {
             translated_fn.add_generic_type(t.clone());
         }
 
-        let mut t = Self {
-            env,
-            proc,
-            info,
-            translated_fn,
-            inclusion_tracker,
-            procedure_registry: proc_registry,
-            attrs,
-            ty_translator: LocalTypeTranslator::new(ty_translator, type_scope),
-            const_registry,
-            inputs: inputs.clone(),
-        };
-
-        // add universal constraints
-        let universal_constraints = t.get_relevant_universal_constraints();
-        info!("univeral constraints: {:?}", universal_constraints);
-        for (lft1, lft2) in universal_constraints {
-            t.translated_fn
-                .add_universal_lifetime_constraint(lft1, lft2)
-                .map_err(TranslationError::UnknownError)?;
+        // add associated types of generics to the fn as type parameters
+        let assoc_tys = type_scope.get_associated_type_literals(env);
+        for t in assoc_tys {
+            translated_fn.add_generic_type(t);
         }
 
-        // compute meta information needed to generate the spec
-        let mut translated_upvars_types = Vec::new();
-        for ty in upvars_tys {
-            let translated_ty = t.ty_translator.translate_type(ty)?;
-            translated_upvars_types.push(translated_ty);
-        }
+        // add specs for traits of generics
+        if add_trait_specs {
+            let trait_uses = type_scope.get_trait_uses();
+            for ((did, params), trait_use) in trait_uses {
+                let spec_param_name = trait_use.trait_use.make_spec_param_name();
+                let spec_type_name = trait_use.trait_use.trait_ref.spec_record.clone();
 
-        let meta = {
-            let scope = t.ty_translator.scope.borrow();
+                // TODO: check that this is the right thing
+                if let Some(this_trait_did) = env.tcx().trait_of_item(proc_did) {
+                    // we are in a trait declaration
+                    if *did == this_trait_did {
+                        // This is a use of the same trait that we are currently defining
+                        if let ty::TyKind::Param(param) = params[0].kind() {
+                            if param.index == 0 {
+                                // this is the implementation for Self that is required;
+                                // skip as this is precisely the thing we are currently defining!
+                                continue;
+                            }
+                        }
+                    }
+                }
 
-            ClosureMetaInfo {
-                kind: closure_kind,
-                captures,
-                capture_tys: &translated_upvars_types,
-                closure_lifetime: maybe_outer_lifetime.map(|x| scope.lookup_universal_region(x).unwrap()),
+                translated_fn
+                    .spec
+                    .add_coq_param(
+                        coq::Name::Named(spec_param_name),
+                        coq::Type::Literal(spec_type_name),
+                        false,
+                    )
+                    .unwrap();
+
+                let assoc_tys = trait_use.get_associated_type_names(env);
+                let spec_precond = trait_use.trait_use.make_spec_param_precond(&assoc_tys);
+                translated_fn.spec.add_precondition(spec_precond);
             }
-        };
-
-        // process attributes
-        t.process_closure_attrs(&inputs, output, meta)?;
-        Ok(t)
-    }
-
-    /// Translate the body of a function.
-    pub fn new(
-        env: &'def Environment<'tcx>,
-        meta: &ProcedureMeta,
-        proc: Procedure<'tcx>,
-        attrs: &'a [&'a ast::ast::AttrItem],
-        ty_translator: &'def TypeTranslator<'def, 'tcx>,
-        proc_registry: &'a ProcedureScope<'def>,
-        const_registry: &'a ConstScope<'def>,
-    ) -> Result<Self, TranslationError> {
-        let mut translated_fn = radium::FunctionBuilder::new(&meta.name, &meta.spec_name);
-
-        // TODO can we avoid the leak
-        let proc: &'def Procedure = &*Box::leak(Box::new(proc));
-
-        let body = proc.get_mir();
-        Self::dump_body(body);
-
-        let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc.get_id());
-        let ty = ty.instantiate_identity();
-        // substs are the generic args of this function (including lifetimes)
-        // sig is the function signature
-        let sig = match ty.kind() {
-            TyKind::FnDef(_def, _args) => {
-                assert!(ty.is_fn());
-                ty.fn_sig(env.tcx())
-            },
-            _ => panic!("can not handle non-fns"),
-        };
-
-        let sig = normalize_in_function(proc.get_id(), env.tcx(), sig)?;
-        info!("Function signature: {:?}", sig);
-
-        let info = match PoloniusInfo::new(env, proc) {
-            Ok(info) => info,
-            Err(err) => return Err(TranslationError::UnknownError(format!("{:?}", err))),
-        };
-
-        // TODO: avoid leak
-        let info: &'def PoloniusInfo = &*Box::leak(Box::new(info));
-
-        let params = proc.get_type_params();
-        info!("Function generic args: {:?}", params);
-
-        // dump graphviz files
-        // color code: red: dying loan, pink: becoming a zombie; green: is zombie
-        if rrconfig::dump_borrowck_info() {
-            dump_borrowck_info(env, proc.get_id(), info);
         }
 
-        let (inputs, output, universal_lifetimes) = Self::process_lifetimes_of_args(env, params, sig, body);
-        info!("Have lifetime parameters: {:?}", universal_lifetimes);
-        info!("inputs: {:?}, output: {:?}", inputs, output);
+        // TODO: can we also setup the lifetime constraints here?
+        // TODO: understand better how these clauses relate to Polonius
+        // Note: these constraints do not seem to include implied bounds.
+        /*
+        let clauses = param_env.caller_bounds();
+        info!("looking for outlives clauses");
+        for cl in clauses.iter() {
+            let cl_kind = cl.kind();
+            let cl_kind = cl_kind.skip_binder();
 
-        // add universal lifetimes to the spec
-        for (lft, name) in universal_lifetimes.values() {
-            translated_fn
-                .add_universal_lifetime(name.clone(), lft.to_string())
-                .map_err(TranslationError::UnknownError)?;
+            // only look for trait predicates for now
+            if let ty::ClauseKind::RegionOutlives(region_pred) = cl_kind {
+                info!("region outlives: {:?} {:?}", region_pred.0, region_pred.1);
+            }
+            if let ty::ClauseKind::TypeOutlives(outlives_pred) = cl_kind {
+                info!("type outlives: {:?} {:?}", outlives_pred.0, outlives_pred.1);
+            }
         }
+        */
 
-        let mut inclusion_tracker = InclusionTracker::new(info);
-        // add placeholder subsets
-        let initial_point: facts::Point = facts::Point {
-            location: BasicBlock::from_u32(0).start_location(),
-            typ: facts::PointType::Start,
-        };
-        for (r1, r2) in &info.borrowck_in_facts.known_placeholder_subset {
-            inclusion_tracker.add_static_inclusion(*r1, *r2, info.interner.get_point_index(&initial_point));
-        }
-
-        // enter the procedure
-        let universal_lifetime_map: HashMap<_, _> =
-            universal_lifetimes.into_iter().map(|(x, y)| (x, y.0)).collect();
-
-        let type_scope = TypeTranslationScope::new(proc.get_id(), params, universal_lifetime_map)?;
-        // add generic args to the fn
-        for t in type_scope.generic_scope.iter().flatten() {
-            translated_fn.add_generic_type(t.clone());
-        }
-
-        let mut t = Self {
-            env,
-            proc,
-            info,
-            translated_fn,
-            inclusion_tracker,
-            procedure_registry: proc_registry,
-            attrs,
-            ty_translator: LocalTypeTranslator::new(ty_translator, type_scope),
-            const_registry,
-            inputs: inputs.clone(),
-        };
-
-        // add universal constraints
-        let universal_constraints = t.get_relevant_universal_constraints();
-        info!("univeral constraints: {:?}", universal_constraints);
-        for (lft1, lft2) in universal_constraints {
-            t.translated_fn
-                .add_universal_lifetime_constraint(lft1, lft2)
-                .map_err(TranslationError::UnknownError)?;
-        }
-
-        // process attributes
-        t.process_attrs(inputs.as_slice(), output)?;
-
-        Ok(t)
+        Ok(type_scope)
     }
 
     /// Filter the "interesting" constraints between universal lifetimes that need to hold
@@ -768,7 +1184,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         normalized_inputs: &[Ty<'tcx>],
         normalized_output: Ty<'tcx>,
         meta: ClosureMetaInfo<'b, 'tcx, 'def>,
-    ) -> Result<(), TranslationError> {
+    ) -> Result<(), TranslationError<'tcx>> {
         trace!("entering process_closure_attrs");
         let v = self.attrs;
 
@@ -805,35 +1221,31 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
     /// Parse and process attributes of this function.
     fn process_attrs(
-        &mut self,
+        attrs: &[&ast::ast::AttrItem],
+        ty_translator: &LocalTypeTranslator<'def, 'tcx>,
+        translator: &mut radium::FunctionBuilder<'def>,
         normalized_inputs: &[Ty<'tcx>],
         normalized_output: Ty<'tcx>,
-    ) -> Result<(), TranslationError> {
-        let v = self.attrs;
-
+    ) -> Result<(), TranslationError<'tcx>> {
         info!("inputs: {:?}, output: {:?}", normalized_inputs, normalized_output);
         let mut translated_arg_types: Vec<radium::Type<'def>> = Vec::new();
         for arg in normalized_inputs {
-            let translated: radium::Type<'def> = self.ty_translator.translate_type_no_normalize(*arg)?;
+            let translated: radium::Type<'def> = ty_translator.translate_type_no_normalize(*arg)?;
             translated_arg_types.push(translated);
         }
         let translated_ret_type: radium::Type<'def> =
-            self.ty_translator.translate_type_no_normalize(normalized_output)?;
+            ty_translator.translate_type_no_normalize(normalized_output)?;
         info!("translated function type: {:?} → {}", translated_arg_types, translated_ret_type);
 
         let parser = rrconfig::attribute_parser();
         match parser.as_str() {
             "verbose" => {
-                let ty_translator = &self.ty_translator;
                 let mut parser: VerboseFunctionSpecParser<'_, 'def, _> =
                     VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, |lit| {
                         ty_translator.translator.intern_literal(lit)
                     });
 
-                parser
-                    .parse_function_spec(v, &mut self.translated_fn)
-                    .map_err(TranslationError::AttributeError)?;
-
+                parser.parse_function_spec(attrs, translator).map_err(TranslationError::AttributeError)?;
                 Ok(())
             },
             _ => Err(TranslationError::UnknownAttributeParser(parser)),
@@ -897,25 +1309,22 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         for dbg in debug_info {
             let name = &dbg.name;
             let val = &dbg.value;
-            match *val {
-                VarDebugInfoContents::Place(l) => {
-                    // make sure that the place projection is empty -- otherwise this might just
-                    // refer to the capture of a closure
-                    if let Some(this_local) = l.as_local() {
-                        if this_local == local {
-                            // around closures, multiple symbols may be mapped to the same name.
-                            // To prevent this from happening, we check that the name hasn't been
-                            // used already
-                            // TODO: find better solution
-                            if !used_names.contains(name.as_str()) {
-                                return Some(name.as_str().to_owned());
-                            }
+            if let VarDebugInfoContents::Place(l) = *val {
+                // make sure that the place projection is empty -- otherwise this might just
+                // refer to the capture of a closure
+                if let Some(this_local) = l.as_local() {
+                    if this_local == local {
+                        // around closures, multiple symbols may be mapped to the same name.
+                        // To prevent this from happening, we check that the name hasn't been
+                        // used already
+                        // TODO: find better solution
+                        if !used_names.contains(name.as_str()) {
+                            return Some(name.as_str().to_owned());
                         }
                     }
-                },
-                VarDebugInfoContents::Const(_) => {
-                    // is this case used when constant propagation happens during MIR construction?
-                },
+                }
+            } else {
+                // is this case used when constant propagation happens during MIR construction?
             }
         }
 
@@ -939,108 +1348,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             i += 1;
         }
         info!("{}\t{:?}", i, bb.terminator());
-    }
-
-    pub fn translate(mut self) -> Result<radium::Function<'def>, TranslationError> {
-        let body = self.proc.get_mir();
-
-        // analyze which locals are used for the result of checked-ops, because we will
-        // override their types (eliminating the tuples)
-        let mut checked_op_analyzer = CheckedOpLocalAnalysis::new(self.env.tcx(), body);
-        checked_op_analyzer.analyze();
-        let checked_op_locals = checked_op_analyzer.results();
-
-        // map to translate between locals and the string names we use in radium::
-        let mut radium_name_map: HashMap<Local, String> = HashMap::new();
-
-        let local_decls = &body.local_decls;
-        info!("Have {} local decls\n", local_decls.len());
-
-        let debug_info = &body.var_debug_info;
-        info!("using debug info: {:?}", debug_info);
-
-        let mut return_synty = radium::SynType::Unit; // default
-        let mut fn_locals = Vec::new();
-        let mut opt_return_name =
-            Err(TranslationError::UnknownError("could not find local for return value".to_owned()));
-        let mut used_names = HashSet::new();
-        let mut arg_tys = Vec::new();
-
-        // go over local_decls and create the right radium:: stack layout
-        for (local, local_decl) in local_decls.iter_enumerated() {
-            let kind = body.local_kind(local);
-
-            let ty: Ty<'tcx> = if let Some(rewritten_ty) = checked_op_locals.get(&local) {
-                *rewritten_ty
-            } else {
-                local_decl.ty
-            };
-
-            // check if the type is of a spec fn -- in this case, we can skip this temporary
-            if let TyKind::Closure(id, _) = ty.kind() {
-                if self.procedure_registry.lookup_function_mode(*id).map_or(false, ProcedureMode::is_ignore) {
-                    // this is a spec fn
-                    info!("skipping local which has specfn closure type: {:?}", local);
-                    continue;
-                }
-            }
-
-            // type:
-            let tr_ty = self.ty_translator.translate_type(ty)?;
-            let st = tr_ty.get_syn_type();
-
-            let name = Self::make_local_name(body, local, &mut used_names);
-            radium_name_map.insert(local, name.clone());
-
-            fn_locals.push((local, name.clone(), tr_ty));
-
-            match kind {
-                LocalKind::Arg => {
-                    self.translated_fn.code.add_argument(&name, st);
-                    arg_tys.push(ty);
-                },
-                //LocalKind::Var => translated_fn.code.add_local(&name, st),
-                LocalKind::Temp => self.translated_fn.code.add_local(&name, st),
-                LocalKind::ReturnPointer => {
-                    return_synty = st.clone();
-                    self.translated_fn.code.add_local(&name, st);
-                    opt_return_name = Ok(name);
-                },
-            }
-        }
-        info!("radium name map: {:?}", radium_name_map);
-        // create the function
-        let return_name = opt_return_name?;
-
-        // add lifetime parameters to the map
-        let inputs2 = self.inputs.clone();
-        let initial_constraints =
-            self.get_initial_universal_arg_constraints(inputs2.as_slice(), arg_tys.as_slice());
-        info!("initial constraints: {:?}", initial_constraints);
-
-        let translator = BodyTranslator {
-            env: self.env,
-            proc: self.proc,
-            info: self.info,
-            variable_map: radium_name_map,
-            translated_fn: self.translated_fn,
-            return_name,
-            return_synty,
-            inclusion_tracker: self.inclusion_tracker,
-            collected_procedures: HashMap::new(),
-            procedure_registry: self.procedure_registry,
-            attrs: self.attrs,
-            local_lifetimes: Vec::new(),
-            bb_queue: Vec::new(),
-            processed_bbs: HashSet::new(),
-            ty_translator: self.ty_translator,
-            loop_specs: HashMap::new(),
-            fn_locals,
-            checked_op_temporaries: checked_op_locals,
-            const_registry: self.const_registry,
-            collected_statics: HashSet::new(),
-        };
-        translator.translate(&initial_constraints)
     }
 
     /// Determine initial constraints between universal regions and local place regions.
@@ -1130,8 +1437,7 @@ struct BodyTranslator<'a, 'def, 'tcx> {
     return_synty: radium::SynType,
     /// all the other procedures used by this function, and:
     /// (code_loc_parameter_name, spec_name, type_inst, syntype_of_all_args)
-    collected_procedures:
-        HashMap<(DefId, FnGenericKey<'tcx>), (String, String, Vec<radium::Type<'def>>, Vec<radium::SynType>)>,
+    collected_procedures: HashMap<(DefId, GenericsKey<'tcx>), radium::UsedProcedure<'def>>,
     /// used statics
     collected_statics: HashSet<DefId>,
 
@@ -1142,6 +1448,8 @@ struct BodyTranslator<'a, 'def, 'tcx> {
     procedure_registry: &'a ProcedureScope<'def>,
     /// scope of used consts
     const_registry: &'a ConstScope<'def>,
+    /// trait registry
+    trait_registry: &'def TraitRegistry<'tcx, 'def>,
     /// attributes on this function
     attrs: &'a [&'a ast::ast::AttrItem],
     /// polonius info for this function
@@ -1155,7 +1463,7 @@ struct BodyTranslator<'a, 'def, 'tcx> {
     /// set of already processed blocks
     processed_bbs: HashSet<BasicBlock>,
     /// translator for types
-    ty_translator: LocalTypeTranslator<'a, 'def, 'tcx>,
+    ty_translator: LocalTypeTranslator<'def, 'tcx>,
 
     /// map of loop heads to their optional spec closure defid
     loop_specs: HashMap<BasicBlock, Option<DefId>>,
@@ -1177,8 +1485,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// if successful.
     pub fn translate(
         mut self,
-        initial_constraints: &Vec<(polonius_info::AtomicRegion, polonius_info::AtomicRegion)>,
-    ) -> Result<radium::Function<'def>, TranslationError> {
+        initial_constraints: Vec<(polonius_info::AtomicRegion, polonius_info::AtomicRegion)>,
+    ) -> Result<radium::Function<'def>, TranslationError<'tcx>> {
         // add loop info
         let loop_info = self.proc.loop_info();
         loop_info.dump_body_head();
@@ -1194,8 +1502,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             for (r1, r2) in initial_constraints {
                 translated_bb = radium::Stmt::Annot {
                     a: radium::Annotation::CopyLftName(
-                        self.format_atomic_region(r1),
-                        self.format_atomic_region(r2),
+                        self.format_atomic_region(&r1),
+                        self.format_atomic_region(&r2),
                     ),
                     s: Box::new(translated_bb),
                     why: Some("initialization".to_owned()),
@@ -1224,7 +1532,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             self.translated_fn.assume_synty_layoutable(g.generate_syn_type_term());
         }
         // assume that all used tuples are layoutable
-        for g in &self.ty_translator.scope.borrow().tuple_uses {
+        for g in self.ty_translator.scope.borrow().tuple_uses.values() {
             self.translated_fn.assume_synty_layoutable(g.generate_syn_type_term());
         }
 
@@ -1238,13 +1546,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
 
         // generate dependencies on other procedures.
-        for (loc_name, spec_name, params, sts) in self.collected_procedures.values() {
-            self.translated_fn.require_function(
-                loc_name.clone(),
-                spec_name.clone(),
-                params.clone(),
-                sts.clone(),
-            );
+        for used_proc in self.collected_procedures.values() {
+            self.translated_fn.require_function(used_proc.clone());
         }
 
         // generate dependencies on statics
@@ -1308,145 +1611,81 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         initial_arg_mapping
     }
 
-    /// Generate a key for generics to index into our map of other required procedures.
-    fn generate_procedure_inst_key(
-        &self,
-        ty_params: ty::GenericArgsRef<'tcx>,
-    ) -> Result<FnGenericKey<'tcx>, TranslationError> {
-        // erase parameters to their syntactic types
-        let mut key = Vec::new();
-        let mut region_eraser = TyRegionEraseFolder::new(self.env.tcx());
-        for p in ty_params {
-            match p.unpack() {
-                ty::GenericArgKind::Lifetime(_) => {
-                    // lifetimes are not relevant here
-                },
-                ty::GenericArgKind::Type(t) => {
-                    // TODO: this should erase to the syntactic type.
-                    // Is erasing regions enough for that?
-                    let t_erased = t.fold_with(&mut region_eraser);
-                    key.push(t_erased);
-                },
-                ty::GenericArgKind::Const(_c) => {
-                    return Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does not support const generics".to_owned(),
-                    });
-                },
-            }
-        }
-        Ok(key)
-    }
-
     /// Internally register that we have used a procedure with a particular instantiation of generics, and
     /// return the code parameter name.
+    /// Arguments:
+    /// - `callee_did`: the `DefId` of the callee
+    /// - `ty_params`: the instantiation for the callee's type parameters
+    /// - `trait_spec_terms`: if the callee has any trait assumptions, these are specification parameter terms
+    ///   for these traits
+    /// - `trait_assoc_tys`: if the callee has any trait assumptions, these are the instantiations for all
+    ///   associated types
     fn register_use_procedure(
         &mut self,
+        callee_did: DefId,
+        ty_params: ty::GenericArgsRef<'tcx>,
+        trait_spec_terms: Vec<String>,
+        trait_assoc_tys: Vec<radium::Type<'def>>,
+    ) -> Result<String, TranslationError<'tcx>> {
+        trace!("enter register_use_procedure callee_did={callee_did:?} ty_params={ty_params:?}");
+        // The key does not include the associated types, as the resolution of the associated types
+        // should always be unique for one combination of type parameters, as long as we remain in
+        // the same environment (which is the case within this procedure).
+        // Therefore, already the type parameters are sufficient to distinguish different
+        // instantiations.
+        let key = generate_args_inst_key(self.env.tcx(), ty_params)?;
+
+        let tup = (callee_did, key);
+        let res;
+        if let Some(proc_use) = self.collected_procedures.get(&tup) {
+            res = proc_use.loc_name.clone();
+        } else {
+            let proc_use = self.procedure_registry.make_procedure_use(
+                self.env.tcx(),
+                &self.ty_translator,
+                callee_did,
+                ty_params,
+                trait_spec_terms,
+                trait_assoc_tys,
+            )?;
+            res = proc_use.loc_name.clone();
+            self.collected_procedures.insert(tup, proc_use);
+        }
+        trace!("leave register_use_procedure");
+        Ok(res)
+    }
+
+    /// Internally register that we have used a trait method with a particular instantiation of
+    /// generics, and return the code parameter name.
+    fn register_use_trait_method<'c>(
+        &'c mut self,
         did: DefId,
         ty_params: ty::GenericArgsRef<'tcx>,
-    ) -> Result<String, TranslationError> {
-        trace!("enter register_use_procedure did={:?} ty_params={:?}", did, ty_params);
+        trait_spec_terms: &[String],
+        trait_assoc_tys: Vec<radium::Type<'def>>,
+    ) -> Result<String, TranslationError<'tcx>> {
+        trace!("enter register_use_trait_method did={:?} ty_params={:?}", did, ty_params);
+        // Does not include the associated types in the key; see `register_use_procedure` for an
+        // explanation.
+        let key = generate_args_inst_key(self.env.tcx(), ty_params)?;
 
-        let key = self.generate_procedure_inst_key(ty_params)?;
         let tup = (did, key);
-
-        if let Some((n, ..)) = self.collected_procedures.get(&tup) {
-            trace!("leave register_use_procedure");
-
-            return Ok(n.to_owned());
+        let res;
+        if let Some(proc_use) = self.collected_procedures.get(&tup) {
+            res = proc_use.loc_name.clone();
+        } else {
+            let proc_use = self.ty_translator.register_use_trait_procedure(
+                self.env,
+                did,
+                ty_params,
+                trait_spec_terms,
+                trait_assoc_tys,
+            )?;
+            res = proc_use.loc_name.clone();
+            self.collected_procedures.insert(tup, proc_use);
         }
-
-        // lookup the name in the procedure registry
-        let name = self
-            .procedure_registry
-            .lookup_function_mangled_name(did)
-            .ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
-
-        let spec_name = self
-            .procedure_registry
-            .lookup_function_spec_name(did)
-            .ok_or_else(|| TranslationError::UnknownProcedure(format!("{:?}", did)))?;
-
-        let mut mangled_name = name.to_owned();
-        let mut translated_params = Vec::new();
-
-        // TODO: maybe come up with some better way to generate names
-        info!("register_use_procedure: translating args {:?}", tup.1);
-
-        for p in &tup.1 {
-            mangled_name.push_str(format!("_{}", p).as_str());
-
-            let translated_ty = self.ty_translator.translate_type(*p)?;
-
-            translated_params.push(translated_ty);
-        }
-
-        let mangled_name = strip_coq_ident(&mangled_name);
-
-        // also gather all the layouts of the arguments.
-        let full_ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(did);
-        let full_ty: Ty<'tcx> = full_ty.instantiate_identity();
-
-        let mut normalized_inputs = Vec::new();
-        let mut syntypes = Vec::new();
-
-        match full_ty.kind() {
-            ty::TyKind::FnDef(_, _) => {
-                let sig = full_ty.fn_sig(self.env.tcx());
-                let sig = normalize_in_function(did, self.env.tcx(), sig)?;
-
-                for ty in sig.inputs().skip_binder() {
-                    normalized_inputs.push(*ty);
-                }
-            },
-
-            ty::TyKind::Closure(_, args) => {
-                let clos_args = args.as_closure();
-                let sig = clos_args.sig();
-                let sig = normalize_in_function(did, self.env.tcx(), sig)?;
-                let pre_sig = sig.skip_binder();
-                // we also need to add the closure argument here
-                // in this case, we need to patch the region first
-
-                let tuple_ty = clos_args.tupled_upvars_ty();
-
-                match clos_args.kind() {
-                    ty::ClosureKind::Fn | ty::ClosureKind::FnMut => {
-                        syntypes.push(radium::SynType::Ptr);
-                    },
-                    ty::ClosureKind::FnOnce => {
-                        normalized_inputs.push(tuple_ty);
-                    },
-                }
-
-                for ty in pre_sig.inputs() {
-                    normalized_inputs.push(*ty);
-                }
-            },
-
-            _ => unimplemented!(),
-        }
-
-        //info!("substs: {:?}, inputs {:?} ", ty_params, inputs);
-        for i in &normalized_inputs {
-            // need to wrap it, because there's no Subst instance for Ty
-            let i = ty::EarlyBinder::bind(*i);
-            let ty = i.instantiate(self.env.tcx(), ty_params);
-            let t = self.ty_translator.translate_type_to_syn_type_no_normalize(ty)?;
-            syntypes.push(t);
-        }
-
-        let loc_name = format!("{}_loc", mangled_name);
-
-        info!(
-            "Registered procedure instance {} of {:?} with {:?} and layouts {:?}",
-            mangled_name, did, translated_params, syntypes
-        );
-
-        self.collected_procedures
-            .insert(tup, (loc_name.clone(), spec_name.to_owned(), translated_params, syntypes));
-
         trace!("leave register_use_procedure");
-        Ok(loc_name)
+        Ok(res)
     }
 
     /// Enqueues a basic block for processing, if it has not already been processed,
@@ -1627,14 +1866,15 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     fn call_expr_op_split_inst(
         &self,
         constant: &Constant<'tcx>,
-    ) -> Result<(DefId, ty::PolyFnSig<'tcx>, ty::GenericArgsRef<'tcx>, ty::PolyFnSig<'tcx>), TranslationError>
-    {
+    ) -> Result<
+        (DefId, ty::PolyFnSig<'tcx>, ty::GenericArgsRef<'tcx>, ty::PolyFnSig<'tcx>),
+        TranslationError<'tcx>,
+    > {
         match constant.literal {
             ConstantKind::Ty(c) => {
                 match c.ty().kind() {
                     TyKind::FnDef(def, args) => {
                         let ty: ty::EarlyBinder<Ty<'tcx>> = self.env.tcx().type_of(def);
-
                         let ty_ident = ty.instantiate_identity();
                         assert!(ty_ident.is_fn());
                         let ident_sig = ty_ident.fn_sig(self.env.tcx());
@@ -1677,7 +1917,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Find the optional `DefId` of the closure giving the invariant for the loop with head `head_bb`.
-    fn find_loop_spec_closure(&self, head_bb: BasicBlock) -> Result<Option<DefId>, TranslationError> {
+    fn find_loop_spec_closure(&self, head_bb: BasicBlock) -> Result<Option<DefId>, TranslationError<'tcx>> {
         let bodies = self.proc.loop_info().get_loop_body(head_bb);
         let basic_blocks = &self.proc.get_mir().basic_blocks;
 
@@ -1706,7 +1946,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         &mut self,
         _loc: &Location,
         target: BasicBlock,
-    ) -> Result<radium::Stmt, TranslationError> {
+    ) -> Result<radium::Stmt, TranslationError<'tcx>> {
         self.enqueue_basic_block(target);
         let res_stmt = radium::Stmt::GotoBlock(target.as_usize());
 
@@ -1772,7 +2012,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         &self,
         func: &Constant<'tcx>,
         loc: Location,
-    ) -> Result<CallRegions, TranslationError> {
+    ) -> Result<CallRegions, TranslationError<'tcx>> {
         let midpoint = self.info.interner.get_point_index(&facts::Point {
             location: loc,
             typ: facts::PointType::Mid,
@@ -1915,7 +2155,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         target: Option<middle::mir::BasicBlock>,
         loc: Location,
         dying_loans: &[facts::Loan],
-    ) -> Result<radium::Stmt, TranslationError> {
+    ) -> Result<radium::Stmt, TranslationError<'tcx>> {
         let startpoint = self.info.interner.get_point_index(&facts::Point {
             location: loc,
             typ: facts::PointType::Start,
@@ -2114,7 +2354,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         term: &Terminator<'tcx>,
         loc: Location,
         dying_loans: Vec<facts::Loan>,
-    ) -> Result<radium::Stmt, TranslationError> {
+    ) -> Result<radium::Stmt, TranslationError<'tcx>> {
         match &term.kind {
             TerminatorKind::Goto { target } => self.translate_goto_like(&loc, *target),
 
@@ -2407,7 +2647,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Check if a local is used for a spec closure.
-    fn is_spec_closure_local(&self, l: Local) -> Result<Option<DefId>, TranslationError> {
+    fn is_spec_closure_local(&self, l: Local) -> Result<Option<DefId>, TranslationError<'tcx>> {
         // check if we should ignore this
         let local_type = self.get_type_of_local(l)?;
 
@@ -2691,7 +2931,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         &mut self,
         bb_idx: BasicBlock,
         bb: &BasicBlockData<'tcx>,
-    ) -> Result<radium::Stmt, TranslationError> {
+    ) -> Result<radium::Stmt, TranslationError<'tcx>> {
         // we translate from back to front, starting with the terminator, since Caesium statements
         // have a continuation (the next statement to execute)
 
@@ -2820,10 +3060,18 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     info!("Ignoring FakeRead: {:?}", b);
                 },
 
-                StatementKind::Intrinsic(_intrinsic) => {
-                    return Err(TranslationError::UnsupportedFeature {
-                        description: "RefinedRust does currently not support Intrinsic".to_owned(),
-                    });
+                StatementKind::Intrinsic(intrinsic) => {
+                    match intrinsic.as_ref() {
+                        NonDivergingIntrinsic::Assume(_) => {
+                            // ignore
+                            info!("Ignoring Assume: {:?}", intrinsic);
+                        },
+                        NonDivergingIntrinsic::CopyNonOverlapping(_) => {
+                            return Err(TranslationError::UnsupportedFeature {
+                                description: "RefinedRust does currently not support the CopyNonOverlapping Intrinsic".to_owned(),
+                            });
+                        },
+                    }
                 },
 
                 StatementKind::PlaceMention(place) => {
@@ -2864,7 +3112,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate a `BorrowKind`.
-    fn translate_borrow_kind(kind: BorrowKind) -> Result<radium::BorKind, TranslationError> {
+    fn translate_borrow_kind(kind: BorrowKind) -> Result<radium::BorKind, TranslationError<'tcx>> {
         match kind {
             BorrowKind::Shared => Ok(radium::BorKind::Shared),
             BorrowKind::Shallow => {
@@ -2889,7 +3137,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Get the inner type of a type to which we can apply the offset operator.
-    fn get_offset_ty(ty: Ty<'tcx>) -> Result<Ty<'tcx>, TranslationError> {
+    fn get_offset_ty(ty: Ty<'tcx>) -> Result<Ty<'tcx>, TranslationError<'tcx>> {
         match ty.kind() {
             TyKind::Array(t, _) | TyKind::Slice(t) | TyKind::Ref(_, t, _) => Ok(*t),
             TyKind::RawPtr(tm) => Ok(tm.ty),
@@ -2905,7 +3153,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         op: BinOp,
         e1: &Operand<'tcx>,
         _e2: &Operand<'tcx>,
-    ) -> Result<radium::Binop, TranslationError> {
+    ) -> Result<radium::Binop, TranslationError<'tcx>> {
         match op {
             BinOp::Add | BinOp::AddUnchecked => Ok(radium::Binop::Add),
             BinOp::Sub | BinOp::SubUnchecked => Ok(radium::Binop::Sub),
@@ -2941,7 +3189,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     /// Translate checked binary operators.
     /// We need access to the operands, too, to handle the offset operator and get the right
     /// Caesium layout annotation.
-    fn translate_checked_binop(op: BinOp) -> Result<radium::Binop, TranslationError> {
+    fn translate_checked_binop(op: BinOp) -> Result<radium::Binop, TranslationError<'tcx>> {
         match op {
             BinOp::Add => Ok(radium::Binop::CheckedAdd),
             BinOp::Sub => Ok(radium::Binop::CheckedSub),
@@ -2959,7 +3207,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate unary operators.
-    fn translate_unop(op: UnOp, ty: Ty<'tcx>) -> Result<radium::Unop, TranslationError> {
+    fn translate_unop(op: UnOp, ty: Ty<'tcx>) -> Result<radium::Unop, TranslationError<'tcx>> {
         match op {
             UnOp::Not => match ty.kind() {
                 ty::TyKind::Bool => Ok(radium::Unop::NotBool),
@@ -2977,7 +3225,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         &self,
         bk: BorrowKind,
         pl: &Place<'tcx>,
-    ) -> Result<Option<radium::RustType>, TranslationError> {
+    ) -> Result<Option<radium::RustType>, TranslationError<'tcx>> {
         let BorrowKind::Mut { .. } = bk else {
             return Ok(None);
         };
@@ -2996,7 +3244,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         &mut self,
         loc: Location,
         rval: &Rvalue<'tcx>,
-    ) -> Result<radium::Expr, TranslationError> {
+    ) -> Result<radium::Expr, TranslationError<'tcx>> {
         match rval {
             Rvalue::Use(op) => {
                 // converts an lvalue to an rvalue
@@ -3422,7 +3670,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         &mut self,
         op: &Operand<'tcx>,
         to_rvalue: bool,
-    ) -> Result<radium::Expr, TranslationError> {
+    ) -> Result<radium::Expr, TranslationError<'tcx>> {
         match op {
             // In Caesium: typed_place needs deref (not use) for place accesses.
             // use is used top-level to convert an lvalue to an rvalue, which is why we use it here.
@@ -3470,18 +3718,120 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    fn translate_fn_def_use(&mut self, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
+    fn translate_fn_def_use(&mut self, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError<'tcx>> {
         let TyKind::FnDef(defid, params) = ty.kind() else {
             return Err(TranslationError::UnknownError("not a FnDef type".to_owned()));
         };
 
         let key: ty::ParamEnv<'tcx> = self.env.tcx().param_env(self.proc.get_id());
-        if self.env.tcx().trait_of_item(*defid).is_none() {
+
+        let callee_param_env = self.env.tcx().param_env(defid);
+        info!("callee param env {callee_param_env:?}");
+
+        // Get the trait requirements of the callee
+        let callee_requirements = get_nontrivial_trait_requirements(self.env.tcx(), callee_param_env);
+        info!("non-trivial callee requirements: {callee_requirements:?}");
+        info!("subsituting with args {:?}", params);
+
+        // Check whether we are calling into a trait method
+        let calling_trait = self.env.tcx().trait_of_item(*defid);
+        // Get the params of the trait we're calling
+        let calling_trait_params = if let Some(trait_did) = calling_trait {
+            Some(LocalTypeTranslator::split_trait_method_args(self.env, trait_did, params).0)
+        } else {
+            None
+        };
+
+        // For each trait requirement, resolve to a trait spec that we can provide
+        // TODO: make sure to provide the list of trait instantiations in a consistent order with the callee
+        // defining site
+        let mut trait_spec_terms = Vec::new();
+        // also compute the translated associated types of all trait instances this function depends on
+        let mut ordered_assoc_tys = Vec::new();
+        for trait_ref in &callee_requirements {
+            // substitute the args with the arg instantiation of the callee at this call site
+            // in order to get the args of this trait instance
+            let args = trait_ref.args;
+            let mut subst_args = Vec::new();
+            for arg in args {
+                let bound = ty::EarlyBinder::bind(arg);
+                let bound = bound.instantiate(self.env.tcx(), params.as_slice());
+                subst_args.push(bound);
+            }
+
+            // Check if the target of our call is a method of the same trait with the same args
+            // Since this happens in the same ParamEnv, this is the assumption of the trait method
+            // for its own trait, so we skip it.
+            if let Some(trait_did) = calling_trait {
+                if trait_ref.def_id == trait_did && subst_args == calling_trait_params.unwrap().as_slice() {
+                    // if they match, this is the Self assumption, so skip
+                    continue;
+                }
+            }
+
+            // try to infer an instance for this
+            let subst_args = self.env.tcx().mk_args(subst_args.as_slice());
+            if let Some((impl_did, impl_args, kind)) =
+                traits::resolve_trait(self.env.tcx(), key, trait_ref.def_id, subst_args)
+            {
+                info!("resolved trait impl as {impl_did:?} with {args:?} {kind:?}");
+
+                match kind {
+                    traits::TraitResolutionKind::UserDefined => {
+                        // we can resolve it to a concrete implementation of the trait that the
+                        // call links up against
+                        // therefore, we specialize it to the specification for this implementation
+                        //
+                        // This is sound, as the compiler will make the same choice when resolving
+                        // the trait reference in codegen
+
+                        let (spec_term, assoc_tys) = self.trait_registry.get_impl_spec_term(
+                            &self.ty_translator,
+                            impl_did,
+                            impl_args.as_slice(),
+                            subst_args.as_slice(),
+                        )?;
+                        trait_spec_terms.push(spec_term);
+
+                        ordered_assoc_tys.extend(assoc_tys.into_iter());
+                    },
+                    traits::TraitResolutionKind::Param => {
+                        // Lookup in our current parameter environment to satisfy this trait
+                        // assumption
+                        let trait_did = trait_ref.def_id;
+                        let trait_ref =
+                            self.ty_translator.lookup_trait_param(self.env, trait_did, subst_args)?;
+                        let assoc_tys = trait_ref.get_associated_type_uses(self.env);
+
+                        trait_spec_terms.push(trait_ref.trait_use.make_spec_param_name());
+                        ordered_assoc_tys.extend(assoc_tys.into_iter());
+                    },
+                    traits::TraitResolutionKind::Closure => {
+                        // The callee requires a closure trait bound.
+                        // This happens when we pass a closure as an argument?
+                        return Err(TranslationError::UnsupportedFeature {
+                            description: "TODO: do not support Closure parameters".to_owned(),
+                        });
+                    },
+                }
+            } else {
+                return Err(TranslationError::TraitResolution(
+                    "could not resolve trait required for method call".to_owned(),
+                ));
+            }
+        }
+        info!("collected spec terms: {trait_spec_terms:?}");
+
+        // Check whether we are calling a plain function or a trait method
+        if calling_trait.is_none() {
             // track that we are using this function and generate the Coq location name
-            let param_name = self.register_use_procedure(*defid, params)?;
+            let param_name =
+                self.register_use_procedure(*defid, params, trait_spec_terms, ordered_assoc_tys)?;
             return Ok(radium::Expr::MetaParam(param_name));
         }
 
+        // Otherwise, we are calling a trait method
+        // Resolve the trait instance using trait selection
         let Some((resolved_did, resolved_params, kind)) =
             traits::resolve_assoc_item(self.env.tcx(), key, *defid, params)
         else {
@@ -3495,13 +3845,29 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         match kind {
             traits::TraitResolutionKind::UserDefined => {
-                let param_name = self.register_use_procedure(resolved_did, resolved_params)?;
+                // We can statically resolve the particular trait instance,
+                // call as a normal procedure
+                let param_name = self.register_use_procedure(
+                    resolved_did,
+                    resolved_params,
+                    trait_spec_terms,
+                    ordered_assoc_tys,
+                )?;
                 Ok(radium::Expr::MetaParam(param_name))
             },
 
-            traits::TraitResolutionKind::Param => Err(TranslationError::Unimplemented {
-                description: "Implement trait invocation for Param".to_owned(),
-            }),
+            traits::TraitResolutionKind::Param => {
+                // The trait instance the method belongs to is a parameter
+                // Lookup in our trait scope for the current function
+
+                let param_name = self.register_use_trait_method(
+                    resolved_did,
+                    resolved_params,
+                    &trait_spec_terms,
+                    ordered_assoc_tys,
+                )?;
+                Ok(radium::Expr::MetaParam(param_name))
+            },
 
             traits::TraitResolutionKind::Closure => {
                 // TODO: here, we should first generate an instance of the trait
@@ -3509,22 +3875,29 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // mir_shims(middle::ty::InstanceDef::Item(resolved_did));
                 // the args are just the closure args. We can ignore them.
                 let _clos_args = resolved_params.as_closure();
-                let param_name = self.register_use_procedure(resolved_did, ty::List::empty())?;
+                let param_name = self.register_use_procedure(
+                    resolved_did,
+                    ty::List::empty(),
+                    trait_spec_terms,
+                    ordered_assoc_tys,
+                )?;
                 Ok(radium::Expr::MetaParam(param_name))
-                //Err(TranslationError::Unimplemented { description: format!("Implement trait
-                // invocation for Closure") })
             },
         }
     }
 
     /// Translate a scalar at a specific type to a `radium::Expr`.
     // TODO: Use `TryFrom` instead
-    fn translate_scalar(&mut self, sc: &Scalar, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError> {
+    fn translate_scalar(
+        &mut self,
+        sc: &Scalar,
+        ty: Ty<'tcx>,
+    ) -> Result<radium::Expr, TranslationError<'tcx>> {
         // TODO: Use `TryFrom` instead
-        fn translate_literal<T, U>(
+        fn translate_literal<'tcx, T, U>(
             sc: Result<T, U>,
             fptr: fn(T) -> radium::Literal,
-        ) -> Result<radium::Expr, TranslationError> {
+        ) -> Result<radium::Expr, TranslationError<'tcx>> {
             sc.map_or(Err(TranslationError::InvalidLayout), |lit| Ok(radium::Expr::Literal(fptr(lit))))
         }
 
@@ -3550,6 +3923,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // For Radium, the pointer is 8 bytes
                 ty::UintTy::U64 | ty::UintTy::Usize => translate_literal(sc.to_u64(), radium::Literal::U64),
             },
+
+            TyKind::Char => translate_literal(sc.to_char(), radium::Literal::Char),
 
             TyKind::FnDef(_, _) => self.translate_fn_def_use(ty),
 
@@ -3621,7 +3996,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         &mut self,
         v: mir::interpret::ConstValue<'tcx>,
         ty: Ty<'tcx>,
-    ) -> Result<radium::Expr, TranslationError> {
+    ) -> Result<radium::Expr, TranslationError<'tcx>> {
         match v {
             ConstValue::Scalar(sc) => self.translate_scalar(&sc, ty),
             ConstValue::ZeroSized => {
@@ -3645,7 +4020,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate a Constant to a `radium::Expr`.
-    fn translate_constant(&mut self, constant: &Constant<'tcx>) -> Result<radium::Expr, TranslationError> {
+    fn translate_constant(
+        &mut self,
+        constant: &Constant<'tcx>,
+    ) -> Result<radium::Expr, TranslationError<'tcx>> {
         match constant.literal {
             ConstantKind::Ty(v) => {
                 let const_ty = v.ty();
@@ -3686,7 +4064,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Translate a place to a Caesium lvalue.
-    fn translate_place(&mut self, pl: &Place<'tcx>) -> Result<radium::Expr, TranslationError> {
+    fn translate_place(&mut self, pl: &Place<'tcx>) -> Result<radium::Expr, TranslationError<'tcx>> {
         // Get the type of the underlying local. We will use this to
         // get the necessary layout information for dereferencing
         let mut cur_ty = self.get_type_of_local(pl.local).map(PlaceTy::from_ty)?;
@@ -3783,7 +4161,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     }
 
     /// Get the type of a local in a body.
-    fn get_type_of_local(&self, local: Local) -> Result<Ty<'tcx>, TranslationError> {
+    fn get_type_of_local(&self, local: Local) -> Result<Ty<'tcx>, TranslationError<'tcx>> {
         self.proc
             .get_mir()
             .local_decls

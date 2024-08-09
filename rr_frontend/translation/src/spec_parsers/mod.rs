@@ -8,6 +8,7 @@ pub mod verbose_function_spec_parser;
 
 use attribute_parse::{parse, MToken};
 use parse::Parse;
+use rr_rustc_interface::ast;
 use rr_rustc_interface::ast::ast::AttrItem;
 
 /// For parsing of `RustPaths`
@@ -84,4 +85,13 @@ pub fn get_shim_attrs(attrs: &[&AttrItem]) -> Result<ShimAnnot, String> {
         }
     }
     Err("Did not find shim annotation".to_owned())
+}
+
+/// Check whether we should propagate this attribute of a method from a surrounding impl.
+pub fn propagate_method_attr_from_impl(it: &ast::ast::AttrItem) -> bool {
+    if let Some(ident) = it.path.segments.get(1) {
+        matches!(ident.ident.as_str(), "context") || matches!(ident.ident.as_str(), "verify")
+    } else {
+        false
+    }
 }

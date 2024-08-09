@@ -756,9 +756,10 @@ Section tac.
       ⌜fn_local_layout_assumptions local_sts lyv⌝ -∗
       ∀ (lsa : vec loc (length (fp κs x).(fp_atys))) (lsv : vec loc (length fn.(f_local_vars))),
         let Qinit :=
+          (fp κs x).(fp_Pa) π ∗
           ([∗list] l;t∈lsa;(fp κs x).(fp_atys), let '(existT rt (ty, r)) := t in l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
-          ([∗list] l;p∈lsv;local_sts, (l ◁ₗ[π, Owned false] (PlaceIn ()) @ (◁ (uninit p)))) ∗
-          (fp κs x).(fp_Pa) π in
+          ([∗list] l;p∈lsv;local_sts, (l ◁ₗ[π, Owned false] (PlaceIn ()) @ (◁ (uninit p))))
+           in
       let E := ((fp κs x).(fp_elctx) ϝ) in
       let L := [ϝ ⊑ₗ{0} []] in
       ∃ E' E'', ⌜E = E'⌝ ∗ ⌜E' ≡ₚ E''⌝ ∗
@@ -785,7 +786,8 @@ Section tac.
     iDestruct ("HT" $! lsa lsv) as "(%E' & %E'' & <- & %Heq & HT)".
     iPoseProof (elctx_interp_permut with "HE") as "HE'". { symmetry. apply Heq. }
     rewrite /introduce_with_hooks.
-    iMod ("HT" with "Hstore [] HE' HL Hinit") as "(%L2 & HL & HT)"; first done.
+    iMod ("HT" with "Hstore [] HE' HL [Hinit]") as "(%L2 & HL & HT)"; first done.
+    { iDestruct "Hinit" as "($ & $ & $)". }
     by iApply ("HT" with "CTX HE' HL Hna").
   Qed.
 End tac.
@@ -869,6 +871,8 @@ Ltac sidecond_hook ::=
       solve_ty_allows
   | |- ty_allows_writes _ =>
       solve_ty_allows
+  | |- trait_incl_marker _ =>
+      solve_trait_incl
   | |- _ =>
       try solve_layout_alg;
       try solve_op_alg;
@@ -996,6 +1000,12 @@ Ltac sidecond_hammer :=
 .
 Ltac sidecond_solver :=
   unshelve_sidecond; sidecond_hook.
+
+(* Solve this sidecondition within Lithium *)
+Ltac solve_function_subtype_hook ::=
+  iStartProof;
+  repeat liRStep
+.
 
 Ltac print_remaining_goal :=
   match goal with

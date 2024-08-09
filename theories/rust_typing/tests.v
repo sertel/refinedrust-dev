@@ -381,6 +381,33 @@ Section test.
     intros []. inv_layout_alg.
   Abort.
 
+  (* Regression test: [st_of] is a notation now, not a definition. *)
+  Definition tuple1_sls (T0_st : syn_type) : struct_layout_spec :=
+   mk_sls "tuple1" [("0", T0_st)] StructReprRust.
+  Lemma inv_test_5 {U_rt} (U_ty : type U_rt) x :
+    use_layout_alg (tuple1_sls (st_of U_ty)) = Some x → True.
+  Proof.
+    intros H.
+    inv_layout_alg.
+    open_cache.
+  Abort.
+
+  Lemma inv_test_5 {U_rt} (U_ty : type U_rt) U_st x x1 :
+    use_layout_alg (tuple1_sls U_st) = Some x1 →
+    use_layout_alg (tuple1_sls (st_of U_ty)) = Some x →
+    ty_syn_type U_ty = U_st →
+    True.
+  Proof.
+    intros H.
+    inv_layout_alg.
+    intros Ha.
+    inv_layout_alg.
+    open_cache.
+    intros ?.
+
+    simplify_eq.
+    open_cache.
+  Abort.
 End test.
 
 Section test.
@@ -965,6 +992,12 @@ Section test.
   Lemma test7 ϝ0 ϝ {rt} (T_ty : type rt) :
     elctx_sat ((ϝ0 ⊑ₑ ϝ) :: ty_outlives_E T_ty ϝ ++ ty_wf_E (T_ty)) [ϝ ⊑ₗ{ 0} []] ((ϝ ⊑ₑ ϝ) :: ty_wf_E (T_ty)).
   Proof. solve_elctx_sat; solve[fail]. Abort.
+  Lemma test8 ϝ0 ϝ {rt} (T_ty : type rt) :
+    elctx_sat ((ϝ ⊑ₑ ϝ0) :: ty_outlives_E T_ty ϝ ++ ty_outlives_E T_ty ϝ0 ++ ty_wf_E (T_ty)) [ϝ ⊑ₗ{ 0} []] (ty_outlives_E T_ty ϝ0).
+  Proof.
+    (* Test case demonstrates that we need to backtrack on using [ty_outlives_E] assumptions *)
+    solve_elctx_sat; solve[fail].
+  Abort.
 
 End test.
 

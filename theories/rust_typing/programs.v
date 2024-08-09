@@ -3953,6 +3953,7 @@ Ltac generate_i2p_instance_to_tc_hook arg c ::=
   | typed_assert ?π ?E ?L ?v ?ty ?r  => constr:(TypedAssert π E L v ty r)
   | typed_switch ?π ?E ?L ?v ?ty ?r ?it => constr:(TypedSwitch π E L v ty r it)
   | typed_annot_stmt ?a => constr:(TypedAnnotStmt a)
+  | introduce_with_hooks ?E ?L ?P => constr:(IntroduceWithHooks E L P)
   | subsume_full ?E ?L ?wl ?P1 ?P2 => constr:(SubsumeFull E L wl P1 P2)
   | prove_with_subtype ?E ?L ?wl ?pm ?P => constr:(ProveWithSubtype E L wl pm P)
   | typed_on_endlft ?π ?E ?L ?κ ?worklist => constr:(TypedOnEndlft π E L κ worklist)

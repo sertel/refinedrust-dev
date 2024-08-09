@@ -66,8 +66,9 @@ Qed.
 Inductive IntType : Set :=
   | I8 | I16 | I32 | I64 | I128
   | U8 | U16 | U32 | U64 | U128
-  | ISize | USize.
-Definition CharIt := U32.
+  | ISize | USize
+  | CharIt
+.
 Definition IntType_to_it (I : IntType) : int_type :=
   match I with
   | I8 => i8
@@ -82,6 +83,7 @@ Definition IntType_to_it (I : IntType) : int_type :=
   | U128 => u128
   | ISize => isize_t
   | USize => usize_t
+  | CharIt => u32
   end.
 Coercion IntType_to_it : IntType >-> int_type.
 Lemma IntType_to_it_size_bounded I :
@@ -143,9 +145,12 @@ Ltac unsafe_unfold_common_caesium_defs :=
   end;
   unfold_common_caesium_defs.
 
-(* integer literals in the code should use I2v *)
-Definition I2v (z : Z) (I : IntType) : val := i2v z I.
-Arguments I2v : simpl never.
+(** integer literals in the code should use I2v *)
+(* Sealed to avoid that [I2v x U32] and [I2v x CharIt] are convertible *)
+Definition I2v_def (z : Z) (I : IntType) : val := i2v z I.
+Definition I2v_aux z I : seal (I2v_def z I). Proof. by eexists. Qed.
+Definition I2v z I : val := (I2v_aux z I).(unseal).
+Definition I2v_unfold z I : I2v z I = i2v z I := (I2v_aux z I).(seal_eq). 
 
 (** Rust repr options *)
 Inductive struct_repr :=

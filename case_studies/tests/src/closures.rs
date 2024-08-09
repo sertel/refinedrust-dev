@@ -1,4 +1,21 @@
 #![allow(unused)]
+#![rr::include("closures")]
+
+#[rr::params("x")]
+#[rr::args("x")]
+fn closure_test_arg1<T>(x: T) 
+    where T: FnOnce()
+{
+    x() 
+}
+
+#[rr::params("x")]
+#[rr::args("x")]
+fn closure_test_arg2<T>(x: T) 
+    where T: FnOnce(i32) -> i32
+{
+    let r = x(42);
+}
 
 #[rr::returns("()")]
 fn closure_test1() {
@@ -15,6 +32,23 @@ fn closure_test1() {
 
     // here we call the closure's implementation
     //x(2);
+}
+
+#[rr::returns("()")]
+fn closure_test12() {
+
+    // Fn-closure
+    let x =
+        #[rr::params("i", "j")]
+        #[rr::args("i", "j")]
+        #[rr::requires("(j * i)%Z ∈ i32")]
+        #[rr::returns("(j * i)%Z")]
+        |x: i32, y: i32| {
+            x * y
+        };
+
+    // here we call the closure's implementation
+    //x(2, 2);
 }
 
 #[rr::returns("()")]
@@ -120,7 +154,53 @@ fn closure_test4(y: &mut i32) {
 }
 */
 
+fn closure_test6<T>(x: T) {
+    let cls = 
+        #[rr::params("a")]
+        #[rr::args("a")]
+        #[rr::returns("a")]
+        |a: T| { a };
+
+    //cls(x);
+}
+
+fn closure_test7<T, U>(x: T, y: U) 
+    where U: FnOnce(T)
+{
+    let cls = 
+        #[rr::params("a", "m")]
+        #[rr::capture("y": "m")]
+        #[rr::args("a")]
+        |a: T| { y(a) };
+
+    //cls(x);
+}
+
+fn closure_test8<T, U>(x: T, y: U) 
+    where U: FnOnce(T)
+{
+    let cls = 
+        #[rr::params("a", "w")]
+        #[rr::args("a", "w")]
+        |a: T, w: U| { w(a) };
+
+    //cls(x, y);
+}
+
+mod fncoercion {
+    fn bla(b: bool) {
+        let x = |x: i32| {x };
+        // uses ClosureFnPointer coercion to coerce whichever closure we pick to an fn pointer
+        // (because there are no captures)
+        let z = if b { x } else { |x : i32| { x } };
+        // then we use the closure instance for fn pointers
+        blub(z);
+    }
+
+    fn blub<T>(mut x : T) where T: Fn(i32) -> i32 {
+        x(43);
+    }
+}
 
 // Note: probably I could try to have a more creusot-like language that compiles down to this
 // representation
-

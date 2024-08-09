@@ -807,19 +807,19 @@ Section elctx_sat.
   Qed.
 
   Lemma tac_elctx_app_ty_wf_E E1 L {rt} (ty : type rt) :
-    ty_wf_E ty ⊆+ E1 →
+    ty_wf_E ty ⊆+ E1 ∧ True →
     elctx_sat E1 L (ty_wf_E ty).
   Proof.
-    intros Hsub Hsat.
+    intros [Hsub _] Hsat.
     apply elctx_sat_submseteq; done.
   Qed.
 
   Lemma tac_elctx_app_ty_outlives_E E1 L κ κ' {rt} (ty : type rt) :
-    ty_outlives_E ty κ' ⊆+ E1 →
-    lctx_lft_incl E1 L κ κ' →
+    (* κ' is an evar that is shared between the two subgoals *)
+    ty_outlives_E ty κ' ⊆+ E1 ∧ lctx_lft_incl E1 L κ κ' →
     elctx_sat E1 L (ty_outlives_E ty κ).
   Proof.
-    intros Houtl Hincl.
+    intros [Houtl Hincl].
     eapply (elctx_sat_submseteq _ _ L) in Houtl.
     iIntros (qL) "HL".
     iPoseProof (Hincl with "HL") as "#Hincl".
@@ -839,60 +839,84 @@ Section elctx_sat.
     iApply lft_incl_trans; done.
   Qed.
 
-  Lemma tac_submseteq_skip_app_r {A} (K E0 E1 : list A) :
-    K ⊆+ E1 →
-    K ⊆+ (E0 ++ E1).
+  Lemma tac_submseteq_skip_app_r {A} (K E0 E1 : list A) P :
+    K ⊆+ E1 ∧ P →
+    K ⊆+ (E0 ++ E1) ∧ P.
   Proof.
-    intros ?. apply submseteq_app_r.
+    intros [? ?]. split; last done.
+    apply submseteq_app_r.
     exists [], K. split_and!; [done | | done].
     apply submseteq_nil_l.
   Qed.
 
-  Lemma tac_submseteq_find_app_r {A} (K E0 E1 : list A) :
-    K = E0 →
-    K ⊆+ (E0 ++ E1).
+  Lemma tac_submseteq_find_app_r {A} (K E0 E1 : list A) P :
+    K = E0 ∧ P →
+    K ⊆+ (E0 ++ E1) ∧ P.
   Proof.
-    intros ->. apply submseteq_app_r.
+    intros [-> ?]. split; last done.
+    apply submseteq_app_r.
     eexists E0, []. rewrite app_nil_r.
     split_and!; [done.. | ]. apply submseteq_nil_l.
   Qed.
 
-  Lemma tac_submseteq_init {A} (K E : list A) :
-    K ⊆+ E ++ [] →
-    K ⊆+ E.
+  Lemma tac_submseteq_cons {A} (K E : list A) x P :
+    K ⊆+ E ∧ P →
+    K ⊆+ (x :: E) ∧ P.
+  Proof.
+    intros [? ?]. split; last done.
+    by apply submseteq_cons.
+  Qed.
+
+  Lemma tac_submseteq_assoc {A} (K E1 E2 E3 : list A) P :
+    K ⊆+ E1 ++ E2 ++ E3 ∧ P →
+    K ⊆+ (E1 ++ E2) ++ E3 ∧ P.
+  Proof.
+    by rewrite -app_assoc.
+  Qed.
+
+  Lemma tac_submseteq_init {A} (K E : list A) P :
+    K ⊆+ E ++ [] ∧ P →
+    K ⊆+ E ∧ P.
   Proof.
     rewrite app_nil_r//.
   Qed.
 End elctx_sat.
 
+(** Solve goals of the form [(_ ⊆+ _) ∧ _].
+    Leaves the RHS unsolved.
+  This tactic only operates on the left part of the goal, but if solving the inclusion on the left-hand side instantiates an evar,
+   we can backtrack to the left side if the right side fails for this instantiation. *)
 Ltac solve_elctx_submseteq_step :=
   simpl;
-  lazymatch goal with
-  | |- _ ⊆+ _ :: _ =>
-      notypeclasses refine (submseteq_cons _ _ _ _)
-  | |- _ ⊆+ (_ ++ _) ++ _ =>
-      rewrite -app_assoc
-  | |- ty_outlives_E ?ty ?κ ⊆+ (ty_outlives_E ?ty' ?κ') ++ ?E =>
+  multimatch goal with
+  | |- (_ ⊆+ _ :: _) ∧ _ =>
+      notypeclasses refine (tac_submseteq_cons _ _ _ _ _)
+  | |- (_ ⊆+ (_ ++ _) ++ _) ∧ _ =>
+      notypeclasses refine (tac_submseteq_assoc _ _ _ _ _ _)
+  | |- (ty_outlives_E ?ty ?κ ⊆+ (ty_outlives_E ?ty' ?κ') ++ ?E) ∧ _ =>
       first [
         unify ty ty';
-        notypeclasses refine (tac_submseteq_find_app_r _ _ _ _); reflexivity
-      | notypeclasses refine (tac_submseteq_skip_app_r  _ _ _ _)
+        notypeclasses refine (tac_submseteq_find_app_r _ _ _ _ _);
+        split; [reflexivity | ]
+      | notypeclasses refine (tac_submseteq_skip_app_r  _ _ _ _ _)
       ]
-  | |- ty_wf_E ?ty ⊆+ (ty_wf_E ?ty') ++ ?E =>
+  | |- (ty_wf_E ?ty ⊆+ (ty_wf_E ?ty') ++ ?E) ∧ _ =>
       first [
         unify ty ty';
-        notypeclasses refine (tac_submseteq_find_app_r _ _ _ _); reflexivity
-      | notypeclasses refine (tac_submseteq_skip_app_r  _ _ _ _)
+        notypeclasses refine (tac_submseteq_find_app_r _ _ _ _ _);
+        split; [reflexivity | ]
+      | notypeclasses refine (tac_submseteq_skip_app_r _ _ _ _ _)
       ]
-  | |- _ ⊆+ _ ++ _ =>
-        notypeclasses refine (tac_submseteq_skip_app_r _ _ _ _)
+  | |- (_ ⊆+ _ ++ _) ∧ _ =>
+        notypeclasses refine (tac_submseteq_skip_app_r _ _ _ _ _)
   end.
 Ltac solve_elctx_submseteq :=
-  notypeclasses refine (tac_submseteq_init _ _ _);
+  notypeclasses refine (tac_submseteq_init _ _ _ _);
   repeat solve_elctx_submseteq_step.
 
+(** Solve goals of the shape [elctx_sat _ _ _] *)
 Ltac solve_elctx_sat_step :=
-  match goal with
+  multimatch goal with
   | |- elctx_sat ?E ?L [] =>
       notypeclasses refine (elctx_sat_nil _ _)
   | |- elctx_sat ?E ?L ?E =>
@@ -915,10 +939,12 @@ Ltac solve_elctx_sat_step :=
   (* dispatch assumptions for generic type parameters *)
   | |- elctx_sat ?E ?L (ty_wf_E ?ty) =>
       notypeclasses refine (tac_elctx_app_ty_wf_E E L ty _);
-      solve_elctx_submseteq
+      solve_elctx_submseteq;
+      done
   | |- elctx_sat ?E ?L (ty_outlives_E ?ty ?κ) =>
-      notypeclasses refine (tac_elctx_app_ty_outlives_E E L κ _ ty _ _);
-      [ solve_elctx_submseteq | solve_lft_incl ]
+      notypeclasses refine (tac_elctx_app_ty_outlives_E E L κ _ ty _);
+      solve_elctx_submseteq;
+      solve[solve_lft_incl]
   end.
 
 Ltac solve_elctx_sat :=
@@ -2569,8 +2595,7 @@ Ltac simplify_layout_alg_prepare H :=
       unfold syn_type_of_sls, syn_type_of_els, syn_type_of_uls in H
   end.
 
-Ltac simplify_layout_alg H ::=
-  simplify_layout_alg_prepare H;
+Ltac simplify_layout_alg_simpl_step H :=
   (* simplify head *)
   try lazymatch type of H with
   | use_layout_alg ?spec = Some _ =>
@@ -2587,28 +2612,26 @@ Ltac simplify_layout_alg H ::=
   | use_enum_layout_alg ?spec = Some _ =>
       let spec_eval := eval hnf in spec in
       change_no_check spec with spec_eval in H
-  end;
-  first
-  [
-    (* Check for cached applications *)
-    check_for_cached_layout H
-  |
-    (* Handle atomic alg applications *)
-    lazymatch type of H with
-    | use_layout_alg (ty_syn_type ?ty) = Some _ =>
-        is_var ty;
-        enter_cache H
-    | use_layout_alg ?st = Some _ =>
-        (*assert_is_atomic_st st;*)
-        is_var st;
-        specialize_cache (use_layout_alg_size _ _ H);
-        specialize_cache (use_layout_alg_wf _ _ H);
-        specialize_cache (use_layout_alg_align _ _ H);
-        (* stop exploiting this further to prevent divergence *)
-        rename_layouts in H with (fun H_n => enter_cache_unsafe H_n)
-    end
-  |
-    (* Handle non-atomic alg applications *)
+  end.
+
+Ltac simplify_layout_alg_atomic H :=
+  (* Handle atomic alg applications *)
+  lazymatch type of H with
+  | use_layout_alg (ty_syn_type ?ty) = Some _ =>
+      is_var ty;
+      enter_cache H
+  | use_layout_alg ?st = Some _ =>
+      (*assert_is_atomic_st st;*)
+      is_var st;
+      specialize_cache (use_layout_alg_size _ _ H);
+      specialize_cache (use_layout_alg_wf _ _ H);
+      specialize_cache (use_layout_alg_align _ _ H);
+      (* stop exploiting this further to prevent divergence *)
+      rename_layouts in H with (fun H_n => enter_cache_unsafe H_n)
+  end.
+
+Ltac simplify_layout_alg_nonatomic H :=
+(* Handle non-atomic alg applications *)
     lazymatch type of H with
     | use_struct_layout_alg ?sls = Some _ =>
         first [
@@ -2745,7 +2768,16 @@ Ltac simplify_layout_alg H ::=
         enter_cache H
     | use_layout_alg ?st = Some _ =>
         fail 1000 "Unimplemented case in simplify_layout_alg"
-    end
+    end.
+
+Ltac simplify_layout_alg H ::=
+  simplify_layout_alg_prepare H;
+  simplify_layout_alg_simpl_step H;
+  first
+  [ (* Check for cached applications *)
+    check_for_cached_layout H
+  | simplify_layout_alg_atomic H
+  | simplify_layout_alg_nonatomic H
   ].
 
 (* TODO: we currently need this because we introduce syn_type equalities on generic args in preconditions of functions and not before, so we may get duplicates.
@@ -2818,3 +2850,24 @@ Ltac solve_inhabited :=
   | |- Inhabited ?X =>
       first [apply _ | refine (populate _); econstructor; eapply inhabitant]
   end.
+
+(** ** Trait inclusion *)
+Ltac solve_function_subtype_hook :=
+  idtac.
+Ltac solve_function_subtype :=
+  lazymatch goal with
+  | |- function_subtype ?a ?a =>
+      apply function_subtype_refl
+  | |- function_subtype ?a ?b =>
+      solve_function_subtype_hook
+  end.
+
+Ltac solve_trait_incl :=
+  lazymatch goal with
+  | |- trait_incl_marker ?P =>
+      rewrite trait_incl_marker_unfold;
+      hnf;
+      intros;
+      split_and?;
+      first [solve_function_subtype | done ]
+end.

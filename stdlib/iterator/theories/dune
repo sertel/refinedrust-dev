@@ -1,0 +1,5 @@
+(coq.theory
+(flags -w -notation-overridden -w -redundant-canonical-projection)
+(package refinedrust-stdlib)
+(name stdlib.iterator.theories)
+(theories stdpp iris Ltac2 Equations RecordUpdate lrust caesium lithium refinedrust stdlib.closures.theories))

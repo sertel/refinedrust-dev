@@ -12,3 +12,4 @@ derive_more.workspace = true
 indent_write.workspace = true
 indoc.workspace = true
 log.workspace = true
+itertools.workspace = true

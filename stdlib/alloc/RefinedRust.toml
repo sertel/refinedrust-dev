@@ -1,2 +1,3 @@
 lib_load_paths = ["../"]
 generate_dune_project = false
+admit_proofs = true

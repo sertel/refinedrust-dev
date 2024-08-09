@@ -26,11 +26,11 @@ use rr_rustc_interface::ast::ast::Attribute;
 use rr_rustc_interface::hir::def_id::{DefId, LocalDefId};
 use rr_rustc_interface::hir::hir_id::HirId;
 use rr_rustc_interface::middle::{mir, ty};
-use rr_rustc_interface::span;
 use rr_rustc_interface::span::source_map::SourceMap;
 use rr_rustc_interface::span::symbol::Symbol;
 use rr_rustc_interface::span::Span;
 use rr_rustc_interface::trait_selection::infer::{InferCtxtExt, TyCtxtInferExt};
+use rr_rustc_interface::{ast, span};
 
 use crate::data::ProcedureDefId;
 use crate::environment::borrowck::facts;
@@ -151,7 +151,7 @@ impl<'tcx> Environment<'tcx> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
         // TODO: cache results
-        let (functions, _, _, _) = visitor.get_results();
+        let (functions, _, _, _, _) = visitor.get_results();
         functions
     }
 
@@ -160,7 +160,7 @@ impl<'tcx> Environment<'tcx> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
         // TODO: cache results
-        let (_, _, statics, _) = visitor.get_results();
+        let (_, _, statics, _, _) = visitor.get_results();
         statics
     }
 
@@ -169,7 +169,7 @@ impl<'tcx> Environment<'tcx> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
         // TODO: cache results
-        let (_, _, _, consts) = visitor.get_results();
+        let (_, _, _, consts, _) = visitor.get_results();
         consts
     }
 
@@ -178,8 +178,16 @@ impl<'tcx> Environment<'tcx> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
         // TODO: cache results
-        let (_, modules, _, _) = visitor.get_results();
+        let (_, modules, _, _, _) = visitor.get_results();
         modules
+    }
+
+    pub fn get_traits(&self) -> Vec<LocalDefId> {
+        let mut visitor = CollectPrustiSpecVisitor::new(self);
+        visitor.run();
+        // TODO: cache results
+        let (_, _, _, _, traits) = visitor.get_results();
+        traits
     }
 
     /// Get ids of Rust closures.
@@ -197,6 +205,14 @@ impl<'tcx> Environment<'tcx> {
         utils::has_tool_attr(tcx.get_attrs_unchecked(def_id), name)
     }
 
+    /// Find whether the procedure has a particular `[tool]::<name>` attribute; if so, return its
+    /// name.
+    pub fn get_tool_attribute<'a>(&'a self, def_id: ProcedureDefId, name: &str) -> Option<&'a ast::AttrArgs> {
+        let tcx = self.tcx();
+        // TODO: migrate to get_attrs
+        utils::get_tool_attr(tcx.get_attrs_unchecked(def_id), name)
+    }
+
     /// Check whether the procedure has any `[tool]` attribute.
     pub fn has_any_tool_attribute(&self, def_id: ProcedureDefId) -> bool {
         let tcx = self.tcx();
@@ -208,6 +224,34 @@ impl<'tcx> Environment<'tcx> {
     pub fn get_attributes(&self, def_id: DefId) -> &[Attribute] {
         // TODO: migrate to get_attrs
         self.tcx().get_attrs_unchecked(def_id)
+    }
+
+    /// Get tool attributes of this function, including selected attributes from the surrounding impl.
+    pub fn get_attributes_of_function<F>(
+        &self,
+        did: DefId,
+        propagate_from_impl: &F,
+    ) -> Vec<&ast::ast::AttrItem>
+    where
+        F: for<'a> Fn(&'a ast::ast::AttrItem) -> bool,
+    {
+        let attrs = self.get_attributes(did);
+        let mut filtered_attrs = utils::filter_tool_attrs(attrs);
+        // also add selected attributes from the surrounding impl
+        if let Some(impl_did) = self.tcx().impl_of_method(did) {
+            let impl_attrs = self.get_attributes(impl_did);
+            let filtered_impl_attrs = utils::filter_tool_attrs(impl_attrs);
+            filtered_attrs.extend(filtered_impl_attrs.into_iter().filter(|x| propagate_from_impl(x)));
+        }
+
+        // for closures, propagate from the surrounding function
+        if self.tcx().is_closure(did) {
+            let parent_did = self.tcx().parent(did);
+            let parent_attrs = self.get_attributes_of_function(parent_did, propagate_from_impl);
+            filtered_attrs.extend(parent_attrs.into_iter().filter(|x| propagate_from_impl(x)));
+        }
+
+        filtered_attrs
     }
 
     /*
@@ -242,6 +286,30 @@ impl<'tcx> Environment<'tcx> {
     pub fn get_item_name(&self, def_id: DefId) -> String {
         self.tcx.def_path_str(def_id)
         // self.tcx().item_path_str(def_id)
+    }
+
+    /// Get the name of an item without the path prefix.
+    pub fn get_assoc_item_name(&self, trait_method_did: DefId) -> Option<String> {
+        let def_path = self.tcx.def_path(trait_method_did);
+        if let Some(last_elem) = def_path.data.last() {
+            if let Some(name) = last_elem.data.get_opt_name() {
+                return Some(name.as_str().to_owned());
+            }
+        }
+        None
+    }
+
+    /// Get the associated types of a trait.
+    pub fn get_trait_assoc_types(&self, trait_did: DefId) -> Vec<DefId> {
+        let assoc_items: &ty::AssocItems = self.tcx.associated_items(trait_did);
+
+        let mut assoc_tys = Vec::new();
+        for c in assoc_items.in_definition_order() {
+            if ty::AssocKind::Type == c.kind {
+                assoc_tys.push(c.def_id);
+            }
+        }
+        assoc_tys
     }
 
     /// Get a Procedure.

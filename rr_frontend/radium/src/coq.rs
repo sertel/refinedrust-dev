@@ -15,6 +15,7 @@ use std::ops::Deref;
 use derive_more::Display;
 use indent_write::fmt::IndentWriter;
 use indent_write::indentable::Indentable;
+use itertools::Itertools;
 
 use crate::{display_list, make_indent, write_list, BASE_INDENT};
 
@@ -168,12 +169,12 @@ impl Display for ExportList<'_> {
 /// Represents an application of a term to an rhs.
 /// (commonly used for layouts and instantiating them with generics).
 #[derive(Clone, Eq, PartialEq, Hash, Debug)]
-pub struct AppTerm<T> {
+pub struct AppTerm<T, U> {
     pub(crate) lhs: T,
-    pub(crate) rhs: Vec<String>,
+    pub(crate) rhs: Vec<U>,
 }
 
-impl<T: Display> Display for AppTerm<T> {
+impl<T: Display, U: Display> Display for AppTerm<T, U> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.rhs.is_empty() {
             return write!(f, "{}", self.lhs);
@@ -185,8 +186,8 @@ impl<T: Display> Display for AppTerm<T> {
     }
 }
 
-impl<T> AppTerm<T> {
-    pub fn new(lhs: T, rhs: Vec<String>) -> Self {
+impl<T, U> AppTerm<T, U> {
+    pub fn new(lhs: T, rhs: Vec<U>) -> Self {
         Self { lhs, rhs }
     }
 
@@ -198,7 +199,7 @@ impl<T> AppTerm<T> {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Display)]
 pub enum Name {
     #[display("{}", _0)]
     Named(String),
@@ -227,6 +228,10 @@ pub enum Type {
     /// literal types that are not contained in the grammar
     #[display("{}", _0)]
     Literal(String),
+
+    /// function types; the argument vector should be non-empty
+    #[display("{} → {}", display_list!(_0, " → ", "({})"), *_1)]
+    Function(Vec<Type>, Box<Type>),
 
     /// Placeholder that should be inferred by Coq if possible
     #[display("_")]
@@ -291,6 +296,14 @@ pub enum Type {
     /// a plist with a given type constructor over a list of types
     #[display("plist {} [{}]", _0, display_list!(_1, "; ", "{} : Type"))]
     PList(String, Vec<Type>),
+
+    /// the semantic type of a function
+    #[display("function_ty")]
+    FunctionTy,
+
+    /// the Coq type Prop of propositions
+    #[display("Prop")]
+    Prop,
 }
 
 impl Type {
@@ -310,7 +323,11 @@ impl Type {
             | Self::Rtype
             | Self::StructLayout
             | Self::SynType
+            | Self::FunctionTy
+            | Self::Prop
             | Self::Type => true,
+
+            Self::Function(args, ret) => args.iter().all(Self::is_closed) && ret.is_closed(),
 
             Self::PList(_, tys) => tys.iter().all(Self::is_closed),
 
@@ -342,7 +359,16 @@ impl Type {
             | Self::Rtype
             | Self::StructLayout
             | Self::SynType
+            | Self::FunctionTy
+            | Self::Prop
             | Self::Type => (),
+
+            Self::Function(args, ret) => {
+                for t in args.iter_mut() {
+                    t.subst(substi);
+                }
+                ret.subst(substi);
+            },
 
             Self::PList(_, tys) => {
                 for t in tys.iter_mut() {
@@ -431,12 +457,23 @@ impl Param {
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("{}", display_list!(_0, " "))]
-pub struct ParamList(Vec<Param>);
+pub struct ParamList(pub Vec<Param>);
 
 impl ParamList {
     #[must_use]
     pub const fn new(params: Vec<Param>) -> Self {
         Self(params)
+    }
+
+    #[must_use]
+    pub const fn empty() -> Self {
+        Self(vec![])
+    }
+
+    /// Make using terms for this list of binders
+    #[must_use]
+    pub fn make_using_terms(&self) -> Vec<GallinaTerm> {
+        self.0.iter().map(|x| GallinaTerm::Literal(format!("{}", x.name))).collect()
     }
 }
 
@@ -469,11 +506,90 @@ pub enum ProofItem {
 #[display("{}\n", display_list!(_0, "\n"))]
 pub struct ProofScript(pub Vec<ProofItem>);
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecordBodyItem {
+    pub name: String,
+    pub params: ParamList,
+    pub term: GallinaTerm,
+}
+
+impl Display for RecordBodyItem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut writer = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
+        write!(writer, "{} {} :=\n{};", self.name, self.params, self.term)
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecordBodyTerm {
+    pub items: Vec<RecordBodyItem>,
+}
+
+impl Display for RecordBodyTerm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{|\n")?;
+        let mut f2 = IndentWriter::new(BASE_INDENT, &mut *f);
+        for it in &self.items {
+            write!(f2, "{}\n", it)?;
+        }
+        write!(f, "|}}\n")
+    }
+}
+
 /// A Coq Gallina term.
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub enum GallinaTerm {
-    #[display("{}.", _0)]
+    /// a literal
     Literal(String),
+    /// Application
+    App(Box<AppTerm<GallinaTerm, GallinaTerm>>),
+    /// a record body
+    RecordBody(RecordBodyTerm),
+    /// Projection a.(b) from a record
+    RecordProj(Box<GallinaTerm>, String),
+    /// Universal quantifiers
+    All(ParamList, Box<GallinaTerm>),
+    /// Existential quantifiers
+    Exists(ParamList, Box<GallinaTerm>),
+    /// Infix operators
+    Infix(String, Vec<GallinaTerm>),
+}
+
+impl Display for GallinaTerm {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Literal(lit) => {
+                let mut f2 = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
+                write!(f2, "{lit}")
+            },
+            Self::RecordBody(b) => {
+                write!(f, "{b}")
+            },
+            Self::RecordProj(rec, component) => {
+                write!(f, "{rec}.({component})")
+            },
+            Self::App(box a) => write!(f, "{a}"),
+            Self::All(binders, box body) => {
+                if !binders.0.is_empty() {
+                    write!(f, "∀ {binders}, ")?;
+                }
+                write!(f, "{body}")
+            },
+            Self::Exists(binders, box body) => {
+                if !binders.0.is_empty() {
+                    write!(f, "∃ {binders}, ")?;
+                }
+                write!(f, "{body}")
+            },
+            Self::Infix(op, terms) => {
+                if terms.is_empty() {
+                    write!(f, "True")
+                } else {
+                    write!(f, "{}", terms.iter().format(&format!(" {op} ")))
+                }
+            },
+        }
+    }
 }
 
 /// A terminator for a proof script
@@ -507,10 +623,10 @@ impl Display for DefBody {
                 write!(f, "Proof.\n")?;
                 let mut f2 = IndentWriter::new(BASE_INDENT, &mut *f);
                 write!(f2, "{}", script)?;
-                write!(f, "{}.\n", terminator)?;
+                write!(f, "{}.", terminator)?;
             },
             Self::Term(term) => {
-                write!(f, " := {}.\n", term)?;
+                write!(f, " := {}.", term)?;
             },
         }
         Ok(())
@@ -546,6 +662,11 @@ impl Attributes {
     pub fn new(attrs: Vec<Attribute>) -> Self {
         Self { attrs }
     }
+
+    #[must_use]
+    pub fn singleton(attr: Attribute) -> Self {
+        Self { attrs: vec![attr] }
+    }
 }
 
 /// A Coq typeclass instance declaration
@@ -569,6 +690,67 @@ impl Display for InstanceDecl {
     }
 }
 
+#[derive(Clone, Debug, Display, Eq, PartialEq)]
+#[display("{} {} : {}", name, params, ty)]
+pub struct RecordDeclItem {
+    pub name: String,
+    pub params: ParamList,
+    pub ty: Type,
+}
+
+/// A record declaration.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Record {
+    pub name: String,
+    pub params: ParamList,
+    pub ty: Type,
+    pub constructor: Option<String>,
+    pub body: Vec<RecordDeclItem>,
+}
+
+impl Display for Record {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let constructor = self.constructor.clone().unwrap_or_default();
+        write!(f, "Record {} {} : {} := {constructor} {{\n", self.name, self.params, self.ty)?;
+        let mut f2 = IndentWriter::new(BASE_INDENT, &mut *f);
+        for it in &self.body {
+            write!(f2, "{it};\n")?;
+        }
+        write!(f, "}}.")
+    }
+}
+
+/// A Context declaration.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ContextDecl {
+    pub items: ParamList,
+}
+
+impl Display for ContextDecl {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Context {}.", self.items)
+    }
+}
+
+/// A Coq definition
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Definition {
+    pub name: String,
+    pub params: ParamList,
+    pub ty: Option<Type>,
+    pub body: DefBody,
+}
+
+impl Display for Definition {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(ty) = &self.ty {
+            write!(f, "Definition {} {} : {ty}{}", self.name, self.params, self.body)
+        } else {
+            write!(f, "Definition {} {}{}", self.name, self.params, self.body)
+        }
+    }
+}
+
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum TopLevelAssertion {
     /// A declaration of a Coq Inductive
@@ -579,12 +761,25 @@ pub enum TopLevelAssertion {
     #[display("{}", _0)]
     InstanceDecl(InstanceDecl),
 
+    /// A declaration of a Coq record
+    #[display("{}", _0)]
+    RecordDecl(Record),
+
+    /// A declaration of Coq context items
+    #[display("{}", _0)]
+    ContextDecl(ContextDecl),
+
+    /// A Coq Definition
+    #[display("{}", _0)]
+    Definition(Definition),
+
     /// A Coq comment
     #[display("(* {} *)", _0)]
     Comment(String),
 }
 
-#[derive(Clone, Eq, PartialEq, Debug)]
+#[derive(Clone, Eq, PartialEq, Debug, Display)]
+#[display("{}", display_list!(_0, "\n"))]
 pub struct TopLevelAssertions(pub Vec<TopLevelAssertion>);
 
 impl TopLevelAssertions {
@@ -595,15 +790,6 @@ impl TopLevelAssertions {
 
     pub fn push(&mut self, a: TopLevelAssertion) {
         self.0.push(a);
-    }
-}
-
-impl Display for TopLevelAssertions {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for a in &self.0 {
-            writeln!(f, "{a}")?;
-        }
-        Ok(())
     }
 }
 

@@ -7,7 +7,7 @@
 use attribute_parse::{parse, MToken};
 use parse::{Parse, Peek};
 use radium::{coq, specs};
-use rr_rustc_interface::ast::ast::AttrItem;
+use rr_rustc_interface::ast::ast::{AttrArgs, AttrItem};
 
 use crate::spec_parsers::parse_utils::*;
 
@@ -154,5 +154,18 @@ impl EnumSpecParser for VerboseEnumSpecParser {
             rfn_type,
             variant_patterns,
         })
+    }
+}
+
+/// Parse the arguments of a `rr::refine_as` annotation.
+/// Returns the optional specified name.
+pub fn parse_enum_refine_as(attrs: &AttrArgs) -> Result<Option<String>, String> {
+    let buffer = parse::Buffer::new(&attrs.inner_tokens());
+
+    if matches!(attrs, AttrArgs::Empty) {
+        Ok(None)
+    } else {
+        let name: parse::LitStr = buffer.parse(&()).map_err(str_err)?;
+        Ok(Some(name.value()))
     }
 }

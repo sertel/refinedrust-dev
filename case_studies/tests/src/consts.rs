@@ -17,3 +17,17 @@ fn use_result() -> i32{
     let x = RESULT_BLA;
     x
 }
+
+#[rr::params("x")]
+#[rr::args("#x")]
+#[rr::returns("()")]
+fn use_ref(x: &i32) {
+
+}
+
+// TODO: need to support GlobalAlloc evaluation
+#[rr::skip]
+#[rr::returns("()")]
+fn call_with_const_ref() {
+    use_ref(&42)
+}

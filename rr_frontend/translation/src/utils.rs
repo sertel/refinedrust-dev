@@ -684,14 +684,21 @@ impl<'tcx> VecPlace<'tcx> {
 /// `spec_hotword` config.
 /// Any arguments of the attribute are ignored.
 pub fn has_tool_attr(attrs: &[ast::Attribute], name: &str) -> bool {
-    attrs.iter().any(|attr| match &attr.kind {
+    get_tool_attr(attrs, name).is_some()
+}
+
+/// Get the arguments for a tool attribute, if it exists.
+pub fn get_tool_attr<'a>(attrs: &'a [ast::Attribute], name: &str) -> Option<&'a ast::AttrArgs> {
+    attrs.iter().find_map(|attr| match &attr.kind {
         ast::AttrKind::Normal(na) => {
             let segments = &na.item.path.segments;
-            segments.len() == 2
+            let args = &na.item.args;
+            (segments.len() == 2
                 && segments[0].ident.as_str() == rrconfig::spec_hotword().as_str()
-                && segments[1].ident.as_str() == name
+                && segments[1].ident.as_str() == name)
+                .then_some(args)
         },
-        _ => false,
+        _ => None,
     })
 }
 

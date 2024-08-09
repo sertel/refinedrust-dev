@@ -95,7 +95,10 @@ pub fn resolve_trait<'tcx>(
                 Some((impl_data.impl_def_id, impl_data.args, TraitResolutionKind::UserDefined))
             },
             ImplSource::Param(_) => Some((did, substs, TraitResolutionKind::Param)),
-            ImplSource::Builtin(_, _) => None,
+            ImplSource::Builtin(_, _) => {
+                // TODO: maybe this should be Some if this is a closure?
+                None
+            },
         }
     } else {
         None

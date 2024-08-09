@@ -18,8 +18,10 @@ use typed_arena::Arena;
 
 use crate::base::*;
 use crate::environment::{polonius_info, Environment};
-use crate::spec_parsers::enum_spec_parser::{EnumSpecParser, VerboseEnumSpecParser};
+use crate::function_body::{get_arg_syntypes_for_procedure_call, mangle_name_with_args};
+use crate::spec_parsers::enum_spec_parser::{parse_enum_refine_as, EnumSpecParser, VerboseEnumSpecParser};
 use crate::spec_parsers::struct_spec_parser::{self, InvariantSpecParser, StructFieldSpecParser};
+use crate::trait_registry::{self, Error, GenericTraitUse, TraitRegistry, TraitResult};
 use crate::traits::normalize_type;
 use crate::tyvars::*;
 use crate::utils;
@@ -36,8 +38,37 @@ pub fn strip_coq_ident(s: &str) -> String {
 /// Key used for resolving early-bound parameters for function calls.
 /// Invariant: All regions contained in these types should be erased, as type parameter instantiation is
 /// independent of lifetimes.
-/// TODO: handle early-bound lifetimes.
-pub type FnGenericKey<'tcx> = Vec<ty::Ty<'tcx>>;
+/// TODO: handle early-bound lifetimes?
+pub type GenericsKey<'tcx> = Vec<ty::Ty<'tcx>>;
+
+/// Generate a key for indexing into structures indexed by `GenericArg`s.
+pub fn generate_args_inst_key<'tcx>(
+    tcx: ty::TyCtxt<'tcx>,
+    ty_params: &[ty::GenericArg<'tcx>],
+) -> Result<GenericsKey<'tcx>, TranslationError<'tcx>> {
+    // erase parameters to their syntactic types
+    let mut key = Vec::new();
+    let mut region_eraser = TyRegionEraseFolder::new(tcx);
+    for p in ty_params {
+        match p.unpack() {
+            ty::GenericArgKind::Lifetime(_) => {
+                // lifetimes are not relevant here
+            },
+            ty::GenericArgKind::Type(t) => {
+                // TODO: this should erase to the syntactic type.
+                // Is erasing regions enough for that?
+                let t_erased = t.fold_with(&mut region_eraser);
+                key.push(t_erased);
+            },
+            ty::GenericArgKind::Const(_c) => {
+                return Err(TranslationError::UnsupportedFeature {
+                    description: "RefinedRust does not support const generics".to_owned(),
+                });
+            },
+        }
+    }
+    Ok(key)
+}
 
 /// Keys used to deduplicate adt uses for `syn_type` assumptions.
 /// TODO maybe we should use `SimplifiedType` + `simplify_type` instead of the syntys?
@@ -58,8 +89,10 @@ impl AdtUseKey {
 }
 
 /// A scope tracking the type translation state when translating the body of a function.
+/// This also includes the state needed for tracking trait constraints, as type translation for
+/// associated types in the current scope depends on that.
 #[derive(Debug)]
-pub struct TypeTranslationScope<'def> {
+pub struct TypeTranslationScope<'tcx, 'def> {
     /// defid of the current function
     did: DefId,
 
@@ -70,15 +103,17 @@ pub struct TypeTranslationScope<'def> {
     /// maps universal lifetime indices (Polonius) to their names. offset by 1 because 0 = static.
     universal_lifetimes: HashMap<ty::RegionVid, String>,
 
-    // TODO currently, these may contain duplicates
     /// collection of tuple types that we use
-    pub(crate) tuple_uses: Vec<radium::LiteralTypeUse<'def>>,
+    pub(crate) tuple_uses: HashMap<Vec<radium::SynType>, radium::LiteralTypeUse<'def>>,
 
     /// Shim uses for the current function
     pub(crate) shim_uses: HashMap<AdtUseKey, radium::LiteralTypeUse<'def>>,
+
+    /// map from (trait_id, generics) to the corresponding trait use
+    used_traits: HashMap<(DefId, GenericsKey<'tcx>), GenericTraitUse<'def>>,
 }
 
-impl<'def> TypeTranslationScope<'def> {
+impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
     /// Lookup a universal region.
     pub fn lookup_universal_region(&self, lft: ty::RegionVid) -> Option<radium::Lft> {
         info!("Looking up universal lifetime {:?}", lft);
@@ -89,19 +124,41 @@ impl<'def> TypeTranslationScope<'def> {
     pub fn empty(did: DefId) -> Self {
         Self {
             did,
-            tuple_uses: Vec::new(),
+            tuple_uses: HashMap::new(),
             shim_uses: HashMap::new(),
             generic_scope: Vec::new(),
             universal_lifetimes: HashMap::new(),
+            used_traits: HashMap::new(),
         }
     }
 
-    /// Create a new scope for a function translation with the given generic parameters.
-    pub fn new(
+    /// Determine the declaration origin of a type parameter of a function.
+    fn determine_origin_of_param(
         did: DefId,
-        ty_params: ty::GenericArgsRef<'_>,
+        tcx: ty::TyCtxt<'tcx>,
+        param: ty::ParamTy,
+    ) -> radium::TyParamOrigin {
+        // Check if there is a surrounding trait decl that introduces this parameter
+        if let Some(trait_did) = tcx.trait_of_item(did) {
+            let generics: &'tcx ty::Generics = tcx.generics_of(trait_did);
+
+            for this_param in &generics.params {
+                if this_param.name == param.name {
+                    return radium::TyParamOrigin::SurroundingTrait;
+                }
+            }
+        }
+
+        radium::TyParamOrigin::Direct
+    }
+
+    /// Create a new scope for a function translation with the given generic parameters.
+    fn new(
+        did: DefId,
+        tcx: ty::TyCtxt<'tcx>,
+        ty_params: ty::GenericArgsRef<'tcx>,
         univ_lfts: HashMap<ty::RegionVid, String>,
-    ) -> Result<Self, TranslationError> {
+    ) -> Result<Self, TranslationError<'tcx>> {
         info!("Entering procedure with ty_params {:?} and univ_lfts {:?}", ty_params, univ_lfts);
 
         let mut v: Vec<Option<radium::LiteralTyParam>> = Vec::new();
@@ -111,20 +168,9 @@ impl<'def> TypeTranslationScope<'def> {
                 ty::GenericArgKind::Type(ty) => match ty.kind() {
                     TyKind::Param(p) => {
                         info!("ty param {} @ {}", p.name, p.index);
-                        let type_name = format!("{}_ty", p.name);
-                        let st_name = format!("{}_st", p.name);
-                        let rt_name = format!("{}_rt", p.name);
-
-                        let ty_term = type_name;
-                        let st_term = st_name;
-
-                        let lit_ty = radium::LiteralTyParam {
-                            rust_name: p.name.as_str().to_owned(),
-                            type_term: ty_term,
-                            refinement_type: rt_name,
-                            syn_type: st_term,
-                        };
-
+                        let origin = Self::determine_origin_of_param(did, tcx, *p);
+                        let lit_ty =
+                            radium::LiteralTyParam::new_with_origin(p.name.as_str(), p.name.as_str(), origin);
                         v.push(Some(lit_ty));
                     },
                     _ => {
@@ -170,11 +216,161 @@ impl<'def> TypeTranslationScope<'def> {
 
         Ok(Self {
             did,
-            tuple_uses: Vec::new(),
+            tuple_uses: HashMap::new(),
             generic_scope: v,
             universal_lifetimes: univ_lfts,
             shim_uses: HashMap::new(),
+            // Note: we do not add any traits to the scope
+            used_traits: HashMap::new(),
         })
+    }
+
+    /// Create a new scope for a function translation with the given generic parameters and
+    /// incorporating the trait environment.
+    pub fn new_with_traits(
+        did: DefId,
+        env: &Environment<'tcx>,
+        ty_params: ty::GenericArgsRef<'tcx>,
+        univ_lfts: HashMap<ty::RegionVid, String>,
+        param_env: ty::ParamEnv<'tcx>,
+        type_translator: &TypeTranslator<'def, 'tcx>,
+        trait_registry: &TraitRegistry<'tcx, 'def>,
+    ) -> Result<Self, TranslationError<'tcx>> {
+        let mut scope_without_traits = Self::new(did, env.tcx(), ty_params, univ_lfts)?;
+
+        let in_trait_decl = env.tcx().trait_of_item(did);
+
+        let clauses = param_env.caller_bounds();
+        info!("Caller bounds: {:?}", clauses);
+
+        // i.e., there are no cycles between requirements.
+        // Therefore, I can always get the requirements for one trait instance.
+        // Is the list sorted according to these dependencies?
+        // No.
+        //
+        // So I should ideally get the trait requirements and bundle together the requirements on
+        // its associated types as well.
+
+        let requirements = trait_registry::get_nontrivial_trait_requirements(env.tcx(), param_env);
+        for trait_ref in &requirements {
+            // check if we are in the process of translating a trait decl
+
+            let mut is_used_in_self_trait = false;
+            if let Some(trait_decl_did) = in_trait_decl {
+                // is this a reference to the trait we are currently declaring
+                let is_use_of_self_trait = trait_decl_did == trait_ref.def_id;
+                let is_self = trait_ref.args[0].as_type().unwrap().is_param(0);
+
+                if is_use_of_self_trait && is_self {
+                    // this is the self assumption of the trait we are currently implementing
+                    is_used_in_self_trait = true;
+                }
+            }
+
+            // lookup the trait in the trait registry
+            if let Some(trait_spec) = trait_registry.lookup_trait(trait_ref.def_id) {
+                // TODO
+                // Problem: we have some circularity here.
+                //  I guess I might use some associated types (aliases) in the generics of other traits.
+                // For now, we just disallow this, by translating the trait use in a scope without
+                // traits
+
+                let trait_use = GenericTraitUse::new(
+                    type_translator,
+                    &mut scope_without_traits,
+                    trait_ref.to_owned(),
+                    trait_spec,
+                    is_used_in_self_trait,
+                    // trait associated types are fully generic for now, we make a second pass
+                    // below
+                    HashMap::new(),
+                );
+
+                let key = (trait_ref.def_id, generate_args_inst_key(env.tcx(), trait_ref.args).unwrap());
+                scope_without_traits.used_traits.insert(key, trait_use);
+            } else {
+                return Err(trait_registry::Error::UnregisteredTrait(trait_ref.def_id).into());
+            }
+        }
+
+        let mut scope_with_traits = scope_without_traits;
+
+        // make a second pass to specify constraints on associated types
+        for trait_ref in requirements {
+            let assoc_constraints = trait_registry::get_trait_assoc_constraints(env, param_env, trait_ref);
+
+            let translated_constraints: HashMap<_, _> = assoc_constraints
+                .into_iter()
+                .map(|(name, ty)| {
+                    let translated_ty = type_translator.translate_type(ty, &mut scope_with_traits).unwrap();
+                    (name, translated_ty)
+                })
+                .collect();
+
+            // lookup the trait use
+            let key = (trait_ref.def_id, generate_args_inst_key(env.tcx(), trait_ref.args).unwrap());
+            if let Some(trait_use) = scope_with_traits.used_traits.get_mut(&key) {
+                // and add the constraints
+                for (name, constr) in translated_constraints {
+                    trait_use.trait_use.specialize_assoc_type(name, constr);
+                }
+            }
+        }
+
+        // now add bounds on the associated types
+
+        trace!("leave GenericTraitScope::new with used_traits={:?}", scope_with_traits.used_traits);
+
+        Ok(scope_with_traits)
+    }
+
+    /// Lookup the trait use for a specific trait with given parameters.
+    /// (here, args includes the self parameter as the first element)
+    pub fn lookup_trait_use(
+        &self,
+        tcx: ty::TyCtxt<'tcx>,
+        trait_did: DefId,
+        args: &[ty::GenericArg<'tcx>],
+    ) -> TraitResult<'tcx, &GenericTraitUse<'def>> {
+        if !tcx.is_trait(trait_did) {
+            return Err(trait_registry::Error::NotATrait(trait_did));
+        }
+
+        let key = (trait_did, generate_args_inst_key(tcx, args).unwrap());
+        if let Some(trait_ref) = self.used_traits.get(&key) {
+            Ok(trait_ref)
+        } else {
+            Err(trait_registry::Error::UnknownLocalInstance(trait_did, tcx.mk_args(args)))
+        }
+    }
+
+    /// Get trait uses in the current scope.
+    pub const fn get_trait_uses(&self) -> &HashMap<(DefId, GenericsKey<'tcx>), GenericTraitUse<'def>> {
+        &self.used_traits
+    }
+
+    /// Get the associated types we require in the current scope.
+    pub fn get_associated_type_literals(&self, env: &Environment<'tcx>) -> Vec<radium::LiteralTyParam> {
+        let mut assoc_tys: Vec<radium::LiteralTyParam> = Vec::new();
+
+        // TODO: we should order this in some way.
+        // e.g. by the declaration order on the function / in the where clauses.
+        for ((did, _), used_trait) in &self.used_traits {
+            // get associated types
+            let assoc_types = env.get_trait_assoc_types(*did);
+            info!("found associated types {assoc_types:?}");
+            for ty_did in &assoc_types {
+                let ty_name = env.get_assoc_item_name(*ty_did).unwrap();
+                let ident = strip_coq_ident(&ty_name);
+                // check if this is a proper parameter
+                if used_trait.trait_use.is_assoc_type_generic(&ident) {
+                    let lit = used_trait.trait_use.make_assoc_type_lit(&ident);
+                    assoc_tys.push(lit);
+                }
+            }
+        }
+
+        assoc_tys
     }
 }
 
@@ -183,17 +379,17 @@ impl<'def> TypeTranslationScope<'def> {
 /// - translation of a type as part of an ADT definition, where we always translate parameters as
 /// variables, but need to track dependencies on other ADTs.
 #[derive(Debug)]
-pub enum TranslationStateInner<'b, 'def: 'b> {
+pub enum TranslationStateInner<'b, 'def: 'b, 'tcx: 'def> {
     /// This type is used in a function
-    InFunction(&'b mut TypeTranslationScope<'def>),
+    InFunction(&'b mut TypeTranslationScope<'tcx, 'def>),
     /// We are generating the definition of an ADT and this type is used in there
     TranslateAdt(&'b mut HashSet<DefId>),
 }
-pub type TranslationState<'a, 'b, 'def> = &'a mut TranslationStateInner<'b, 'def>;
-pub type InFunctionState<'a, 'def> = &'a mut TypeTranslationScope<'def>;
+pub type TranslationState<'a, 'b, 'def, 'tcx> = &'a mut TranslationStateInner<'b, 'def, 'tcx>;
+pub type InFunctionState<'a, 'def, 'tcx> = &'a mut TypeTranslationScope<'tcx, 'def>;
 pub type TranslateAdtState<'a> = &'a mut HashSet<DefId>;
 
-impl<'a, 'def> TranslationStateInner<'a, 'def> {
+impl<'a, 'def, 'tcx> TranslationStateInner<'a, 'def, 'tcx> {
     const fn in_function(&self) -> bool {
         matches!(*self, Self::InFunction(_))
     }
@@ -331,7 +527,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Returns the Radium enum representation according to the Rust representation options.
-    fn get_enum_representation(repr: &ty::ReprOptions) -> Result<radium::EnumRepr, TranslationError> {
+    fn get_enum_representation(repr: &ty::ReprOptions) -> Result<radium::EnumRepr, TranslationError<'tcx>> {
         if repr.c() {
             return Ok(radium::EnumRepr::ReprC);
         }
@@ -362,7 +558,9 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Returns the Radium structure representation according to the Rust representation options.
-    fn get_struct_representation(repr: &ty::ReprOptions) -> Result<radium::StructRepr, TranslationError> {
+    fn get_struct_representation(
+        repr: &ty::ReprOptions,
+    ) -> Result<radium::StructRepr, TranslationError<'tcx>> {
         if repr.c() {
             return Ok(radium::StructRepr::ReprC);
         }
@@ -395,7 +593,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Try to translate a region to a Caesium lifetime.
     /// Note: This relies on all the regions being `ReVar` inference variables.
     fn translate_region<'a, 'b>(
-        translation_state: TranslationState<'a, 'b, 'def>,
+        translation_state: TranslationState<'a, 'b, 'def, 'tcx>,
         region: ty::Region<'tcx>,
     ) -> Option<radium::Lft> {
         match *region {
@@ -441,8 +639,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         did: DefId,
     ) -> Result<
-        (Option<&'def radium::AbstractStruct<'def>>, Option<radium::LiteralTypeRef<'def>>),
-        TranslationError,
+        (Option<radium::AbstractStructRef<'def>>, Option<radium::LiteralTypeRef<'def>>),
+        TranslationError<'tcx>,
     > {
         if let Some((_n, st, _, _, lit)) = self.variant_registry.borrow().get(&did) {
             Ok((st.get(), *lit))
@@ -455,7 +653,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     fn lookup_adt_variant_literal(
         &self,
         did: DefId,
-    ) -> Result<radium::LiteralTypeRef<'def>, TranslationError> {
+    ) -> Result<radium::LiteralTypeRef<'def>, TranslationError<'tcx>> {
         if let Some(lit) = self.lookup_adt_shim(did) {
             return Ok(lit);
         }
@@ -472,8 +670,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         did: DefId,
     ) -> Result<
-        (Option<&'def radium::AbstractEnum<'def>>, Option<radium::LiteralTypeRef<'def>>),
-        TranslationError,
+        (Option<radium::AbstractEnumRef<'def>>, Option<radium::LiteralTypeRef<'def>>),
+        TranslationError<'tcx>,
     > {
         if let Some((_n, st, _, lit)) = self.enum_registry.borrow().get(&did) {
             Ok((st.get(), *lit))
@@ -483,7 +681,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Lookup the literal for an enum.
-    fn lookup_enum_literal(&self, did: DefId) -> Result<radium::LiteralTypeRef<'def>, TranslationError> {
+    fn lookup_enum_literal(
+        &self,
+        did: DefId,
+    ) -> Result<radium::LiteralTypeRef<'def>, TranslationError<'tcx>> {
         if let Some(lit) = self.lookup_adt_shim(did) {
             Ok(lit)
         } else if let Some((_n, _, _, lit)) = self.enum_registry.borrow().get(&did) {
@@ -500,8 +701,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         ty: Ty<'tcx>,
         variant: Option<target::abi::VariantIdx>,
-        adt_deps: TranslationState<'a, 'b, 'def>,
-    ) -> Result<radium::Type<'def>, TranslationError> {
+        adt_deps: TranslationState<'a, 'b, 'def, 'tcx>,
+    ) -> Result<radium::Type<'def>, TranslationError<'tcx>> {
         match ty.kind() {
             TyKind::Adt(adt, args) => {
                 // Check if we have a shim
@@ -556,8 +757,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         adt_def: ty::AdtDef<'tcx>,
         args: F,
-        state: TranslationState<'a, 'b, 'def>,
-    ) -> Result<radium::AbstractEnumUse<'def>, TranslationError>
+        state: TranslationState<'a, 'b, 'def, 'tcx>,
+    ) -> Result<radium::AbstractEnumUse<'def>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
@@ -598,8 +799,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     fn translate_generic_args<'a, 'b, F>(
         &self,
         args: F,
-        state: TranslationState<'a, 'b, 'def>,
-    ) -> Result<Vec<radium::Type<'def>>, TranslationError>
+        state: TranslationState<'a, 'b, 'def, 'tcx>,
+    ) -> Result<Vec<radium::Type<'def>>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
@@ -640,8 +841,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         variant_id: DefId,
         args: F,
-        state: TranslationState<'a, 'b, 'def>,
-    ) -> Result<radium::AbstractStructUse<'def>, TranslationError>
+        state: TranslationState<'a, 'b, 'def, 'tcx>,
+    ) -> Result<radium::AbstractStructUse<'def>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
@@ -675,8 +876,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         adt_id: DefId,
         variant_idx: target::abi::VariantIdx,
         args: F,
-        state: TranslationState<'a, 'b, 'def>,
-    ) -> Result<radium::AbstractStructUse<'def>, TranslationError>
+        state: TranslationState<'a, 'b, 'def, 'tcx>,
+    ) -> Result<radium::AbstractStructUse<'def>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
@@ -706,8 +907,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     pub fn generate_tuple_use<'a, 'b, F>(
         &self,
         tys: F,
-        state: TranslationState<'a, 'b, 'def>,
-    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError>
+        state: TranslationState<'a, 'b, 'def, 'tcx>,
+    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = Ty<'tcx>>,
     {
@@ -719,10 +920,12 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let num_components = params.len();
         let (_, lit) = self.get_tuple_struct_ref(num_components);
 
-        // TODO: don't generate duplicates
+        let key: Vec<_> = params.iter().map(radium::Type::get_syn_type).collect();
         let struct_use = radium::LiteralTypeUse::new(lit, params);
-        if let TranslationStateInner::InFunction(scope) = state {
-            scope.tuple_uses.push(struct_use.clone());
+        if let TranslationStateInner::InFunction(ref mut scope) = *state {
+            let tuple_uses = &mut scope.tuple_uses;
+
+            tuple_uses.entry(key).or_insert_with(|| struct_use.clone());
         }
 
         Ok(struct_use)
@@ -759,7 +962,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Register an ADT that is being used by the program.
-    fn register_adt(&self, def: ty::AdtDef<'tcx>) -> Result<(), TranslationError> {
+    fn register_adt(&self, def: ty::AdtDef<'tcx>) -> Result<(), TranslationError<'tcx>> {
         trace!("Registering ADT {:?}", def.did());
 
         if def.is_union() {
@@ -784,7 +987,11 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Register a struct ADT type that is used by the program.
-    fn register_struct(&self, ty: &'tcx ty::VariantDef, adt: ty::AdtDef) -> Result<(), TranslationError> {
+    fn register_struct(
+        &self,
+        ty: &'tcx ty::VariantDef,
+        adt: ty::AdtDef,
+    ) -> Result<(), TranslationError<'tcx>> {
         if self.lookup_adt_variant_literal(ty.def_id).is_ok() {
             // already there, that's fine.
             return Ok(());
@@ -807,15 +1014,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         let ty_params: Vec<String> = used_generics.iter().map(|param| param.name.to_string()).collect();
 
         // build names for ty_params
-        let ty_param_defs: Vec<_> = ty_params
-            .iter()
-            .map(|name| radium::LiteralTyParam {
-                rust_name: name.clone(),
-                type_term: format!("{}_ty", name),
-                refinement_type: format!("{}_rt", name),
-                syn_type: format!("{}_st", name),
-            })
-            .collect();
+        let ty_param_defs: Vec<_> =
+            ty_params.iter().map(|name| radium::LiteralTyParam::new(name, name)).collect();
 
         // to account for recursive structs and enable establishing circular references,
         // we first generate a dummy struct (None)
@@ -876,7 +1076,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         adt: ty::AdtDef,
         ty_param_defs: &[radium::LiteralTyParam],
         adt_deps: TranslateAdtState<'a>,
-    ) -> Result<(radium::AbstractVariant<'def>, Option<radium::InvariantSpec>), TranslationError> {
+    ) -> Result<(radium::AbstractVariant<'def>, Option<radium::InvariantSpec>), TranslationError<'tcx>> {
         info!("adt variant: {:?}", ty);
 
         let tcx = self.env.tcx();
@@ -985,19 +1185,24 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         }
     }
 
-    fn try_scalar_int_to_i128(s: middle::ty::ScalarInt) -> Option<i128> {
-        s.try_to_int(s.size()).ok()
+    fn try_scalar_int_to_int128(s: middle::ty::ScalarInt, signed: bool) -> Option<radium::Int128> {
+        if signed {
+            s.try_to_int(s.size()).ok().map(radium::Int128::Signed)
+        } else {
+            s.try_to_uint(s.size()).ok().map(radium::Int128::Unsigned)
+        }
     }
 
     /// Build a map from discriminant names to their value, if it fits in a i128.
     fn build_discriminant_map(
         &self,
         def: ty::AdtDef<'tcx>,
-    ) -> Result<HashMap<String, i128>, TranslationError> {
-        let mut map: HashMap<String, i128> = HashMap::new();
+        signed: bool,
+    ) -> Result<HashMap<String, radium::Int128>, TranslationError<'tcx>> {
+        let mut map: HashMap<String, radium::Int128> = HashMap::new();
         let variants = def.variants();
 
-        let mut last_explicit_discr: i128 = 0;
+        let mut last_explicit_discr = radium::Int128::Unsigned(0);
         for v in variants {
             let v: &ty::VariantDef = v;
             let name = v.name.to_string();
@@ -1025,9 +1230,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     })?;
 
                     let evaluated_int = evaluated_discr.try_to_scalar_int().unwrap();
-                    let evaluated_int = Self::try_scalar_int_to_i128(evaluated_int).ok_or_else(|| {
-                        TranslationError::FatalError(format!("Enum discriminant is too large"))
-                    })?;
+                    let evaluated_int =
+                        Self::try_scalar_int_to_int128(evaluated_int, signed).ok_or_else(|| {
+                            TranslationError::FatalError(format!("Enum discriminant is too large"))
+                        })?;
 
                     info!("const-evaluated enum discriminant: {:?}", evaluated_int);
 
@@ -1035,7 +1241,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     map.insert(name, evaluated_int);
                 },
                 ty::VariantDiscr::Relative(offset) => {
-                    let idx: i128 = last_explicit_discr + i128::from(offset);
+                    let idx: radium::Int128 = last_explicit_discr + offset;
                     map.insert(name, idx);
                 },
             }
@@ -1093,7 +1299,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     fn generate_enum_spec(
         &self,
         def: ty::AdtDef<'tcx>,
-        enum_name: &str,
+        inductive_name: String,
     ) -> (coq::Inductive, radium::EnumSpec) {
         trace!("Generating Inductive for enum {:?}", def);
 
@@ -1127,13 +1333,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         // We assume the generated Inductive def is placed in a context where the generic types are in scope.
         let inductive = coq::Inductive {
-            name: enum_name.to_owned(),
+            name: inductive_name.clone(),
             parameters: coq::ParamList::new(vec![]),
             variants,
         };
 
         let enum_spec = radium::EnumSpec {
-            rfn_type: coq::Type::Literal(enum_name.to_owned()),
+            rfn_type: coq::Type::Literal(inductive_name),
             variant_patterns,
         };
 
@@ -1143,7 +1349,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     }
 
     /// Register an enum ADT
-    fn register_enum(&self, def: ty::AdtDef<'tcx>) -> Result<(), TranslationError> {
+    fn register_enum(&self, def: ty::AdtDef<'tcx>) -> Result<(), TranslationError<'tcx>> {
         if self.lookup_enum_literal(def.did()).is_ok() {
             // already there, that's fine.
             return Ok(());
@@ -1175,15 +1381,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         used_generics.sort();
         let ty_params: Vec<String> = used_generics.iter().map(|param| param.name.to_string()).collect();
         // build names for ty_params
-        let ty_param_defs: Vec<_> = ty_params
-            .iter()
-            .map(|name| radium::LiteralTyParam {
-                rust_name: name.clone(),
-                type_term: format!("{}_ty", name),
-                refinement_type: format!("{}_rt", name),
-                syn_type: format!("{}_st", name),
-            })
-            .collect();
+        let ty_param_defs: Vec<_> =
+            ty_params.iter().map(|name| radium::LiteralTyParam::new(name, name)).collect();
 
         info!("enum using generics: {:?}", used_generics);
 
@@ -1229,10 +1428,11 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             // get the type of the discriminant
             let it = def.repr().discr_type();
+            let it_is_signed = it.is_signed();
             let translated_it = TypeTranslator::translate_integer_type(it);
 
             // build the discriminant map
-            let discrs = self.build_discriminant_map(def)?;
+            let discrs = self.build_discriminant_map(def, it_is_signed)?;
 
             // get representation options
             let repr = Self::get_enum_representation(&def.repr())?;
@@ -1257,8 +1457,19 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     .map_err(TranslationError::FatalError)?;
             } else {
                 // generate a specification
+
+                // get name for the inductive
+                let ind_name = self
+                    .env
+                    .get_tool_attribute(def.did(), "refine_as")
+                    .map_or_else(
+                        || Ok(Some(enum_name.clone())),
+                        |args| parse_enum_refine_as(args).map_err(TranslationError::FatalError),
+                    )?
+                    .unwrap_or_else(|| enum_name.clone());
+
                 let decl;
-                (decl, enum_spec) = self.generate_enum_spec(def, &enum_name);
+                (decl, enum_spec) = self.generate_enum_spec(def, ind_name);
                 inductive_decl = Some(decl);
             }
 
@@ -1302,8 +1513,8 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         adt: ty::AdtDef<'tcx>,
         substs: ty::GenericArgsRef<'tcx>,
-        state: TranslationState<'a, 'b, 'def>,
-    ) -> Result<radium::Type<'def>, TranslationError> {
+        state: TranslationState<'a, 'b, 'def, 'tcx>,
+    ) -> Result<radium::Type<'def>, TranslationError<'tcx>> {
         let Some(shim) = self.lookup_adt_shim(adt.did()) else {
             return Err(TranslationError::UnknownError(format!(
                 "generate_adt_shim_use called for unknown adt shim {:?}",
@@ -1324,24 +1535,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         Ok(radium::Type::Literal(shim_use))
     }
 
-    // Okay, I don't know what the problem is.
-    // 'def outlives 'a
-    // 'b outlives 'a
-    // I dont' know why it infers that 'a outlives 'def or so.
-    //
-    // What do I want?
-    // I want to pass mutable access to the translation context.
-    // In some cases, I need to be able to wrap the translation context.
-    // I guess I can just do interior mutability with RefCell.
-    //
-
     /// Translate types, while placing the `DefIds` of ADTs that this type uses in the `adt_deps`
     /// argument, if provided.
     pub fn translate_type_with_deps<'a, 'b>(
         &self,
         ty: Ty<'tcx>,
-        state: TranslationState<'a, 'b, 'def>,
-    ) -> Result<radium::Type<'def>, TranslationError> {
+        state: TranslationState<'a, 'b, 'def, 'tcx>,
+    ) -> Result<radium::Type<'def>, TranslationError<'tcx>> {
         match ty.kind() {
             TyKind::Bool => Ok(radium::Type::Bool),
             TyKind::Char => Ok(radium::Type::Char),
@@ -1491,6 +1691,47 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 })
             },
 
+            TyKind::Alias(kind, alias_ty) => {
+                // We should have normalized the type before already.
+                // Remaining projections are not statically resolvable because they refer to a type variable.
+                // If we are in the body of a function, resolve this using our trait scope.
+                if let TranslationStateInner::InFunction(ref mut function_scope) = *state {
+                    match kind {
+                        ty::AliasKind::Projection => {
+                            info!(
+                                "Trying to resolve projection of {:?} for {:?}",
+                                alias_ty.def_id, alias_ty.args
+                            );
+
+                            let trait_did = self.env.tcx().parent(alias_ty.def_id);
+                            let trait_use = &function_scope
+                                .lookup_trait_use(self.env.tcx(), trait_did, alias_ty.args)?
+                                .trait_use;
+
+                            let method_name = self
+                                .env
+                                .get_assoc_item_name(alias_ty.def_id)
+                                .ok_or(trait_registry::Error::NotAnAssocType(alias_ty.def_id))?;
+                            let method_name = strip_coq_ident(&method_name);
+                            let assoc_type = trait_use.make_assoc_type_lit(&method_name);
+
+                            info!("Resolved projection to {assoc_type:?}");
+
+                            Ok(radium::Type::LiteralParam(assoc_type))
+                        },
+                        _ => Err(TranslationError::UnsupportedType {
+                            description: "RefinedRust does not support Alias types of kind {kind:?}"
+                                .to_owned(),
+                        }),
+                    }
+                } else {
+                    // outside of a function, don't have a scope in which to resolve
+                    Err(TranslationError::UnsupportedType {
+                        description: "RefinedRust does not support Alias types of kind {kind:?}".to_owned(),
+                    })
+                }
+            },
+
             TyKind::Foreign(_) => Err(TranslationError::UnsupportedType {
                 description: "RefinedRust does not support extern types".to_owned(),
             }),
@@ -1514,13 +1755,6 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             TyKind::Generator(_, _, _) | TyKind::GeneratorWitness(_) | TyKind::GeneratorWitnessMIR(_, _) => {
                 Err(TranslationError::UnsupportedType {
                     description: "RefinedRust does currently not support generators".to_owned(),
-                })
-            },
-
-            TyKind::Alias(_, _) => {
-                // TODO: probably need this when translating trait definitions
-                Err(TranslationError::UnsupportedType {
-                    description: "RefinedRust does not support Alias types".to_owned(),
                 })
             },
 
@@ -1598,7 +1832,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         f: target::abi::FieldIdx,
         ty: Ty<'tcx>,
         variant: Option<usize>,
-    ) -> Result<String, TranslationError> {
+    ) -> Result<String, TranslationError<'tcx>> {
         let tcx = self.env.tcx();
         match ty.kind() {
             TyKind::Adt(def, _) => {
@@ -1636,7 +1870,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     pub fn get_variant_name_of(
         ty: Ty<'tcx>,
         variant: target::abi::VariantIdx,
-    ) -> Result<String, TranslationError> {
+    ) -> Result<String, TranslationError<'tcx>> {
         match ty.kind() {
             TyKind::Adt(def, _) => {
                 info!("getting variant name of {:?} at {}", variant, ty);
@@ -1655,8 +1889,8 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     pub fn translate_type_to_syn_type(
         &self,
         ty: Ty<'tcx>,
-        scope: InFunctionState<'_, 'def>,
-    ) -> Result<radium::SynType, TranslationError> {
+        scope: InFunctionState<'_, 'def, 'tcx>,
+    ) -> Result<radium::SynType, TranslationError<'tcx>> {
         // give an environment substituting in the generics
         self.translate_type(ty, &mut *scope).map(|mut ty| {
             ty.subst_params(&scope.generic_scope);
@@ -1668,8 +1902,8 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     pub fn translate_type(
         &self,
         ty: Ty<'tcx>,
-        scope: InFunctionState<'_, 'def>,
-    ) -> Result<radium::Type<'def>, TranslationError> {
+        scope: InFunctionState<'_, 'def, 'tcx>,
+    ) -> Result<radium::Type<'def>, TranslationError<'tcx>> {
         self.translate_type_with_deps(ty, &mut TranslationStateInner::InFunction(&mut *scope))
     }
 
@@ -1677,7 +1911,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     pub fn translate_type_in_empty_scope(
         &self,
         ty: Ty<'tcx>,
-    ) -> Result<radium::Type<'def>, TranslationError> {
+    ) -> Result<radium::Type<'def>, TranslationError<'tcx>> {
         let mut s = HashSet::new();
         self.translate_type_with_deps(ty, &mut TranslationStateInner::TranslateAdt(&mut s))
     }
@@ -1688,8 +1922,8 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         &self,
         ty: Ty<'tcx>,
         variant: Option<target::abi::VariantIdx>,
-        scope: InFunctionState<'a, 'def>,
-    ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError> {
+        scope: InFunctionState<'a, 'def, 'tcx>,
+    ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError<'tcx>> {
         match ty.kind() {
             TyKind::Adt(adt, args) => {
                 if adt.is_struct() {
@@ -1732,8 +1966,8 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         &self,
         adt_def: ty::AdtDef<'tcx>,
         args: F,
-        state: InFunctionState<'_, 'def>,
-    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError>
+        state: InFunctionState<'_, 'def, 'tcx>,
+    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
@@ -1761,8 +1995,8 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         &self,
         variant_id: DefId,
         args: F,
-        scope: InFunctionState<'_, 'def>,
-    ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError>
+        scope: InFunctionState<'_, 'def, 'tcx>,
+    ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
@@ -1791,14 +2025,14 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         &self,
         variant_id: DefId,
         args: F,
-        scope: InFunctionState<'a, 'def>,
-    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError>
+        scope: InFunctionState<'a, 'def, 'tcx>,
+    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
         info!("generating enum variant use for {:?}", variant_id);
 
-        let x: TranslationState<'_, '_, 'def> = &mut TranslationStateInner::InFunction(&mut *scope);
+        let x: TranslationState<'_, '_, 'def, 'tcx> = &mut TranslationStateInner::InFunction(&mut *scope);
         let params = self.translate_generic_args(args, x)?;
         let _key = AdtUseKey::new(variant_id, &params);
 
@@ -1818,7 +2052,7 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
     pub fn make_tuple_use<'a, 'b>(
         &self,
         translated_tys: Vec<radium::Type<'def>>,
-        state: TranslationState<'a, 'b, 'def>,
+        state: TranslationState<'a, 'b, 'def, 'tcx>,
     ) -> radium::Type<'def> {
         let num_components = translated_tys.len();
         if num_components == 0 {
@@ -1826,12 +2060,12 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
         }
 
         let (_, lit) = self.get_tuple_struct_ref(num_components);
-        // TODO: don't generate duplicates
-        //let struct_use = radium::AbstractStructUse::new(struct_ref, translated_tys,
-        // radium::TypeIsRaw::Yes);
+        let key: Vec<_> = translated_tys.iter().map(radium::Type::get_syn_type).collect();
         let struct_use = radium::LiteralTypeUse::new(lit, translated_tys);
-        if let TranslationStateInner::InFunction(scope) = state {
-            scope.tuple_uses.push(struct_use.clone());
+        if let TranslationStateInner::InFunction(ref mut scope) = *state {
+            let tuple_uses = &mut scope.tuple_uses;
+
+            tuple_uses.entry(key).or_insert_with(|| struct_use.clone());
         }
 
         radium::Type::Literal(struct_use)
@@ -1840,36 +2074,51 @@ impl<'def, 'tcx> TypeTranslator<'def, 'tcx> {
 
 /// Type translator bundling the function scope
 #[allow(clippy::module_name_repetitions)]
-pub struct LocalTypeTranslator<'a, 'def, 'tcx> {
-    pub translator: &'a TypeTranslator<'def, 'tcx>,
-    pub scope: RefCell<TypeTranslationScope<'def>>,
+pub struct LocalTypeTranslator<'def, 'tcx> {
+    pub translator: &'def TypeTranslator<'def, 'tcx>,
+    pub scope: RefCell<TypeTranslationScope<'tcx, 'def>>,
 }
 
-impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
-    pub const fn new(translator: &'a TypeTranslator<'def, 'tcx>, scope: TypeTranslationScope<'def>) -> Self {
+impl<'def, 'tcx> LocalTypeTranslator<'def, 'tcx> {
+    pub const fn new(
+        translator: &'def TypeTranslator<'def, 'tcx>,
+        scope: TypeTranslationScope<'tcx, 'def>,
+    ) -> Self {
         Self {
             translator,
             scope: RefCell::new(scope),
         }
     }
 
-    /// Translate a MIR type to the Caesium syntactic type we need when storing an element of the type,
+    /// Get the `DefId` of the current function.
+    pub fn get_proc_did(&self) -> DefId {
+        let scope = self.scope.borrow();
+        scope.did
+    }
+
+    /// Translate a MIR type to the Radium syntactic type we need when storing an element of the type,
     /// substituting all generics.
-    pub fn translate_type_to_syn_type(&self, ty: Ty<'tcx>) -> Result<radium::SynType, TranslationError> {
+    pub fn translate_type_to_syn_type(
+        &self,
+        ty: Ty<'tcx>,
+    ) -> Result<radium::SynType, TranslationError<'tcx>> {
         let ty = self.normalize(ty)?;
         let mut scope = self.scope.borrow_mut();
         self.translator.translate_type_to_syn_type(ty, &mut scope)
     }
 
     /// Translate type.
-    pub fn translate_type(&self, ty: Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
+    pub fn translate_type(&self, ty: Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError<'tcx>> {
         let ty = self.normalize(ty)?;
         let mut scope = self.scope.borrow_mut();
         self.translator.translate_type(ty, &mut scope)
     }
 
     /// Translate type without normalizing first.
-    pub fn translate_type_no_normalize(&self, ty: Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError> {
+    pub fn translate_type_no_normalize(
+        &self,
+        ty: Ty<'tcx>,
+    ) -> Result<radium::Type<'def>, TranslationError<'tcx>> {
         let mut scope = self.scope.borrow_mut();
         self.translator.translate_type(ty, &mut scope)
     }
@@ -1879,7 +2128,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
     pub fn translate_type_to_syn_type_no_normalize(
         &self,
         ty: Ty<'tcx>,
-    ) -> Result<radium::SynType, TranslationError> {
+    ) -> Result<radium::SynType, TranslationError<'tcx>> {
         let mut scope = self.scope.borrow_mut();
         self.translator.translate_type_to_syn_type(ty, &mut scope)
     }
@@ -1890,7 +2139,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         &self,
         ty: Ty<'tcx>,
         variant: Option<target::abi::VariantIdx>,
-    ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError> {
+    ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError<'tcx>> {
         let mut scope = self.scope.borrow_mut();
         self.translator.generate_structlike_use(ty, variant, &mut scope)
     }
@@ -1901,7 +2150,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         &self,
         adt_def: ty::AdtDef<'tcx>,
         args: F,
-    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError>
+    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
@@ -1917,7 +2166,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         &self,
         variant_id: DefId,
         args: F,
-    ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError>
+    ) -> Result<Option<radium::LiteralTypeUse<'def>>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
@@ -1931,7 +2180,7 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         &self,
         variant_id: DefId,
         args: F,
-    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError>
+    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = ty::GenericArg<'tcx>>,
     {
@@ -1957,7 +2206,10 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
         st.layout_term_typaram(&scope.generic_scope)
     }
 
-    pub fn generate_tuple_use<F>(&self, tys: F) -> Result<radium::LiteralTypeUse<'def>, TranslationError>
+    pub fn generate_tuple_use<F>(
+        &self,
+        tys: F,
+    ) -> Result<radium::LiteralTypeUse<'def>, TranslationError<'tcx>>
     where
         F: IntoIterator<Item = Ty<'tcx>>,
     {
@@ -1973,12 +2225,110 @@ impl<'a, 'def, 'tcx> LocalTypeTranslator<'a, 'def, 'tcx> {
     }
 
     /// Normalize a type in the given function environment.
-    pub fn normalize<T>(&self, ty: T) -> Result<T, TranslationError>
+    pub fn normalize<T>(&self, ty: T) -> Result<T, TranslationError<'tcx>>
     where
         T: ty::TypeFoldable<ty::TyCtxt<'tcx>>,
     {
         let scope = self.scope.borrow();
         normalize_in_function(scope.did, self.translator.env.tcx(), ty)
+    }
+
+    pub fn get_trait_of_method(env: &Environment<'tcx>, method_did: DefId) -> Option<DefId> {
+        if let Some(impl_did) = env.tcx().impl_of_method(method_did) {
+            env.tcx().trait_id_of_impl(impl_did)
+        } else {
+            // else expect it to be an abstract method of a trait decl
+            env.tcx().trait_of_item(method_did)
+        }
+    }
+
+    /// Split the params of a trait method into params of the trait and params of the method
+    /// itself.
+    pub fn split_trait_method_args(
+        env: &Environment<'tcx>,
+        trait_did: DefId,
+        ty_params: ty::GenericArgsRef<'tcx>,
+    ) -> (ty::GenericArgsRef<'tcx>, ty::GenericArgsRef<'tcx>) {
+        // split args
+        let trait_generics: &'tcx ty::Generics = env.tcx().generics_of(trait_did);
+        let trait_generic_count = trait_generics.params.len();
+
+        let trait_args = &ty_params.as_slice()[..trait_generic_count];
+        let method_args = &ty_params.as_slice()[trait_generic_count..];
+
+        (env.tcx().mk_args(trait_args), env.tcx().mk_args(method_args))
+    }
+
+    /// Lookup a trait parameter.
+    pub fn lookup_trait_param(
+        &self,
+        env: &Environment<'tcx>,
+        trait_did: DefId,
+        args: ty::GenericArgsRef<'tcx>,
+    ) -> TraitResult<'tcx, GenericTraitUse<'def>> {
+        let scope = self.scope.borrow();
+        let trait_use = scope.lookup_trait_use(env.tcx(), trait_did, args)?;
+        Ok(trait_use.clone())
+    }
+
+    /// Register a procedure use of a trait method.
+    /// The given `ty_params` need to include the args to both the trait and the method.
+    pub fn register_use_trait_procedure(
+        &self,
+        env: &Environment<'tcx>,
+        trait_method_did: DefId,
+        ty_params: ty::GenericArgsRef<'tcx>,
+        _trait_spec_terms: &[String],
+        trait_assoc_tys: Vec<radium::Type<'def>>,
+    ) -> Result<radium::UsedProcedure<'def>, TranslationError<'tcx>> {
+        let trait_did = env
+            .tcx()
+            .trait_of_item(trait_method_did)
+            .ok_or(trait_registry::Error::NotATrait(trait_method_did))?;
+
+        // split args
+        let (trait_args, method_args) = Self::split_trait_method_args(env, trait_did, ty_params);
+
+        let trait_spec_use = {
+            let scope = self.scope.borrow();
+            scope.lookup_trait_use(env.tcx(), trait_did, trait_args.as_slice())?.trait_use.clone()
+        };
+
+        // get name of the trait
+        let trait_name = trait_spec_use.trait_ref.name.clone();
+
+        // get name of the method
+        let method_name = env.get_assoc_item_name(trait_method_did).unwrap();
+        let mangled_method_name =
+            mangle_name_with_args(&strip_coq_ident(&method_name), method_args.as_slice());
+
+        let method_loc_name = trait_spec_use.make_loc_name(&mangled_method_name);
+
+        // get spec. the spec takes the generics of the method as arguments
+        let method_spec_term = trait_spec_use.make_method_spec_term(&method_name);
+
+        // generate the spec term with arguments (refinement type and syntype for its generics)
+        // as well as the translated method params
+        let mut translated_params = Vec::new();
+        for arg in method_args.as_slice() {
+            if let ty::GenericArgKind::Type(ty) = arg.unpack() {
+                let translated_ty = self.translate_type(ty)?;
+                // push translated param
+                translated_params.push(translated_ty);
+            }
+        }
+        // also add the associated types now
+        translated_params.extend(trait_assoc_tys);
+
+        // TODO: does this give the right params for this one? (esp. because of trait args)
+        let syntypes =
+            get_arg_syntypes_for_procedure_call(env.tcx(), self, trait_method_did, ty_params.as_slice())?;
+
+        let proc_use =
+            radium::UsedProcedure::new(method_loc_name, method_spec_term, translated_params, syntypes);
+        info!("generated trait method use {proc_use:?}");
+
+        Ok(proc_use)
     }
 }
 
@@ -1987,7 +2337,7 @@ pub fn normalize_in_function<'tcx, T>(
     function_did: DefId,
     tcx: ty::TyCtxt<'tcx>,
     ty: T,
-) -> Result<T, TranslationError>
+) -> Result<T, TranslationError<'tcx>>
 where
     T: ty::TypeFoldable<ty::TyCtxt<'tcx>>,
 {
@@ -1999,7 +2349,7 @@ where
 /// Format the Coq representation of an atomic region.
 pub fn format_atomic_region_direct(
     r: &polonius_info::AtomicRegion,
-    scope: Option<&TypeTranslationScope<'_>>,
+    scope: Option<&TypeTranslationScope<'_, '_>>,
 ) -> String {
     match r {
         polonius_info::AtomicRegion::Loan(_, r) => format!("llft{}", r.index()),

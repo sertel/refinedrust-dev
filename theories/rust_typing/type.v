@@ -8,6 +8,7 @@ From iris Require Import options.
 
 (** * RefinedRust's notion of value types *)
 
+
 (** Iris resource algebras that need to be available *)
 Class typeGS Σ := TypeG {
   type_heapG :: refinedcG Σ;
@@ -171,7 +172,7 @@ Proof. rewrite ty_has_op_type_unfold. apply _ty_memcast_compat. Qed.
 Global Hint Extern 3 (type ?rt) => lazymatch goal with H : type rt |- _ => apply H end : typeclass_instances.
 
 Definition rt_of `{!typeGS Σ} {rt} (ty : type rt) : Type := rt.
-Definition st_of `{!typeGS Σ} {rt} (ty : type rt) : syn_type := ty_syn_type ty.
+Notation st_of ty := (ty_syn_type ty).
 
 Lemma ty_own_val_has_layout `{!typeGS Σ} {rt} (ty : type rt) ly π r v :
   syn_type_has_layout ty.(ty_syn_type) ly →

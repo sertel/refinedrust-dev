@@ -105,6 +105,11 @@ test|test-debug)
     # Then test, and let caller control flags.
     exec cargo test $CARGO_BUILD_FLAGS "$@"
     ;;
+clippy)
+    find_sysroot
+    # Then test, and let caller control flags.
+    exec cargo clippy "$@"
+    ;;
 run|run-debug)
     # First build and get a sysroot.
     cargo build $CARGO_BUILD_FLAGS

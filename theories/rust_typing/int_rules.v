@@ -51,7 +51,7 @@ Section typing.
   Proof.
     iIntros "[%Hn HT] #CTX".
     iExists Z, (int it), z. iFrame.
-    iApply type_int_val; last done.
+    rewrite I2v_unfold. iApply type_int_val; last done.
     apply IntType_to_it_size_bounded.
   Qed.
   Global Instance type_val_int_inst n (it : IntType) π : TypedValue (I2v n it) π :=
@@ -457,6 +457,7 @@ Section typing.
   Proof.
     iIntros "[%Hn HT] #CTX".
     iExists Z, (char_t), z. iFrame.
+    rewrite I2v_unfold.
     iApply type_char_val; last done.
   Qed.
   Global Instance type_val_char_inst n π : TypedValue (I2v n CharIt) π :=

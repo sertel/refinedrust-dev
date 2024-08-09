@@ -1,7 +1,7 @@
 From refinedrust Require Export type.
 From refinedrust Require Import programs uninit.
 Set Default Proof Using "Type".
-  
+
 (** * Function types *)
 
 (* "entry-point" statement *)
@@ -191,7 +191,7 @@ Section call.
   Context `{!typeGS Σ}.
   Import EqNotations.
 
-  Lemma type_call_fnptr π E L {A : Type} (lfts : nat) eκs l v vl tys T (fp : prod_vec lft lfts → A → fn_params) sta :
+  Lemma type_call_fnptr π E L {A : Type} (lfts : nat) eκs l v vl tys (fp : prod_vec lft lfts → A → fn_params) sta T :
     let eκs' := list_to_tup eκs in
     (([∗ list] v;t ∈ vl; tys, let '(existT rt (ty, r)) := t in v ◁ᵥ{π} r @ ty) -∗
       ∃ (Heq : lfts = length eκs),
@@ -388,9 +388,9 @@ Section call.
       iApply ("HΦ" with "HL Hna Hty").
       by iApply ("Hr").
   Qed.
-  Global Instance type_call_fnptr_inst π E L {A} (lfts : nat) eκs l v vl fp lya tys :
-    TypedCall π E L eκs  v (v ◁ᵥ{π} l @ function_ptr lya fp) vl tys :=
-    λ T, i2p (type_call_fnptr π E L (A := A)lfts eκs l v vl tys T fp lya).
+  Definition type_call_fnptr_inst := [instance type_call_fnptr].
+  Global Existing Instance type_call_fnptr_inst | 10.
+
 End call.
 
 Global Typeclasses Opaque function_ptr.
@@ -428,6 +428,141 @@ Notation "'fn(∀' κs : n '|' x ':' A ',' E ';' r1 '@' T1 ',' r2 '@' T2 ',' r3 
 Notation "'fn(∀' κs : n '|' x ':' A ',' E ';' r1 '@' T1 ',' r2 '@' T2 ',' r3 '@' T3 ',' r4 '@' T4 ';' r5 '@' T5 ';' r6 '@' T6 ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
   ((fun κs x => FP_wf E (@cons _ (existT _ (T1, r1)) $ @cons _ (existT _ (T2, r2)) $ @cons _ (existT _ (T3, r3)) $ @cons _ (existT _ (T4, r4)) $ @cons _ (existT _ (T5, r5)) $ @cons _ (existT _ (T6, r6)) $ (@nil _)) Pa%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → A → fn_params)
   (at level 99, Pr at level 200, κs pattern, x pattern, y pattern) : stdpp_scope.
+
+(** We can also bundle the dependencies up *)
+Definition function_ty `{!typeGS Σ} := sigT (λ lfts, sigT (λ A, prod_vec lft lfts → A → fn_params)).
+Definition proj_function_ty `{!typeGS Σ} (ty : function_ty) :=
+  projT2 (projT2 ty).
+
+Section function_subsume.
+  Context `{!typeGS Σ}.
+
+  (* If I have f ◁ F1, then f ◁ F2. *)
+  (* I can strengthen the precondition and weaken the postcondition *)
+  (*elctx_sat*)
+  (* TODO: think about how closures capture lifetimes in their environment.
+     lifetimes in the capture shouldn't really show up in their spec at trait-level (a purely safety spec).
+     I guess once I want to know something about the captured values (to reason about their functional correctness), I might need to know about lifetimes. However, even then, they should not pose any constraints -- they should just be satisfied, with us only knowing that they live at least as long as the closure body.
+
+     The point is that I want to say that as long as the closure lifetime is alive, all is fine.
+
+
+     How does the justification that this is fine work?
+     Do I explicitly integrate some existential abstraction?
+      i.e. functions can pose the existence of lifetimes, as long as they are alive under the function lifetime
+
+
+     I don't think I can always just subtype that to use the lifetime of the closure. That would definitely break ghostcell etc. And also not everything might be covariant in the lifetime.
+  *)
+  Lemma subsume_function_ptr π v l1 l2 sts1 sts2 lfts {A B : Type} (F1 : prod_vec lft lfts → A → fn_params) (F2 : prod_vec lft lfts → B → fn_params) T :
+    subsume (v ◁ᵥ{π} l1 @ function_ptr sts1 F1) (v ◁ᵥ{π} l2 @ function_ptr sts2 F2) T :-
+    and:
+    | drop_spatial;
+        (* TODO could also just require that the layouts are compatible *)
+        exhale ⌜sts1 = sts2⌝;
+        ∀ (κs : prod_vec lft lfts),
+        (* NOTE: this is more restrictive than necessary *)
+        exhale ⌜∀ a b ϝ, (F1 κs a).(fp_elctx) ϝ = (F2 κs b).(fp_elctx) ϝ⌝;
+        ∀ (b : B),
+        inhale (fp_Pa (F2 κs b) π);
+        ls ← iterate: fp_atys (F2 κs b) with [] {{ ty T ls,
+               ∀ l : loc,
+                inhale (l ◁ₗ[π, Owned false] #(projT2 ty).2 @ ◁ (projT2 ty).1); return T (ls ++ [l]) }};
+        ∃ (a : A),
+        exhale ⌜length (fp_atys (F1 κs a)) = length (fp_atys (F2 κs b))⌝%I;
+        iterate: zip ls (fp_atys (F1 κs a)) {{ e T, exhale (e.1 ◁ₗ[π, Owned false] #(projT2 e.2).2 @ ◁ (projT2 e.2).1); return T }};
+        exhale (fp_Pa (F1 κs a) π);
+        (* show that F1.ret implies F2.ret *)
+        ∀ (vr : val) a2,
+        inhale ((F1 κs a).(fp_fr) a2).(fr_R) π;
+        inhale (vr ◁ᵥ{π} ((F1 κs a).(fp_fr) a2).(fr_ref) @ ((F1 κs a).(fp_fr) a2).(fr_ty));
+        ∃ b2,
+        exhale ((F2 κs b).(fp_fr) b2).(fr_R) π;
+        exhale (vr ◁ᵥ{π} ((F2 κs b).(fp_fr) b2).(fr_ref) @ ((F2 κs b).(fp_fr) b2).(fr_ty));
+        done
+    | exhale ⌜l1 = l2⌝; return T.
+  Proof.
+    iIntros "(#Ha & (-> & HT))".
+    iIntros "Hv". iFrame.
+    Set Debug Eauto.
+    iDestruct "Ha" as "(-> & Ha)".
+    iEval (rewrite /ty_own_val/=) in "Hv".
+    iDestruct "Hv" as "(%fn & %local_sts & -> & Hen & %Halg1 & %Halg2 & #Htf)".
+    iEval (rewrite /ty_own_val/=).
+    iExists fn, local_sts. iR. iFrame.
+    iSplitR. {
+      done. }
+    iR.
+    iNext.
+
+    rewrite /typed_function.
+    iIntros (κs b ϝ) "!>".
+    iIntros (Hargly Hlocally lsa lsv).
+    iIntros "(Hcred & Hargs & Hlocals & Hpre)".
+    iSpecialize ("Ha" $! κs).
+    iDestruct "Ha" as "(%Helctx & Ha)".
+    iSpecialize ("Ha" $! b with "Hpre").
+    (*iterate_elim0*)
+    (*Locate "|".*)
+    (*
+    Search Z.divide.
+    Search aligned_to
+    is_aligned_to
+    iterate_elim0
+    Locate "iterate:".
+    iDestruct ("Ha" with "[Hargs]") as "(%a & %Hlen & Hargs & Hpre & Ha)".
+     *)
+
+
+  Admitted.
+  Definition subsume_function_ptr_inst := [instance subsume_function_ptr].
+  Global Existing Instance subsume_function_ptr_inst  | 10.
+  (* TODO: maybe also make this a subsume_full instance *)
+
+  (* A pure version that we can shelve as a pure sidecondition. *)
+  Definition function_subtype (a b : function_ty) : Prop :=
+    ⊢ ∀ π v l sts, subsume (v ◁ᵥ{π} l @ function_ptr sts (proj_function_ty a)) (v ◁ᵥ{π} l @ function_ptr sts (proj_function_ty b)) (True).
+  Global Arguments function_subtype : simpl never.
+
+  Lemma use_function_subtype a b π v l sts :
+    function_subtype a b →
+    v ◁ᵥ{π} l @ function_ptr sts (proj_function_ty a) -∗
+    v ◁ᵥ{π} l @ function_ptr sts (proj_function_ty b).
+  Proof.
+    iIntros (Hincl) "Ha".
+    iDestruct (Hincl with "Ha") as "(Hb & _)".
+    done.
+  Qed.
+
+  Lemma function_subtype_refl (a : function_ty) :
+    function_subtype a a.
+  Proof.
+    iIntros (π v l sts).
+    iIntros "Ha". iFrame.
+  Qed.
+
+  Class FunctionSubtype (S1 S2 : function_ty) : Prop := make_function_subtype : function_subtype S1 S2.
+
+  (** Alternative lemma for calling function pointers that simplifies first *)
+  Lemma type_call_fnptr_simplify π E L κs v l sta S1 S2 vs args {SH : FunctionSubtype S1 S2} T :
+    typed_call π E L κs v (v ◁ᵥ{π} l @ function_ptr sta (proj_function_ty S2)) vs args T
+    ⊢ typed_call π E L κs v (v ◁ᵥ{π} l @ function_ptr sta (proj_function_ty S1)) vs args T.
+  Proof.
+    iIntros "Ha". rewrite /typed_call.
+    iIntros "Hs".
+    iPoseProof (use_function_subtype with "Hs") as "Hs"; first done.
+    iApply ("Ha" with "Hs").
+  Qed.
+  Definition type_call_fnptr_simplify_inst := [instance type_call_fnptr_simplify].
+  Global Existing Instance type_call_fnptr_simplify_inst | 1.
+
+  Definition trait_incl_def (P : Prop) := P.
+  Definition trait_incl_aux (P : Prop) : seal (trait_incl_def P). Proof. by eexists. Qed.
+  Definition trait_incl_marker (P : Prop) := (trait_incl_aux P).(unseal).
+  Definition trait_incl_marker_unfold (P : Prop) : trait_incl_marker P = P := (trait_incl_aux P).(seal_eq).
+End function_subsume.
+(* The last argument might contain evars when we start the search *)
+Global Hint Mode FunctionSubtype + + + - : typeclass_instances.
 
 Module test.
 Definition bla0 `{typeGS Σ} :=
