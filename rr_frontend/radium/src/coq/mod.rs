@@ -295,24 +295,25 @@
 //! [sections]: https://coq.inria.fr/doc/master/refman/language/core/sections.html
 
 pub mod command;
+pub mod command_new;
 pub mod module;
+pub mod settings;
 pub mod term;
 
 use std::fmt;
 
-use derive_more::{Deref, DerefMut, Display};
+use derive_more::{Deref, DerefMut, Display, From};
 use derive_new::new;
 use from_variants::FromVariants;
 use indoc::writedoc;
 
-use crate::write_list;
+use crate::display_list;
 
-/// A [document] is the entry-point to create a script, composed of [sentences].
+/// A [document].
 ///
-/// [commands]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-command
 /// [document]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-document
-/// [sentences]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-sentence
-#[derive(Eq, PartialEq, Debug, Default, Deref, DerefMut)]
+#[derive(Clone, Eq, PartialEq, Debug, Display, Default, Deref, DerefMut)]
+#[display("{}", display_list!(_0, "\n"))]
 pub struct Document(pub Vec<Sentence>);
 
 impl Document {
@@ -326,88 +327,34 @@ impl Document {
     }
 }
 
-/// Beware, imports and exports [Command] are gathered on top of the list.
-#[derive(Eq, PartialEq, Debug, FromVariants)]
-pub enum Sentence {
-    CommandAttrs(CommandAttrs),
-}
-
-#[derive(Eq, PartialEq, Debug)]
-pub struct CommandAttrs {
-    pub command: Command,
-    pub attributes: Option<String>,
-}
-
-impl CommandAttrs {
-    #[must_use]
-    pub fn new(command: impl Into<Command>) -> Self {
-        Self {
-            attributes: None,
-            command: command.into(),
-        }
-    }
-
-    #[must_use]
-    pub fn attributes(self, attributes: impl Into<String>) -> Self {
-        let attributes = Some(attributes.into());
-
-        Self { attributes, ..self }
-    }
-}
-
-/// A [command], the entrypoint of everything that can be written.
+/// A [sentence].
 ///
-/// [command]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-command
-#[derive(Eq, PartialEq, Debug, FromVariants)]
-pub enum Command {
-    Require(Require),
-
-    Proof,
-    // TODO: Add section, ...
-}
-
-impl From<Command> for Sentence {
-    fn from(command: Command) -> Self {
-        Self::CommandAttrs(CommandAttrs::new(command))
-    }
-}
-
-#[derive(Eq, PartialEq, Debug)]
-pub struct Require {
-    pub from: Option<String>,
-    pub import: Vec<String>,
-}
-
-impl Require {
-    #[must_use]
-    pub fn new(import: Vec<impl Into<String>>) -> Self {
-        Self {
-            from: None,
-            import: import.into_iter().map(Into::into).collect(),
-        }
-    }
-
-    #[must_use]
-    pub fn from(self, from: impl Into<String>) -> Self {
-        let from = Some(from.into());
-
-        Self { from, ..self }
-    }
+/// [sentence]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-sentence
+#[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
+pub enum Sentence {
+    #[display("{}", _0)]
+    CommandAttrs(command_new::CommandAttrs),
 }
 
 #[cfg(test)]
 mod tests {
+    use command_new::compiled_files::*;
+    use command_new::*;
+
     use super::*;
 
     #[test]
     fn test_document() {
         let mut doc = Document::new(vec![
-            Command::Require(Require::new(vec!["nat", "bool"]).from("Coq.Init.Datatypes")),
-            Command::Require(Require::new(vec!["nat", "bool"]).from("Coq.Init.Datatypes")),
+            Command::FromRequire(
+                FromRequire::new(vec!["nat", "bool"], Kind::Import).from("Coq.Init.Datatypes"),
+            ),
             Command::Proof,
         ]);
 
-        doc.push(Command::Require(Require::new(vec!["nat", "bool"]).from("Coq.Init.Datatypes")));
+        doc.push(Command::FromRequire(
+            FromRequire::new(vec!["nat", "bool"], Kind::Import).from("Coq.Init.Datatypes"),
+        ));
         doc.push(Command::Proof);
         doc.push(CommandAttrs::new(Command::Proof).attributes("Some"));
     }

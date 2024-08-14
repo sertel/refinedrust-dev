@@ -18,8 +18,8 @@ pub struct Path(String);
 
 impl Path {
     #[must_use]
-    pub fn new(path: &str) -> Self {
-        Self(path.to_owned())
+    pub fn new(path: impl Into<String>) -> Self {
+        Self(path.into())
     }
 
     #[must_use]
