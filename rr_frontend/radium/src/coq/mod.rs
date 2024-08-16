@@ -11,13 +11,14 @@
 //!
 //! ---
 //!
-//! This crate is divided in a similar way to the grammar defined in the [Rocq reference] documentation, but
-//! is not followed strictly:
-//!  - Unstructured sentences have been reunited under a single structure, such as `Section`/`End`.
-//!  - Some cases are unified for simplicity, such as `command`/`control_command`/`query_command`.
+//! This crate defines structures in a similar way to the grammar defined in the [Rocq reference]
+//! documentation, but unstructured sentences have been reunited under a single structure, such as
+//! `Section`/`End`.
 //!
 //! The syntax used to create structures is designed to write as little code as possible, with choices
 //! explained in the Notes section.
+//!
+//! Moreover, the crate is divided into several modules but does generally not follow the [Rocq reference].
 //!
 //! ---
 //!
@@ -45,18 +46,36 @@
 //!
 //! This code can be generated with the following Rust code:
 //! ```
-//! # use radium::coq::*;
-//! // Document(vec![
-//! //   TODO
-//! // ]);
+//! # use radium::coq::{*, eval_new::*, module_new::*, syntax_new::*, term_new::*};
+//! Document(vec![
+//!     Sentence::CommandAttrs(CommandAttrs {
+//!         attributes: None,
+//!         command: Command::FromRequire(FromRequire {
+//!             from: Some("Coq.Strings".to_owned()),
+//!             import: vec![DirPath(vec!["String".to_owned()])],
+//!             kind: Kind::Import,
+//!         }),
+//!     }),
+//!     Sentence::CommandAttrs(CommandAttrs {
+//!         attributes: None,
+//!         command: Command::OpenScope(OpenScope("string_scope".to_owned())),
+//!     }),
+//!     Sentence::QueryCommandAttrs(QueryCommandAttrs {
+//!         attributes: None,
+//!         command: QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))),
+//!         natural: None,
+//!     }),
+//! ]);
 //! ```
 //!
 //! This code can be reduced using coercions in the following Rust code:
 //! ```
-//! # use radium::coq::*;
-//! // Document::new(vec![
-//! //   TODO
-//! // ]);
+//! # use radium::coq::{*, eval_new::*, module_new::*, syntax_new::*, term_new::*};
+//! let mut doc = Document::default();
+//!
+//! doc.push(Command::FromRequire(Import::new(vec![vec!["String"]]).from("Coq.Strings").into()));
+//! doc.push(Command::OpenScope(OpenScope::new("string_scope")));
+//! doc.push(QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))));
 //! ```
 //!
 //! # Notes
@@ -119,10 +138,11 @@
 //!     }
 //! }
 //!
-//! FieldAttrs::new(Field::Foo).attributes("Hello".to_string());
+//! FieldAttrs::new(Field::Foo).attributes("Hello".to_owned());
 //! ```
 //!
-//! There are several builder patterns available, but owned (_aka consuming_) builder pattern has been chosen:
+//! There are several builder patterns available, but the owned (_aka consuming_) builder pattern has been
+//! chosen:
 //!  - It is possible to chain method calls to keep everything concise.
 //!  - There is no need to `.copy()`/`.clone()` objects to build the final object.
 //!  - No verification is performed, which would be unmaintainable and currently outside the scope of this
@@ -150,7 +170,7 @@
 //!
 //! Entries(vec![
 //!     Entry::FieldAttrs(FieldAttrs::new(Field::Foo)),
-//!     Entry::FieldAttrs(FieldAttrs::new(Field::Bar).attributes("Hello".to_string())),
+//!     Entry::FieldAttrs(FieldAttrs::new(Field::Bar).attributes("Hello".to_owned())),
 //! ]);
 //! ```
 //!
@@ -181,7 +201,7 @@
 //!
 //! Entries(vec![
 //!     Field::Foo.into(),
-//!     Entry::FieldAttrs(FieldAttrs::new(Field::Bar).attributes("Hello".to_string())),
+//!     Entry::FieldAttrs(FieldAttrs::new(Field::Bar).attributes("Hello".to_owned())),
 //! ]);
 //! ```
 //!
@@ -209,7 +229,7 @@
 //!
 //! Entries(vec![
 //!     Field::Foo.into(),
-//!     FieldAttrs::new(Field::Bar).attributes("Hello".to_string()).into(),
+//!     FieldAttrs::new(Field::Bar).attributes("Hello".to_owned()).into(),
 //! ]);
 //! ```
 //!
@@ -260,7 +280,7 @@
 //!
 //! <section class="warning">
 //!
-//! Heteregeneous does not exist in Rust, and coercion does not apply in the caller.
+//! Heterogeneous datatypes do not exist in Rust, and coercions does not apply in the caller.
 //! Therefore, the example cannot merge `Field` and `FieldAttrs`, and must use `.push()` instead.
 //!
 //! However, if there is a homogeneous list, an `impl Into` argument can be used:
@@ -295,17 +315,17 @@
 //! [sections]: https://coq.inria.fr/doc/master/refman/language/core/sections.html
 
 pub mod command;
-pub mod command_new;
+pub mod eval_new;
 pub mod module;
-pub mod settings;
+pub mod module_new;
+pub mod syntax_new;
 pub mod term;
+pub mod term_new;
 
 use std::fmt;
 
 use derive_more::{Deref, DerefMut, Display, From};
-use derive_new::new;
 use from_variants::FromVariants;
-use indoc::writedoc;
 
 use crate::display_list;
 
@@ -313,7 +333,7 @@ use crate::display_list;
 ///
 /// [document]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-document
 #[derive(Clone, Eq, PartialEq, Debug, Display, Default, Deref, DerefMut)]
-#[display("{}", display_list!(_0, "\n"))]
+#[display("{}\n", display_list!(_0, "\n"))]
 pub struct Document(pub Vec<Sentence>);
 
 impl Document {
@@ -333,29 +353,184 @@ impl Document {
 #[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
 pub enum Sentence {
     #[display("{}", _0)]
-    CommandAttrs(command_new::CommandAttrs),
+    CommandAttrs(CommandAttrs),
+
+    #[display("{}", _0)]
+    QueryCommandAttrs(QueryCommandAttrs),
 }
+
+/// A [command], with optional attributes.
+///
+/// [command]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-command
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct CommandAttrs {
+    pub command: Command,
+    pub attributes: Option<Attribute>,
+}
+
+impl Display for CommandAttrs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(attributes) = &self.attributes {
+            write!(f, "{} ", attributes)?;
+        }
+
+        write!(f, "{}.", self.command)
+    }
+}
+
+impl CommandAttrs {
+    #[must_use]
+    pub fn new(command: impl Into<Command>) -> Self {
+        Self {
+            attributes: None,
+            command: command.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn attributes(self, attributes: impl Into<Attribute>) -> Self {
+        let attributes = Some(attributes.into());
+
+        Self { attributes, ..self }
+    }
+}
+
+/// A [command].
+///
+/// [command]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-command
+#[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
+pub enum Command {
+    #[display("{}", _0)]
+    FromRequire(module_new::FromRequire),
+
+    #[display("{}", _0)]
+    OpenScope(syntax_new::OpenScope),
+
+    #[display("Proof")]
+    Proof,
+}
+
+impl From<Command> for Sentence {
+    fn from(command: Command) -> Self {
+        Self::CommandAttrs(CommandAttrs::new(command))
+    }
+}
+
+/// A [query command], with optional attributes.
+///
+/// [query command]: https://coq.inria.fr/doc/master/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct QueryCommandAttrs {
+    pub command: QueryCommand,
+    pub natural: Option<i32>,
+    pub attributes: Option<Attribute>,
+}
+
+impl Display for QueryCommandAttrs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(attributes) = &self.attributes {
+            write!(f, "{} ", attributes)?;
+        }
+
+        if let Some(natural) = &self.natural {
+            write!(f, "{}: ", natural)?;
+        }
+
+        write!(f, "{}.", self.command)
+    }
+}
+
+impl QueryCommandAttrs {
+    #[must_use]
+    pub fn new(command: impl Into<QueryCommand>) -> Self {
+        Self {
+            attributes: None,
+            natural: None,
+            command: command.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn attributes(self, attributes: impl Into<Attribute>) -> Self {
+        let attributes = Some(attributes.into());
+
+        Self { attributes, ..self }
+    }
+}
+
+/// A [query command].
+///
+/// [query command]: https://coq.inria.fr/doc/master/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
+#[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
+pub enum QueryCommand {
+    #[display("{}", _0)]
+    Compute(eval_new::Compute),
+}
+
+impl From<QueryCommand> for Sentence {
+    fn from(command: QueryCommand) -> Self {
+        Self::QueryCommandAttrs(QueryCommandAttrs::new(command))
+    }
+}
+
+/// An [attribute].
+///
+/// [attribute]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-attribute
+#[derive(Clone, Eq, PartialEq, Debug, Display, From)]
+#[from(forward)]
+#[display("{}", _0)]
+pub struct Attribute(String);
 
 #[cfg(test)]
 mod tests {
-    use command_new::compiled_files::*;
-    use command_new::*;
+    use eval_new::Compute;
+    use module_new::{DirPath, FromRequire, Import, Kind};
+    use syntax_new::OpenScope;
+    use term_new::Term;
 
     use super::*;
 
     #[test]
-    fn test_document() {
-        let mut doc = Document::new(vec![
-            Command::FromRequire(
-                FromRequire::new(vec!["nat", "bool"], Kind::Import).from("Coq.Init.Datatypes"),
-            ),
-            Command::Proof,
+    fn hello_world_compact() {
+        let mut doc = Document::default();
+
+        doc.push(Command::FromRequire(Import::new(vec![vec!["String"]]).from("Coq.Strings").into()));
+        doc.push(Command::OpenScope(OpenScope::new("string_scope")));
+        doc.push(QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))));
+
+        assert_eq!(doc.to_string(), indoc::indoc! {r#"
+            From Coq.Strings Require Import String.
+            Open Scope string_scope.
+            Compute "Hello World".
+        "#});
+    }
+
+    #[test]
+    fn hello_world_extended() {
+        let doc = Document(vec![
+            Sentence::CommandAttrs(CommandAttrs {
+                attributes: None,
+                command: Command::FromRequire(FromRequire {
+                    from: Some("Coq.Strings".to_owned()),
+                    import: vec![DirPath(vec!["String".to_owned()])],
+                    kind: Kind::Import,
+                }),
+            }),
+            Sentence::CommandAttrs(CommandAttrs {
+                attributes: None,
+                command: Command::OpenScope(OpenScope("string_scope".to_owned())),
+            }),
+            Sentence::QueryCommandAttrs(QueryCommandAttrs {
+                attributes: None,
+                command: QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))),
+                natural: None,
+            }),
         ]);
 
-        doc.push(Command::FromRequire(
-            FromRequire::new(vec!["nat", "bool"], Kind::Import).from("Coq.Init.Datatypes"),
-        ));
-        doc.push(Command::Proof);
-        doc.push(CommandAttrs::new(Command::Proof).attributes("Some"));
+        assert_eq!(doc.to_string(), indoc::indoc! {r#"
+            From Coq.Strings Require Import String.
+            Open Scope string_scope.
+            Compute "Hello World".
+        "#});
     }
 }

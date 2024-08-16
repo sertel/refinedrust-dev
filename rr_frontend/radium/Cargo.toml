@@ -8,7 +8,6 @@ repository.workspace = true
 version.workspace = true
 
 [dependencies]
-derive-new.workspace = true
 derive_more.workspace = true
 from_variants.workspace = true
 indent_write.workspace = true
