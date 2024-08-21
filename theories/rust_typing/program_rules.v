@@ -1897,24 +1897,46 @@ Section typing.
     iApply wp_value. iApply ("HΦ" with "HL Hna Hty HT").
   Qed.
 
-  Lemma type_call E L π T ef eκs es:
+  Fixpoint interpret_rust_types (M : gmap string lft) (tys : list rust_type) (T : list (sigT type) → iProp Σ) :  iProp Σ :=
+    match tys with
+    | [] => T []
+    | ty :: tys => 
+        li_tactic (interpret_rust_type_goal M ty)
+          (λ ty, interpret_rust_types M tys (λ tys, T (ty :: tys)))
+    end.
+  Lemma interpret_rust_types_elim M tys T : 
+    interpret_rust_types M tys T -∗
+    ∃ tys, T tys.
+  Proof.
+    iIntros "Ha". iInduction tys as [ | ty tys] "IH" forall (T); simpl.
+    - iExists []. done.
+    - rewrite /li_tactic/interpret_rust_type_goal.
+      iDestruct "Ha" as "(%rt & %ty' & Ha)".
+      iPoseProof ("IH" with "Ha") as "(%tys' & HT)".
+      eauto.
+  Qed.
+
+  Lemma type_call E L π T ef eκs etys es :
     (∃ M, named_lfts M ∗
     li_tactic (compute_map_lookups_nofail_goal M eκs) (λ eκs',
+    interpret_rust_types M etys (λ atys,
     named_lfts M -∗
     typed_val_expr π E L ef (λ L' vf rtf tyf rf,
         foldr (λ e T L'' vl tys, typed_val_expr π E L'' e (λ L''' v rt ty r, T L''' (vl ++ [v]) (tys ++ [existT rt (ty, r)])))
-              (λ L'' vl tys, typed_call π E L'' eκs' vf (vf ◁ᵥ{π} rf @ tyf) vl tys T)
-              es L' [] [])))
-    ⊢ typed_val_expr π E L (CallE ef eκs es) T.
+              (λ L'' vl tys, typed_call π E L'' eκs' atys vf (vf ◁ᵥ{π} rf @ tyf) vl tys T)
+              es L' [] []))))
+    ⊢ typed_val_expr π E L (CallE ef eκs etys es) T.
   Proof.
     rewrite /compute_map_lookups_nofail_goal.
-    iIntros "(%M & Hnamed & %eκs' & _ & He)". iIntros (Φ) "#CTX #HE HL Hna HΦ".
+    iIntros "(%M & Hnamed & %eκs' & _ & He)". 
+    iPoseProof (interpret_rust_types_elim with "He") as "(%tys & He)".
+    iIntros (Φ) "#CTX #HE HL Hna HΦ".
     rewrite /CallE.
     iApply wp_call_bind. iApply ("He" with "Hnamed CTX HE HL Hna"). iIntros (L' vf rtf tyf rf) "HL Hna Hvf HT".
     iAssert ([∗ list] v;rty∈[];([] : list $ @sigT Type (λ rt, (type rt * rt)%type)), let '(existT rt (ty, r)) := rty in v ◁ᵥ{π} r @ ty)%I as "-#Htys". { done. }
     move: {2 3 5} ([] : list val) => vl.
-    generalize (@nil (@sigT Type (fun rt : Type => prod (@type Σ H rt) rt))) at 2 3 as tys; intros tys.
-    iInduction es as [|e es] "IH" forall (L' vl tys) => /=. 2: {
+    generalize (@nil (@sigT Type (fun rt : Type => prod (@type Σ H rt) rt))) at 2 3 as tys'; intros tys'.
+    iInduction es as [|e es] "IH" forall (L' vl tys') => /=. 2: {
       iApply ("HT" with "CTX HE HL Hna"). iIntros (L'' v rt ty r) "HL Hna Hv Hnext". iApply ("IH" with "HΦ HL Hna Hvf Hnext").
       iFrame. by iApply big_sepL2_nil.
     }

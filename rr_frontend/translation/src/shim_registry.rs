@@ -56,6 +56,7 @@ struct ShimTraitMethodImplEntry {
     trait_path: PathWithArgs,
     /// for which type is this implementation?
     for_type: FlatType,
+    // TODO: additional constraints like the required clauses for disambiguation
     /// The method identifier
     method_ident: String,
     /// a kind: always "trait_method"

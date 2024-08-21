@@ -92,6 +92,9 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
     coq_path_prefix: String,
     dune_package: Option<String>,
     shim_registry: shim_registry::ShimRegistry<'rcx>,
+
+    /// trait implementations we generated
+    trait_impls: HashMap<DefId, radium::TraitImplSpec<'rcx>>,
 }
 
 impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
@@ -470,7 +473,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         {
             for (_, spec) in self.procedure_registry.iter_only_spec() {
                 if spec.has_spec {
-                    writeln!(spec_file, "{}", spec).unwrap();
+                    writeln!(spec_file, "{spec}").unwrap();
                 } else {
                     writeln!(spec_file, "(* No specification provided for {} *)", spec.function_name)
                         .unwrap();
@@ -497,7 +500,14 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
-        write!(spec_file, "End specs.").unwrap();
+        writeln!(spec_file, "End specs.").unwrap();
+
+        // write trait impls
+        {
+            for spec in self.trait_impls.values() {
+                writeln!(spec_file, "{spec}").unwrap();
+            }
+        }
     }
 
     /// Write proof templates for a verification unit.
@@ -1207,7 +1217,7 @@ fn register_traits(vcx: &VerificationCtxt<'_, '_>) -> Result<(), String> {
     let mut traits = vcx.env.get_traits();
 
     // order according to dependencies first
-    let deps = vcx.trait_registry.get_trait_deps(&traits);
+    let deps = vcx.trait_registry.get_trait_deps(traits.as_slice());
     let ordered_traits = order_adt_defs(&deps);
 
     for t in &ordered_traits {
@@ -1229,8 +1239,10 @@ fn register_traits(vcx: &VerificationCtxt<'_, '_>) -> Result<(), String> {
                 }
             }
         }
-        if !all_have_annots && some_has_annot {
-            println!("Warning: not all of trait {t:?}'s items are annotated, skipping");
+        if !all_have_annots {
+            if some_has_annot {
+                println!("Warning: not all of trait {t:?}'s items are annotated, skipping");
+            }
             continue;
         }
 
@@ -1240,6 +1252,167 @@ fn register_traits(vcx: &VerificationCtxt<'_, '_>) -> Result<(), String> {
             .map_err(|e| format!("{e:?}"))?;
     }
     Ok(())
+}
+
+/// Register trait impls of all registered traits.
+/// Precondition: traits have already been registered.
+fn register_trait_impls(vcx: &VerificationCtxt<'_, '_>) -> Result<(), String> {
+    let trait_impl_ids = vcx.env.get_trait_impls();
+    info!("Found trait impls: {:?}", trait_impl_ids);
+
+    for trait_impl_id in trait_impl_ids {
+        let did = trait_impl_id.to_def_id();
+        let trait_did = vcx.env.tcx().trait_id_of_impl(did).unwrap();
+
+        // check if this trait has been registered
+        if vcx.trait_registry.lookup_trait(trait_did).is_some() {
+            // make sure all functions have a spec; otherwise, this is not a complete trait impl
+            let assoc_items: &ty::AssocItems = vcx.env.tcx().associated_items(did);
+            let mut all_specced = true;
+            for x in assoc_items.in_definition_order() {
+                if x.kind == ty::AssocKind::Fn {
+                    // check if all functions have a specification
+                    if let Some(mode) = vcx.procedure_registry.lookup_function_mode(x.def_id) {
+                        all_specced = all_specced && mode.needs_spec();
+                    } else {
+                        all_specced = false;
+                    }
+                }
+            }
+            if !all_specced {
+                continue;
+            }
+
+            // make names for the spec and inclusion proof
+            let base_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(did));
+            let spec_name = format!("{base_name}_spec");
+            let proof_name = format!("{base_name}_spec_subsumption");
+
+            let impl_lit = radium::LiteralTraitImpl {
+                spec_record: spec_name,
+                spec_subsumption_proof: proof_name,
+            };
+            vcx.trait_registry
+                .register_impl_shim(did, impl_lit)
+                .map_err(|x| ToString::to_string(&x))?;
+        }
+    }
+
+    Ok(())
+}
+
+/// Generate trait instances
+fn assemble_trait_impls<'tcx, 'rcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) {
+    let trait_impl_ids = vcx.env.get_trait_impls();
+
+    for trait_impl_id in trait_impl_ids {
+        let did = trait_impl_id.to_def_id();
+        let trait_did = vcx.env.tcx().trait_id_of_impl(did).unwrap();
+
+        // check if we registered this impl previously
+        if let Some(lit) = vcx.trait_registry.lookup_impl(did) {
+            let trait_spec_ref = vcx.trait_registry.lookup_trait(trait_did).unwrap();
+
+            let param_env: ty::ParamEnv<'tcx> = vcx.env.tcx().param_env(trait_impl_id.to_def_id());
+
+            // get all associated items
+            let assoc_items: &'tcx ty::AssocItems = vcx.env.tcx().associated_items(did);
+            let trait_assoc_items: &'tcx ty::AssocItems = vcx.env.tcx().associated_items(trait_did);
+
+            // figure out the parameters this impl gets
+            let impl_generics: &'tcx ty::Generics = vcx.env.tcx().generics_of(did);
+            let mut typarams = Vec::new();
+            for param in &impl_generics.params {
+                if let ty::GenericParamDefKind::Type { .. } = param.kind {
+                    let name = param.name.as_str();
+                    let lit = radium::LiteralTyParam::new(name, name);
+                    typarams.push(lit);
+                }
+            }
+
+            // figure out the trait ref for this
+            let subject = vcx.env.tcx().impl_subject(did).skip_binder();
+            if let ty::ImplSubject::Trait(trait_ref) = subject {
+                // get instantiation for the trait's parameters
+                let self_ty = trait_ref.args.type_at(0);
+                // TODO: get rid of unwrap
+                let self_inst = vcx.type_translator.translate_type_in_empty_scope(self_ty).unwrap();
+                let mut params_inst = Vec::new();
+                for arg in &trait_ref.args[1..] {
+                    let ty = vcx.type_translator.translate_type_in_empty_scope(self_ty).unwrap();
+                    params_inst.push(ty);
+                }
+
+                // get instantiation for the associated types
+                // and go over all methods
+                let mut assoc_types_inst = Vec::new();
+                let mut methods = HashMap::new();
+
+                // TODO don't rely on definition order
+
+                // maybe instead iterate over the assoc items of the trait
+                //assoc_items.find_by_name_and_kind(
+                for x in trait_assoc_items.in_definition_order() {
+                    if x.kind == ty::AssocKind::Type {
+                        let ty_item = assoc_items.find_by_name_and_kind(
+                            vcx.env.tcx(),
+                            x.ident(vcx.env.tcx()),
+                            ty::AssocKind::Type,
+                            did,
+                        );
+                        if let Some(ty_item) = ty_item {
+                            let ty_did = ty_item.def_id;
+                            let ty = vcx.env.tcx().type_of(ty_did);
+                            // TODO unwrap
+                            let translated_ty =
+                                vcx.type_translator.translate_type_in_empty_scope(ty.skip_binder()).unwrap();
+                            assoc_types_inst.push(translated_ty);
+                        } else {
+                            unreachable!("trait impl does not have required item");
+                        }
+                    } else if x.kind == ty::AssocKind::Fn {
+                        let fn_item = assoc_items.find_by_name_and_kind(
+                            vcx.env.tcx(),
+                            x.ident(vcx.env.tcx()),
+                            ty::AssocKind::Fn,
+                            did,
+                        );
+                        if let Some(fn_item) = fn_item {
+                            if let Some(spec) = vcx.procedure_registry.lookup_function_spec(fn_item.def_id) {
+                                // TODO: make sure that for unannotated functions we use the
+                                // default spec
+                                let ty_params = &spec.ty_params;
+                                let spec_name = &spec.spec_name;
+
+                                methods.insert(
+                                    x.name.as_str().to_owned(),
+                                    Some((spec_name.to_owned(), ty_params.to_owned())),
+                                );
+                            } else {
+                                // TODO should handle this case
+                                unreachable!("");
+                            }
+                        } else {
+                            // this is possible for functions with a default impl.
+                            // TODO think about that case.
+                        }
+                    }
+                }
+
+                // assemble the spec and register it
+                let spec = radium::TraitImplSpec::new(
+                    lit,
+                    trait_spec_ref,
+                    typarams,
+                    self_inst,
+                    params_inst,
+                    assoc_types_inst,
+                    methods,
+                );
+                vcx.trait_impls.insert(did, spec);
+            }
+        }
+    }
 }
 
 /// Get and parse all module attributes.
@@ -1345,8 +1518,9 @@ where
     let enum_arena = Arena::new();
     let shim_arena = Arena::new();
     let trait_arena = Arena::new();
+    let trait_impl_arena = Arena::new();
     let type_translator = TypeTranslator::new(env, &struct_arena, &enum_arena, &shim_arena);
-    let trait_registry = TraitRegistry::new(env, &type_translator, &trait_arena);
+    let trait_registry = TraitRegistry::new(env, &type_translator, &trait_arena, &trait_impl_arena);
     let procedure_registry = ProcedureScope::new();
     let shim_string_arena = Arena::new();
     let mut shim_registry = shim_registry::ShimRegistry::empty(&shim_string_arena);
@@ -1389,6 +1563,7 @@ where
         shim_registry,
         dune_package: package,
         const_registry: ConstScope::empty(),
+        trait_impls: HashMap::new(),
     };
 
     register_functions(&mut vcx).map_err(|x| x.to_string())?;
@@ -1399,7 +1574,13 @@ where
 
     register_consts(&mut vcx)?;
 
+    register_trait_impls(&vcx)?;
+
     translate_functions(&mut vcx);
+
+    // important: happens after all functions have been translated, as this uses the translated
+    // function specs
+    assemble_trait_impls(&mut vcx);
 
     continuation(vcx);
 

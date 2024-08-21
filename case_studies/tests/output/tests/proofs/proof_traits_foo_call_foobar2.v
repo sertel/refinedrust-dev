@@ -13,7 +13,9 @@ Proof.
   traits_foo_call_foobar2_prelude.
 
   repeat liRStep; liShow.
-  liInst Hevar1 (int i32).
+  liInst Hevar0 (int i32).
+  repeat liRStep; liShow.
+  liInst Hevar1 (traits_foo_Foo_W_i32_Output_ty).
   repeat liRStep; liShow.
 
   all: print_remaining_goal.

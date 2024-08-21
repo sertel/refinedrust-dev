@@ -13,8 +13,6 @@ Proof.
   client_get_mut_client_prelude.
 
   repeat liRStep; liShow.
-  liInst Hevar (int i32).
-  repeat liRStep; liShow.
 
   all: print_remaining_goal.
   Unshelve. all: sidecond_solver.

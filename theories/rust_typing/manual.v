@@ -68,15 +68,15 @@ Section updateable.
     simpl. eauto.
   Qed.
 
-  Global Program Instance updateable_typed_call π E L κs v (P : iProp Σ) vl tys T :
-    Updateable (typed_call π E L κs v P vl tys T) := {|
+  Global Program Instance updateable_typed_call π E L κs etys v (P : iProp Σ) vl tys T :
+    Updateable (typed_call π E L κs etys v P vl tys T) := {|
       updateable_E := E;
       updateable_L := L;
       updateable_π := π;
-      updateable_core π E L := typed_call π E L κs v P vl tys T;
+      updateable_core π E L := typed_call π E L κs etys v P vl tys T;
   |}.
   Next Obligation.
-    iIntros (_ _ _ ? ? ? ? ? ? π E L).
+    iIntros (_ _ _ ? ? ? ? ? ? ? π E L).
     rewrite /typed_call.
     iIntros "HT HP Ha".
     unshelve iApply add_updateable; first apply _.
@@ -132,8 +132,8 @@ Section updateable.
     iIntros "HT" (?) "CTX HE HL Hna Hc".
     iApply fupd_wp. iMod ("HT") as "HT". iApply ("HT" with "CTX HE HL Hna Hc").
   Qed.
-  Lemma fupd_typed_call `{!typeGS Σ} π E L κs v (P : iProp Σ) vl tys T :
-    (|={⊤}=> typed_call π E L κs v P vl tys T) -∗ typed_call π E L κs v P vl tys T.
+  Lemma fupd_typed_call `{!typeGS Σ} π E L κs etys v (P : iProp Σ) vl tys T :
+    (|={⊤}=> typed_call π E L κs etys v P vl tys T) -∗ typed_call π E L κs etys v P vl tys T.
   Proof.
     rewrite /typed_call.
     iIntros "HT HP Ha".
@@ -171,12 +171,12 @@ Section updateable_rules.
     iModIntro. iExists _. iFrame.
   Qed.
 
-  Lemma updateable_extract_value l : 
+  Lemma updateable_extract_value l :
     find_in_context (FindLoc l updateable_π) (λ '(existT rt (lt, r, bk)),
       ∃ wl ty r', ⌜bk = Owned wl⌝ ∗ ⌜lt = ◁ty⌝ ∗ ⌜r = #r'⌝ ∗
       prove_with_subtype updateable_E updateable_L false ProveDirect (£ (Nat.b2n wl)) (λ L2 κs R, R -∗
       li_tactic (compute_layout_goal ty.(ty_syn_type)) (λ ly,
-      (∀ v3, v3 ◁ᵥ{updateable_π} r' @ ty -∗ 
+      (∀ v3, v3 ◁ᵥ{updateable_π} r' @ ty -∗
         l ◁ₗ[updateable_π, Owned wl] #v3 @ (◁ value_t (UntypedSynType ly)) -∗
         updateable_core updateable_π updateable_E L2))))
     ⊢ P.
@@ -195,7 +195,7 @@ Section updateable_rules.
     iMod (ofty_own_split_value_untyped_lc with "Hcred Ha") as "Ha"; [done.. | ].
     iDestruct "Ha" as "(%v & Hv & Hl)".
     iPoseProof ("HT" with "Hv Hl") as "HT".
-    iModIntro. iExists _. iFrame. 
+    iModIntro. iExists _. iFrame.
   Qed.
 
   (* TODO: add lemma for unfolding / subtyping? *)

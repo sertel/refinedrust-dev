@@ -62,7 +62,7 @@ Context {Self_rt} (Self_ty : type Self_rt) {T_rt} (T_ty : type T_rt) {Output_rt}
 
 Definition Foo_base_spec : Foo_spec := {|
   Foo_bar_spec U_rt U_st := 
-    existT _ $ existT _ $ fn(∀ ((), ulft_1) : 1 | (a, b, U_ty) : Self_rt * U_rt * type U_rt, (λ _, [(* ? *) ]); #a @ (shr_ref Self_ty ulft_1), b @ U_ty ; (λ π, True)) → ∃ y : _, y @ struct_t (tuple3_sls (ty_syn_type Output_ty) (ty_syn_type T_ty) (ty_syn_type U_ty)) +[ Output_ty; T_ty; U_ty] ; (λ π, True);
+    pack_function_ty [U_rt] $ fn(∀ ((), ulft_1) : 1 | ( *[U_ty]) : [(U_rt, U_st)] | (a, b) : Self_rt * U_rt, (λ _, [(* ? *) ]); #a :@: (shr_ref Self_ty ulft_1), b :@: U_ty ; (λ π, True)) → ∃ y : _, y @ struct_t (tuple3_sls (ty_syn_type Output_ty) (ty_syn_type T_ty) (ty_syn_type U_ty)) +[ Output_ty; T_ty; U_ty] ; (λ π, True);
 |}.
 
 End rr.
@@ -76,16 +76,16 @@ Section rr.
   Context `{!typeGS Σ}.
 
   Definition type_of_Foo_i32_u32_bar_U (U_rt : Type) (U_st : syn_type) :=
-    (fn(∀ ((), ulft_1) : 1 | (a, b, U_ty) : Z * U_rt * type U_rt, (λ _, [(* ? *) ]); #a @ (shr_ref (int i32) ulft_1), b @ U_ty ; (λ π, True)) → ∃ y : _, y @ struct_t (tuple3_sls (IntSynType i32) (IntSynType u32) (ty_syn_type U_ty)) +[ int i32; int i32; U_ty] ; (λ π, True)).
+    (fn(∀ ((), ulft_1) : 1 | ( *[U_ty]) : [(U_rt, U_st)] | (a, b) : Z * U_rt, (λ _, [(* ? *) ]); #a :@: (shr_ref (int i32) ulft_1), b :@: U_ty ; (λ π, True)) → ∃ y : _, y @ struct_t (tuple3_sls (IntSynType i32) (IntSynType u32) (ty_syn_type U_ty)) +[ int i32; int i32; U_ty] ; (λ π, True)).
 
   Lemma Foo_i32_u32_bar_U_has_type π :
     ∀ (U_rt : Type) (U_st : syn_type),
-    ⊢ typed_function π (Foo_i32_u32_bar_U_def U_st) [(* TODO *)] (type_of_Foo_i32_u32_bar_U U_rt U_st).
+    ⊢ typed_function π [U_rt] (Foo_i32_u32_bar_U_def U_st) [(* TODO *)] (type_of_Foo_i32_u32_bar_U U_rt U_st).
   Proof.
   Admitted.
 
   Definition Foo_i32_u32_spec : Foo_spec := {|
-    Foo_bar_spec U_rt U_st := existT _ $ existT _ $ type_of_Foo_i32_u32_bar_U U_rt U_st;
+    Foo_bar_spec U_rt U_st := pack_function_ty [_] $ type_of_Foo_i32_u32_bar_U U_rt U_st;
   |}.
 
   Lemma Foo_i32_u32_incl : 
@@ -116,7 +116,7 @@ Definition type_of_foobar
   (Foo_W_T_Output_rt : Type) (Foo_W_T_Output_st : syn_type)
   (* we quantify over the specification for Foo *)
   (Foo_W_T_spec : Foo_spec) :=
-  fn(∀ ((), ulft_1) : 1 | (a, W_ty, T_ty, Foo_W_T_Output_ty) : W_rt * type W_rt * type T_rt * type Foo_W_T_Output_rt, (λ _, [(* ? *) ]); #a @ (shr_ref W_ty ulft_1) ; (λ π, ⌜ty_syn_type W_ty = W_st⌝ ∗ ⌜ty_syn_type T_ty = T_st⌝ ∗ ⌜ty_syn_type Foo_W_T_Output_ty = Foo_W_T_Output_st⌝ ∗ 
+  fn(∀ ((), ulft_1) : 1 | ( *[W_ty; T_ty; Foo_W_T_Output_ty]) : [(W_rt, W_st); (T_rt, T_st); (Foo_W_T_Output_rt, Foo_W_T_Output_st)] | (a) : W_rt, (λ _, [(* ? *) ]); #a :@: (shr_ref W_ty ulft_1) ; (λ π,
       (* we require that the specification we quantified over satisfies the expected specification (Foo_base_spec is the specification we expect here, but this could also be an overridden specification we assume) *)
       ⌜Foo_spec_incl Foo_W_T_spec (Foo_base_spec W_ty T_ty Foo_W_T_Output_ty)⌝
     )) → ∃ y : _, y @ unit_t ; (λ π, True).
@@ -130,8 +130,8 @@ Lemma foobar_has_type π :
     (* quantify over the method locs (per generic instance per method per trait instance) *)
     (Foo_W_T_bar_bool_loc : loc),
   (* require type assignment for methods, instantiating the generics in the spec accordingly *)
-  Foo_W_T_bar_bool_loc ◁ᵥ{π} Foo_W_T_bar_bool_loc @ function_ptr [PtrSynType; BoolSynType] (proj_function_ty $ Foo_W_T_spec.(Foo_bar_spec) bool BoolSynType) -∗
-  typed_function π (foobar_def W_st T_st Foo_W_T_Output_st Foo_W_T_bar_bool_loc) [(* TODO *)] (type_of_foobar W_rt W_st T_rt T_st Foo_W_T_Output_rt Foo_W_T_Output_st Foo_W_T_spec). 
+  Foo_W_T_bar_bool_loc ◁ᵥ{π} Foo_W_T_bar_bool_loc @ function_ptr [PtrSynType; BoolSynType] _ (proj_function_ty $ Foo_W_T_spec.(Foo_bar_spec) bool BoolSynType) -∗
+  typed_function π [_; _; _] (foobar_def W_st T_st Foo_W_T_Output_st Foo_W_T_bar_bool_loc) [(* TODO *)] (type_of_foobar W_rt W_st T_rt T_st Foo_W_T_Output_rt Foo_W_T_Output_st Foo_W_T_spec). 
 Proof.
 Admitted.
 
@@ -147,15 +147,15 @@ Section rr.
   Context `{!typeGS Σ}.
 
 Definition type_of_call_foobar :=
-  fn(∀ (()) : 0 | () : (), (λ _, []); (λ π, True)) → ∃ y : _, y @ unit_t ; (λ π, True).
+  fn(∀ (()) : 0 | ( *[]) : [] | () : (), (λ _, []); (λ π, True)) → ∃ y : _, y @ unit_t ; (λ π, True).
 
 
 Lemma call_foobar_has_type π :
   ∀ (foobar_i32_u32_i32_loc : loc), 
-  foobar_i32_u32_i32_loc ◁ᵥ{π} foobar_i32_u32_i32_loc @ function_ptr [(* TODO *)] (type_of_foobar Z (IntSynType i32) Z (IntSynType u32) Z (IntSynType i32)
+  foobar_i32_u32_i32_loc ◁ᵥ{π} foobar_i32_u32_i32_loc @ function_ptr [(* TODO *)] [_; _; _] (type_of_foobar Z (IntSynType i32) Z (IntSynType u32) Z (IntSynType i32)
     (* we have to provide the spec we have for the trait impl we give it *)
     (Foo_base_spec (int i32) (int u32) (int i32))) -∗
-  typed_function π (call_foobar_def foobar_i32_u32_i32_loc) [(* TODO *)] (type_of_call_foobar).
+  typed_function π [] (call_foobar_def foobar_i32_u32_i32_loc) [(* TODO *)] (type_of_call_foobar).
 Proof.
 Admitted.
 
@@ -221,6 +221,8 @@ Record MyAdd_phys := {
   MyAdd_my_add_arg_sts : list syn_type;
 }.
 
+(* TODO fix *)
+(*
 Section rr.
 Context `{!typeGS Σ}.
 
@@ -355,3 +357,4 @@ Definition FnMut_has_spec (π : thread_id) (impl: FnMut_phys) (spec: FnMut_spec)
   True.
 
 End rr.
+*)

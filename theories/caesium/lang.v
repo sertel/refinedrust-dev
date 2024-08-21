@@ -452,27 +452,16 @@ Inductive eval_un_op : un_op → op_type → state → val → val → Prop :=
 | CastOpPP σ vs l:
     val_to_loc vs = Some l →
     eval_un_op (CastOp PtrOp) PtrOp σ vs vs
-| CastOpPI it σ vs vt l p:
+| CastOpPI it σ vs vt l:
+    (* This is always possible.
+       We do not require a valid provenance.
+       This does not expose the provenance and thus is stricter than Rust's casts (akin to Rusts strict-provenance ptr.addr()). *)
     val_to_loc vs = Some l →
-    l.1 = ProvAlloc p →
-    val_of_Z l.2 it p = Some vt →
-    (* TODO Why this requirement? Is this a problem for ProvAlloc None? *)
-    (* TODO: add len parameter to block_alive *)
-    block_alive l σ.(st_heap) →
-    eval_un_op (CastOp (IntOp it)) PtrOp σ vs vt
-| CastOpPIFn it σ vs vt l:
-    val_to_loc vs = Some l →
-    l.1 = ProvFnPtr →
     val_of_Z l.2 it None = Some vt →
-    is_Some (σ.(st_fntbl) !! l.2) →
-    eval_un_op (CastOp (IntOp it)) PtrOp σ vs vt
-| CastOpPINull it σ vs vt l :
-    val_to_loc vs = Some l →
-    l = NULL_loc →
-    val_of_Z 0 it None = Some vt →
     eval_un_op (CastOp (IntOp it)) PtrOp σ vs vt
 | CastOpIP it σ vs vt l l' a:
     val_to_Z vs it = Some a →
+    (* Check that we can extract a provenance out of the bytes *)
     l = (ProvAlloc (val_to_byte_prov vs), a) →
     (** This is using that the address 0 is never alive. *)
     l' = (if bool_decide (valid_ptr l σ.(st_heap)) then l else
@@ -480,6 +469,7 @@ Inductive eval_un_op : un_op → op_type → state → val → val → Prop :=
                if bool_decide (is_Some (σ.(st_fntbl) !! l.2)) then
                  (ProvFnPtr, a)
                else
+                 (* assign empty provenance *)
                  (ProvAlloc None, a))) →
     val_of_loc l' = vt →
     eval_un_op (CastOp PtrOp) (IntOp it) σ vs vt

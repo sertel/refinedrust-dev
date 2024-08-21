@@ -15,7 +15,6 @@ Global Typeclasses Opaque to_runtime_function.
 Global Typeclasses Opaque introduce_typed_stmt.
 Global Arguments introduce_typed_stmt : simpl never.
 
-
 (* TODO: equip function types with namespace parameters for atomic and non-atomic invariants that need to be active when calling it. *)
 
 Fixpoint prod_vec (A : Type) (n : nat) : Type :=
@@ -30,9 +29,7 @@ Fixpoint list_to_tup {A} (l : list A) : prod_vec A (length l) :=
   end.
 
 Section function.
-  (* [A] is the parameter type (i.e., it bundles up all the Coq-level parameters of a function) *)
-  (* [n] is the number of lifetime parameters *)
-  Context `{!typeGS Σ} {A : Type} {lfts : nat}.
+  Context `{!typeGS Σ}.
   (* function return type and condition *)
   (* this does not take an rtype, since we essentially pull that part out to
      [fp_rtype] and [fp_fr] below, in order to support existential quantifiers *)
@@ -51,6 +48,8 @@ Section function.
     fp_atys : list (@sigT Type (λ rt, type rt * rt)%type);
     (* bundled assume condition *)
     fp_Pa : thread_id → iProp Σ;
+    (* bundled sidecondition precondition *)
+    fp_Sc : thread_id → iProp Σ;
     (* external lifetimes, parameterized over a lifetime for the function *)
     fp_elctx : lft → elctx;
     (* existential condition for return type *)
@@ -58,6 +57,10 @@ Section function.
     (* return type *)
     fp_fr: fp_extype → fn_ret;
   }.
+  Definition fn_params_add_pre (pre : iProp Σ) (F : fn_params) : fn_params :=
+    FP F.(fp_atys) (λ π, pre ∗ F.(fp_Pa) π)%I F.(fp_Sc) F.(fp_elctx) F.(fp_extype) F.(fp_fr).
+  Definition fn_params_add_elctx (E : lft → elctx) (F : fn_params) : fn_params :=
+    FP F.(fp_atys) F.(fp_Pa) F.(fp_Sc) (λ ϝ, E ϝ ++ F.(fp_elctx) ϝ) F.(fp_extype) F.(fp_fr).
 
   (**
      Compute a [fn_params] definition that includes the required lifetime constraints for the
@@ -72,6 +75,7 @@ Section function.
       E
       (atys : list (@sigT Type (λ rt, type rt * rt)%type))
       (pa : thread_id → iProp Σ)
+      (sc : thread_id → iProp Σ)
       (exty : Type)
       (retrt : Type)
       (retty : type retrt)
@@ -80,6 +84,7 @@ Section function.
     FP
       atys
       pa
+      sc
       (λ ϝ, E ϝ ++
           tyl_wf_E (map map_rtype atys) ++
           tyl_outlives_E (map map_rtype atys) ϝ ++
@@ -110,40 +115,52 @@ Section function.
       (sts : list syn_type) (lyv : list layout) :=
     Forall2 (syn_type_has_layout) sts lyv.
 
+  Definition typaram_wf rt st : type rt → iProp Σ :=
+    (λ ty, ⌜ty_allows_writes ty⌝ ∗ ⌜ty_allows_reads ty⌝ ∗ ⌜ty_syn_type ty = st⌝ ∗ ty_sidecond ty)%I.
+  Definition typarams_wf rts (sts : list syn_type) (tys : plist type rts) : iProp Σ :=
+    [∗ list] x ∈ zip sts (pzipl _ tys), typaram_wf _ x.1 (projT2 x.2).
+
+  Definition typaram_elctx ϝ rt : type rt → elctx :=
+    λ ty, ty_outlives_E ty ϝ ++ ty_wf_E ty.
+  Definition typarams_elctx (ϝ : lft) rts (tys : plist type rts) : elctx :=
+    concat (pcmap (typaram_elctx ϝ) tys).
+
   (** This definition is not yet contractive, and also not a full type.
     We do this below in a separate definition. *)
-  Definition typed_function π (fn : function) (local_sts : list syn_type) (fp : prod_vec lft lfts → A → fn_params) : iProp Σ :=
+  Definition typed_function π {lfts : nat} (rts : list Type) {A : Type} (fn : function) (local_sts : list syn_type) (fp : prod_vec lft lfts → plist type rts → A → fn_params) : iProp Σ :=
     ( (* for any Coq-level parameters *)
-      ∀ κs x,
+      ∀ κs tys x,
       (* and any duration of the function call *)
       ∀ (ϝ : lft),
       □ (
       let lya := fn.(f_args).*2 in
       let lyv := fn.(f_local_vars).*2 in
       (* the function arg type layouts match what is given in the function [fn]: this is something we assume here *)
-      ⌜fn_arg_layout_assumptions (fp κs x).(fp_atys) lya⌝ -∗
+      ⌜fn_arg_layout_assumptions (fp κs tys x).(fp_atys) lya⌝ -∗
       (* the local var layouts also match the specified syn_types *)
       ⌜fn_local_layout_assumptions local_sts lyv⌝ -∗
       ∀ (* for any stack locations that get picked nondeterministically... *)
-          (lsa : vec loc (length (fp κs x).(fp_atys)))
+          (lsa : vec loc (length (fp κs tys x).(fp_atys)))
           (lsv : vec loc (length fn.(f_local_vars))),
           (* initial stack *)
           let Qinit :=
             (* initial credits from the beta step *)
             credit_store 0 0 ∗
             (* arg ownership *)
-            ([∗list] l;t∈lsa;(fp κs x).(fp_atys), let '(existT rt (ty, r)) := t in l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
+            ([∗list] l;t∈lsa;(fp κs tys x).(fp_atys), let '(existT rt (ty, r)) := t in l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
             (* local vars ownership *)
             ([∗list] l;p∈lsv;local_sts, (l ◁ₗ[π, Owned false] (PlaceIn ()) @ (◁ (uninit p)))) ∗
+            (* sidecondition *)
+            (fp κs tys x).(fp_Sc) π ∗
             (* precondition *)
-            (fp κs x).(fp_Pa) π in
+            (fp κs tys x).(fp_Pa) π in
           (* external lifetime context: can require external lifetimes syntactically outlive the function lifetime, as well as syntactic constraints between universal lifetimes *)
-          let E := ((fp κs x).(fp_elctx) ϝ) in
+          let E := ((fp κs tys x).(fp_elctx) ϝ) in
           (* local lifetime context: the function needs to be alive *)
           let L := [ϝ ⊑ₗ{0} []] in
           Qinit -∗ introduce_typed_stmt π E L ϝ fn lsa lsv lya lyv (
             λ v L2,
-            prove_with_subtype E L2 false ProveDirect (fn_ret_prop π (fp κs x).(fp_fr) v) (λ L3 _ R3,
+            prove_with_subtype E L2 false ProveDirect (fn_ret_prop π (fp κs tys x).(fp_fr) v) (λ L3 _ R3,
             introduce_with_hooks E L3 R3 (λ L4,
             (* we don't really kill it here, but just need to find it in the context *)
             li_tactic (llctx_find_llft_goal L4 ϝ LlctxFindLftFull) (λ _,
@@ -151,7 +168,7 @@ Section function.
           )))))
     )%I.
 
-  Global Instance typed_function_persistent π fn local_sts fp : Persistent (typed_function π fn local_sts fp) := _.
+  Global Instance typed_function_persistent {lfts : nat} {rts : list (Type)} {A : Type} π fn local_sts fp : Persistent (typed_function (A:=A) (lfts:=lfts) π rts fn local_sts fp) := _.
 
   (* TODO: need a notion of equivalence on functions? *)
 
@@ -160,23 +177,23 @@ Section function.
       this is actually a valid function pointer at the type. This is why we expose the list of argument syn_types in this type.
       The caller will have to show, when calling the function, that the instantiations validate the layout assumptions.
   *)
-  Program Definition function_ptr (arg_types : list (syn_type)) (fp : prod_vec lft lfts → A → fn_params) : type loc := {|
+  Program Definition function_ptr {lfts : nat} {A : Type} (arg_types : list (syn_type)) (rts : list (Type)) (fp : prod_vec lft lfts → plist type rts → A → fn_params) : type loc := {|
     st_own π f v := (∃ fn local_sts, ⌜v = val_of_loc f⌝ ∗ fntbl_entry f fn ∗
       ⌜list_map_option use_layout_alg arg_types = Some fn.(f_args).*2⌝ ∗
       (* for the local variables, we need to pick [local_sts] at linking time (in adequacy, when we run the layout algorithm) *)
       ⌜list_map_option use_layout_alg local_sts = Some fn.(f_local_vars).*2⌝ ∗
-      ▷ typed_function π fn local_sts fp)%I;
+      ▷ typed_function π rts fn local_sts fp)%I;
     st_has_op_type ot mt := is_ptr_ot ot;
     st_syn_type := FnPtrSynType;
   |}.
   Next Obligation.
-    simpl. iIntros (fal fp π r v) "(%fn & %local_sts & -> & _)". eauto.
+    simpl. iIntros (lfts rts A fal fp π r v) "(%fn & %local_sts & -> & _)". eauto.
   Qed.
   Next Obligation.
-    intros ? ? ot mt Hot. apply is_ptr_ot_layout in Hot. rewrite Hot. done.
+    intros ??? ? ? ot mt Hot. apply is_ptr_ot_layout in Hot. rewrite Hot. done.
   Qed.
   Next Obligation.
-    simpl. iIntros (lya fp ot mt st π r v Hot).
+    simpl. iIntros (lfts rts A lya fp ot mt st π r v Hot).
     destruct mt.
     - eauto.
     - iIntros "(%fn & %local_sts & -> & Hfntbl & %Halg & Hfn)".
@@ -185,46 +202,59 @@ Section function.
     - iApply (mem_cast_compat_loc (λ v, _)); first done.
       iIntros "(%fn & % & -> & _)". eauto.
   Qed.
-  Global Instance copyable_function_ptr fal fp : Copyable (function_ptr fal fp) := _.
+  Global Instance copyable_function_ptr {lfts : nat} {rts : list (Type)} {A : Type} fal fp : Copyable (function_ptr (lfts:=lfts) (A:=A) fal rts fp) := _.
 End function.
+
+
+
 Section call.
   Context `{!typeGS Σ}.
   Import EqNotations.
 
-  Lemma type_call_fnptr π E L {A : Type} (lfts : nat) eκs l v vl tys (fp : prod_vec lft lfts → A → fn_params) sta T :
+  (* probably it's better to extract this into a tactic hint. *)
+
+  (*Fixpoint instantiate_all_typaram_evars {rts} (evars : plist type rts ) (hint : list {x : Type & type x})*)
+
+
+  Lemma type_call_fnptr π E L {A : Type} (lfts : nat) (rts : list (Type)) eκs etys l v vl tys (fp : prod_vec lft lfts → plist type rts → A → fn_params) sta T :
     let eκs' := list_to_tup eκs in
     (([∗ list] v;t ∈ vl; tys, let '(existT rt (ty, r)) := t in v ◁ᵥ{π} r @ ty) -∗
       ∃ (Heq : lfts = length eκs),
-      ∃ x,
+      ∃ tys x,
       let κs := (rew <- Heq in eκs') in
       (* show typing for the function's actual arguments. *)
-      prove_with_subtype E L false ProveDirect ([∗ list] v;t ∈ vl; (fp κs x).(fp_atys), let '(existT rt (ty, r)) := t in v ◁ᵥ{π} r @ ty) (λ L1 _ R2,
+      prove_with_subtype E L false ProveDirect ([∗ list] v;t ∈ vl; (fp κs tys x).(fp_atys), let '(existT rt (ty, r)) := t in v ◁ᵥ{π} r @ ty) (λ L1 _ R2,
       R2 -∗
       (* the syntypes of the actual arguments match with the syntypes the function assumes *)
-      ⌜sta = map (λ '(existT rt (ty, _)), ty.(ty_syn_type)) (fp κs x).(fp_atys)⌝ ∗
+      ⌜sta = map (λ '(existT rt (ty, _)), ty.(ty_syn_type)) (fp κs tys x).(fp_atys)⌝ ∗
       (* precondition *)
       (* TODO it would be good if we could also stratify.
           However a lot of the subsumption instances relating to values need subsume_full.
           Maybe we should port them to a form of owned_subltype?
           but even the logical step thing is problematic.
         *)
-      prove_with_subtype E L1 true ProveDirect ((fp κs x).(fp_Pa) π) (λ L2 _ R3,
+      prove_with_subtype E L1 true ProveDirect ((fp κs tys x).(fp_Pa) π) (λ L2 _ R3,
+      (* ensure that type variable evars have been instantiated now *)
+      li_tactic (ensure_evars_instantiated_goal (pzipl _ tys) etys) (λ _,
+      (* finally, prove the sidecondition *)
+      (fp κs tys x).(fp_Sc) π ∗
       ⌜Forall (lctx_lft_alive E L2) (L2.*1.*2)⌝ ∗
-      ⌜∀ ϝ, elctx_sat (((λ '(_, κ, _), ϝ ⊑ₑ κ) <$> L2) ++ E) L2 ((fp κs x).(fp_elctx) ϝ)⌝ ∗
+      ⌜∀ ϝ, elctx_sat (((λ '(_, κ, _), ϝ ⊑ₑ κ) <$> L2) ++ E) L2 ((fp κs tys x).(fp_elctx) ϝ)⌝ ∗
       (* postcondition *)
       ∀ v x', (* v = retval, x' = post existential *)
       (* also donate some credits we are generating here *)
-      introduce_with_hooks E L2 (£ (S num_cred) ∗ atime 2 ∗ R3 ∗ ((fp κs x).(fp_fr) x').(fr_R) π) (λ L3,
-      T L3 v ((fp κs x).(fp_fr) x').(fr_rt) ((fp κs x).(fp_fr) x').(fr_ty) ((fp κs x).(fp_fr) x').(fr_ref))))
-    ) ⊢ typed_call π E L eκs v (v ◁ᵥ{π} l @ function_ptr sta fp) vl tys T.
+      introduce_with_hooks E L2 (£ (S num_cred) ∗ atime 2 ∗ R3 ∗ ((fp κs tys x).(fp_fr) x').(fr_R) π) (λ L3,
+      T L3 v ((fp κs tys x).(fp_fr) x').(fr_rt) ((fp κs tys x).(fp_fr) x').(fr_ty) ((fp κs tys x).(fp_fr) x').(fr_ref)))))
+    ) ⊢ typed_call π E L eκs etys v (v ◁ᵥ{π} l @ function_ptr sta rts fp) vl tys T.
   Proof.
     simpl. iIntros "HT (%fn & %local_sts & -> & He & %Halg & %Halgl & Hfn) Htys" (Φ) "#CTX #HE HL Hna HΦ".
-    iDestruct ("HT" with "Htys") as "(%Heq & %x & HP)". subst lfts.
+    iDestruct ("HT" with "Htys") as "(%Heq & %stys & %x & HP)". subst lfts.
     set (aκs := list_to_tup eκs).
     iApply fupd_wp. iMod ("HP" with "[] [] CTX HE HL") as "(%L1 & % & %R2 & >(Hvl & R2) & HL & HT)"; [done.. | ].
     iDestruct ("HT" with "R2") as "(-> & HT)".
     iMod ("HT" with "[] [] CTX HE HL") as "(%L2 & % & %R3 & Hstep & HL & HT)"; [done.. | ].
-    iDestruct ("HT") as "(%Hal & %Hsat & Hr)".
+    rewrite /li_tactic/ensure_evars_instantiated_goal.
+    iDestruct ("HT") as "(Hsc & %Hal & %Hsat & Hr)".
     (* initialize the function's lifetime *)
     set (ϝ' := lft_intersect_list (L2.*1.*2)).
     iPoseProof (llctx_interp_acc_noend with "HL") as "(HL & HL_cl)".
@@ -245,8 +275,8 @@ Section call.
 
     simpl.
     iAssert ⌜Forall2 has_layout_val vl fn.(f_args).*2⌝%I as %Hall. {
-      iClear "Hfn Hr HL Hstep HL_cl HL_cl' Hϝ Hkill".
-      move: Halg. move: (fp_atys (fp aκs x)) => atys Hl.
+      iClear "Hfn Hr HL Hstep HL_cl HL_cl' Hϝ Hkill Hsc".
+      move: Halg. move: (fp_atys (fp aκs stys x)) => atys Hl.
       iInduction (fn.(f_args)) as [|[? ly]] "IH" forall (vl atys Hl).
       { move: Hl => /=. intros ->%list_map_option_nil_inv_r%map_eq_nil. destruct vl => //=. }
       move: Hl.
@@ -260,7 +290,7 @@ Section call.
       iPureIntro. constructor => //.
     }
 
-    iAssert (|={⊤}=> [∗ list] v;t ∈ vl;fp_atys (fp aκs x), let 'existT rt (ty, r) := t in v ◁ᵥ{ π} r @ ty)%I with "[Hvl]" as ">Hvl".
+    iAssert (|={⊤}=> [∗ list] v;t ∈ vl;fp_atys (fp aκs stys x), let 'existT rt (ty, r) := t in v ◁ᵥ{ π} r @ ty)%I with "[Hvl]" as ">Hvl".
     { rewrite -big_sepL2_fupd. iApply (big_sepL2_mono with "Hvl").
       iIntros (?? (rt & (ty & r)) ??) "Hv". eauto with iFrame. }
 
@@ -281,12 +311,12 @@ Section call.
     rewrite !Nat.add_0_r. iMod ("Hstep" with "Hcred0 Hc0") as "(HP & HR)".
 
     apply list_map_option_alt in Halg. apply list_map_option_alt in Halgl.
-    iDestruct ("Hfn" $! aκs x ϝ with "[] []") as "Hfn".
+    iDestruct ("Hfn" $! aκs stys x ϝ with "[] []") as "Hfn".
     { iPureIntro. move: Halg. rewrite Forall2_fmap_l => Halg.
       eapply Forall2_impl; first done. intros (rt & ty & r) ly; done. }
     { done. }
 
-    have [lsa' ?]: (∃ (ls : vec loc (length (fp_atys (fp aκs x)))), lsa = ls)
+    have [lsa' ?]: (∃ (ls : vec loc (length (fp_atys (fp aκs stys x)))), lsa = ls)
       by rewrite -Hlen3 -Hlen1; eexists (list_to_vec _); symmetry; apply vec_to_list_to_vec. subst.
     have [lsv' ?]: (∃ (ls : vec loc (length (f_local_vars fn))), lsv = ls)
       by rewrite -Hlen2; eexists (list_to_vec _); symmetry; apply vec_to_list_to_vec. subst.
@@ -296,7 +326,7 @@ Section call.
         llctx_elt_interp (ϝ ⊑ₗ{ 0} κs') ∗ na_own π shrE ∗
         credit_store 0 0 ∗
         ([∗ list] l0 ∈ (zip lsa' (f_args fn).*2 ++ zip lsv' (f_local_vars fn).*2), l0.1 ↦|l0.2|) ∗
-        fn_ret_prop π (fp_fr (fp aκs x)) v)%I).
+        fn_ret_prop π (fp_fr (fp aκs stys x)) v)%I).
     iExists RET_PROP. iSplitR "Hr HR HΦ HL HL_cl HL_cl' Hkill" => /=.
     - iMod (persistent_time_receipt_0) as "#Htime".
       iApply wps_fupd.
@@ -305,7 +335,7 @@ Section call.
         (* we use the certificate + other credit to initialize the new functions credit store *)
         iSplitL "Hcred Hc". { rewrite credit_store_eq /credit_store_def. iFrame. }
         move: Hlen1 Hlya. move: (lsa' : list _) => lsa'' Hlen1 Hly. clear RET_PROP lsa' Hall.
-        move: Hlen3 Halg. move: (fp_atys (fp aκs x)) => atys Hlen3 Hl.
+        move: Hlen3 Halg. move: (fp_atys (fp aκs stys x)) => atys Hlen3 Hl.
         move: Hly Hl. move: (f_args fn) => alys Hly Hl.
         iInduction (vl) as [|v vl] "IH" forall (atys lsa'' alys Hlen1 Hly Hlen3 Hl).
         { destruct atys, lsa'' => //. iSplitR => //.
@@ -395,45 +425,108 @@ End call.
 
 Global Typeclasses Opaque function_ptr.
 Global Typeclasses Opaque typed_function.
+(** Unfold once they are applied enough *)
 Arguments fn_ret_prop _ _ _ /.
+Arguments typarams_wf _ _ _ _ _ /.
+Arguments typaram_wf _ _ _ _ _ /.
 
-(* In principle we'd like a notation along these lines, but the recursive pattern for the parameter list isn't supported by Coq. *)
+(** Instance that works if [A] and [B] are not directly unifiable for TC search.
+  Needed to work with the tuple projections of the notations defined below. *)
+Global Instance list_lookup_total_2 {A B : Type} :
+  Inhabited A →
+  TCDone (A = B) →
+  LookupTotal nat A (list B).
+Proof.
+  rewrite /TCDone. intros ? ->. apply _.
+Defined.
 
-(*
-Notation "'fn(∀' x ':' A ',' E ';' r1 '@' T1 ',' .. ',' rN '@' TN ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
-  ((fun x => FP_wf E (@cons type (existT T1%I (r1, _)) .. (@cons type (existT TN%I (rN, _)) (@nil type)) ..) Pa%I B rty (λ y, r%I) (λ y, Pr%I)) : A → fn_params)
-  (at level 99, Pr at level 200, x pattern, y pattern) : stdpp_scope.
- *)
+(** ** Notations *)
+(* Hack: in order to make this compatible with Coq argument parsing, we declare a small helper notation for arguments *)
+Declare Scope fnarg_scope.
+Delimit Scope fnarg_scope with F.
+Notation "x ':@:' ty" := (existT _ (ty, x)) (at level 90) : fnarg_scope.
+Close Scope fnarg_scope.
 
-(* For now, we just define notations for a limited number of arguments (currently up to 6) *)
-(* FIXME: proper printing *)
-Notation "'fn(∀' κs : n '|' x ':' A ',' E ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
-  ((fun κs x => FP_wf E (@nil _) Pa%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → A → fn_params)
-  (at level 99, Pr at level 200, κs pattern, x pattern, y pattern) : stdpp_scope.
-Notation "'fn(∀' κs : n '|' x ':' A ',' E ';' r1 '@' T1 ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
-  ((fun κs x => FP_wf E (@cons (@sigT Type _) (existT _ (T1, r1)) (@nil _)) Pa%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → A → fn_params)
-  (at level 99, Pr at level 200, κs pattern, x pattern, y pattern) : stdpp_scope.
-Notation "'fn(∀' κs : n '|' x ':' A ',' E ';' r1 '@' T1 ',' r2 '@' T2 ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
-  ((fun κs x => FP_wf E (@cons _ (existT _ (T1, r1)) $ @cons _ (existT _ (T2, r2)) $ (@nil _)) Pa%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → A → fn_params)
-  (at level 99, Pr at level 200, κs pattern, x pattern, y pattern) : stdpp_scope.
-Notation "'fn(∀' κs : n '|' x ':' A ',' E ';' r1 '@' T1 ',' r2 '@' T2 ',' r3 '@' T3 ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
-  ((fun κs x => FP_wf E (@cons _ (existT _ (T1, r1)) $ @cons _ (existT _ (T2, r2)) $ @cons _ (existT _ (T3, r3)) $ (@nil _)) Pa%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → A → fn_params)
-  (at level 99, Pr at level 200, κs pattern, x pattern, y pattern) : stdpp_scope.
-Notation "'fn(∀' κs : n '|' x ':' A ',' E ';' r1 '@' T1 ',' r2 '@' T2 ',' r3 '@' T3 ',' r4 '@' T4 ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
-  ((fun κs x => FP_wf E (@cons _ (existT _ (T1, r1)) $ @cons _ (existT _ (T2, r2)) $ @cons _ (existT _ (T3, r3)) $ @cons _ (existT _ (T4, r4)) $ (@nil _)) Pa%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → A → fn_params)
-  (at level 99, Pr at level 200, κs pattern, x pattern, y pattern) : stdpp_scope.
-Notation "'fn(∀' κs : n '|' x ':' A ',' E ';' r1 '@' T1 ',' r2 '@' T2 ',' r3 '@' T3 ',' r4 '@' T4 ';' r5 '@' T5 ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
-  ((fun κs x => FP_wf E (@cons _ (existT _ (T1, r1)) $ @cons _ (existT _ (T2, r2)) $ @cons _ (existT _ (T3, r3)) $ @cons _ (existT _ (T4, r4)) $ @cons _ (existT _ (T5, r5)) $ (@nil _)) Pa%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → A → fn_params)
-  (at level 99, Pr at level 200, κs pattern, x pattern, y pattern) : stdpp_scope.
-Notation "'fn(∀' κs : n '|' x ':' A ',' E ';' r1 '@' T1 ',' r2 '@' T2 ',' r3 '@' T3 ',' r4 '@' T4 ';' r5 '@' T5 ';' r6 '@' T6 ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
-  ((fun κs x => FP_wf E (@cons _ (existT _ (T1, r1)) $ @cons _ (existT _ (T2, r2)) $ @cons _ (existT _ (T3, r3)) $ @cons _ (existT _ (T4, r4)) $ @cons _ (existT _ (T5, r5)) $ @cons _ (existT _ (T6, r6)) $ (@nil _)) Pa%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → A → fn_params)
-  (at level 99, Pr at level 200, κs pattern, x pattern, y pattern) : stdpp_scope.
+(* TODO figure out how to annotate the scope properly *)
+Local Set Warnings "-inconsistent-scopes".
+Notation "'fn(∀' κs ':' n '|' tys ':' rts '|' x ':' A ',' E ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
+  ((fun κs tys x => FP_wf (λ ϝ, typarams_elctx ϝ (fmap (A := Type * syn_type) fst rts) tys ++ E ϝ) (@nil _) Pa%I (λ π, typarams_wf (fmap (A := Type * syn_type) fst rts) (fmap (A := Type * syn_type) snd rts) tys)%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → plist type (fmap (A := Type * syn_type) fst rts) → A → fn_params)
+  (at level 99, Pr at level 200, tys pattern, κs pattern, x pattern, y pattern) : stdpp_scope.
+Notation "'fn(∀' κs ':' n '|' tys ':' rts '|' x ':' A ',' E ';' x1 ',' .. ',' xn ';' Pa ')' '→' '∃' y ':' B ',' r '@' rty ';' Pr" :=
+  ((fun κs tys x => FP_wf (λ ϝ, typarams_elctx ϝ (fmap (A := Type * syn_type) fst rts) tys ++ E ϝ) (@cons (@sigT Type _) x1%F .. (@cons (@sigT Type _) xn%F (@nil (@sigT Type _))) ..) Pa%I (λ π, typarams_wf (fmap (A := Type * syn_type) fst rts) (fmap (A := Type * syn_type) snd rts) tys)%I B _ rty (λ y, r%I) (λ y, Pr%I)) : prod_vec lft n → plist type (fmap (A := Type * syn_type) fst rts) → A → fn_params)
+  (at level 99, Pr at level 200, κs pattern, tys pattern, x pattern, y pattern) : stdpp_scope.
+
+(** ** Operations for partially instantiating the type parameters of a spec and introducing new lifetime/type parameters *)
+(** We carefully setup these lemmas and definitions such that the equality rewrites reduce to eq_refl for any concrete application *)
+Definition list_insert_shift {A} (l : list A) (n : nat) (x : A) :=
+  take n l ++ [x] ++ drop n l.
+Lemma list_insert_shift_delete_insert {A} (l : list A) (n : nat) (x : A) :
+  Nat.leb (S n) (length l) = true →
+  list_insert_shift (delete n l) n x = <[n := x]> l.
+Proof.
+  intros Hlen.
+  rewrite /list_insert_shift.
+  induction n as [ | n IH] in l, Hlen |-*; simpl; destruct l; simpl.
+  - done.
+  - done.
+  - done.
+  - f_equal. apply IH. done.
+Defined.
+Lemma list_insert_lookup_total {A} `{Inhabited A} (xs : list A) i :
+  <[i := xs !!! i ]> xs = xs.
+Proof.
+  induction i as [ | i IH] in xs |-*; destruct xs; simpl; [done.. | ].
+  f_equiv. apply IH.
+Defined.
+
+Definition plist_insert_shift {X : Type} {F : X → Type} (Xl : list X) (pl : plist F Xl) (i : nat) (x : X) (fx : F x) : plist F (list_insert_shift Xl i x) :=
+  papp (ptake _ pl i) (pcons fx (pdrop _ pl i)).
+Import EqNotations.
+Definition plist_replace {X : Type} {F : X → Type} (Xl : list X) (i : nat) (Hi : Nat.ltb i (length Xl) = true)
+  (pl : plist F (delete i Xl)) (x : X) (fx : F x) : plist F (<[i := x]> Xl) :=
+  rew (list_insert_shift_delete_insert _ _ _ Hi) in plist_insert_shift _ pl i x fx.
+Definition plist_replace_here {X : Type} `{!Inhabited X} {F : X → Type} (Xl : list X) (i : nat) (Hi : Nat.ltb i (length Xl) = true)
+  (pl : plist F (delete i Xl)) (fx : F (Xl !!! i)) : plist F Xl :=
+  rew (list_insert_lookup_total _ _) in plist_replace Xl i Hi pl _ fx.
+
+Local Instance inh_Type : Inhabited Type.
+Proof. refine (populate _). exact (nat : Type). Qed.
+
+(** Instantiate a given type parameter *)
+Definition fn_spec_instantiate_typaram `{!typeGS Σ} {A} {lfts : nat} (rts : list Type)
+  (n : nat)
+  (Hn : Nat.ltb n (length rts) = true)
+  (ty : type (rts !!! n))
+  (F : prod_vec lft lfts → plist type rts → A → fn_params) :
+  prod_vec lft lfts → plist type (delete n rts) → A → fn_params :=
+  λ κs tys x,
+  F κs (plist_replace_here rts n Hn tys ty) x.
+
+(** Add a new type parameter *)
+Definition fn_spec_add_typaram `{!typeGS Σ} {A} {lfts : nat} (rts : list Type)
+  (rt : Type) (st : syn_type)
+  (F : type rt → prod_vec lft lfts → plist type rts → A → fn_params) :
+  prod_vec lft lfts → plist type (rt :: rts) → A → fn_params :=
+  λ κs '(ty *:: tys) x,
+  fn_params_add_elctx (λ ϝ, typaram_elctx ϝ _ ty) $
+  fn_params_add_pre (typaram_wf _ st ty)%I $
+  F ty κs tys x.
+
+(** Add a new lifetime parameter *)
+Definition fn_spec_add_lftparam `{!typeGS Σ} {A} {lfts : nat} (rts : list Type)
+  (F : lft → prod_vec lft lfts → plist type rts → A → fn_params) :
+  prod_vec lft (S lfts) → plist type rts → A → fn_params :=
+  λ '(κs, κ) tys x,
+  F κ κs tys x.
 
 (** We can also bundle the dependencies up *)
-Definition function_ty `{!typeGS Σ} := sigT (λ lfts, sigT (λ A, prod_vec lft lfts → A → fn_params)).
+Definition function_ty `{!typeGS Σ} := sigT (λ lfts, sigT (λ rts, sigT (λ A, prod_vec lft lfts → plist type rts → A → fn_params))).
 Definition proj_function_ty `{!typeGS Σ} (ty : function_ty) :=
-  projT2 (projT2 ty).
+  projT2 $ projT2 $ projT2 ty.
+Definition pack_function_ty `{!typeGS Σ} {A} {n : nat} (rts : list Type) (F : prod_vec lft n → plist type rts → A → fn_params) : function_ty :=
+  existT _ $ existT _ $ existT _ $ F.
 
+(** ** Function subtyping *)
 Section function_subsume.
   Context `{!typeGS Σ}.
 
@@ -454,31 +547,32 @@ Section function_subsume.
 
      I don't think I can always just subtype that to use the lifetime of the closure. That would definitely break ghostcell etc. And also not everything might be covariant in the lifetime.
   *)
-  Lemma subsume_function_ptr π v l1 l2 sts1 sts2 lfts {A B : Type} (F1 : prod_vec lft lfts → A → fn_params) (F2 : prod_vec lft lfts → B → fn_params) T :
-    subsume (v ◁ᵥ{π} l1 @ function_ptr sts1 F1) (v ◁ᵥ{π} l2 @ function_ptr sts2 F2) T :-
+  Lemma subsume_function_ptr π v l1 l2 sts1 sts2 lfts rts {A B : Type} (F1 : prod_vec lft lfts → plist type rts → A → fn_params) (F2 : prod_vec lft lfts → plist type rts → B → fn_params) T :
+    subsume (v ◁ᵥ{π} l1 @ function_ptr sts1 rts F1) (v ◁ᵥ{π} l2 @ function_ptr sts2 rts F2) T :-
     and:
     | drop_spatial;
         (* TODO could also just require that the layouts are compatible *)
         exhale ⌜sts1 = sts2⌝;
-        ∀ (κs : prod_vec lft lfts),
+        (* TODO: generalize for tys and κs? *)
+        ∀ (κs : prod_vec lft lfts) (tys : plist type rts),
         (* NOTE: this is more restrictive than necessary *)
-        exhale ⌜∀ a b ϝ, (F1 κs a).(fp_elctx) ϝ = (F2 κs b).(fp_elctx) ϝ⌝;
+        exhale ⌜∀ a b ϝ, (F1 κs tys a).(fp_elctx) ϝ = (F2 κs tys b).(fp_elctx) ϝ⌝;
         ∀ (b : B),
-        inhale (fp_Pa (F2 κs b) π);
-        ls ← iterate: fp_atys (F2 κs b) with [] {{ ty T ls,
+        inhale (fp_Pa (F2 κs tys b) π);
+        ls ← iterate: fp_atys (F2 κs tys b) with [] {{ ty T ls,
                ∀ l : loc,
                 inhale (l ◁ₗ[π, Owned false] #(projT2 ty).2 @ ◁ (projT2 ty).1); return T (ls ++ [l]) }};
         ∃ (a : A),
-        exhale ⌜length (fp_atys (F1 κs a)) = length (fp_atys (F2 κs b))⌝%I;
-        iterate: zip ls (fp_atys (F1 κs a)) {{ e T, exhale (e.1 ◁ₗ[π, Owned false] #(projT2 e.2).2 @ ◁ (projT2 e.2).1); return T }};
-        exhale (fp_Pa (F1 κs a) π);
+        exhale ⌜length (fp_atys (F1 κs tys a)) = length (fp_atys (F2 κs tys b))⌝%I;
+        iterate: zip ls (fp_atys (F1 κs tys a)) {{ e T, exhale (e.1 ◁ₗ[π, Owned false] #(projT2 e.2).2 @ ◁ (projT2 e.2).1); return T }};
+        exhale (fp_Pa (F1 κs tys a) π);
         (* show that F1.ret implies F2.ret *)
         ∀ (vr : val) a2,
-        inhale ((F1 κs a).(fp_fr) a2).(fr_R) π;
-        inhale (vr ◁ᵥ{π} ((F1 κs a).(fp_fr) a2).(fr_ref) @ ((F1 κs a).(fp_fr) a2).(fr_ty));
+        inhale ((F1 κs tys a).(fp_fr) a2).(fr_R) π;
+        inhale (vr ◁ᵥ{π} ((F1 κs tys a).(fp_fr) a2).(fr_ref) @ ((F1 κs tys a).(fp_fr) a2).(fr_ty));
         ∃ b2,
-        exhale ((F2 κs b).(fp_fr) b2).(fr_R) π;
-        exhale (vr ◁ᵥ{π} ((F2 κs b).(fp_fr) b2).(fr_ref) @ ((F2 κs b).(fp_fr) b2).(fr_ty));
+        exhale ((F2 κs tys b).(fp_fr) b2).(fr_R) π;
+        exhale (vr ◁ᵥ{π} ((F2 κs tys b).(fp_fr) b2).(fr_ref) @ ((F2 κs tys b).(fp_fr) b2).(fr_ty));
         done
     | exhale ⌜l1 = l2⌝; return T.
   Proof.
@@ -496,10 +590,10 @@ Section function_subsume.
     iNext.
 
     rewrite /typed_function.
-    iIntros (κs b ϝ) "!>".
+    iIntros (κs tys b ϝ) "!>".
     iIntros (Hargly Hlocally lsa lsv).
-    iIntros "(Hcred & Hargs & Hlocals & Hpre)".
-    iSpecialize ("Ha" $! κs).
+    iIntros "(Hcred & Hargs & Hlocals & Hsc & Hpre)".
+    iSpecialize ("Ha" $! κs tys).
     iDestruct "Ha" as "(%Helctx & Ha)".
     iSpecialize ("Ha" $! b with "Hpre").
     (*iterate_elim0*)
@@ -521,13 +615,13 @@ Section function_subsume.
 
   (* A pure version that we can shelve as a pure sidecondition. *)
   Definition function_subtype (a b : function_ty) : Prop :=
-    ⊢ ∀ π v l sts, subsume (v ◁ᵥ{π} l @ function_ptr sts (proj_function_ty a)) (v ◁ᵥ{π} l @ function_ptr sts (proj_function_ty b)) (True).
+    ⊢ ∀ π v l sts, subsume (v ◁ᵥ{π} l @ function_ptr sts _ (proj_function_ty a)) (v ◁ᵥ{π} l @ function_ptr sts _ (proj_function_ty b)) (True).
   Global Arguments function_subtype : simpl never.
 
   Lemma use_function_subtype a b π v l sts :
     function_subtype a b →
-    v ◁ᵥ{π} l @ function_ptr sts (proj_function_ty a) -∗
-    v ◁ᵥ{π} l @ function_ptr sts (proj_function_ty b).
+    v ◁ᵥ{π} l @ function_ptr sts _ (proj_function_ty a) -∗
+    v ◁ᵥ{π} l @ function_ptr sts _ (proj_function_ty b).
   Proof.
     iIntros (Hincl) "Ha".
     iDestruct (Hincl with "Ha") as "(Hb & _)".
@@ -544,9 +638,9 @@ Section function_subsume.
   Class FunctionSubtype (S1 S2 : function_ty) : Prop := make_function_subtype : function_subtype S1 S2.
 
   (** Alternative lemma for calling function pointers that simplifies first *)
-  Lemma type_call_fnptr_simplify π E L κs v l sta S1 S2 vs args {SH : FunctionSubtype S1 S2} T :
-    typed_call π E L κs v (v ◁ᵥ{π} l @ function_ptr sta (proj_function_ty S2)) vs args T
-    ⊢ typed_call π E L κs v (v ◁ᵥ{π} l @ function_ptr sta (proj_function_ty S1)) vs args T.
+  Lemma type_call_fnptr_simplify π E L κs etys v l sta S1 S2 vs args {SH : FunctionSubtype S1 S2} T :
+    typed_call π E L κs etys v (v ◁ᵥ{π} l @ function_ptr sta _ (proj_function_ty S2)) vs args T
+    ⊢ typed_call π E L κs etys v (v ◁ᵥ{π} l @ function_ptr sta _ (proj_function_ty S1)) vs args T.
   Proof.
     iIntros "Ha". rewrite /typed_call.
     iIntros "Hs".
@@ -564,11 +658,3 @@ End function_subsume.
 (* The last argument might contain evars when we start the search *)
 Global Hint Mode FunctionSubtype + + + - : typeclass_instances.
 
-Module test.
-Definition bla0 `{typeGS Σ} :=
-  (fn(∀ ((), κ', κ) : 2 | (x) : unit, (λ f, [(κ', κ)]); (λ π, True)) → ∃ y : Z, () @ (uninit PtrSynType) ; λ π, ⌜ (4 > y)%Z⌝).
-Definition bla1 `{typeGS Σ} :=
-  (fn(∀ (()) : 0 | x : unit, (λ _, []); () @ (uninit PtrSynType) ; (λ π, True)) → ∃ y : Z, () @ (uninit PtrSynType) ; (λ π, ⌜ (4 > y)%Z⌝)).
-Definition bla2 `{typeGS Σ} :=
-  (fn(∀ () : 0 | x : unit, (λ _, []); () @ (uninit PtrSynType), () @ (uninit PtrSynType) ; (λ π, True)) → ∃ y : Z, () @ (uninit PtrSynType) ; (λ π, ⌜ (4 > y)%Z⌝)).
-End test.

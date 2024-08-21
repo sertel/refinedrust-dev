@@ -70,15 +70,25 @@ Proof.
   intros T [Hlook HT]. split; last done. by apply list_lookup_total_correct.
 Qed.
 
-Global Instance simpl_exist_hlist_nil {X} (F : X → Type) Q : 
+Global Instance simpl_exist_hlist_nil {X} (F : X → Type) Q :
   SimplExist (hlist F []) Q (Q +[]).
 Proof.
   rewrite /SimplExist. naive_solver.
 Qed.
-Global Instance simpl_exist_plist_nil {X} (F : X → Type) Q : 
+Global Instance simpl_exist_hlist_cons {X} (F : X → Type) (x : X) xs (Q : hlist F (x :: xs) → Prop) :
+  SimplExist (hlist F (x :: xs)) Q (∃ p : F x, ∃ ps : hlist F xs, Q (p +:: ps)).
+Proof.
+  intros (p & ps & Hx). exists (p +:: ps). done.
+Qed.
+Global Instance simpl_exist_plist_nil {X} (F : X → Type) Q :
   SimplExist (plist F []) Q (Q -[]).
 Proof.
   rewrite /SimplExist. naive_solver.
+Qed.
+Global Instance simpl_exist_plist_cons {X} (F : X → Type) (x : X) xs (Q : plist F (x :: xs) → Prop) :
+  SimplExist (plist F (x :: xs)) Q (∃ p : F x, ∃ ps : plist F xs, Q (p -:: ps)).
+Proof.
+  intros (p & ps & Hx). exists (p -:: ps). done.
 Qed.
 
 
@@ -118,18 +128,18 @@ Qed.
 
 
 
-Global Instance simpl_and_unsafe_apply_evar_right {A B} (f g : A → B) (a y : A) `{!IsProtected y} : 
+Global Instance simpl_and_unsafe_apply_evar_right {A B} (f g : A → B) (a y : A) `{!IsProtected y} :
   SimplAndUnsafe (f a = g y) (λ T, a = y ∧ f = g ∧ T) | 1000.
 Proof.
   rewrite /SimplAndUnsafe.
-  intros T (<- & <- & HT). 
+  intros T (<- & <- & HT).
   done.
 Qed.
-Global Instance simpl_and_unsafe_apply_evar_left {A B} (f g : A → B) (a y : A) `{!IsProtected y} : 
+Global Instance simpl_and_unsafe_apply_evar_left {A B} (f g : A → B) (a y : A) `{!IsProtected y} :
   SimplAndUnsafe (f y = g a) (λ T, a = y ∧ f = g ∧ T) | 1000.
 Proof.
   rewrite /SimplAndUnsafe.
-  intros T (<- & <- & HT). 
+  intros T (<- & <- & HT).
   done.
 Qed.
 

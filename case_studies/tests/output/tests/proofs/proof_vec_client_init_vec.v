@@ -13,8 +13,6 @@ Proof.
   vec_client_init_vec_prelude.
 
   repeat liRStep; liShow.
-  liInst Hevar (int i32).
-  repeat liRStep; liShow.
   
   all: print_remaining_goal.
   Unshelve. all: sidecond_solver.

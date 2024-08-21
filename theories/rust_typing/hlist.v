@@ -284,6 +284,27 @@ Fixpoint vec_to_plist {X n} (xl: vec (F X) n) : plist (replicate n X) :=
   match xl with [#] => -[] | x ::: xl' => x -:: vec_to_plist xl' end.
 Fixpoint plist_to_vec {X n} (xl: plist (replicate n X)) : vec (F X) n :=
   match n, xl with 0, _ => [#] | S _, cons_pair x xl' => x ::: plist_to_vec xl' end.
+
+Fixpoint ptake (Xl : list A) (pl : plist Xl) (i : nat) : plist (take i Xl) :=
+  match i with
+  | 0 => -[]
+  | S i =>
+      match Xl, pl with
+      | [], _ => -[]
+      | x :: Xl, p *:: pl =>
+          p -:: ptake Xl pl i
+      end
+  end.
+Fixpoint pdrop (Xl : list A) (pl : plist Xl) (i : nat) : plist (drop i Xl) :=
+  match i with
+  | 0 => pl
+  | S i =>
+      match Xl, pl with
+      | [], _ => -[]
+      | x :: Xl, p *:: pl =>
+          pdrop Xl pl i
+      end
+  end.
 End plist.
 
 Arguments plist {_} _ _.

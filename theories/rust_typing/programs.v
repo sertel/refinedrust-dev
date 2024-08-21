@@ -460,12 +460,12 @@ Section judgments.
 
   (** Typed call expressions, assuming a list of argument values with given types and refinements.
     [P] may state additional preconditions on the function. *)
-  Definition typed_call π E L (eκs : list lft) (v : val) (P : iProp Σ) (vl : list val) (tys : list (sigT (λ rt, type rt * rt)%type)) (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) : iProp Σ :=
+  Definition typed_call π E L (eκs : list lft) (etys : list (sigT type)) (v : val) (P : iProp Σ) (vl : list val) (tys : list (sigT (λ rt, type rt * rt)%type)) (T : llctx → val → ∀ rt, type rt → rt → iProp Σ) : iProp Σ :=
     (P -∗
      ([∗ list] v;rt∈vl;tys, let '(existT rt (ty, r)) := rt in v ◁ᵥ{π} r @ ty) -∗
      typed_val_expr π E L (Call v (Val <$> vl)) T)%I.
-  Class TypedCall π (E : elctx) (L : llctx) (eκs : list lft) (v : val) (P : iProp Σ) (vl : list val) (tys : list (sigT (λ rt, type rt * rt)%type)) : Type :=
-    typed_call_proof T : iProp_to_Prop (typed_call π E L eκs v P vl tys T).
+  Class TypedCall π (E : elctx) (L : llctx) (eκs : list lft) (etys : list (sigT type)) (v : val) (P : iProp Σ) (vl : list val) (tys : list (sigT (λ rt, type rt * rt)%type)) : Type :=
+    typed_call_proof T : iProp_to_Prop (typed_call π E L eκs etys v P vl tys T).
 
   Definition typed_if (E : elctx) (L : llctx) (v : val) (P T1 T2 : iProp Σ) : iProp Σ :=
     (P -∗ ∃ b, ⌜val_to_bool v = Some b⌝ ∗ (if b then T1 else T2)).
@@ -2982,6 +2982,57 @@ Next Obligation.
   iExists _, _. done.
 Qed.
 
+(* The same, but lifted to lists *)
+(*
+Definition interpret_rust_types_goal `{!typeGS Σ} (lfts : gmap string lft) (stys : list rust_type) (T : list (sigT type) → iProp Σ) : iProp Σ :=
+  ∃ (rt : Type) (ty : type rt), T (existT _ ty).
+#[global] Typeclasses Opaque interpret_rust_type_goal.
+Definition interpret_rust_type_pure_goal `{!typeGS Σ} (lfts : gmap string lft) (sty : rust_type) {rt} (ty : type rt) := True.
+Global Typeclasses Opaque interpret_rust_type_pure_goal.
+Arguments interpret_rust_type_pure_goal : simpl never.
+Program Definition interpret_rust_type_hint `{!typeGS Σ} (lfts : gmap string lft) (sty : rust_type) {rt} (ty : type rt) :
+  interpret_rust_type_pure_goal lfts sty ty →
+  LiTactic (interpret_rust_type_goal lfts sty) := λ a, {|
+    li_tactic_P T := T (existT _ ty);
+  |}.
+Next Obligation.
+  iIntros (??? sty rt ty _ T) "Ha". simpl.
+  iExists _, _. done.
+Qed.
+ *)
+
+(** Tactic hint to ensure that an evar is instantiated, instantiating it with the given [hint] otherwise. *)
+Definition ensure_evar_instantiated_goal `{!typeGS Σ} {A} (evar : A) (hint : A) (T : A → iProp Σ) :=
+  T evar.
+#[global] Typeclasses Opaque ensure_evar_instantiated_goal.
+Definition ensure_evar_instantiated_pure_goal `{!typeGS Σ} {A} (evar : A) (hint : A) := True.
+Global Typeclasses Opaque ensure_evar_instantiated_pure_goal.
+Arguments ensure_evar_instantiated_pure_goal : simpl never.
+Program Definition ensure_evar_instantiated_hint `{!typeGS Σ} {A} (evar : A) (hint : A) :
+  ensure_evar_instantiated_pure_goal evar hint →
+  LiTactic (ensure_evar_instantiated_goal evar hint) := λ a, {|
+    li_tactic_P T := T (evar);
+  |}.
+Next Obligation.
+  iIntros (??? evar hint _ T). done.
+Qed.
+
+(** Same thing but for multiple evars *)
+Definition ensure_evars_instantiated_goal `{!typeGS Σ} {A} {F : A → Type} (evars : list (sigT F)) (hint : list (sigT F)) (T : () → iProp Σ) :=
+  T tt.
+#[global] Typeclasses Opaque ensure_evars_instantiated_goal.
+Definition ensure_evars_instantiated_pure_goal `{!typeGS Σ} {A} {F : A → Type} (evars : list (sigT F)) (hint : list (sigT F)) := True.
+Global Typeclasses Opaque ensure_evars_instantiated_pure_goal.
+Arguments ensure_evars_instantiated_pure_goal : simpl never.
+Program Definition ensure_evars_instantiated_hint `{!typeGS Σ} {A} {F : A → Type} (evars : list (sigT F)) (hint : list (sigT F)) :
+  ensure_evars_instantiated_pure_goal evars hint →
+  LiTactic (ensure_evars_instantiated_goal evars hint) := λ a, {|
+    li_tactic_P T := T tt;
+  |}.
+Next Obligation.
+  iIntros (???? evar hint _ T). done.
+Qed.
+
 Global Typeclasses Opaque llctx_find_llft_goal.
 Ltac solve_llctx_find_llft := fail "implement llctx_find_llft_solve".
 Global Hint Extern 10 (LiTactic (llctx_find_llft_goal _ _ _)) =>
@@ -3037,6 +3088,14 @@ Ltac solve_interpret_rust_type := fail "implement solve_interpret_rust_type".
 #[global] Hint Extern 1 (LiTactic (interpret_rust_type_goal _ _)) =>
     refine (interpret_rust_type_hint _ _ _ _); solve_interpret_rust_type : typeclass_instances.
 
+Global Typeclasses Opaque ensure_evar_instantiated_goal.
+Ltac solve_ensure_evar_instantiated := fail "implement solve_ensure_evar_instantiated".
+#[global] Hint Extern 1 (LiTactic (ensure_evar_instantiated_goal _ _)) =>
+    refine (ensure_evar_instantiated_hint _ _ _); solve_ensure_evar_instantiated : typeclass_instances.
+Global Typeclasses Opaque ensure_evars_instantiated_goal.
+Ltac solve_ensure_evars_instantiated := fail "implement solve_ensure_evars_instantiated".
+#[global] Hint Extern 1 (LiTactic (ensure_evars_instantiated_goal _ _)) =>
+    refine (ensure_evars_instantiated_hint _ _ _); solve_ensure_evars_instantiated : typeclass_instances.
 
 (** ** Generic context folding mechanism *)
 Section folding.
@@ -3943,7 +4002,7 @@ Ltac generate_i2p_instance_to_tc_hook arg c ::=
   | typed_value ?x ?π => constr:(TypedValue x π)
   | typed_bin_op ?π ?E ?L ?v1 ?P1 ?v2 ?P2 ?o ?ot1 ?ot2 => constr:(TypedBinOp π E L v1 P1 v2 P2 o ot1 ot2)
   | typed_un_op ?π ?E ?L ?v ?P ?o ?ot => constr:(TypedUnOp π E L v P o ot)
-  | typed_call ?π ?E ?L ?κs ?v ?P ?vs ?tys => constr:(TypedCall π E L κs v P vs tys)
+  | typed_call ?π ?E ?L ?κs ?etys ?v ?P ?vs ?tys => constr:(TypedCall π E L κs etys v P vs tys)
   | typed_place ?π ?E ?L ?l ?lto ?ro ?b1 ?b2 ?K => constr:(TypedPlace E L π l lto ro b1 b2 K)
   | typed_read_end ?π ?E ?L ?l ?lt ?r ?b1 ?b2 ?al ?ot => constr:(TypedReadEnd π E L l lt r b1 b2 al  ot)
   | typed_write_end ?π ?E ?L ?ot ?v ?ty1 ?r1 ?b1 ?b2 ?al ?l ?lt2 ?r2 => constr:(TypedWriteEnd π E L ot v ty1 r1 b1 b2 al l lt2 r2)

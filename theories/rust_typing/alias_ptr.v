@@ -1,5 +1,5 @@
 From refinedrust Require Export type ltypes programs.
-From refinedrust Require Import memcasts ltype_rules value.
+From refinedrust Require Import memcasts ltype_rules value int.
 From iris Require Import options.
 
 (** * Raw pointers *)
@@ -39,6 +39,32 @@ Global Hint Unfold alias_ptr_t : tyunfold.
 
 Section rules.
   Context `{!typeGS Σ}.
+
+  (* TODO: need to know that the address is representable in a usize.
+     Probably this is something that the semantics should ensure? *)
+  (*
+  Lemma type_cast_alias_ptr_int π E L l v (T : typed_un_op_cont_t) :
+    (∀ v, T L v _ (int usize_t) (l.2))
+    ⊢ typed_un_op π E L v (v ◁ᵥ{π} l @ alias_ptr_t)%I (CastOp (IntOp usize_t)) PtrOp T.
+  Proof.
+    rewrite /ty_own_val/=.
+    iIntros "HT -> %Φ #CTX #HE HL Hna HΦ".
+    iApply wp_cast_ptr_int.
+    { apply val_to_of_loc. }
+
+    (*
+    destruct (val_of_Z_is_Some (val_to_byte_prov v) it2 (wrap_to_it n it2)) as (n' & Hit').
+    { apply wrap_to_it_in_range. }
+    iApply wp_cast_int => //.
+    iNext. iIntros "Hcred". iApply ("HΦ" with "HL Hna [] HT") => //.
+    rewrite /ty_own_val/= MaxInt_eq.
+    iPureIntro. split; last done. by apply: val_to_of_Z.
+     *)
+  Qed.
+  Global Instance type_cast_int_inst π E L n it1 it2 v:
+    TypedUnOpVal π E L v (int it1)%I n (CastOp (IntOp it2)) (IntOp it1) :=
+    λ T, i2p (type_cast_int π E L n it1 it2 v T).
+     *)
 
   (* TODO interaction with ghost drop? *)
   Lemma alias_ptr_simplify_hyp (v : val) π (l : loc) T :
@@ -352,7 +378,7 @@ Section alias_ltype.
   (* TODO more instances for other ltypes *)
 
   (** ExtractValueAnnot for splitting into a value assignment [◁ᵥ] and a [value_t] location *)
-  Lemma type_extract_value_annot_alias π E L n v l (T : typed_annot_expr_cont_t) :
+  Lemma type_extract_value_annot_alias π E L (n : nat) v l (T : typed_annot_expr_cont_t) :
     find_in_context (FindLoc l π) (λ '(existT rt (lt, r, bk)),
       ∃ wl ty r', ⌜bk = Owned wl⌝ ∗ ⌜lt = ◁ty⌝ ∗ ⌜r = #r'⌝ ∗
       (⌜Nat.b2n wl ≤ n⌝ ∗
@@ -367,7 +393,8 @@ Section alias_ltype.
     iDestruct "HT" as "(%Hle & %ly & %Hst & HT)".
     iIntros "#CTX #HE HL Halias". iApply step_fupdN_intro; first done.
     iPoseProof (ofty_own_split_value_untyped with "Hl") as "Ha"; [done.. | ].
-    iPoseProof (bi.laterN_le _ n with "Ha") as "Ha"; first done.
+    iPoseProof (bi.laterN_le (Nat.b2n wl) n with "Ha") as "Ha".
+    { lia. }
     iNext.
     iMod (fupd_mask_mono with "Ha") as "(%v3 & Hv & Hl)"; first done.
     iPoseProof ("HT" with "Hv Hl") as "HT".

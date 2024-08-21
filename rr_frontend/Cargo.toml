@@ -21,7 +21,7 @@ analysis = { git = "https://github.com/viperproject/prusti-dev.git", rev = "24bd
 config = { version = "0.14", default-features = false, features = ["toml"] }
 csv = "1"
 datafrog = "2"
-derive_more = { version = "1.0.0-beta.6", features = ["display", "constructor"] }
+derive_more = { version = "1.0.0-beta.6", features = ["display", "constructor", "debug"] }
 env_logger = { version = "0.11" }
 glob = "0.3"
 indent_write = "2"

@@ -154,6 +154,15 @@ Section rules.
   Global Instance weak_subtype_None_maybe_uninit_None_inst E L {rt} (ty : type rt) r2 :
     Subtype E L None r2 (maybe_uninit ty) (uninit (ty.(ty_syn_type))) := λ T, i2p (weak_subtype_None_maybe_uninit E L ty r2 T).
 
+  (* a variant that works in case the goal is an evar *)
+  Lemma weak_subtype_None_maybe_uninit_evar E L {rt} (ty : type rt) (r2 : unit) (ty2 : type unit) `{!IsProtected ty2} T :
+    ⌜r2 = tt⌝ ∗ ⌜ty2 = (uninit ty.(ty_syn_type))⌝ ∗ T ⊢ weak_subtype E L None r2 (maybe_uninit ty) ty2 T.
+  Proof.
+    iIntros "(-> & -> & HT)". iApply weak_subtype_None_maybe_uninit. iR; done.
+  Qed.
+  Global Instance weak_subtype_None_maybe_uninit_None_evar_inst E L {rt} (ty : type rt) r2 ty2 `{!IsProtected ty2} :
+    Subtype E L None r2 (maybe_uninit ty) ty2 := λ T, i2p (weak_subtype_None_maybe_uninit_evar E L ty r2 ty2 T).
+
   Lemma weak_subtype_maybe_uninit_None E L {rt} (ty : type rt) r2 T :
     ⌜r2 = None⌝ ∗ T ⊢ weak_subtype E L () r2 (uninit ty.(ty_syn_type)) (maybe_uninit ty) T.
   Proof.
@@ -169,6 +178,15 @@ Section rules.
   Qed.
   Global Instance weak_subtype_Some_maybe_uninit_inst E L {rt} (ty : type rt) (x : place_rfn rt) r2 :
     Subtype E L (Some x) r2 (maybe_uninit ty) ty := λ T, i2p (weak_subtype_Some_maybe_uninit E L ty x r2 T).
+
+  (* a variant that works in case the goal is an evar *)
+  Lemma weak_subtype_Some_maybe_uninit_evar E L {rt} (ty : type rt) (x : place_rfn rt) r2 ty2 `{!IsProtected ty2} T :
+    (∃ x', ⌜x = #x'⌝ ∗ ⌜r2 = x'⌝ ∗ ⌜ty2 = ty⌝ ∗ ty_sidecond ty ∗ T) ⊢ weak_subtype E L (Some x) r2 (maybe_uninit ty) ty2 T.
+  Proof.
+    iIntros "(%x' & -> & -> & -> & Hsc & HT)" (??) "#CTX #HE HL". iFrame. by iApply type_incl_Some_maybe_uninit.
+  Qed.
+  Global Instance weak_subtype_Some_maybe_uninit_evar_inst E L {rt} (ty : type rt) (x : place_rfn rt) r2 ty2 `{!IsProtected ty2} :
+    Subtype E L (Some x) r2 (maybe_uninit ty) ty2 := λ T, i2p (weak_subtype_Some_maybe_uninit_evar E L ty x r2 ty2 T).
 
   Lemma weak_subtype_maybe_uninit_Some E L {rt} (ty : type rt) (x : rt) r2 T :
     ⌜r2 = Some #x⌝ ∗ T ⊢ weak_subtype E L x r2 ty (maybe_uninit ty) T.

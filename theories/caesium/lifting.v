@@ -1148,25 +1148,24 @@ Proof.
   - move => ->. by econstructor.
 Qed.
 
-Lemma wp_cast_ptr_int Φ v v' l it p:
+Lemma wp_cast_ptr_int Φ v v' l E it:
   val_to_loc v = Some l →
-  l.1 = ProvAlloc p →
-  val_of_Z l.2 it p = Some v' →
-  alloc_alive_loc l ∧ ▷ (£1 -∗ Φ (v')) -∗
-  WP UnOp (CastOp (IntOp it)) PtrOp (Val v) {{ Φ }}.
+  val_of_Z l.2 it None = Some v' →
+  ▷ (£1 -∗ Φ (v')) -∗
+  WP UnOp (CastOp (IntOp it)) PtrOp (Val v) @ E {{ Φ }}.
 Proof.
-  iIntros (Hv Hp Hv') "HΦ".
+  iIntros (Hv Hv') "HΦ".
   iApply (wp_unop_det v').
   iIntros (σ) "Hctx".
-  destruct (decide (block_alive l (st_heap σ))).
-  2: { iDestruct "HΦ" as "[Ha _]". by iMod (alloc_alive_loc_to_block_alive with "Ha Hctx") as %Hb. }
-  iApply fupd_mask_intro; [done|]. iIntros "HE". iDestruct "HΦ" as "[_ HΦ]".
+  iMod (fupd_mask_subseteq ∅) as "Hcl"; first set_solver.
+  iModIntro.
   iSplit. {
     iPureIntro. split.
-    - have ? := val_to_of_loc NULL_loc. inversion 1; unfold NULL in *; destruct l; by simplify_eq/=.
+    - inversion 1; by simplify_eq/=.
     - move => ->. by econstructor.
   }
-  iModIntro. iMod "HE". iFrame. iIntros "Hc". by iApply "HΦ".
+  iModIntro. iFrame. iIntros "Hc".
+  iMod "Hcl". by iApply "HΦ".
 Qed.
 
 Lemma wp_cast_ptr_int_prov_none Φ v v' l it :
@@ -1201,13 +1200,10 @@ Lemma wp_cast_null_int Φ v E it:
   WP UnOp (CastOp (IntOp it)) PtrOp (Val NULL) @ E {{ Φ }}.
 Proof.
   iIntros (Hv) "HΦ".
-  iApply wp_unop_det_pure; [|done].
-  move => ??. split.
-  - inversion 1; simplify_eq => //.
-    all: destruct l; simplify_eq/=.
-    all: have ? := val_to_of_loc NULL_loc.
-    all: unfold NULL in *; by simplify_eq.
-  - move => ->. by econstructor; try apply val_to_of_loc.
+  iApply wp_cast_ptr_int.
+  { apply val_to_of_loc. }
+  { done. }
+  done.
 Qed.
 
 Lemma wp_cast_int_ptr_weak Φ v a E it:

@@ -20,6 +20,7 @@ pub struct CollectPrustiSpecVisitor<'a, 'tcx: 'a> {
     statics: Vec<LocalDefId>,
     consts: Vec<LocalDefId>,
     traits: Vec<LocalDefId>,
+    trait_impls: Vec<LocalDefId>,
 }
 
 impl<'a, 'tcx> CollectPrustiSpecVisitor<'a, 'tcx> {
@@ -32,6 +33,7 @@ impl<'a, 'tcx> CollectPrustiSpecVisitor<'a, 'tcx> {
             statics: Vec::new(),
             consts: Vec::new(),
             traits: Vec::new(),
+            trait_impls: Vec::new(),
         }
     }
 
@@ -39,6 +41,10 @@ impl<'a, 'tcx> CollectPrustiSpecVisitor<'a, 'tcx> {
         self,
     ) -> (Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>, Vec<LocalDefId>) {
         (self.functions, self.modules, self.statics, self.consts, self.traits)
+    }
+
+    pub fn get_trait_impls(self) -> Vec<LocalDefId> {
+        self.trait_impls
     }
 
     pub fn run(&mut self) {
@@ -87,9 +93,17 @@ impl<'a, 'tcx> Visitor<'tcx> for CollectPrustiSpecVisitor<'a, 'tcx> {
             let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
             trace!("Add trait {} to result", item_def_path);
             self.traits.push(def_id);
+        } else if let hir::ItemKind::Impl(i) = item.kind {
+            let def_id = item.hir_id().owner.def_id;
+            if i.of_trait.is_some() {
+                let item_def_path = self.env.get_item_def_path(def_id.to_def_id());
+                trace!("Add trait impl {} to result", item_def_path);
+                self.trait_impls.push(def_id);
+            }
         }
     }
 
+    /// Visit trait items which are default impls of methods.
     fn visit_trait_item(&mut self, trait_item: &hir::TraitItem) {
         //let attrs = self.tcx.get_attrs(trait_item.def_id.to_def_id());
 

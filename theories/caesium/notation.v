@@ -238,7 +238,7 @@ Lemma annot_stmt_S_r {A} n (a : A) s:
 Proof. by rewrite /AnnotStmt Nat.iter_succ_r. Qed.
 
 (** Call notation including lifetime instantiation *)
-Definition CallE (ef : expr) (eκs : list string) (es : list expr) := Call ef es.
+Definition CallE (ef : expr) (eκs : list string) (etys : list rust_type) (es : list expr) := Call ef es.
 Arguments CallE : simpl  never.
 Global Typeclasses Opaque CallE.
 

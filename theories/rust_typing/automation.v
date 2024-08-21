@@ -54,7 +54,7 @@ Ltac rep_check_backtrack_point ::=
       lazymatch P with
       | typed_stmt _ _ _ _ _ _ _ => idtac
       | typed_val_expr _ _ _ _ _ => idtac
-      | typed_call _ _ _ _ _ _ _ _ _ => idtac
+      | typed_call _ _ _ _ _ _ _ _ _ _ => idtac
       (* TODO maybe also typed_assert etc *)
       end
   end.
@@ -75,8 +75,8 @@ Ltac liExtensible_to_i2p_hook P bind cont ::=
       cont uconstr:(((_ : TypedBinOp π E L v1 ty1 v2 ty2 o ot1 ot2) T))
   | typed_un_op ?π ?E ?L ?v ?ty ?o ?ot ?T =>
       cont uconstr:(((_ : TypedUnOp π E L v ty o ot) T))
-  | typed_call ?π ?E ?L ?eκs ?v ?P ?vl ?tys ?T =>
-      cont uconstr:(((_ : TypedCall π E L eκs v P vl tys) T))
+  | typed_call ?π ?E ?L ?eκs ?etys ?v ?P ?vl ?tys ?T =>
+      cont uconstr:(((_ : TypedCall π E L eκs etys v P vl tys) T))
   | typed_place ?π ?E ?L ?l ?lt ?r ?bmin0 ?b ?P ?T =>
       cont uconstr:(((_ : TypedPlace E L π l lt r bmin0 b P) T))
   | typed_if ?E ?L ?v ?P ?T1 ?T2 =>
@@ -513,7 +513,7 @@ Ltac liRExpr :=
     | W.AddrOf _ _ => notypeclasses refine (tac_fast_apply (type_mut_addr_of π E L _ T) _)
     | W.BinOp _ _ _ _ _ => notypeclasses refine (tac_fast_apply (type_bin_op E L _ _ _ _ _ π T) _)
     | W.UnOp _ _ _ => notypeclasses refine (tac_fast_apply (type_un_op E L _ _ _ π T) _)
-    | W.Call _ _ _ => notypeclasses refine (tac_fast_apply (type_call E L π T _ _ _) _)
+    | W.Call _ _ _ _ => notypeclasses refine (tac_fast_apply (type_call E L π T _ _ _ _) _)
     | W.AnnotExpr _ ?a _ => notypeclasses refine (tac_fast_apply (type_annot_expr E L _ a _ π T) _)
     | W.StructInit ?sls ?init => notypeclasses refine (tac_fast_apply (type_struct_init π E L sls _ T) _)
     | W.EnumInit ?els ?variant ?rsty ?init => notypeclasses refine (tac_fast_apply (type_enum_init π E L els variant rsty _ T) _)
@@ -747,37 +747,39 @@ Ltac inv_local_ly Harg_ly :=
 Section tac.
   Context `{!typeGS Σ}.
 
-  Lemma intro_typed_function {A} (n : nat) π (fn : function) (local_sts : list syn_type) (fp : prod_vec lft n → A → fn_params) :
-    (∀ κs x (ϝ : lft),
+  Lemma intro_typed_function {A} (rts : list Type) (n : nat) π (fn : function) (local_sts : list syn_type) (fp : prod_vec lft n → plist type rts → A → fn_params) :
+    (∀ κs tys x (ϝ : lft),
       □ (
       let lya := fn.(f_args).*2 in
       let lyv := fn.(f_local_vars).*2 in
-      ⌜fn_arg_layout_assumptions (fp κs x).(fp_atys) lya⌝ -∗
+      ⌜fn_arg_layout_assumptions (fp κs tys x).(fp_atys) lya⌝ -∗
       ⌜fn_local_layout_assumptions local_sts lyv⌝ -∗
-      ∀ (lsa : vec loc (length (fp κs x).(fp_atys))) (lsv : vec loc (length fn.(f_local_vars))),
+      ∀ (lsa : vec loc (length (fp κs tys x).(fp_atys))) (lsv : vec loc (length fn.(f_local_vars))),
         let Qinit :=
-          (fp κs x).(fp_Pa) π ∗
-          ([∗list] l;t∈lsa;(fp κs x).(fp_atys), let '(existT rt (ty, r)) := t in l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
+          (* sidecondition first *)
+          (fp κs tys x).(fp_Sc) π ∗
+          (fp κs tys x).(fp_Pa) π ∗
+          ([∗list] l;t∈lsa;(fp κs tys x).(fp_atys), let '(existT rt (ty, r)) := t in l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
           ([∗list] l;p∈lsv;local_sts, (l ◁ₗ[π, Owned false] (PlaceIn ()) @ (◁ (uninit p))))
            in
-      let E := ((fp κs x).(fp_elctx) ϝ) in
+      let E := ((fp κs tys x).(fp_elctx) ϝ) in
       let L := [ϝ ⊑ₗ{0} []] in
       ∃ E' E'', ⌜E = E'⌝ ∗ ⌜E' ≡ₚ E''⌝ ∗
       (credit_store 0 0 -∗ introduce_with_hooks E'' L (Qinit) (λ L2,
         introduce_typed_stmt π E'' L2 ϝ fn lsa lsv lya lyv (
         λ v L2,
-            prove_with_subtype E L2 false ProveDirect (fn_ret_prop π (fp κs x).(fp_fr) v) (λ L3 _ R3,
+            prove_with_subtype E L2 false ProveDirect (fn_ret_prop π (fp κs tys x).(fp_fr) v) (λ L3 _ R3,
             introduce_with_hooks E L3 R3 (λ L4,
             (* we don't really kill it here, but just need to find it in the context *)
             li_tactic (llctx_find_llft_goal L4 ϝ LlctxFindLftFull) (λ _,
             find_in_context FindCreditStore (λ _, True)
           )))
         ))))) -∗
-    typed_function π fn local_sts fp.
+    typed_function π rts fn local_sts fp.
   Proof.
     iIntros "#Ha".
     rewrite /typed_function.
-    iIntros (???) "!# Hx1 Hx2".
+    iIntros (????) "!# Hx1 Hx2".
     iIntros (lsa lsv) "(Hstore & Hinit)".
     rewrite /introduce_typed_stmt /typed_stmt.
     iIntros (?) "#CTX #HE HL Hna Hcont".
@@ -796,23 +798,32 @@ End tac.
 (fn) is part of the goal, because simpl seems to take exponential time
 in the number of blocks! *)
 (* TODO: don't use i... tactics here *)
-Tactic Notation "start_function" constr(fnname) "(" simple_intropattern(κs) ")" "(" simple_intropattern(x) ")" :=
+Tactic Notation "start_function" constr(fnname) "(" simple_intropattern(κs) ")" "(" simple_intropattern(tys) ")" "(" simple_intropattern(x) ")" :=
   intros;
   inv_layout_alg;
+  iStartProof;
   repeat iIntros "#?";
-  iApply (intro_typed_function);
-  iIntros ( κs x ϝ ) "!#";
-  let Harg_ly := fresh "Harg_ly" in
-  let Hlocal_ly := fresh "Hlocal_ly" in
-  iIntros (_ _);
-  let lsa := fresh "lsa" in let lsv := fresh "lsv" in
-  iIntros (lsa lsv);
-  prepare_initial_coq_context;
-  iExists _, _; iSplitR;
-  [iPureIntro; solve [simplify_elctx] | ];
-  iSplitR; [iPureIntro; solve[reorder_elctx] | ];
-  inv_vec lsv; inv_vec lsa;
-  init_cache
+  lazymatch goal with
+  | |- envs_entails _ (typed_function _ ?rts _ _ _) =>
+    iApply (intro_typed_function rts);
+    (* simpl in order to simplify the projection in the type of type variables, e.g.
+       T_ty : type (T_rt, T_st).1
+       otherwise we can't substitute equalities on the T_st later. *)
+    simpl;
+    iIntros ( κs tys x ϝ ) "!#";
+    let Harg_ly := fresh "Harg_ly" in
+    let Hlocal_ly := fresh "Hlocal_ly" in
+    iIntros (_ _);
+    let lsa := fresh "lsa" in let lsv := fresh "lsv" in
+    iIntros (lsa lsv);
+    prepare_initial_coq_context;
+    iExists _, _; iSplitR;
+    [iPureIntro; solve [simplify_elctx] | ];
+    iSplitR; [iPureIntro; solve[reorder_elctx] | ];
+    inv_vec lsv; inv_vec lsa;
+    simpl; unfold typarams_wf, typaram_wf;
+    init_cache
+  end
 .
 
 Tactic Notation "prepare_parameters" "(" ident_list(i) ")" :=

@@ -13,11 +13,9 @@ Lemma traits_foo_call_foobar_proof (π : thread_id) :
 Proof.
   traits_foo_call_foobar_prelude.
 
-  rep <-! liRStep; liShow.
-  rep liRStep; liShow.
-  liInst Hevar2 (int i32).
-  rep liRStep; liShow.
-  liInst Hevar1 (int  u32).
+  repeat liRStep; liShow.
+  liInst Hevar1 (int i32).
+  liInst Hevar0 (int u32).
   rep liRStep.
 
   all: print_remaining_goal.

@@ -726,10 +726,36 @@ pub struct ContextDecl {
     pub items: ParamList,
 }
 
+impl ContextDecl {
+    #[must_use]
+    pub const fn new(items: ParamList) -> Self {
+        Self { items }
+    }
+
+    #[must_use]
+    pub fn refinedrust() -> Self {
+        Self {
+            items: ParamList::new(vec![Param::new(
+                Name::Unnamed,
+                Type::Literal("refinedrustGS Σ".to_owned()),
+                true,
+            )]),
+        }
+    }
+}
+
 impl Display for ContextDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Context {}.", self.items)
+        if self.items.0.is_empty() { Ok(()) } else { write!(f, "Context {}.", self.items) }
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Display)]
+pub enum DefinitionKind {
+    #[display("Definition")]
+    Definition,
+    #[display("Lemma")]
+    Lemma,
 }
 
 /// A Coq definition
@@ -739,14 +765,15 @@ pub struct Definition {
     pub params: ParamList,
     pub ty: Option<Type>,
     pub body: DefBody,
+    pub kind: DefinitionKind,
 }
 
 impl Display for Definition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(ty) = &self.ty {
-            write!(f, "Definition {} {} : {ty}{}", self.name, self.params, self.body)
+            write!(f, "{} {} {} : {ty}{}", self.kind, self.name, self.params, self.body)
         } else {
-            write!(f, "Definition {} {}{}", self.name, self.params, self.body)
+            write!(f, "{} {} {}{}", self.kind, self.name, self.params, self.body)
         }
     }
 }
@@ -776,6 +803,34 @@ pub enum TopLevelAssertion {
     /// A Coq comment
     #[display("(* {} *)", _0)]
     Comment(String),
+
+    /// A Coq section
+    #[display("Section {}.\n{}End{}.", _0, Indented::new(_1), _0)]
+    Section(String, TopLevelAssertions),
+
+    /// A Coq section start
+    #[display("Section {}.", _0)]
+    SectionStart(String),
+
+    /// A Coq section end
+    #[display("End {}.", _0)]
+    SectionEnd(String),
+}
+
+/// Type for writing contents indented via Display.
+struct Indented<T> {
+    x: T,
+}
+impl<T> Indented<T> {
+    pub const fn new(x: T) -> Self {
+        Self { x }
+    }
+}
+impl<T: Display> Display for Indented<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut indent_writer = IndentWriter::new(BASE_INDENT, f);
+        write!(indent_writer, "{}", self.x)
+    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]

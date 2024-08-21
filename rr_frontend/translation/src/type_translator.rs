@@ -8,6 +8,7 @@ use std::cell::{OnceCell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
+use derive_more::Debug;
 use log::{info, trace, warn};
 use radium::{self, coq, push_str_list};
 use rr_rustc_interface::hir::def_id::DefId;
@@ -17,7 +18,8 @@ use rr_rustc_interface::{abi, ast, attr, middle, target};
 use typed_arena::Arena;
 
 use crate::base::*;
-use crate::environment::{polonius_info, Environment};
+use crate::environment::polonius_info::{self, PoloniusInfo};
+use crate::environment::Environment;
 use crate::function_body::{get_arg_syntypes_for_procedure_call, mangle_name_with_args};
 use crate::spec_parsers::enum_spec_parser::{parse_enum_refine_as, EnumSpecParser, VerboseEnumSpecParser};
 use crate::spec_parsers::struct_spec_parser::{self, InvariantSpecParser, StructFieldSpecParser};
@@ -111,6 +113,10 @@ pub struct TypeTranslationScope<'tcx, 'def> {
 
     /// map from (trait_id, generics) to the corresponding trait use
     used_traits: HashMap<(DefId, GenericsKey<'tcx>), GenericTraitUse<'def>>,
+
+    /// optional Polonius Info for the current function
+    #[debug(ignore)]
+    polonius_info: Option<&'def PoloniusInfo<'def, 'tcx>>,
 }
 
 impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
@@ -129,6 +135,7 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
             generic_scope: Vec::new(),
             universal_lifetimes: HashMap::new(),
             used_traits: HashMap::new(),
+            polonius_info: None,
         }
     }
 
@@ -158,6 +165,7 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
         tcx: ty::TyCtxt<'tcx>,
         ty_params: ty::GenericArgsRef<'tcx>,
         univ_lfts: HashMap<ty::RegionVid, String>,
+        info: Option<&'def PoloniusInfo<'def, 'tcx>>,
     ) -> Result<Self, TranslationError<'tcx>> {
         info!("Entering procedure with ty_params {:?} and univ_lfts {:?}", ty_params, univ_lfts);
 
@@ -222,6 +230,7 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
             shim_uses: HashMap::new(),
             // Note: we do not add any traits to the scope
             used_traits: HashMap::new(),
+            polonius_info: info,
         })
     }
 
@@ -235,8 +244,9 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
         param_env: ty::ParamEnv<'tcx>,
         type_translator: &TypeTranslator<'def, 'tcx>,
         trait_registry: &TraitRegistry<'tcx, 'def>,
+        info: Option<&'def PoloniusInfo<'def, 'tcx>>,
     ) -> Result<Self, TranslationError<'tcx>> {
-        let mut scope_without_traits = Self::new(did, env.tcx(), ty_params, univ_lfts)?;
+        let mut scope_without_traits = Self::new(did, env.tcx(), ty_params, univ_lfts, info)?;
 
         let in_trait_decl = env.tcx().trait_of_item(did);
 
@@ -622,9 +632,18 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                     return None;
                 };
 
-                let r = scope.lookup_universal_region(v);
-                info!("Translating region: ReVar {:?} as {:?}", v, r);
-                r
+                if let Some(info) = scope.polonius_info {
+                    // If there is Polonius Info available, use that for translation
+                    let x = info.mk_atomic_region(v);
+                    let r = format_atomic_region_direct(&x, Some(&**scope));
+                    info!("Translating region: ReVar {:?} as {:?}", v, r);
+                    Some(r)
+                } else {
+                    // otherwise, just use the universal scope
+                    let r = scope.lookup_universal_region(v);
+                    info!("Translating region: ReVar {:?} as {:?}", v, r);
+                    r
+                }
             },
 
             _ => {
@@ -2325,7 +2344,7 @@ impl<'def, 'tcx> LocalTypeTranslator<'def, 'tcx> {
             get_arg_syntypes_for_procedure_call(env.tcx(), self, trait_method_did, ty_params.as_slice())?;
 
         let proc_use =
-            radium::UsedProcedure::new(method_loc_name, method_spec_term, translated_params, syntypes);
+            radium::UsedProcedure::new(method_loc_name, method_spec_term, translated_params, true, syntypes);
         info!("generated trait method use {proc_use:?}");
 
         Ok(proc_use)

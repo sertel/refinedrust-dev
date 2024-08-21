@@ -209,6 +209,10 @@ pub enum Expr {
     #[display("{}", _0)]
     MetaParam(String),
 
+    /// A call target, annotated with the type instantiation
+    #[display("{}", _0)]
+    CallTarget(String, Vec<RustType>),
+
     #[display("{}", _0)]
     Literal(Literal),
 
@@ -245,10 +249,11 @@ pub enum Expr {
     #[display("&raw{{ {} }} ({})", mt, &e)]
     AddressOf { mt: Mutability, e: Box<Expr> },
 
-    #[display("CallE {} [{}] [@{{expr}} {}]", &f, display_list!(lfts, "; ", "\"{}\""), display_list!(args, "; "))]
+    #[display("CallE {} [{}] [{}] [@{{expr}} {}]", &f, display_list!(lfts, "; ", "\"{}\""), display_list!(tys, "; ", "{}"), display_list!(args, "; "))]
     Call {
         f: Box<Expr>,
         lfts: Vec<Lft>,
+        tys: Vec<RustType>,
         args: Vec<Expr>,
     },
 
@@ -869,20 +874,40 @@ impl<'def> Function<'def> {
                 }
                 let arg_syntys: Vec<String> =
                     proc_use.syntype_of_all_args.iter().map(ToString::to_string).collect();
+                let arg_rts = if proc_use.is_abstract {
+                    // if this is abstract, we do not know the refinement types, so we rely on
+                    // inference from the proj_function projection
+                    "_".to_owned()
+                } else {
+                    let arg_rts: Vec<_> = proc_use
+                        .type_params
+                        .iter()
+                        .map(|x| format!("{} : Type", x.get_rfn_type(&[])))
+                        .collect();
+                    format!("[{}]", arg_rts.join("; "))
+                };
 
                 write!(
                     f,
-                    "{} ◁ᵥ{{π}} {} @ function_ptr [{}] ({} {}) -∗\n",
+                    "{} ◁ᵥ{{π}} {} @ function_ptr [{}] {} ({} {}) -∗\n",
                     proc_use.loc_name,
                     proc_use.loc_name,
                     arg_syntys.join("; "),
+                    arg_rts,
                     proc_use.spec_name,
                     gen_rfn_type_inst.join(" ")
                 )?;
             }
         }
 
-        write!(f, "typed_function π ({}_def ", self.name())?;
+        write!(f, "typed_function π ")?;
+
+        // write refinement types
+        write!(f, "[")?;
+        write_list!(f, &self.spec.ty_params, "; ", |p| { p.refinement_type.clone() })?;
+        write!(f, "] ")?;
+
+        write!(f, "({}_def ", self.name())?;
 
         // add arguments for the code definition
         let mut code_params: Vec<_> =
@@ -942,46 +967,6 @@ impl<'def> Function<'def> {
         write!(f, "intros;\n")?;
         write!(f, "iStartProof;\n")?;
 
-        // Prepare the intro pattern for specification-level parameters,
-        // in particular the semantic type parameters
-        let mut ip_params = String::with_capacity(100);
-        let params = &self.spec.params;
-        let ty_params = &self.spec.ty_params;
-        if !params.is_empty() || !ty_params.is_empty() {
-            // product is left-associative
-            for _ in 0..(params.len() + ty_params.len() - 1) {
-                ip_params.push_str("[ ");
-            }
-
-            let mut p_count = 0;
-            for (n, _) in params {
-                if p_count > 1 {
-                    ip_params.push_str(" ]");
-                }
-                ip_params.push(' ');
-                p_count += 1;
-                ip_params.push_str(&n.to_string());
-            }
-            for names in ty_params {
-                if p_count > 1 {
-                    ip_params.push_str(" ]");
-                }
-                ip_params.push(' ');
-                p_count += 1;
-                ip_params.push_str(names.type_term.as_str());
-
-                write!(f, "let {} := fresh \"{}\" in\n", names.type_term, names.type_term)?;
-            }
-
-            if p_count > 1 {
-                ip_params.push_str(" ]");
-            }
-        } else {
-            // no params, but still need to provide something to catch the unit
-            // (and no empty intropatterns are allowed)
-            ip_params.push('?');
-        }
-
         // generate intro pattern for lifetimes
         let mut lft_pattern = String::with_capacity(100);
         // pattern is left-associative
@@ -994,11 +979,61 @@ impl<'def> Function<'def> {
             write!(f, "let {} := fresh \"{}\" in\n", lft, lft)?;
         }
 
+        // generate intro pattern for typarams
+        let mut typaram_pattern = String::with_capacity(100);
+        // pattern is right-associative
+        for param in &self.spec.ty_params {
+            write!(typaram_pattern, "[{} ", param.type_term).unwrap();
+            write!(f, "let {} := fresh \"{}\" in\n", param.type_term, param.type_term)?;
+        }
+        write!(typaram_pattern, "[]").unwrap();
+        for _ in 0..self.spec.ty_params.len() {
+            write!(typaram_pattern, " ]").unwrap();
+        }
+
+        // Prepare the intro pattern for specification-level parameters
+        let mut ip_params = String::with_capacity(100);
+        let params = &self.spec.params;
+        /*
+        for _ in 0..params.len() {
+            write!(ip_params, "[ ").unwrap();
+        }
+        //write!(ip_params, "[]").unwrap();
+        for p in params {
+            write!(ip_params, " {}]", p.0).unwrap();
+        }
+        */
+        if params.is_empty() {
+            // no params, but still need to provide something to catch the unit
+            // (and no empty intropatterns are allowed)
+            ip_params.push('?');
+        } else {
+            // product is left-associative
+            for _ in 0..(params.len() - 1) {
+                ip_params.push_str("[ ");
+            }
+
+            let mut p_count = 0;
+            for (n, _) in params {
+                if p_count > 1 {
+                    ip_params.push_str(" ]");
+                }
+                ip_params.push(' ');
+                p_count += 1;
+                ip_params.push_str(&n.to_string());
+            }
+
+            if p_count > 1 {
+                ip_params.push_str(" ]");
+            }
+        }
+
         write!(
             f,
-            "start_function \"{}\" ( {} ) ( {} );\n",
+            "start_function \"{}\" ( {} ) ( {} ) ( {} );\n",
             self.name(),
             lft_pattern.as_str(),
+            typaram_pattern.as_str(),
             ip_params.as_str()
         )?;
 
@@ -1117,6 +1152,8 @@ pub struct UsedProcedure<'def> {
     pub spec_name: String,
     /// The type parameters to instantiate the spec with
     pub type_params: Vec<Type<'def>>,
+    /// Is the function spec abstract as a proj_function?
+    pub is_abstract: bool,
     /// The syntactic types of all arguments
     pub syntype_of_all_args: Vec<SynType>,
 }
@@ -1126,12 +1163,14 @@ impl<'def> UsedProcedure<'def> {
         loc_name: String,
         spec_name: String,
         type_params: Vec<Type<'def>>,
+        is_abstract: bool,
         syntypes_of_args: Vec<SynType>,
     ) -> Self {
         Self {
             loc_name,
             spec_name,
             type_params,
+            is_abstract,
             syntype_of_all_args: syntypes_of_args,
         }
     }

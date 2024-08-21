@@ -27,7 +27,6 @@ Proof.
     clear. solve_goal with nia.
   }
   
-  all: solve_goal with nia.
   Unshelve. all: print_remaining_sidecond.
 Qed.
 End proof.

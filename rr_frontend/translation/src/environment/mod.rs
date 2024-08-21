@@ -182,12 +182,21 @@ impl<'tcx> Environment<'tcx> {
         modules
     }
 
+    /// Get ids of trait declarations.
     pub fn get_traits(&self) -> Vec<LocalDefId> {
         let mut visitor = CollectPrustiSpecVisitor::new(self);
         visitor.run();
         // TODO: cache results
         let (_, _, _, _, traits) = visitor.get_results();
         traits
+    }
+
+    /// Get ids of trait impls.
+    pub fn get_trait_impls(&self) -> Vec<LocalDefId> {
+        let mut visitor = CollectPrustiSpecVisitor::new(self);
+        // TODO cache results
+        visitor.run();
+        visitor.get_trait_impls()
     }
 
     /// Get ids of Rust closures.

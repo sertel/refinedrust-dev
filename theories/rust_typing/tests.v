@@ -720,6 +720,13 @@ Section test.
     eexists _; split; [solve_interpret_rust_type | ]. done.
   Abort.
 
+  Lemma interpret_rust_type_test5 :
+    interpret_rust_type_pure_goal (∅) (RSTInt U8) (int u8).
+  Proof.
+    init_tyvars (∅).
+    solve_interpret_rust_type; solve[fail].
+  Abort.
+
   (*
   Import enum_test.
   Lemma bla {rt} (T_ty : type rt) ulft__ :
@@ -730,6 +737,34 @@ Section test.
   Abort.
    *)
 End test.
+
+(** evar instantiation *)
+Section test_evar.
+  Context `{!typeGS Σ}.
+  Lemma test1 :
+    ensure_evar_instantiated_pure_goal 5 32.
+  Proof.
+    solve_ensure_evar_instantiated; solve[fail].
+  Abort.
+
+  Lemma test2 :
+    ∃ x : Z,
+    ensure_evar_instantiated_pure_goal x 32.
+  Proof.
+    let Hevar := create_protected_evar Z in exists (protected Hevar).
+    solve_ensure_evar_instantiated; solve[fail].
+  Abort.
+
+  Lemma test3 :
+    ∃ x : plist type [Z : Type; Z: Type],
+    ensure_evars_instantiated_pure_goal (pzipl _ x) [existT (Z : Type) (int i32); existT (Z : Type) (int u32)].
+  Proof.
+    let Hevar := create_protected_evar (type Z) in
+    let Hevar2 := create_protected_evar (type Z) in
+    exists (-[protected Hevar; protected Hevar2]).
+    solve_ensure_evars_instantiated; solve [fail].
+  Abort.
+End test_evar.
 
 (** solve_lft_incl *)
 Section test.

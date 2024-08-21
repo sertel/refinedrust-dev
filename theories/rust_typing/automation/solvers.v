@@ -154,6 +154,38 @@ Ltac solve_interpret_rust_type ::=
       end
   end.
 
+(** Evar instantiation *)
+Ltac solve_ensure_evar_instantiated ::=
+  lazymatch goal with
+  | |- ensure_evar_instantiated_pure_goal (protected ?a) ?b =>
+      liInst a b; exact I
+  | |- ensure_evar_instantiated_pure_goal ?a ?b =>
+      (* this is not an evar, we are done *)
+      exact I
+  end.
+
+Section solve_evars.
+  Context `{!typeGS Σ}.
+
+  Lemma ensure_evars_instantiated_pure_goal_skip {A} {F : A → Type} (xs ys : list (sigT F)) a b :
+    ensure_evars_instantiated_pure_goal xs ys →
+    ensure_evars_instantiated_pure_goal (a :: xs) (b :: ys).
+  Proof. done. Qed.
+End solve_evars.
+
+Ltac solve_ensure_evars_instantiated_step :=
+  lazymatch goal with
+  | |- ensure_evars_instantiated_pure_goal (existT _ (protected ?a) :: ?xs) (existT _ ?b :: ?ys) =>
+      simpl; liInst a b;
+      refine (ensure_evars_instantiated_pure_goal_skip xs ys _ _ _)
+  | |- ensure_evars_instantiated_pure_goal (existT _ _ :: ?xs) (existT _ ?b :: ?ys) =>
+      refine (ensure_evars_instantiated_pure_goal_skip xs ys _ _ _)
+  | |- ensure_evars_instantiated_pure_goal [] [] =>
+      exact I
+  end.
+Ltac solve_ensure_evars_instantiated ::=
+  simpl;
+  repeat solve_ensure_evars_instantiated_step.
 
 (** ** lifetime inclusion solver *)
 (* relevant lemmas : lctx_lft_incl_refl, lctx_lft_incl_preorder  *)

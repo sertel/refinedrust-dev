@@ -36,6 +36,9 @@ pub enum Error<'tcx> {
     /// This trait already exists
     #[display("This trait {:?} already has been registered", _0)]
     TraitAlreadyExists(DefId),
+    /// This trait impl already exists
+    #[display("This trait impl {:?} already has been registered", _0)]
+    ImplAlreadyExists(DefId),
     /// Trait hasn't been registered yet but is used
     #[display("This trait {:?} has not been registered yet", _0)]
     UnregisteredTrait(DefId),
@@ -99,8 +102,14 @@ pub struct TraitRegistry<'tcx, 'def> {
     /// trait literals for using occurrences, including shims we import
     trait_literals: RefCell<HashMap<DefId, specs::LiteralTraitSpecRef<'def>>>,
 
+    /// for the trait instances in scope, the names for their Coq definitions
+    /// (to enable references to them when translating functions)
+    impl_literals: RefCell<HashMap<DefId, specs::LiteralTraitImplRef<'def>>>,
+
     /// arena for allocating trait literals
     trait_arena: &'def Arena<specs::LiteralTraitSpec>,
+    /// arena for allocating impl literals
+    impl_arena: &'def Arena<specs::LiteralTraitImpl>,
 }
 
 impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
@@ -108,14 +117,17 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
     pub fn new(
         env: &'def Environment<'tcx>,
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
-        arena: &'def Arena<specs::LiteralTraitSpec>,
+        trait_arena: &'def Arena<specs::LiteralTraitSpec>,
+        impl_arena: &'def Arena<specs::LiteralTraitImpl>,
     ) -> Self {
         Self {
             env,
             type_translator: ty_translator,
-            trait_arena: arena,
+            trait_arena,
+            impl_arena,
             trait_decls: RefCell::new(HashMap::new()),
             trait_literals: RefCell::new(HashMap::new()),
+            impl_literals: RefCell::new(HashMap::new()),
         }
     }
 
@@ -311,10 +323,38 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         Ok(spec)
     }
 
+    /// Register a shim for a trait impl.
+    pub fn register_impl_shim<'a>(
+        &'a self,
+        did: DefId,
+        spec: radium::LiteralTraitImpl,
+    ) -> TraitResult<'tcx, radium::LiteralTraitImplRef<'def>> {
+        if self.env.tcx().trait_id_of_impl(did).is_none() {
+            return Err(Error::NotATraitImpl(did));
+        }
+
+        let mut impl_literals = self.impl_literals.borrow_mut();
+        if impl_literals.get(&did).is_some() {
+            return Err(Error::ImplAlreadyExists(did));
+        }
+
+        let spec = self.impl_arena.alloc(spec);
+        impl_literals.insert(did, &*spec);
+
+        Ok(spec)
+    }
+
     /// Lookup a trait.
     pub fn lookup_trait(&self, trait_did: DefId) -> Option<radium::LiteralTraitSpecRef<'def>> {
         let trait_literals = self.trait_literals.borrow();
         trait_literals.get(&trait_did).copied()
+    }
+
+    /// Lookup the spec for an impl.
+    /// If None, use the default spec.
+    pub fn lookup_impl(&self, impl_did: DefId) -> Option<radium::LiteralTraitImplRef<'def>> {
+        let impl_literals = self.impl_literals.borrow();
+        impl_literals.get(&impl_did).copied()
     }
 
     /// Get the term for the specification of a trait impl (applied to the given arguments of the trait),
@@ -333,7 +373,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         let trait_instance = self.lookup_trait(trait_did).ok_or(Error::NotATrait(trait_did))?;
 
-        // the base_spec gets all the trait's args as well as the associated types
+        // all args of the base spec
         let mut all_trait_args = Vec::new();
         for arg in trait_args {
             if let ty::GenericArgKind::Type(ty) = arg.unpack() {
@@ -344,6 +384,8 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         let mut assoc_args = Vec::new();
         // get associated types of this impl
+        // Since we know the concrete impl, we can directly resolve all of the associated types
+        // TODO is this definition order guaranteed to be the same as on the trait?
         let assoc_items: &'tcx ty::AssocItems = self.env.tcx().associated_items(impl_did);
         for it in assoc_items.in_definition_order() {
             if it.kind == ty::AssocKind::Type {
@@ -357,6 +399,31 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
             }
         }
 
+        // check if there's a more specific impl spec
+        // TODO
+        /*
+        let term = if let Some(impl_spec) = self.lookup_impl(impl_did) {
+            // pass the args for this specific impl
+            let mut all_impl_args = Vec::new();
+            for arg in impl_args {
+                if let ty::GenericArgKind::Type(ty) = arg.unpack() {
+                    let ty = ty_translator.translate_type(ty)?;
+                    all_impl_args.push(ty);
+                }
+            }
+            coq::AppTerm::new(
+                impl_spec.spec_record.clone(),
+                all_impl_args.iter().map(ToString::to_string).collect(),
+            )
+        } else {
+            // the base_spec gets all the trait's args as well as the associated types
+            coq::AppTerm::new(
+                trait_instance.base_spec.clone(),
+                all_trait_args.iter().map(ToString::to_string).collect(),
+            )
+        };
+        */
+        // the base_spec gets all the trait's args as well as the associated types
         let term = coq::AppTerm::new(
             trait_instance.base_spec.clone(),
             all_trait_args.iter().map(ToString::to_string).collect(),
