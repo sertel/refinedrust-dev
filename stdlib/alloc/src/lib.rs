@@ -20,7 +20,7 @@ pub struct Global {
 }
 
 impl Global {
-    #[rr::only_spec]
+    #[rr::skip]
     fn foo(&self) {
 
     }

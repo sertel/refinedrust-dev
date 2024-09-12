@@ -91,6 +91,19 @@ Proof.
   intros (p & ps & Hx). exists (p -:: ps). done.
 Qed.
 
+Global Instance simpl_forall_plist_cons {X} (F : X → Type) x xs T :
+  SimplForall (plist F (x :: xs)) 1 T (∀ (a : F x) (s : plist F xs), T (a -:: s)).
+Proof. intros Q [? ?]. apply Q. Qed.
+Global Instance simpl_forall_plist_nil {X} (F : X → Type) T :
+  SimplForall (plist F []) 0 T (T -[]).
+Proof. intros Q []. apply Q. Qed.
+Global Instance simpl_forall_hlist_cons {X} (F : X → Type) x xs T :
+  SimplForall (hlist F (x :: xs)) 1 T (∀ (a : F x) (s : hlist F xs), T (a +:: s)).
+Proof. intros Q a. inv_hlist a. intros. apply Q. Qed.
+Global Instance simpl_forall_hlist_nil {X} (F : X → Type) T :
+  SimplForall (hlist F []) 0 T (T +[]).
+Proof. intros Q a. inv_hlist a. apply Q. Qed.
+
 
 (** Try to find a lookup proof with some abstract condition [P] *)
 Lemma simpl_list_lookup_assum {A} {P : nat → Prop} {E : nat → A} (l : list A) j x :

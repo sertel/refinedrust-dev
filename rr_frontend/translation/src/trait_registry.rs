@@ -42,6 +42,9 @@ pub enum Error<'tcx> {
     /// Trait hasn't been registered yet but is used
     #[display("This trait {:?} has not been registered yet", _0)]
     UnregisteredTrait(DefId),
+    /// Trait impl hasn't been registered yet but is used
+    #[display("This trait impl {:?} has not been registered yet", _0)]
+    UnregisteredImpl(DefId),
     /// Cannot find this trait instance in the local environment
     #[display("An instance for this trait {:?} cannot by found with generic args {:?}", _0, _1)]
     UnknownLocalInstance(DefId, ty::GenericArgsRef<'tcx>),
@@ -110,6 +113,8 @@ pub struct TraitRegistry<'tcx, 'def> {
     trait_arena: &'def Arena<specs::LiteralTraitSpec>,
     /// arena for allocating impl literals
     impl_arena: &'def Arena<specs::LiteralTraitImpl>,
+    /// arena for function specifications
+    fn_spec_arena: &'def Arena<specs::FunctionSpec<specs::InnerFunctionSpec<'def>>>,
 }
 
 impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
@@ -119,12 +124,14 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
         trait_arena: &'def Arena<specs::LiteralTraitSpec>,
         impl_arena: &'def Arena<specs::LiteralTraitImpl>,
+        fn_spec_arena: &'def Arena<specs::FunctionSpec<specs::InnerFunctionSpec<'def>>>,
     ) -> Self {
         Self {
             env,
             type_translator: ty_translator,
             trait_arena,
             impl_arena,
+            fn_spec_arena,
             trait_decls: RefCell::new(HashMap::new()),
             trait_literals: RefCell::new(HashMap::new()),
             impl_literals: RefCell::new(HashMap::new()),
@@ -181,17 +188,36 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         dep_map
     }
 
+    /// Get the names of associated types of this trait.
+    pub fn get_associated_type_names(&self, did: DefId) -> Vec<String> {
+        let mut assoc_tys = Vec::new();
+
+        // get associated types
+        let assoc_types = self.env.get_trait_assoc_types(did);
+        for ty_did in &assoc_types {
+            let ty_name = self.env.get_assoc_item_name(*ty_did).unwrap();
+            assoc_tys.push(ty_name);
+        }
+
+        assoc_tys
+    }
+
     /// Generate names for a trait.
-    fn make_literal_trait_spec(name: String) -> specs::LiteralTraitSpec {
+    fn make_literal_trait_spec(&self, did: DefId, name: String) -> specs::LiteralTraitSpec {
         let phys_record = format!("{name}_phys");
         let spec_record = format!("{name}_spec");
+        let spec_params_record = format!("{name}_spec_params");
         let base_spec = format!("{name}_base_spec");
+        let base_spec_params = format!("{name}_base_spec_params");
         let spec_subsumption = format!("{name}_spec_incl");
 
         specs::LiteralTraitSpec {
             name,
+            assoc_tys: self.get_associated_type_names(did),
             spec_record,
+            spec_params_record,
             base_spec,
+            base_spec_params,
             spec_subsumption,
         }
     }
@@ -218,7 +244,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         // make the literal we are going to use
         let trait_name = strip_coq_ident(&self.env.get_absolute_item_name(did.to_def_id()));
-        let lit_trait_spec = Self::make_literal_trait_spec(trait_name.clone());
+        let lit_trait_spec = self.make_literal_trait_spec(did.to_def_id(), trait_name.clone());
         // already register it for use.
         // In particular, this is also needed to be able to register the methods of this trait
         // below, as they need to be able to access the associated types of this trait already.
@@ -227,14 +253,16 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         // get generics
         let trait_generics: &'tcx ty::Generics = self.env.tcx().generics_of(did.to_def_id());
-        let mut generic_env = Vec::new();
+        let mut generic_env = radium::GenericScope::empty();
         for param in &trait_generics.params {
             if let ty::GenericParamDefKind::Type { .. } = param.kind {
                 let name = param.name.as_str();
                 let lit = radium::LiteralTyParam::new(name, name);
-                generic_env.push(Some(lit));
-            } else {
-                generic_env.push(None);
+                generic_env.add_ty_param(lit);
+            } else if let ty::GenericParamDefKind::Lifetime { .. } = param.kind {
+                // TODO
+                let lft = "placeholder".to_owned();
+                generic_env.add_lft_param(lft);
             }
         }
 
@@ -270,8 +298,9 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                     ty_translator,
                     self,
                 )?;
+                let spec_ref = self.fn_spec_arena.alloc(spec);
 
-                methods.insert(method_name, spec);
+                methods.insert(method_name, &*spec_ref);
             } else if ty::AssocKind::Type == c.kind {
                 // get name
                 let type_name =
@@ -365,7 +394,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         impl_did: DefId,
         impl_args: &[ty::GenericArg<'tcx>],
         trait_args: &[ty::GenericArg<'tcx>],
-    ) -> Result<(String, Vec<radium::Type<'def>>), TranslationError<'tcx>> {
+    ) -> Result<(radium::SpecializedTraitSpec<'def>, Vec<ty::Ty<'tcx>>), TranslationError<'tcx>> {
         trace!(
             "enter TraitRegistry::get_impl_spec_term for impl_did={impl_did:?} impl_args={impl_args:?} trait_args={trait_args:?}"
         );
@@ -375,6 +404,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         // all args of the base spec
         let mut all_trait_args = Vec::new();
+        // this includes Self as the first arg
         for arg in trait_args {
             if let ty::GenericArgKind::Type(ty) = arg.unpack() {
                 let ty = ty_translator.translate_type(ty)?;
@@ -393,15 +423,15 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                 let item_ty: ty::EarlyBinder<ty::Ty<'tcx>> = self.env.tcx().type_of(item_did);
                 let subst_ty = item_ty.instantiate(self.env.tcx(), impl_args);
 
+                assoc_args.push(subst_ty);
+
+                // also add it to the trait args
                 let translated_ty = ty_translator.translate_type(subst_ty)?;
-                all_trait_args.push(translated_ty.clone());
-                assoc_args.push(translated_ty);
+                all_trait_args.push(translated_ty);
             }
         }
 
         // check if there's a more specific impl spec
-        // TODO
-        /*
         let term = if let Some(impl_spec) = self.lookup_impl(impl_did) {
             // pass the args for this specific impl
             let mut all_impl_args = Vec::new();
@@ -411,26 +441,99 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                     all_impl_args.push(ty);
                 }
             }
-            coq::AppTerm::new(
-                impl_spec.spec_record.clone(),
-                all_impl_args.iter().map(ToString::to_string).collect(),
-            )
+            radium::SpecializedTraitSpec::new_with_params(impl_spec.spec_record.clone(), all_impl_args)
         } else {
             // the base_spec gets all the trait's args as well as the associated types
-            coq::AppTerm::new(
-                trait_instance.base_spec.clone(),
-                all_trait_args.iter().map(ToString::to_string).collect(),
-            )
+            radium::SpecializedTraitSpec::new_with_params(trait_instance.base_spec.clone(), all_trait_args)
         };
-        */
-        // the base_spec gets all the trait's args as well as the associated types
-        let term = coq::AppTerm::new(
-            trait_instance.base_spec.clone(),
-            all_trait_args.iter().map(ToString::to_string).collect(),
-        );
 
         trace!("leave TraitRegistry::get_impl_spec_term");
-        Ok((term.to_string(), assoc_args))
+        Ok((term, assoc_args))
+    }
+
+    pub fn get_trait_impl_info(
+        &self,
+        trait_impl_did: DefId,
+    ) -> Result<radium::TraitRefInst<'def>, TranslationError<'tcx>> {
+        let trait_did = self
+            .env
+            .tcx()
+            .trait_id_of_impl(trait_impl_did)
+            .ok_or(Error::NotATraitImpl(trait_impl_did))?;
+
+        // check if we registered this impl previously
+        let trait_spec_ref = self.lookup_trait(trait_did).ok_or(Error::NotATrait(trait_did))?;
+
+        let param_env: ty::ParamEnv<'tcx> = self.env.tcx().param_env(trait_impl_did);
+
+        // get all associated items
+        let assoc_items: &'tcx ty::AssocItems = self.env.tcx().associated_items(trait_impl_did);
+        let trait_assoc_items: &'tcx ty::AssocItems = self.env.tcx().associated_items(trait_did);
+
+        // figure out the parameters this impl gets and make a scope
+        let impl_generics: &'tcx ty::Generics = self.env.tcx().generics_of(trait_impl_did);
+        let mut scope = radium::GenericScope::empty();
+        for param in &impl_generics.params {
+            if let ty::GenericParamDefKind::Type { .. } = param.kind {
+                let name = param.name.as_str();
+                let lit = radium::LiteralTyParam::new(name, name);
+                scope.add_ty_param(lit);
+            } else if let ty::GenericParamDefKind::Lifetime { .. } = param.kind {
+                let name = format!("ulft_{}", strip_coq_ident(param.name.as_str()));
+                scope.add_lft_param(name);
+            }
+        }
+
+        // figure out the trait ref for this
+        let subject = self.env.tcx().impl_subject(trait_impl_did).skip_binder();
+        if let ty::ImplSubject::Trait(trait_ref) = subject {
+            // get instantiation for parameters
+            let mut params_inst = Vec::new();
+            let mut lft_inst = Vec::new();
+            for arg in trait_ref.args {
+                if let Some(ty) = arg.as_type() {
+                    // TODO: not in empty scope?
+                    let ty = self.type_translator.translate_type_in_empty_scope(ty)?;
+                    params_inst.push(ty);
+                } else if let Some(lft) = arg.as_region() {
+                    let lft = TypeTranslator::translate_region_in_empty_scope(lft)
+                        .unwrap_or_else(|| "trait_placeholder_lft".to_owned());
+                    lft_inst.push(lft);
+                }
+            }
+
+            // get instantiation for the associated types
+            // and go over all methods
+            let mut assoc_types_inst = Vec::new();
+
+            // TODO don't rely on definition order
+            // maybe instead iterate over the assoc items of the trait
+
+            for x in trait_assoc_items.in_definition_order() {
+                if x.kind == ty::AssocKind::Type {
+                    let ty_item = assoc_items.find_by_name_and_kind(
+                        self.env.tcx(),
+                        x.ident(self.env.tcx()),
+                        ty::AssocKind::Type,
+                        trait_impl_did,
+                    );
+                    if let Some(ty_item) = ty_item {
+                        let ty_did = ty_item.def_id;
+                        let ty = self.env.tcx().type_of(ty_did);
+                        // TODO not in empty scope?
+                        let translated_ty =
+                            self.type_translator.translate_type_in_empty_scope(ty.skip_binder())?;
+                        assoc_types_inst.push(translated_ty);
+                    } else {
+                        unreachable!("trait impl does not have required item");
+                    }
+                }
+            }
+
+            Ok(radium::TraitRefInst::new(trait_spec_ref, scope, lft_inst, params_inst, assoc_types_inst))
+        } else {
+            unreachable!("Expected trait impl");
+        }
     }
 }
 

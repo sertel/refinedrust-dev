@@ -16,6 +16,7 @@ use indent_write::indentable::Indentable;
 use indent_write::io::IndentWriter;
 use indoc::{formatdoc, writedoc};
 use log::info;
+use typed_arena::Arena;
 
 use crate::specs::*;
 use crate::{coq, display_list, make_indent, push_str_list, write_list, BASE_INDENT};
@@ -211,7 +212,7 @@ pub enum Expr {
 
     /// A call target, annotated with the type instantiation
     #[display("{}", _0)]
-    CallTarget(String, Vec<RustType>),
+    CallTarget(String, Vec<RustType>, Vec<Lft>),
 
     #[display("{}", _0)]
     Literal(Literal),
@@ -777,10 +778,7 @@ struct InvariantMap(HashMap<usize, LoopSpec>);
 #[allow(clippy::partial_pub_fields)]
 pub struct Function<'def> {
     pub code: FunctionCode,
-    pub spec: FunctionSpec<'def>,
-
-    /// Generic types in scope for this function
-    generic_types: Vec<LiteralTyParam>,
+    pub spec: &'def FunctionSpec<InnerFunctionSpec<'def>>,
 
     /// Other functions that are used by this one.
     other_functions: Vec<UsedProcedure<'def>>,
@@ -793,6 +791,9 @@ pub struct Function<'def> {
 
     /// invariants for loop head bbs
     loop_invariants: InvariantMap,
+
+    /// Extra linktime assumptions
+    pub extra_link_assum: Vec<String>,
 }
 
 impl<'def> Function<'def> {
@@ -845,9 +846,9 @@ impl<'def> Function<'def> {
         }
 
         // write extra link-time assumptions
-        if !self.spec.extra_link_assum.is_empty() {
+        if !self.extra_link_assum.is_empty() {
             write!(f, "(* extra link-time assumptions *)\n")?;
-            for s in &self.spec.extra_link_assum {
+            for s in &self.extra_link_assum {
                 write!(f, "{s} →\n")?;
             }
         }
@@ -861,59 +862,30 @@ impl<'def> Function<'def> {
                     "Using other function: {:?} with insts: {:?}",
                     proc_use.spec_name, proc_use.type_params
                 );
-                // generate an instantiation for the generic type arguments, by getting the refinement types
-                // which need to be passed at the Coq level
-                let mut gen_rfn_type_inst = Vec::new();
-                for p in &proc_use.type_params {
-                    // use an empty env, these should be closed in the current environment
-                    let rfn = p.get_rfn_type(&[]);
-                    gen_rfn_type_inst.push(format!("({})", rfn));
 
-                    let st = p.get_syn_type();
-                    gen_rfn_type_inst.push(format!("({})", st));
-                }
                 let arg_syntys: Vec<String> =
                     proc_use.syntype_of_all_args.iter().map(ToString::to_string).collect();
-                let arg_rts = if proc_use.is_abstract {
-                    // if this is abstract, we do not know the refinement types, so we rely on
-                    // inference from the proj_function projection
-                    "_".to_owned()
-                } else {
-                    let arg_rts: Vec<_> = proc_use
-                        .type_params
-                        .iter()
-                        .map(|x| format!("{} : Type", x.get_rfn_type(&[])))
-                        .collect();
-                    format!("[{}]", arg_rts.join("; "))
-                };
 
                 write!(
                     f,
-                    "{} ◁ᵥ{{π}} {} @ function_ptr [{}] {} ({} {}) -∗\n",
+                    "{} ◁ᵥ{{π}} {} @ function_ptr [{}] {} -∗\n",
                     proc_use.loc_name,
                     proc_use.loc_name,
                     arg_syntys.join("; "),
-                    arg_rts,
-                    proc_use.spec_name,
-                    gen_rfn_type_inst.join(" ")
+                    proc_use,
                 )?;
             }
         }
 
         write!(f, "typed_function π ")?;
-
-        // write refinement types
-        write!(f, "[")?;
-        write_list!(f, &self.spec.ty_params, "; ", |p| { p.refinement_type.clone() })?;
-        write!(f, "] ")?;
-
         write!(f, "({}_def ", self.name())?;
 
         // add arguments for the code definition
         let mut code_params: Vec<_> =
             self.other_functions.iter().map(|proc_use| proc_use.loc_name.clone()).collect();
-        for names in &self.generic_types {
-            code_params.push(names.syn_type.clone());
+
+        for names in self.spec.generics.get_coq_ty_st_params().make_using_terms() {
+            code_params.push(format!("{names}"));
         }
         for s in &self.used_statics {
             code_params.push(s.loc_name.clone());
@@ -925,7 +897,7 @@ impl<'def> Function<'def> {
         // write local syntypes
         write!(f, ") [")?;
         write_list!(f, &self.code.stack_layout.locals, "; ", |Variable((_, st))| st.to_string())?;
-        write!(f, "] (type_of_{} ", self.name())?;
+        write!(f, "] (<tag_type> {} ", self.spec.get_spec_name())?;
 
         // write type args (passed to the type definition)
         for param in &params.0 {
@@ -969,31 +941,32 @@ impl<'def> Function<'def> {
 
         // generate intro pattern for lifetimes
         let mut lft_pattern = String::with_capacity(100);
-        // pattern is left-associative
-        for _ in 0..self.spec.lifetimes.len() {
-            write!(lft_pattern, "[ ").unwrap();
+        // pattern is right-associative
+        for lft in self.spec.generics.get_lfts() {
+            write!(lft_pattern, "[{} ", lft).unwrap();
+            write!(f, "let {} := fresh \"{}\" in\n", lft, lft)?;
         }
         write!(lft_pattern, "[]").unwrap();
-        for lft in &self.spec.lifetimes {
-            write!(lft_pattern, " {}]", lft).unwrap();
-            write!(f, "let {} := fresh \"{}\" in\n", lft, lft)?;
+        for _ in 0..self.spec.generics.get_num_lifetimes() {
+            write!(lft_pattern, " ]").unwrap();
         }
 
         // generate intro pattern for typarams
         let mut typaram_pattern = String::with_capacity(100);
         // pattern is right-associative
-        for param in &self.spec.ty_params {
+        for param in self.spec.generics.get_ty_params() {
             write!(typaram_pattern, "[{} ", param.type_term).unwrap();
             write!(f, "let {} := fresh \"{}\" in\n", param.type_term, param.type_term)?;
         }
         write!(typaram_pattern, "[]").unwrap();
-        for _ in 0..self.spec.ty_params.len() {
+        for _ in 0..self.spec.generics.get_num_ty_params() {
             write!(typaram_pattern, " ]").unwrap();
         }
 
         // Prepare the intro pattern for specification-level parameters
         let mut ip_params = String::with_capacity(100);
-        let params = &self.spec.params;
+
+        let params = self.spec.spec.get_params();
         /*
         for _ in 0..params.len() {
             write!(ip_params, "[ ").unwrap();
@@ -1003,29 +976,33 @@ impl<'def> Function<'def> {
             write!(ip_params, " {}]", p.0).unwrap();
         }
         */
-        if params.is_empty() {
-            // no params, but still need to provide something to catch the unit
-            // (and no empty intropatterns are allowed)
-            ip_params.push('?');
-        } else {
-            // product is left-associative
-            for _ in 0..(params.len() - 1) {
-                ip_params.push_str("[ ");
-            }
+        if let Some(params) = params {
+            if params.is_empty() {
+                // no params, but still need to provide something to catch the unit
+                // (and no empty intropatterns are allowed)
+                ip_params.push('?');
+            } else {
+                // product is left-associative
+                for _ in 0..(params.len() - 1) {
+                    ip_params.push_str("[ ");
+                }
 
-            let mut p_count = 0;
-            for (n, _) in params {
+                let mut p_count = 0;
+                for (n, _) in params {
+                    if p_count > 1 {
+                        ip_params.push_str(" ]");
+                    }
+                    ip_params.push(' ');
+                    p_count += 1;
+                    ip_params.push_str(&n.to_string());
+                }
+
                 if p_count > 1 {
                     ip_params.push_str(" ]");
                 }
-                ip_params.push(' ');
-                p_count += 1;
-                ip_params.push_str(&n.to_string());
             }
-
-            if p_count > 1 {
-                ip_params.push_str(" ]");
-            }
+        } else {
+            ip_params.push('?');
         }
 
         write!(
@@ -1053,15 +1030,17 @@ impl<'def> Function<'def> {
         write!(f, ";\n")?;
 
         // destruct specification-level parameters
-        write!(f, "prepare_parameters (")?;
-        for (n, _) in params {
-            write!(f, " {}", n)?;
+        if let Some(params) = params {
+            write!(f, "prepare_parameters (")?;
+            for (n, _) in params {
+                write!(f, " {}", n)?;
+            }
+            write!(f, " );\n")?;
         }
-        write!(f, " );\n")?;
 
         // initialize lifetimes
         let formatted_lifetimes = make_lft_map_string(
-            &self.spec.lifetimes.iter().map(|n| (n.to_string(), n.to_string())).collect(),
+            &self.spec.generics.get_lfts().iter().map(|n| (n.to_string(), n.to_string())).collect(),
         );
         write!(f, "init_lfts ({} );\n", formatted_lifetimes.as_str())?;
 
@@ -1070,7 +1049,9 @@ impl<'def> Function<'def> {
             " ",
             " ",
             &self
-                .generic_types
+                .spec
+                .generics
+                .get_ty_params()
                 .iter()
                 .map(|names| (names.rust_name.clone(), format!("existT _ ({})", names.type_term)))
                 .collect(),
@@ -1150,10 +1131,25 @@ pub struct UsedProcedure<'def> {
     pub loc_name: String,
     /// The name of the specification definition
     pub spec_name: String,
+
+    /// Type parameters to quantify over
+    /// This includes:
+    /// - types this function spec needs to be generic over (in particular type variables of the calling
+    ///   function)
+    /// - additional lifetimes that the generic instantiation introduces, as well as all lifetime parameters
+    ///   of this function
+    pub quantified_scope: GenericScope,
+
+    /// specialized specs for the trait assumptions
+    pub trait_specs: Vec<SpecializedTraitSpec<'def>>,
+
     /// The type parameters to instantiate the spec with
     pub type_params: Vec<Type<'def>>,
-    /// Is the function spec abstract as a proj_function?
-    pub is_abstract: bool,
+
+    /// The lifetime paramters to instantiate the spec with
+    /// (after the lifting of all parameters into the `quantified_scope`)
+    pub lifetimes: Vec<Lft>,
+
     /// The syntactic types of all arguments
     pub syntype_of_all_args: Vec<SynType>,
 }
@@ -1162,17 +1158,58 @@ impl<'def> UsedProcedure<'def> {
     pub fn new(
         loc_name: String,
         spec_name: String,
+        trait_specs: Vec<SpecializedTraitSpec<'def>>,
+        quantified_scope: GenericScope,
         type_params: Vec<Type<'def>>,
-        is_abstract: bool,
+        lifetimes: Vec<Lft>,
         syntypes_of_args: Vec<SynType>,
     ) -> Self {
         Self {
             loc_name,
             spec_name,
+            trait_specs,
+            quantified_scope,
             type_params,
-            is_abstract,
+            lifetimes,
             syntype_of_all_args: syntypes_of_args,
         }
+    }
+}
+
+impl<'def> Display for UsedProcedure<'def> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // quantify
+        write!(f, "(<tag_type> {} ", self.quantified_scope)?;
+
+        // instantiate refinement types
+        let mut gen_rfn_type_inst = Vec::new();
+        for p in &self.type_params {
+            // use an empty env, these should be closed in the current environment
+            let rfn = p.get_rfn_type(&[]);
+            gen_rfn_type_inst.push(format!("({})", rfn));
+        }
+        // instantiate syntypes
+        for p in &self.type_params {
+            let st = p.get_syn_type();
+            gen_rfn_type_inst.push(format!("({})", st));
+        }
+
+        write!(f, "{} {} ", self.spec_name, gen_rfn_type_inst.join(" "))?;
+
+        // apply to trait specs
+        write_list!(f, &self.trait_specs, " ")?;
+
+        // instantiate lifetimes
+        for lft in &self.lifetimes {
+            write!(f, " <LFT> {lft}")?;
+        }
+
+        // instantiate type variables
+        for ty in &self.type_params {
+            write!(f, " <TY> {ty}")?;
+        }
+
+        write!(f, " <MERGE!>)")
     }
 }
 
@@ -1182,19 +1219,21 @@ impl<'def> UsedProcedure<'def> {
 #[allow(clippy::partial_pub_fields)]
 pub struct FunctionBuilder<'def> {
     pub code: FunctionCodeBuilder,
-    pub spec: FunctionSpecBuilder<'def>,
-    spec_name: String,
+
+    /// optionally, a specification, if one has been created
+    pub spec: FunctionSpec<Option<InnerFunctionSpec<'def>>>,
 
     /// a sequence of other functions used by this function
     /// (Note that there may be multiple assumptions here with the same spec, if they are
     /// monomorphizations of the same function!)
     other_functions: Vec<UsedProcedure<'def>>,
-    /// name of this function
-    function_name: String,
-    /// generic types in scope for this function
-    pub generic_types: Vec<LiteralTyParam>,
-    /// generic lifetimes
-    generic_lifetimes: Vec<(Option<String>, Lft)>,
+
+    // maps source code lifetime names to lifetimes
+    lft_name_map: HashMap<String, Lft>,
+
+    /// required trait assumptions
+    trait_requirements: Vec<LiteralTraitSpecUse<'def>>,
+
     /// Syntypes we assume to be layoutable in the typing proof
     layoutable_syntys: Vec<SynType>,
     /// used statics
@@ -1205,25 +1244,27 @@ pub struct FunctionBuilder<'def> {
 
     /// maps loop head bbs to loop specifications
     loop_invariants: InvariantMap,
+
+    /// Extra link-time assumptions
+    extra_link_assum: Vec<String>,
 }
 
 impl<'def> FunctionBuilder<'def> {
     #[must_use]
     pub fn new(name: &str, spec_name: &str) -> Self {
         let code_builder = FunctionCodeBuilder::new();
-        let spec_builder = FunctionSpecBuilder::new();
+        let spec = FunctionSpec::empty(spec_name.to_owned(), name.to_owned(), None);
         FunctionBuilder {
-            function_name: name.to_owned(),
-            spec_name: spec_name.to_owned(),
+            lft_name_map: HashMap::new(),
             other_functions: Vec::new(),
-            generic_types: Vec::new(),
-            generic_lifetimes: Vec::new(),
             code: code_builder,
-            spec: spec_builder,
+            spec,
             layoutable_syntys: Vec::new(),
             loop_invariants: InvariantMap(HashMap::new()),
             tactics: Vec::new(),
             used_statics: Vec::new(),
+            trait_requirements: Vec::new(),
+            extra_link_assum: Vec::new(),
         }
     }
 
@@ -1239,40 +1280,41 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Adds a lifetime parameter to the function.
-    pub fn add_universal_lifetime(&mut self, name: Option<String>, lft: Lft) -> Result<(), String> {
-        self.generic_lifetimes.push((name, lft.clone()));
-        self.spec.add_lifetime(lft)
+    pub fn add_universal_lifetime(&mut self, lft: Lft) {
+        self.spec.generics.add_lft_param(lft);
     }
 
-    /// Adds a universal lifetime constraint to the function.
-    pub fn add_universal_lifetime_constraint(
-        &mut self,
-        lft1: UniversalLft,
-        lft2: UniversalLft,
-    ) -> Result<(), String> {
-        self.spec.add_lifetime_constraint(lft1, lft2)
+    /// Adds a lifetime parameter which has a name in the Rust source code.
+    pub fn add_universal_lifetime_with_name(&mut self, rust_name: String, lft: Lft) {
+        self.spec.generics.add_lft_param(lft.clone());
+        self.lft_name_map.insert(rust_name, lft);
     }
 
     /// Add a manual tactic used for a sidecondition proof.
-    pub fn add_manual_tactic(&mut self, tac: &str) {
-        self.tactics.push(tac.to_owned());
+    pub fn add_manual_tactic(&mut self, tac: String) {
+        self.tactics.push(tac);
     }
 
     /// Add a generic type used by this function.
-    pub fn add_generic_type(&mut self, t: LiteralTyParam) {
-        self.generic_types.push(t);
+    pub fn add_ty_param(&mut self, t: LiteralTyParam) {
+        self.spec.generics.add_ty_param(t);
     }
 
     /// Get the type parameters.
     #[must_use]
     pub fn get_ty_params(&self) -> &[LiteralTyParam] {
-        &self.generic_types
+        self.spec.generics.get_ty_params()
     }
 
     /// Get the universal lifetimes.
     #[must_use]
-    pub fn get_lfts(&self) -> Vec<(Option<String>, Lft)> {
-        self.generic_lifetimes.clone()
+    pub fn get_lfts(&self) -> &[Lft] {
+        self.spec.generics.get_lfts()
+    }
+
+    #[must_use]
+    pub const fn get_lifetime_name_map(&self) -> &HashMap<String, Lft> {
+        &self.lft_name_map
     }
 
     /// Add the assumption that a particular syntype is layoutable to the typing proof.
@@ -1288,24 +1330,88 @@ impl<'def> FunctionBuilder<'def> {
             panic!("registered loop invariant multiple times");
         }
     }
-}
 
-impl<'def> From<FunctionBuilder<'def>> for Function<'def> {
-    fn from(mut builder: FunctionBuilder<'def>) -> Self {
+    /// Add a Coq-level param that comes before the type parameters.
+    pub fn add_early_coq_param(&mut self, param: coq::Param) {
+        self.spec.early_coq_params.0.push(param);
+    }
+
+    /// Add a Coq-level param that comes after the type parameters.
+    pub fn add_late_coq_param(&mut self, param: coq::Param) {
+        self.spec.late_coq_params.0.push(param);
+    }
+
+    /// Require that a particular trait is in scope.
+    pub fn add_trait_requirement(&mut self, req: LiteralTraitSpecUse<'def>) {
+        self.trait_requirements.push(req);
+    }
+
+    /// Add an extra link-time assumption.
+    pub fn add_linktime_assumption(&mut self, assumption: String) {
+        self.extra_link_assum.push(assumption);
+    }
+
+    /// Add a default function spec.
+    pub fn add_trait_function_spec(&mut self, spec: InstantiatedTraitFunctionSpec<'def>) {
+        assert!(self.spec.spec.is_none(), "Overriding specification of FunctionBuilder");
+        self.spec.spec = Some(InnerFunctionSpec::TraitDefault(spec));
+    }
+
+    /// Add a functon specification from a specification builder.
+    pub fn add_function_spec_from_builder(&mut self, mut spec_builder: LiteralFunctionSpecBuilder<'def>) {
+        // add things for traits
+        // TODO: is this the right place to do this?
+        for trait_use in &self.trait_requirements {
+            let spec_params_param_name = trait_use.make_spec_params_param_name();
+            let spec_params_type_name = trait_use.trait_ref.spec_params_record.clone();
+
+            let spec_param_name = trait_use.make_spec_param_name();
+            let spec_type = format!("{} {spec_params_param_name}", trait_use.trait_ref.spec_record);
+
+            // add the spec params
+            self.spec.late_coq_params.0.push(coq::Param::new(
+                coq::Name::Named(spec_params_param_name),
+                coq::Type::Literal(spec_params_type_name),
+                true,
+            ));
+
+            // add the spec itself
+            self.spec.late_coq_params.0.push(coq::Param::new(
+                coq::Name::Named(spec_param_name),
+                coq::Type::Literal(spec_type),
+                false,
+            ));
+
+            let spec_precond = trait_use.make_spec_param_precond();
+            // this should be proved after typarams are instantiated
+            spec_builder.add_late_precondition(spec_precond);
+        }
+
+        assert!(self.spec.spec.is_none(), "Overriding specification of FunctionBuilder");
+        let lit_spec = spec_builder.into_function_spec();
+        self.spec.spec = Some(InnerFunctionSpec::Lit(lit_spec));
+    }
+
+    pub fn into_function(
+        mut self,
+        arena: &'def Arena<FunctionSpec<InnerFunctionSpec<'def>>>,
+    ) -> Function<'def> {
+        assert!(self.spec.spec.is_some(), "No specification provided");
+
         // sort parameters for code
-        builder.other_functions.sort_by(|a, b| a.loc_name.cmp(&b.loc_name));
-        //builder.generic_types.sort_by(|a, b| a.rust_name.cmp(&b.rust_name));
-        builder.used_statics.sort_by(|a, b| a.ident.cmp(&b.ident));
+        self.other_functions.sort_by(|a, b| a.loc_name.cmp(&b.loc_name));
+        self.used_statics.sort_by(|a, b| a.ident.cmp(&b.ident));
 
-        // generate location parameters for other functions used by this one.
-        let mut parameters: Vec<(coq::Name, coq::Type)> = builder
+        // generate location parameters for other functions used by this one, as well as syntypes
+        // These are parameters that the code gets
+        let mut parameters: Vec<(coq::Name, coq::Type)> = self
             .other_functions
             .iter()
             .map(|f_inst| (coq::Name::Named(f_inst.loc_name.clone()), coq::Type::Loc))
             .collect();
 
         // generate location parameters for statics used by this function
-        let mut statics_parameters = builder
+        let mut statics_parameters = self
             .used_statics
             .iter()
             .map(|s| (coq::Name::Named(s.loc_name.clone()), coq::Type::Loc))
@@ -1313,43 +1419,45 @@ impl<'def> From<FunctionBuilder<'def>> for Function<'def> {
         parameters.append(&mut statics_parameters);
 
         // add generic syntype parameters for generics that this function uses.
-        let mut gen_st_parameters = builder
-            .generic_types
+        let mut gen_st_parameters = self
+            .spec
+            .generics
+            .get_ty_params()
             .iter()
             .map(|names| (coq::Name::Named(names.syn_type.clone()), coq::Type::SynType))
             .collect();
         parameters.append(&mut gen_st_parameters);
 
-        for names in &builder.generic_types {
-            builder.spec.add_ty_param(names.clone());
-        }
-        let spec = builder.spec.into_function_spec(&builder.function_name, &builder.spec_name);
-
         let code = FunctionCode {
-            stack_layout: builder.code.stack_layout,
-            name: builder.function_name.clone(),
-            basic_blocks: builder.code.basic_blocks,
+            stack_layout: self.code.stack_layout,
+            name: self.spec.function_name.clone(),
+            basic_blocks: self.code.basic_blocks,
             required_parameters: parameters,
         };
 
+        // assemble the spec
+        let lit_spec = self.spec.spec.take().unwrap();
+        let spec = self.spec.replace_spec(lit_spec);
+        let spec_ref = arena.alloc(spec);
+
         Function {
             code,
-            spec,
-            generic_types: builder.generic_types,
-            other_functions: builder.other_functions,
-            layoutable_syntys: builder.layoutable_syntys,
-            loop_invariants: builder.loop_invariants,
-            manual_tactics: builder.tactics,
-            used_statics: builder.used_statics,
+            spec: spec_ref,
+            other_functions: self.other_functions,
+            layoutable_syntys: self.layoutable_syntys,
+            loop_invariants: self.loop_invariants,
+            manual_tactics: self.tactics,
+            used_statics: self.used_statics,
+            extra_link_assum: self.extra_link_assum,
         }
     }
 }
 
-impl<'def> From<FunctionBuilder<'def>> for FunctionSpec<'def> {
-    fn from(mut builder: FunctionBuilder<'def>) -> Self {
-        for names in builder.generic_types {
-            builder.spec.add_ty_param(names.clone());
-        }
-        builder.spec.into_function_spec(&builder.function_name, &builder.spec_name)
+impl<'def> TryFrom<FunctionBuilder<'def>> for FunctionSpec<InnerFunctionSpec<'def>> {
+    type Error = String;
+
+    fn try_from(mut builder: FunctionBuilder<'def>) -> Result<Self, String> {
+        let spec = builder.spec.spec.take().ok_or_else(|| "No specification was provided".to_owned())?;
+        Ok(builder.spec.replace_spec(spec))
     }
 }

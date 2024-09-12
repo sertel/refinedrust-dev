@@ -549,6 +549,20 @@ Section typing.
     SubsumeFull E L step (l ◁ₗ[π, b1] r1 @ lt1) (l ◁ₗ[π, b2] r2 @ lt2) | 1002 :=
     λ T, i2p (subsume_full_own_loc π E L step l lt1 lt2 b1 b2 r1 r2 T).
 
+  (** Weaker Subsume instances for compatibility *)
+  Lemma subsume_own_loc {rt} π l (lt1 : ltype rt) (lt2 : ltype rt) b1 b2 r1 r2 T :
+    subsume (l ◁ₗ[π, b1] r1 @ lt1) (l ◁ₗ[π, b2] r2 @ lt2) T :-
+      exhale (⌜b1 = b2⌝);
+      exhale (⌜lt1 = lt2⌝);
+      exhale (⌜r1 = r2⌝);
+      return T.
+  Proof.
+    iIntros "(-> & -> & -> & HT) Ha". iFrame.
+  Qed.
+  Definition subsume_own_loc_inst := [instance @subsume_own_loc].
+  Global Existing Instance subsume_own_loc_inst.
+
+
   (** ** Subtyping instances: [weak_subtype] *)
   Lemma weak_subtype_id E L {rt} (ty : type rt) r T :
     T ⊢ weak_subtype E L r r ty ty T.
@@ -930,11 +944,14 @@ Section typing.
   (* a trivial low-priority instance, in case no other instance triggers.
     In particular, we should also make sure that custom instances for user-defined types get priority. *)
   Lemma resolve_ghost_id {rt} π E L l (lt : ltype rt) rm lb k r (T : llctx → place_rfn rt → iProp Σ → bool → iProp Σ) :
-    match rm, r with
-    | ResolveTry, PlaceIn _ => T L r True true
-    | ResolveTry, PlaceGhost _ => T L r True false
-    | ResolveAll, PlaceIn _ => T L r True true
-    | ResolveAll, PlaceGhost _ => False
+    match rm with
+    | ResolveAll =>
+        match r with
+        | PlaceIn _ => T L r True true
+        | _ => False
+        end
+    | ResolveTry =>
+        T L r True (match r with PlaceIn _ => true | PlaceGhost _ => false end)
     end
     ⊢ resolve_ghost π E L rm lb l lt k r T.
   Proof.
@@ -1398,7 +1415,7 @@ Section typing.
     This needs to have a lower priority than custom user-defined instances (e.g. for [◁ value_t]), so we give it a high cost. *)
   Global Instance stratify_ltype_unblock_ofty_in_inst {rt} π E L mu mdu ma l (ty : type rt) (r : place_rfn rt) b :
     StratifyLtype π E L mu mdu ma StratifyUnblockOp l (◁ ty)%I r b | 100 :=
-    λ T, i2p (stratify_ltype_resolve_ghost_leaf π E L mu mdu ma StratifyUnblockOp ResolveAll l (◁ ty)%I b r T).
+    λ T, i2p (stratify_ltype_resolve_ghost_leaf π E L mu mdu ma StratifyUnblockOp ResolveTry l (◁ ty)%I b r T).
 
   (* Note: instance needs to have a higher priority than the resolve_ghost instance -- we should first unblock *)
   Global Instance stratify_ltype_unblock_blocked_inst {rt} π E L mu mdu ma l (ty : type rt) b r κ :
@@ -1900,11 +1917,11 @@ Section typing.
   Fixpoint interpret_rust_types (M : gmap string lft) (tys : list rust_type) (T : list (sigT type) → iProp Σ) :  iProp Σ :=
     match tys with
     | [] => T []
-    | ty :: tys => 
+    | ty :: tys =>
         li_tactic (interpret_rust_type_goal M ty)
           (λ ty, interpret_rust_types M tys (λ tys, T (ty :: tys)))
     end.
-  Lemma interpret_rust_types_elim M tys T : 
+  Lemma interpret_rust_types_elim M tys T :
     interpret_rust_types M tys T -∗
     ∃ tys, T tys.
   Proof.
@@ -1928,7 +1945,7 @@ Section typing.
     ⊢ typed_val_expr π E L (CallE ef eκs etys es) T.
   Proof.
     rewrite /compute_map_lookups_nofail_goal.
-    iIntros "(%M & Hnamed & %eκs' & _ & He)". 
+    iIntros "(%M & Hnamed & %eκs' & _ & He)".
     iPoseProof (interpret_rust_types_elim with "He") as "(%tys & He)".
     iIntros (Φ) "#CTX #HE HL Hna HΦ".
     rewrite /CallE.

@@ -697,18 +697,6 @@ Tactic Notation "liRStepUntil" open_constr(id) :=
   end; liShow.
 
 (** * Tactics for starting a function *)
-(* Recursively destruct a product in hypothesis H, using the given name as template. *)
-Ltac destruct_product_hypothesis name H :=
-  match goal with
-  | H : _ * _ |- _ => let tmp1 := fresh "tmp" in
-                      let tmp2 := fresh "tmp" in
-                      destruct H as [tmp1 tmp2];
-                      destruct_product_hypothesis name tmp1;
-                      destruct_product_hypothesis name tmp2
-  |           |- _ => let id := fresh name in
-                      rename H into id
-  end.
-
 Ltac prepare_initial_coq_context :=
   (* The automation assumes that all products in the context are destructed, see liForall *)
   repeat lazymatch goal with
@@ -747,35 +735,35 @@ Ltac inv_local_ly Harg_ly :=
 Section tac.
   Context `{!typeGS Σ}.
 
-  Lemma intro_typed_function {A} (rts : list Type) (n : nat) π (fn : function) (local_sts : list syn_type) (fp : prod_vec lft n → plist type rts → A → fn_params) :
+  Lemma intro_typed_function {A} {rts : list Type} (n : nat) π (fn : function) (local_sts : list syn_type) (fp : (eq rts rts) * (prod_vec lft n → plist type rts → A → fn_params)) :
     (∀ κs tys x (ϝ : lft),
       □ (
       let lya := fn.(f_args).*2 in
       let lyv := fn.(f_local_vars).*2 in
-      ⌜fn_arg_layout_assumptions (fp κs tys x).(fp_atys) lya⌝ -∗
+      ⌜fn_arg_layout_assumptions (fp.2 κs tys x).(fp_atys) lya⌝ -∗
       ⌜fn_local_layout_assumptions local_sts lyv⌝ -∗
-      ∀ (lsa : vec loc (length (fp κs tys x).(fp_atys))) (lsv : vec loc (length fn.(f_local_vars))),
+      ∀ (lsa : vec loc (length (fp.2 κs tys x).(fp_atys))) (lsv : vec loc (length fn.(f_local_vars))),
         let Qinit :=
           (* sidecondition first *)
-          (fp κs tys x).(fp_Sc) π ∗
-          (fp κs tys x).(fp_Pa) π ∗
-          ([∗list] l;t∈lsa;(fp κs tys x).(fp_atys), let '(existT rt (ty, r)) := t in l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
+          (fp.2 κs tys x).(fp_Sc) π ∗
+          (fp.2 κs tys x).(fp_Pa) π ∗
+          ([∗list] l;t∈lsa;(fp.2 κs tys x).(fp_atys), let '(existT rt (ty, r)) := t in l ◁ₗ[π, Owned false] PlaceIn r @ (◁ ty)) ∗
           ([∗list] l;p∈lsv;local_sts, (l ◁ₗ[π, Owned false] (PlaceIn ()) @ (◁ (uninit p))))
            in
-      let E := ((fp κs tys x).(fp_elctx) ϝ) in
+      let E := ((fp.2 κs tys x).(fp_elctx) ϝ) in
       let L := [ϝ ⊑ₗ{0} []] in
       ∃ E' E'', ⌜E = E'⌝ ∗ ⌜E' ≡ₚ E''⌝ ∗
       (credit_store 0 0 -∗ introduce_with_hooks E'' L (Qinit) (λ L2,
         introduce_typed_stmt π E'' L2 ϝ fn lsa lsv lya lyv (
         λ v L2,
-            prove_with_subtype E L2 false ProveDirect (fn_ret_prop π (fp κs tys x).(fp_fr) v) (λ L3 _ R3,
+            prove_with_subtype E L2 false ProveDirect (fn_ret_prop π (fp.2 κs tys x).(fp_fr) v) (λ L3 _ R3,
             introduce_with_hooks E L3 R3 (λ L4,
             (* we don't really kill it here, but just need to find it in the context *)
             li_tactic (llctx_find_llft_goal L4 ϝ LlctxFindLftFull) (λ _,
             find_in_context FindCreditStore (λ _, True)
           )))
         ))))) -∗
-    typed_function π rts fn local_sts fp.
+    typed_function π fn local_sts fp.
   Proof.
     iIntros "#Ha".
     rewrite /typed_function.
@@ -804,8 +792,8 @@ Tactic Notation "start_function" constr(fnname) "(" simple_intropattern(κs) ")"
   iStartProof;
   repeat iIntros "#?";
   lazymatch goal with
-  | |- envs_entails _ (typed_function _ ?rts _ _ _) =>
-    iApply (intro_typed_function rts);
+  | |- envs_entails _ (typed_function _ _ _ _) =>
+    iApply (intro_typed_function);
     (* simpl in order to simplify the projection in the type of type variables, e.g.
        T_ty : type (T_rt, T_st).1
        otherwise we can't substitute equalities on the T_st later. *)
@@ -891,7 +879,6 @@ Ltac sidecond_hook ::=
       (*try solve [solve_layout_size | solve_layout_eq | solve_op_alg];*)
       (*try solve_layout_alg*)
   end.
-
 
 (** ** Hints for automation *)
 Global Hint Extern 0 (LayoutSizeEq _ _) => rewrite /LayoutSizeEq; solve_layout_size : typeclass_instances.
@@ -1014,6 +1001,7 @@ Ltac sidecond_solver :=
 
 (* Solve this sidecondition within Lithium *)
 Ltac solve_function_subtype_hook ::=
+  rewrite /function_subtype;
   iStartProof;
   repeat liRStep
 .

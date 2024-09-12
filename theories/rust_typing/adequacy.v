@@ -50,7 +50,7 @@ Definition initial_state (fns : gmap addr function) :=
   {| st_heap := initial_heap_state; st_fntbl := fns; |}.
 
 Definition main_type `{!typeGS Σ} (P : iProp Σ) :=
-  fn(∀ () : 0 | ( *[]) : [] | () : (), λ ϝ, []; λ π, P) → ∃ () : (), () @ unit_t; λ π, True.
+  fn(∀ ( *[]) : 0 | ( *[]) : [] | () : (), λ ϝ, []; λ π, P) → ∃ () : (), () @ unit_t; λ π, True.
 
 (** * The main adequacy lemma *)
 Lemma refinedrust_adequacy Σ `{!typePreG Σ} `{ALG : LayoutAlg} (thread_mains : list loc) (fns : gmap addr function) n t2 σ2 obs σ:
@@ -58,7 +58,7 @@ Lemma refinedrust_adequacy Σ `{!typePreG Σ} `{ALG : LayoutAlg} (thread_mains :
   (* show that the main functions for the individual threads are well-typed for a provable precondition [P] *)
   (∀ {HtypeG : typeGS Σ},
     ([∗ map] k↦qs∈fns, fntbl_entry (fn_loc k) qs) ={⊤}=∗
-      [∗ list] main ∈ thread_mains, ∀ π, ∃ P, main ◁ᵥ{π} main @ function_ptr [] [] (main_type P) ∗ P) →
+      [∗ list] main ∈ thread_mains, ∀ π, ∃ P, main ◁ᵥ{π} main @ function_ptr [] (@eq_refl _ [], main_type P) ∗ P) →
   (* if the whole thread pool steps for [n] steps *)
   nsteps (Λ := c_lang) n (initial_prog <$> thread_mains, σ) obs (t2, σ2) →
   (* then it has not gotten stuck *)
@@ -102,7 +102,7 @@ Proof.
     iMod (na_alloc) as "(%π & Hna)".
     iDestruct ("Hfn" $! π) as (P) "[Hmain HP]".
     rewrite /initial_prog.
-    iApply (type_call_fnptr π [] [] 0 [] [] [] main main [] [] (main_type P) [] (λ _ _ _ _ _, True%I) with "[HP ] Hmain [] [] [] [] [Hna]").
+    iApply (type_call_fnptr π [] [] 0 [] [] [] main main [] [] eq_refl (main_type P) [] (λ _ _ _ _ _, True%I) with "[HP ] Hmain [] [] [] [] [Hna]").
     + iIntros "_". iExists eq_refl, -[], tt.
       iIntros (???) "#CTX #HE HL".
       iModIntro. iExists [], [], True%I.

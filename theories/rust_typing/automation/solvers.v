@@ -418,30 +418,30 @@ Ltac elctx_list_elem_solver :=
 
 (** Basic algorithm: Want to eliminate the RHS to [], so that the inclusion to [static] holds trivially.
   For that, expand inclusions on the LHS, until we can eliminate one lifetime on the RHS *)
-Ltac solve_lft_incl_list_step :=
+Ltac solve_lft_incl_list_step cont :=
   match goal with
   (* normalize the head if it is an intersection *)
   | |- lctx_lft_incl_list ?E ?L ((?κ1 ⊓ (?κ2 ⊓ ?κ3)) :: ?κs1) ?κs2 =>
-      notypeclasses refine (tac_lctx_lft_incl_list_head_assoc_l E L _ _ _ κs1 κs2 _)
+      notypeclasses refine (tac_lctx_lft_incl_list_head_assoc_l E L _ _ _ κs1 κs2 _); cont
   | |- lctx_lft_incl_list ?E ?L ?κs1 ((?κ1 ⊓ (?κ2 ⊓ ?κ3)) :: ?κs2) =>
-      notypeclasses refine (tac_lctx_lft_incl_list_head_assoc_r E L _ _ _ κs1 κs2 _)
+      notypeclasses refine (tac_lctx_lft_incl_list_head_assoc_r E L _ _ _ κs1 κs2 _); cont
   (* remove the atomic rhs static of an intersection *)
   | |- lctx_lft_incl_list ?E ?L (?κ1 ⊓ static :: ?κs1) ?κs2 =>
-      notypeclasses refine (tac_lctx_lft_incl_list_head_static_l E L _ κs1 κs2 _)
+      notypeclasses refine (tac_lctx_lft_incl_list_head_static_l E L _ κs1 κs2 _); cont
   | |- lctx_lft_incl_list ?E ?L ?κs1 (?κ1 ⊓ static :: ?κs2) =>
-      notypeclasses refine (tac_lctx_lft_incl_list_head_static_r E L _ κs1 κs2 _)
+      notypeclasses refine (tac_lctx_lft_incl_list_head_static_r E L _ κs1 κs2 _); cont
   (* shift the atomic rhs conjunct of an intersection *)
   | |- lctx_lft_incl_list ?E ?L (?κ1 ⊓ ?κ2 :: ?κs1) ?κs2 =>
       is_var κ2;
-      notypeclasses refine (tac_lctx_lft_incl_list_intersect_l E L _ _ κs1 κs2 _)
+      notypeclasses refine (tac_lctx_lft_incl_list_intersect_l E L _ _ κs1 κs2 _); cont
   | |- lctx_lft_incl_list ?E ?L ?κs1 (?κ1 ⊓ ?κ2 :: ?κs2) =>
       is_var κ2;
-      notypeclasses refine (tac_lctx_lft_incl_list_intersect_r E L _ _ κs1 κs2 _)
+      notypeclasses refine (tac_lctx_lft_incl_list_intersect_r E L _ _ κs1 κs2 _); cont
   (* eliminate static at the head *)
   | |- lctx_lft_incl_list ?E ?L (static :: ?κs1) ?κs2 =>
-      notypeclasses refine (tac_lctx_lft_incl_list_static_l E L κs1 κs2 _)
+      notypeclasses refine (tac_lctx_lft_incl_list_static_l E L κs1 κs2 _); cont
   | |- lctx_lft_incl_list ?E ?L ?κs1 (static :: ?κs2) =>
-      notypeclasses refine (tac_lctx_lft_incl_list_static_r E L κs1 κs2 _)
+      notypeclasses refine (tac_lctx_lft_incl_list_static_r E L κs1 κs2 _); cont
   (* goal is solved if RHS is empty *)
   | |- lctx_lft_incl_list ?E ?L ?κs1 [] =>
       notypeclasses refine (tac_lctx_lft_incl_list_nil_r E L κs1)
@@ -455,7 +455,7 @@ Ltac solve_lft_incl_list_step :=
           match el with
           | κ ≡ₗ [?κ'] =>
               notypeclasses refine (tac_lctx_lft_incl_list_augment_local_alias_rhs E L κs1 κs2 κ κ' j i _ _ _);
-              [ reflexivity | reflexivity | simpl ]
+              [ reflexivity | reflexivity | simpl; cont ]
           | _ => fail
           end
         ) L
@@ -467,7 +467,7 @@ Ltac solve_lft_incl_list_step :=
       let check_equality := fun j κ2 => ltac:(fun i κ1 =>
         first [unify κ1 κ2;
           notypeclasses refine (tac_lctx_lft_incl_list_dispatch_r E L i j κ1 κs1 κs2 _ _ _);
-            [reflexivity | reflexivity | simpl ]
+            [reflexivity | reflexivity | simpl; cont ]
         | fail ]
       ) in
       let check_left := (fun j κ2 => list_find_tac ltac:(check_equality j κ2) κs1) in
@@ -482,12 +482,12 @@ Ltac solve_lft_incl_list_step :=
               (* only do this if the RHS is non-empty---otherwise, this cannot serve to make progress *)
               assert_fails (unify κs (@nil lft));
               notypeclasses refine (tac_lctx_lft_incl_list_augment_local_owned E L κs1 κs2 κ κs j i _ _ _ _);
-              [ reflexivity | reflexivity | simpl ]
+              [ reflexivity | reflexivity | simpl; cont ]
           | κ ≡ₗ ?κs =>
               (* only do this if the RHS is non-empty---otherwise, this cannot serve to make progress *)
               assert_fails (unify κs (@nil lft));
               notypeclasses refine (tac_lctx_lft_incl_list_augment_local_alias E L κs1 κs2 κ κs j i _ _ _);
-              [ reflexivity | reflexivity | simpl ]
+              [ reflexivity | reflexivity | simpl; cont ]
           | _ => fail
           end
         ) L
@@ -507,14 +507,14 @@ Ltac solve_lft_incl_list_step :=
           match el with
           | κ ⊑ₑ ?κ' =>
               notypeclasses refine (tac_lctx_lft_incl_list_augment_external E L κ κ' κs1 κs2 j _ _ _);
-              [ elctx_list_elem_solver | reflexivity | simpl ]
+              [ elctx_list_elem_solver | reflexivity | simpl; cont ]
           | _ => fail
           end
         ) E
       in
       list_find_tac find_in_elctx κs1
   end.
-Ltac solve_lft_incl_list := repeat solve_lft_incl_list_step.
+Ltac solve_lft_incl_list := repeat solve_lft_incl_list_step idtac.
 Ltac solve_lft_incl :=
   match goal with
   | |- lctx_lft_incl ?E ?L ?κ1 ?κ2 =>
@@ -2903,3 +2903,119 @@ Ltac solve_trait_incl :=
       split_and?;
       first [solve_function_subtype | done ]
 end.
+
+(* Recursively destruct a product in hypothesis H, using the given name as template. *)
+Ltac destruct_product_hypothesis name H :=
+  match type of H with
+  | (_ * _)%type =>   let tmp1 := fresh "tmp" in
+                      let tmp2 := fresh "tmp" in
+                      destruct H as [tmp1 tmp2];
+                      destruct_product_hypothesis name tmp1;
+                      destruct_product_hypothesis name tmp2
+  | plist _ ?xs =>
+      let ys := eval simpl in xs in
+      match ys with
+      | _ :: _ =>
+                      let tmp1 := fresh "tmp" in
+                      let tmp2 := fresh "tmp" in
+                      destruct H as [tmp1 tmp2];
+                      destruct_product_hypothesis name tmp1;
+                      destruct_product_hypothesis name tmp2
+      | [] => destruct H
+      end
+  | prod_vec _ ?n =>
+      let m := eval simpl in n in
+      match m with
+      | S _ =>
+                      let tmp1 := fresh "tmp" in
+                      let tmp2 := fresh "tmp" in
+                      destruct H as [tmp1 tmp2];
+                      destruct_product_hypothesis name tmp1;
+                      destruct_product_hypothesis name tmp2
+      | 0%nat => destruct H
+      end
+  |    _ => let id := fresh name in
+                      rename H into id
+  end.
+
+(** Automation for finding [FunctionSubtype] for assumed trait specifications. *)
+Local Ltac strip_applied_params a acc cont :=
+  match a with
+  | ?a1 ?a2 =>
+      lazymatch type of a2 with
+      | syn_type =>
+          strip_applied_params a1 uconstr:(a2 +:: acc) cont
+      | Type =>
+          strip_applied_params a1 uconstr:(a2 +:: acc) cont
+      | Set =>
+          strip_applied_params a1 uconstr:(a2 +:: acc) cont
+      | _ =>
+          cont a acc
+      end
+  end.
+
+Local Ltac is_projection a :=
+  let a := eval hnf in a in
+  match a with
+  | match _ with _ => _ end =>
+    idtac
+  end.
+
+(** Find the trait parameter and trait spec record projection and pass it to [cont]. *)
+Ltac find_trait_term cont :=
+  match goal with
+  | |- function_subtype ?a _ =>
+      (* Find a subtype with function type... *)
+      match a with
+      | context [?a] =>
+          let d := type of a in
+          let e := eval simpl in d in
+          match e with
+          | prod_vec _ _ → plist _ _ → (_ → fn_params) =>
+              (* Which is a projection of the universal spec record *)
+              strip_applied_params a (hnil id) ltac:(fun a acc =>
+              is_projection a;
+              match a with
+              | (?c1 ?c2) ?d =>
+                  (* d should be the spec parameter *)
+                  is_var d;
+                  (* c2 is the implicit params parameter *)
+                  is_var c2;
+                  cont c1 d acc
+              end)
+          end
+      end
+  end.
+(** Generate a [function_subtype] hypothesis from the assumed trait subsumption and pass it to [cont]. *)
+Ltac prove_trait_incl_for trait_spec trait_proj appspec cont :=
+  lazymatch goal with
+  | H : trait_incl_marker (?incl trait_spec ?spec2) |- _ =>
+      let H2 := fresh in
+      let t1 := constr:(trait_proj _ trait_spec) in
+      let t1 := apply_term_het constr:(t1) constr:(appspec) in 
+      let t2 := constr:(trait_proj _ spec2) in
+      let t2 := apply_term_het constr:(t2) constr:(appspec) in
+      assert (function_subtype t1 t2) as H2;
+      [ rewrite trait_incl_marker_unfold in H; apply H | cont H2]
+  end.
+Ltac solve_trait_subtype :=
+  lazymatch goal with
+  | |- FunctionSubtype ?a ?b =>
+      is_evar b;
+      rewrite /FunctionSubtype;
+      eapply (function_subtype_lift_generics_1 _ (λ x y, _));
+      let κs := fresh in let tys := fresh in
+      intros κs tys;
+      destruct_product_hypothesis κs κs;
+      destruct_product_hypothesis tys tys;
+      simpl;
+      find_trait_term ltac:(fun trait_proj trait_spec appspec => prove_trait_incl_for trait_spec trait_proj appspec
+        ltac:(fun H => 
+          eapply function_subtype_lift_generics_2 in H; simpl in H;
+          eapply function_subtype_trans; [apply H | ];
+          eapply function_subtype_refl
+        ))
+  end.
+
+
+Global Hint Extern 3 (FunctionSubtype _ _) => solve_trait_subtype : typeclass_instances.

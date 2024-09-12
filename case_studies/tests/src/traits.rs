@@ -108,6 +108,16 @@ trait FooB<T>
 }
 */
 
+trait Bar<'a> {
+    fn bar(x : &'a i32);
+}
+
+impl<'a> Bar<'a> for i32 {
+    fn bar(x : &'a i32) {
+
+    }
+}
+
 
 // TODO: support skip for modules
 //#[rr::skip]
@@ -136,18 +146,39 @@ mod foo {
         }
     }
 
-    // So, I can also do requirements which might only be fulfilled later.
-    // (i.e. the requirement on T might be fulfilled by another instance).
-    impl<T> Foo<i32> for T 
-        where T : Foo<i32>
+    /* TODO
+    impl<'a, T> Foo<i32> for &'a T
     {
         type Output = i32;
 
-        // TODO
-        fn bar<U>(&self, x : U ) -> (Self::Output, i32, U) {
+        #[rr::verify]
+        fn bar<U>(&self, x: U) -> (Self::Output, i32, U) {
+            (534, 54, x)
+        }
+    }
+    */
+
+
+    impl Foo<i32> for u32
+    {
+        type Output = i32;
+
+        #[rr::verify]
+        fn bar<U>(&self, x: U) -> (Self::Output, i32, U) {
+            (64, 54, x)
+        }
+    }
+
+    /*
+    impl<'a, T> Foo<&'a mut T> for u32
+    {
+        type Output = i32;
+
+        fn bar<U>(&self, x : U) -> (Self::Output, &'a mut T, U) {
             unimplemented!();
         }
     }
+    */
 
     #[rr::params("w")]
     #[rr::args("#w")]
@@ -166,6 +197,65 @@ mod foo {
         let a = 0;
         foobar(&a);
     }
+
+    #[rr::skip]
+    #[rr::params("w")]
+    #[rr::args("w")]
+    fn foobar_ref<'a, W>(x: W) where W: Foo<&'a mut i32> {
+        // TODO: fails because of lifetime annotation, look into this
+
+        x.bar(32); 
+    }
+
+    #[rr::skip]
+    #[rr::params("w")]
+    #[rr::args("w")]
+    fn foobar_ref3<'a, W>(x: W) where W: Foo<&'a mut i32, Output=i32> {
+        // TODO fails because of sidecondition solver
+        x.bar(32); 
+    }
+
+    /*
+    #[rr::verify]
+    fn call_foobar_ref<'a>(x: &'a u32) {
+        foobar_ref::<'a, u32>(*x);
+    }
+
+    fn call_call_foobar_ref() {
+        let x = 42;
+        call_foobar_ref(&x);
+    }
+    */
+
+    #[rr::skip]
+    #[rr::params("w", "v")]
+    #[rr::args("w", "v")]
+    fn foobar_ref2<W, T>(x: W, a: T) where W: Foo<T> {
+        // TODO fails because of sidecondition solver
+        x.bar(32); 
+    }
+
+    /*
+    fn call_foobar_ref2() {
+        let mut x = 43;
+        foobar_ref2::<u32, &'_ mut i32>(43, &mut x);
+    }
+
+    fn call_foobar_ref2_2() {
+        let mut x = 43;
+
+        foobar_ref2::<u32, (&'_ i32, &'_ i32)>(43, (&x, &x));
+    }
+
+    impl<T> Foo<(T, T)> for u32
+    {
+        type Output = i32;
+
+        fn bar<U>(&self, x : U) -> (Self::Output, (T, T), U) {
+            unimplemented!();
+        }
+    }
+    */
 }
 
 /*

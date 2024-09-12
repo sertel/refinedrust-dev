@@ -770,8 +770,16 @@ End test_evar.
 Section test.
   Context `{typeGS Σ}.
 
+  Lemma test0 E κ κ' κ'' c1 c2 :
+    lctx_lft_incl E [κ ⊑ₗ{c1} [κ; κ']; κ' ⊑ₗ{c2} [κ'']] (κ) (κ'').
+  Proof.
+    (* TODO this diverges because we always greedily expand κ.
+       But probably we cannot have cycles in the local context anyways. *)
+    (*solve_lft_incl; solve[fail].*)
+  Abort.
+
   Lemma test1 E κ κ' κ'' c1 c2 :
-    lctx_lft_incl E [κ ⊑ₗ{c1} [κ'; κ]; κ' ⊑ₗ{c2} [κ'']] (κ) (κ'').
+    lctx_lft_incl E [κ ⊑ₗ{c1} [κ' ; κ]; κ' ⊑ₗ{c2} [κ'']] (κ) (κ'').
   Proof.
     solve_lft_incl; solve[fail].
   Abort.

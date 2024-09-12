@@ -18,13 +18,15 @@ use rr_rustc_interface::{abi, ast, attr, middle, target};
 use typed_arena::Arena;
 
 use crate::base::*;
+use crate::environment::borrowck::facts;
 use crate::environment::polonius_info::{self, PoloniusInfo};
 use crate::environment::Environment;
 use crate::function_body::{get_arg_syntypes_for_procedure_call, mangle_name_with_args};
 use crate::spec_parsers::enum_spec_parser::{parse_enum_refine_as, EnumSpecParser, VerboseEnumSpecParser};
+use crate::spec_parsers::parse_utils::LiteralScope;
 use crate::spec_parsers::struct_spec_parser::{self, InvariantSpecParser, StructFieldSpecParser};
 use crate::trait_registry::{self, Error, GenericTraitUse, TraitRegistry, TraitResult};
-use crate::traits::normalize_type;
+use crate::traits::{normalize_projection_type, normalize_type};
 use crate::tyvars::*;
 use crate::utils;
 
@@ -90,6 +92,13 @@ impl AdtUseKey {
     }
 }
 
+/// Data structure that maps early and late region indices to Polonius regions.
+#[derive(Clone, Debug, Default)]
+pub struct EarlyLateRegionMap {
+    pub early_regions: Vec<Option<ty::RegionVid>>,
+    pub late_regions: Vec<ty::RegionVid>,
+}
+
 /// A scope tracking the type translation state when translating the body of a function.
 /// This also includes the state needed for tracking trait constraints, as type translation for
 /// associated types in the current scope depends on that.
@@ -102,7 +111,10 @@ pub struct TypeTranslationScope<'tcx, 'def> {
     /// the invariant is that they are Literals
     pub(crate) generic_scope: Vec<Option<radium::LiteralTyParam>>,
 
-    /// maps universal lifetime indices (Polonius) to their names. offset by 1 because 0 = static.
+    /// maps generic indices (De Bruijn) to the corresponding Polonius Region Id
+    pub(crate) lifetime_scope: EarlyLateRegionMap,
+
+    /// maps universal lifetime indices (Polonius) to their names
     universal_lifetimes: HashMap<ty::RegionVid, String>,
 
     /// collection of tuple types that we use
@@ -136,6 +148,7 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
             universal_lifetimes: HashMap::new(),
             used_traits: HashMap::new(),
             polonius_info: None,
+            lifetime_scope: EarlyLateRegionMap::default(),
         }
     }
 
@@ -165,6 +178,7 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
         tcx: ty::TyCtxt<'tcx>,
         ty_params: ty::GenericArgsRef<'tcx>,
         univ_lfts: HashMap<ty::RegionVid, String>,
+        lifetimes: EarlyLateRegionMap,
         info: Option<&'def PoloniusInfo<'def, 'tcx>>,
     ) -> Result<Self, TranslationError<'tcx>> {
         info!("Entering procedure with ty_params {:?} and univ_lfts {:?}", ty_params, univ_lfts);
@@ -231,6 +245,7 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
             // Note: we do not add any traits to the scope
             used_traits: HashMap::new(),
             polonius_info: info,
+            lifetime_scope: lifetimes,
         })
     }
 
@@ -241,12 +256,13 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
         env: &Environment<'tcx>,
         ty_params: ty::GenericArgsRef<'tcx>,
         univ_lfts: HashMap<ty::RegionVid, String>,
+        lifetimes: EarlyLateRegionMap,
         param_env: ty::ParamEnv<'tcx>,
         type_translator: &TypeTranslator<'def, 'tcx>,
         trait_registry: &TraitRegistry<'tcx, 'def>,
         info: Option<&'def PoloniusInfo<'def, 'tcx>>,
     ) -> Result<Self, TranslationError<'tcx>> {
-        let mut scope_without_traits = Self::new(did, env.tcx(), ty_params, univ_lfts, info)?;
+        let mut scope_without_traits = Self::new(did, env.tcx(), ty_params, univ_lfts, lifetimes, info)?;
 
         let in_trait_decl = env.tcx().trait_of_item(did);
 
@@ -600,21 +616,72 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         Ok(radium::StructRepr::ReprRust)
     }
 
+    /// Try to translate a Polonius region variable to a Caesium lifetime.
+    fn translate_region_var<'a, 'b>(
+        translation_state: TranslationState<'a, 'b, 'def, 'tcx>,
+        v: facts::Region,
+    ) -> Option<radium::Lft> {
+        let TranslationStateInner::InFunction(scope) = translation_state else {
+            info!("Translating region: ReVar {:?} as None (outside of function)", v);
+            return None;
+        };
+
+        if let Some(info) = scope.polonius_info {
+            // If there is Polonius Info available, use that for translation
+            let x = info.mk_atomic_region(v);
+            let r = format_atomic_region_direct(&x, Some(&**scope));
+            info!("Translating region: ReVar {:?} as {:?}", v, r);
+            Some(r)
+        } else {
+            // otherwise, just use the universal scope
+            let r = scope.lookup_universal_region(v);
+            info!("Translating region: ReVar {:?} as {:?}", v, r);
+            r
+        }
+    }
+
+    pub fn translate_region_in_empty_scope(region: ty::Region<'tcx>) -> Option<radium::Lft> {
+        let mut s = HashSet::new();
+        Self::translate_region(&mut TranslationStateInner::TranslateAdt(&mut s), region)
+    }
+
     /// Try to translate a region to a Caesium lifetime.
-    /// Note: This relies on all the regions being `ReVar` inference variables.
-    fn translate_region<'a, 'b>(
+    pub fn translate_region<'a, 'b>(
         translation_state: TranslationState<'a, 'b, 'def, 'tcx>,
         region: ty::Region<'tcx>,
     ) -> Option<radium::Lft> {
         match *region {
             ty::RegionKind::ReEarlyBound(early) => {
                 info!("Translating region: EarlyBound {:?}", early);
-                None
+                let TranslationStateInner::InFunction(scope) = translation_state else {
+                    if early.has_name() {
+                        let name = early.name.as_str();
+                        return Some(format!("ulft_{}", strip_coq_ident(name)));
+                    }
+                    info!("Translating region: ReEarlyBound {early:?} as None (outside of function)");
+                    return None;
+                };
+                info!("Looking up lifetime {region:?} in scope {:?}", scope.lifetime_scope);
+                let region_id = scope.lifetime_scope.early_regions.get(early.index as usize)?;
+                if let Some(region_id) = region_id {
+                    let lft = scope.universal_lifetimes.get(region_id);
+                    lft.cloned()
+                } else {
+                    unreachable!("Expected lifetime parameter, got type parameter");
+                }
             },
 
             ty::RegionKind::ReLateBound(idx, r) => {
                 info!("Translating region: LateBound {:?} {:?}", idx, r);
-                None
+
+                let TranslationStateInner::InFunction(scope) = translation_state else {
+                    info!("Translating region: ReLateBound {idx:?} {r:?} as None (outside of function)");
+                    return None;
+                };
+                info!("Looking up lifetime {region:?} in scope {:?}", scope.lifetime_scope);
+                let region_id = scope.lifetime_scope.late_regions.get::<usize>(idx.into())?;
+                let lft = scope.universal_lifetimes.get(region_id);
+                lft.cloned()
             },
 
             ty::RegionKind::RePlaceholder(placeholder) => {
@@ -626,25 +693,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             ty::RegionKind::ReStatic => Some("static".to_owned()),
             ty::RegionKind::ReErased => Some("erased".to_owned()),
 
-            ty::RegionKind::ReVar(v) => {
-                let TranslationStateInner::InFunction(scope) = translation_state else {
-                    info!("Translating region: ReVar {:?} as None (outside of function)", v);
-                    return None;
-                };
-
-                if let Some(info) = scope.polonius_info {
-                    // If there is Polonius Info available, use that for translation
-                    let x = info.mk_atomic_region(v);
-                    let r = format_atomic_region_direct(&x, Some(&**scope));
-                    info!("Translating region: ReVar {:?} as {:?}", v, r);
-                    Some(r)
-                } else {
-                    // otherwise, just use the universal scope
-                    let r = scope.lookup_universal_region(v);
-                    info!("Translating region: ReVar {:?} as {:?}", v, r);
-                    r
-                }
-            },
+            ty::RegionKind::ReVar(v) => Self::translate_region_var(translation_state, v),
 
             _ => {
                 info!("Translating region: {:?}", region);
@@ -1106,17 +1155,21 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
         // parse attributes
         let outer_attrs = self.env.get_attributes(ty.def_id);
+
         // TODO: change once we handle structs with lft parameters
-        let lft_params: Vec<(Option<String>, radium::Lft)> = Vec::new();
+        let lft_params = HashMap::new();
+        let scope = LiteralScope::new(ty_param_defs.into(), lft_params);
+
         let expect_refinement;
         let mut invariant_spec;
         if utils::has_tool_attr(outer_attrs, "refined_by") {
             let outer_attrs = utils::filter_tool_attrs(outer_attrs);
-            let mut spec_parser = struct_spec_parser::VerboseInvariantSpecParser::new();
+            let mut spec_parser = struct_spec_parser::VerboseInvariantSpecParser::new(&scope);
             let ty_name = strip_coq_ident(format!("{}_inv_t", struct_name).as_str());
             let res = spec_parser
-                .parse_invariant_spec(&ty_name, &outer_attrs, ty_param_defs, &lft_params)
+                .parse_invariant_spec(&ty_name, &outer_attrs)
                 .map_err(TranslationError::FatalError)?;
+
             invariant_spec = Some(res.0);
             expect_refinement = !res.1;
         } else {
@@ -1146,8 +1199,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
 
             let mut parser = struct_spec_parser::VerboseStructFieldSpecParser::new(
                 &ty,
-                ty_param_defs,
-                &lft_params,
+                &scope,
                 expect_refinement,
                 |lit| self.intern_literal(lit),
             );
@@ -1468,11 +1520,13 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                 let attributes = utils::filter_tool_attrs(attributes);
 
                 // TODO: change once we handle lft parameters properly
-                let lft_params: Vec<(Option<String>, radium::Lft)> = Vec::new();
+                let lft_params = HashMap::new();
+                let scope = LiteralScope::new(ty_param_defs.clone(), lft_params);
 
-                let mut parser = VerboseEnumSpecParser::new();
+                let mut parser = VerboseEnumSpecParser::new(&scope);
+
                 enum_spec = parser
-                    .parse_enum_spec("", &attributes, &variant_attrs, &ty_param_defs, &lft_params)
+                    .parse_enum_spec("", &attributes, &variant_attrs)
                     .map_err(TranslationError::FatalError)?;
             } else {
                 // generate a specification
@@ -1711,10 +1765,19 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             },
 
             TyKind::Alias(kind, alias_ty) => {
-                // We should have normalized the type before already.
-                // Remaining projections are not statically resolvable because they refer to a type variable.
                 // If we are in the body of a function, resolve this using our trait scope.
                 if let TranslationStateInner::InFunction(ref mut function_scope) = *state {
+                    // TODO do we get a problem because we are erasing regions?
+                    if let Ok(normalized_ty) =
+                        normalize_erasing_regions_in_function(function_scope.did, self.env.tcx(), ty)
+                    {
+                        if !matches!(normalized_ty.kind(), ty::TyKind::Alias(_, _)) {
+                            // if we managed to normalize it, translate the normalized type
+                            return self.translate_type_with_deps(normalized_ty, state);
+                        }
+                    }
+                    // otherwise, we can't normalize the projection
+
                     match kind {
                         ty::AliasKind::Projection => {
                             info!(
@@ -1727,16 +1790,15 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
                                 .lookup_trait_use(self.env.tcx(), trait_did, alias_ty.args)?
                                 .trait_use;
 
-                            let method_name = self
+                            let type_name = self
                                 .env
                                 .get_assoc_item_name(alias_ty.def_id)
                                 .ok_or(trait_registry::Error::NotAnAssocType(alias_ty.def_id))?;
-                            let method_name = strip_coq_ident(&method_name);
-                            let assoc_type = trait_use.make_assoc_type_lit(&method_name);
+                            let assoc_type = trait_use.make_assoc_type_use(&strip_coq_ident(&type_name));
 
                             info!("Resolved projection to {assoc_type:?}");
 
-                            Ok(radium::Type::LiteralParam(assoc_type))
+                            Ok(assoc_type)
                         },
                         _ => Err(TranslationError::UnsupportedType {
                             description: "RefinedRust does not support Alias types of kind {kind:?}"
@@ -2121,35 +2183,28 @@ impl<'def, 'tcx> LocalTypeTranslator<'def, 'tcx> {
         &self,
         ty: Ty<'tcx>,
     ) -> Result<radium::SynType, TranslationError<'tcx>> {
-        let ty = self.normalize(ty)?;
         let mut scope = self.scope.borrow_mut();
         self.translator.translate_type_to_syn_type(ty, &mut scope)
+    }
+
+    /// Translate a region in the scope of the current function.
+    pub fn translate_region(&self, region: ty::Region<'tcx>) -> Option<radium::Lft> {
+        let mut scope = self.scope.borrow_mut();
+        let mut scope = TranslationStateInner::InFunction(&mut scope);
+        TypeTranslator::translate_region(&mut scope, region)
+    }
+
+    /// Translate a Polonius region variable in the scope of the current function.
+    pub fn translate_region_var(&self, region: facts::Region) -> Option<radium::Lft> {
+        let mut scope = self.scope.borrow_mut();
+        let mut scope = TranslationStateInner::InFunction(&mut scope);
+        TypeTranslator::translate_region_var(&mut scope, region)
     }
 
     /// Translate type.
     pub fn translate_type(&self, ty: Ty<'tcx>) -> Result<radium::Type<'def>, TranslationError<'tcx>> {
-        let ty = self.normalize(ty)?;
         let mut scope = self.scope.borrow_mut();
         self.translator.translate_type(ty, &mut scope)
-    }
-
-    /// Translate type without normalizing first.
-    pub fn translate_type_no_normalize(
-        &self,
-        ty: Ty<'tcx>,
-    ) -> Result<radium::Type<'def>, TranslationError<'tcx>> {
-        let mut scope = self.scope.borrow_mut();
-        self.translator.translate_type(ty, &mut scope)
-    }
-
-    /// Translate a MIR type to the Caesium syntactic type we need when storing an element of the type,
-    /// substituting all generics, without normalizing first.
-    pub fn translate_type_to_syn_type_no_normalize(
-        &self,
-        ty: Ty<'tcx>,
-    ) -> Result<radium::SynType, TranslationError<'tcx>> {
-        let mut scope = self.scope.borrow_mut();
-        self.translator.translate_type_to_syn_type(ty, &mut scope)
     }
 
     /// Assumes that the current state of the ADT registry is consistent, i.e. we are not currently
@@ -2292,14 +2347,16 @@ impl<'def, 'tcx> LocalTypeTranslator<'def, 'tcx> {
 
     /// Register a procedure use of a trait method.
     /// The given `ty_params` need to include the args to both the trait and the method.
+    /// Returns:
+    /// - the parameter name for the method loc
+    /// - the spec term for the method spec
+    /// - the arguments of the method
     pub fn register_use_trait_procedure(
         &self,
         env: &Environment<'tcx>,
         trait_method_did: DefId,
         ty_params: ty::GenericArgsRef<'tcx>,
-        _trait_spec_terms: &[String],
-        trait_assoc_tys: Vec<radium::Type<'def>>,
-    ) -> Result<radium::UsedProcedure<'def>, TranslationError<'tcx>> {
+    ) -> Result<(String, String, ty::GenericArgsRef<'tcx>), TranslationError<'tcx>> {
         let trait_did = env
             .tcx()
             .trait_of_item(trait_method_did)
@@ -2326,28 +2383,7 @@ impl<'def, 'tcx> LocalTypeTranslator<'def, 'tcx> {
         // get spec. the spec takes the generics of the method as arguments
         let method_spec_term = trait_spec_use.make_method_spec_term(&method_name);
 
-        // generate the spec term with arguments (refinement type and syntype for its generics)
-        // as well as the translated method params
-        let mut translated_params = Vec::new();
-        for arg in method_args.as_slice() {
-            if let ty::GenericArgKind::Type(ty) = arg.unpack() {
-                let translated_ty = self.translate_type(ty)?;
-                // push translated param
-                translated_params.push(translated_ty);
-            }
-        }
-        // also add the associated types now
-        translated_params.extend(trait_assoc_tys);
-
-        // TODO: does this give the right params for this one? (esp. because of trait args)
-        let syntypes =
-            get_arg_syntypes_for_procedure_call(env.tcx(), self, trait_method_did, ty_params.as_slice())?;
-
-        let proc_use =
-            radium::UsedProcedure::new(method_loc_name, method_spec_term, translated_params, true, syntypes);
-        info!("generated trait method use {proc_use:?}");
-
-        Ok(proc_use)
+        Ok((method_loc_name, method_spec_term, method_args))
     }
 }
 
@@ -2361,8 +2397,34 @@ where
     T: ty::TypeFoldable<ty::TyCtxt<'tcx>>,
 {
     let param_env = tcx.param_env(function_did);
+    info!("Normalizing type {ty:?} in env {param_env:?}");
     normalize_type(tcx, param_env, ty)
         .map_err(|e| TranslationError::TraitResolution(format!("normalization error: {:?}", e)))
+}
+
+pub fn normalize_erasing_regions_in_function<'tcx, T>(
+    function_did: DefId,
+    tcx: ty::TyCtxt<'tcx>,
+    ty: T,
+) -> Result<T, TranslationError<'tcx>>
+where
+    T: ty::TypeFoldable<ty::TyCtxt<'tcx>>,
+{
+    let param_env = tcx.param_env(function_did);
+    info!("Normalizing type {ty:?} in env {param_env:?}");
+    tcx.try_normalize_erasing_regions(param_env, ty)
+        .map_err(|e| TranslationError::TraitResolution(format!("normalization error: {:?}", e)))
+}
+
+pub fn normalize_projection_in_function<'tcx>(
+    function_did: DefId,
+    tcx: ty::TyCtxt<'tcx>,
+    ty: ty::AliasTy<'tcx>,
+) -> Result<ty::Ty<'tcx>, TranslationError<'tcx>> {
+    let param_env = tcx.param_env(function_did);
+    info!("Normalizing type {ty:?} in env {param_env:?}");
+    normalize_projection_type(tcx, param_env, ty)
+        .map_err(|e| TranslationError::TraitResolution(format!("could not normalize projection {ty:?}")))
 }
 
 /// Format the Coq representation of an atomic region.

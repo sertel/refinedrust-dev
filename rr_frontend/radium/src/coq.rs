@@ -432,6 +432,14 @@ impl Param {
         Self::new(Name::Named(name), self.ty.clone(), self.implicit)
     }
 
+    #[must_use]
+    pub fn get_name(&self) -> Option<&str> {
+        match &self.name {
+            Name::Named(s) => Some(s),
+            Name::Unnamed => None,
+        }
+    }
+
     #[allow(clippy::collapsible_else_if)]
     #[must_use]
     pub fn format(&self, make_implicits: bool) -> String {
@@ -468,6 +476,10 @@ impl ParamList {
     #[must_use]
     pub const fn empty() -> Self {
         Self(vec![])
+    }
+
+    pub fn append(&mut self, params: Vec<Param>) {
+        self.0.extend(params);
     }
 
     /// Make using terms for this list of binders
@@ -736,7 +748,7 @@ impl ContextDecl {
     pub fn refinedrust() -> Self {
         Self {
             items: ParamList::new(vec![Param::new(
-                Name::Unnamed,
+                Name::Named("RRGS".to_owned()),
                 Type::Literal("refinedrustGS Σ".to_owned()),
                 true,
             )]),

@@ -4,6 +4,8 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
+use std::collections::HashMap;
+
 use attribute_parse::{parse, MToken};
 use parse::{Parse, Peek};
 use radium::{coq, specs};
@@ -27,8 +29,6 @@ pub trait EnumSpecParser {
         ty_name: &str,
         attrs: &'a [&'a AttrItem],
         variant_attrs: &[Vec<&'a AttrItem>],
-        params: &'a [specs::LiteralTyParam],
-        lfts: &'a [(Option<String>, specs::Lft)],
     ) -> Result<specs::EnumSpec, String>;
 }
 
@@ -42,7 +42,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
     fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         // parse the pattern
         let pat: parse::LitStr = input.parse(meta)?;
-        let (pat, _) = process_coq_literal(&pat.value(), *meta);
+        let (pat, _) = process_coq_literal(&pat.value(), meta);
 
         let args: Vec<String> = if parse::Dollar::peek(input) {
             // optionally parse args
@@ -55,7 +55,7 @@ impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
             parsed_args
                 .into_iter()
                 .map(|s| {
-                    let (arg, _) = process_coq_literal(&s.value(), *meta);
+                    let (arg, _) = process_coq_literal(&s.value(), meta);
                     arg
                 })
                 .collect()
@@ -68,24 +68,24 @@ impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
 }
 
 #[allow(clippy::module_name_repetitions)]
-pub struct VerboseEnumSpecParser;
+pub struct VerboseEnumSpecParser<'a> {
+    scope: &'a LiteralScope,
+}
 
-impl VerboseEnumSpecParser {
-    pub const fn new() -> Self {
-        Self {}
+impl<'a> VerboseEnumSpecParser<'a> {
+    pub const fn new(scope: &'a LiteralScope) -> Self {
+        Self { scope }
     }
 }
 
-impl EnumSpecParser for VerboseEnumSpecParser {
+impl<'b> EnumSpecParser for VerboseEnumSpecParser<'b> {
     fn parse_enum_spec<'a>(
         &'a mut self,
         ty_name: &str,
         attrs: &'a [&'a AttrItem],
         variant_attrs: &[Vec<&'a AttrItem>],
-        params: &'a [specs::LiteralTyParam],
-        lfts: &'a [(Option<String>, specs::Lft)],
     ) -> Result<specs::EnumSpec, String> {
-        let meta = (params, lfts);
+        let meta = self.scope;
 
         let mut variant_patterns: Vec<(String, Vec<String>, String)> = Vec::new();
         let mut rfn_type = None;

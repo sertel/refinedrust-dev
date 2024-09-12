@@ -1,6 +1,6 @@
 From iris.proofmode Require Import coq_tactics reduction.
 From lithium Require Export base.
-From lithium Require Import hooks definitions simpl_classes normalize proof_state solvers syntax.
+From lithium Require Import hooks definitions simpl_classes normalize proof_state solvers syntax boringly.
 Set Default Proof Using "Type".
 
 (** This file contains the main Lithium interpreter. *)
@@ -386,6 +386,14 @@ Section coq_tactics.
     envs_entails Δ (□ (P ∗ True) ∧ Q) → envs_entails Δ (□ P ∗ Q).
   Proof. apply tac_fast_apply. iIntros "[#[$ _] $]". Qed.
 
+  Lemma tac_do_intro_boringly_sep Δ (P Q : iProp Σ) :
+    envs_entails Δ (☒ (P ∗ True) ∧ Q) → envs_entails Δ (☒ P ∗ Q).
+  Proof.
+    apply tac_fast_apply.
+    iIntros "[#Ha $]".
+    iPoseProof (boringly_sep with "Ha") as "($ & _)".
+  Qed.
+
   Lemma tac_do_simplify_goal Δ (n : N) (P : iProp Σ) T {SG : SimplifyGoal P (Some n)} :
     envs_entails Δ (SG T).(i2p_P) → envs_entails Δ (P ∗ T).
   Proof. apply tac_fast_apply. iIntros "HP". by iApply (i2p_proof with "HP"). Qed.
@@ -407,6 +415,7 @@ Ltac liSep :=
     | bi_emp => notypeclasses refine (tac_sep_emp _ _ _)
     | (⌜_⌝)%I => notypeclasses refine (tac_do_intro_pure_and _ _ _ _)
     | (□ ?P)%I => notypeclasses refine (tac_do_intro_intuit_sep _ _ _ _)
+    | (☒ ?P)%I => notypeclasses refine (tac_do_intro_boringly_sep _ _ _ _)
     | match ?x with _ => _ end => fail "should not have match in sep"
     | ?P => first [
                progress liFindHyp FICSyntactic
@@ -469,6 +478,45 @@ Section coq_tactics.
   Lemma tac_wand_emp Δ (P : iProp Σ) :
     envs_entails Δ P → envs_entails Δ (emp -∗ P).
   Proof. apply tac_fast_apply. by iIntros "$". Qed.
+
+  Lemma tac_wand_intuit_pure Δ P (R : iProp Σ) :
+    envs_entails Δ (⌜P⌝ -∗ R) → envs_entails Δ (□ ⌜P⌝ -∗ R).
+  Proof. apply tac_fast_apply. iIntros "Hb #Ha"; by iApply "Hb". Qed.
+
+  Lemma tac_wand_boringly_sep Δ (P Q R : iProp Σ) :
+    envs_entails Δ (☒ P -∗ ☒ Q -∗ R) → envs_entails Δ ((☒ (P ∗ Q)) -∗ R).
+  Proof.
+    apply tac_fast_apply.
+    rewrite boringly_sep. iIntros "Ha [HP HQ]".
+    iApply ("Ha" with "HP HQ").
+  Qed.
+
+  Lemma tac_wand_boringly_pers Δ (P R : iProp Σ) `{!Persistent P} :
+    envs_entails Δ ((□ P) -∗ R) → envs_entails Δ (☒ P -∗ R).
+  Proof.
+    apply tac_fast_apply. iIntros "Ha HP".
+    iPoseProof (boringly_persistent_elim with "HP") as "#HP2".
+    iApply "Ha". by iModIntro.
+  Qed.
+
+  (* Instance to introduce a persistent fragment if [P] is not itself persistent. *)
+  Global Instance boringly_intro_persistent (P P' : iProp Σ) :
+    IntroPersistent P P' →
+    IntroPersistent (☒ P) P'.
+  Proof.
+    iIntros ([HP]). constructor.
+    iIntros "HP".
+    iPoseProof (boringly_mono with "HP") as "HP"; first apply HP.
+    by iApply boringly_persistent_elim.
+  Qed.
+
+  Lemma tac_wand_boringly_ex Δ {X} (Φ : X → iProp Σ) (R : iProp Σ) :
+    envs_entails Δ ((∃ x : X, ☒ Φ x) -∗ R) → envs_entails Δ ((☒ ∃ x : X, Φ x) -∗ R).
+  Proof.
+    apply tac_fast_apply.
+    iIntros "Ha Hb".
+    iApply "Ha". iApply (boringly_exists_elim with "Hb").
+  Qed.
 End coq_tactics.
 
 Ltac liWand :=
@@ -496,7 +544,23 @@ Ltac liWand :=
       | bi_exist _ => fail "handled by liForall"
       | bi_emp => notypeclasses refine (tac_wand_emp _ _ _)
       | bi_pure _ => notypeclasses refine (tac_do_intro_pure _ _ _ _)
+      | bi_intuitionistically (bi_pure _) => notypeclasses refine (tac_wand_intuit_pure _ _ _ _)
       | match ?x with _ => _ end => fail "should not have match in wand"
+      | boringly ?Q =>
+          first [lazymatch Q with
+            | bi_exist _ =>
+                li_let_bind T (fun H => constr:(envs_entails Δ (bi_wand P H)));
+                notypeclasses refine (tac_wand_boringly_ex _ _ _ _)
+            | bi_sep _ _ =>
+                li_let_bind T (fun H => constr:(envs_entails Δ (bi_wand P H)));
+                notypeclasses refine (tac_wand_boringly_sep _ _ _ _ _)
+            end
+          | (* try to strip the modality *)
+            let ip := constr:(_ : Persistent Q) in
+            notypeclasses refine (@tac_wand_boringly_pers _ _ _ _ ip _)
+          | (* otherwise introduce directly *)
+              wand_intro P
+          ]
       | _ => wand_intro P
       end
   end.
@@ -548,6 +612,23 @@ Ltac liPersistent :=
   lazymatch goal with
   | |- envs_entails ?Δ (bi_intuitionistically ?P) =>
       notypeclasses refine (tac_persistent _ _ _); li_pm_reduce
+  end.
+
+(** ** [liBoringly] *)
+Section coq_tactics.
+  Context {Σ : gFunctors}.
+
+  Lemma tac_boringly Δ (P : iProp Σ) :
+    envs_entails Δ P → envs_entails Δ (☒ P).
+  Proof.
+    apply tac_fast_apply. apply boringly_intro.
+  Qed.
+End coq_tactics.
+
+Ltac liBoringly :=
+  lazymatch goal with
+  | |- envs_entails ?Δ (boringly ?P) =>
+      notypeclasses refine (tac_boringly _ _ _)
   end.
 
 (** ** [liCase] *)
@@ -674,6 +755,7 @@ Ltac liStep :=
     | liTrace
     | liTactic
     | liPersistent
+    | liBoringly
     | liTrue
     | liFalse
     | liAccu

@@ -394,6 +394,7 @@ impl<T> Vec<T> {
     #[rr::args("(#(<#> xs), γ)", "Z.of_nat i")]
     #[rr::requires("i < length xs")]
     #[rr::observe("γ": "delete i (<#> xs)")]
+    #[rr::returns("xs !!! i")]
     pub fn remove(&mut self, index: usize) -> T {
         // index out of bounds?
         assert!(index < self.len);

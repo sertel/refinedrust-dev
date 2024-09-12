@@ -41,10 +41,14 @@ struct ShimTraitEntry {
     kind: String,
     /// name of the trait
     name: String,
+    /// the Coq def name of the spec param record
+    spec_param_record: String,
     /// the Coq def name of the spec record
     spec_record: String,
     /// the Coq def name of the base spec
     base_spec: String,
+    /// the Coq def name of the base spec params
+    base_spec_params: String,
     /// the Coq def name of spec subsumption relation
     spec_subsumption: String,
 }
@@ -136,8 +140,10 @@ impl From<TraitMethodImplShim> for ShimTraitMethodImplEntry {
 pub struct TraitShim<'a> {
     pub path: Path<'a>,
     pub name: String,
+    pub spec_param_record: String,
     pub spec_record: String,
     pub base_spec: String,
+    pub base_spec_params: String,
     pub spec_subsumption: String,
 }
 
@@ -147,8 +153,10 @@ impl<'a> From<TraitShim<'a>> for ShimTraitEntry {
             path: shim.path.iter().map(|x| (*x).to_owned()).collect(),
             kind: "trait".to_owned(),
             name: shim.name,
+            spec_param_record: shim.spec_param_record,
             spec_record: shim.spec_record,
             base_spec: shim.base_spec,
+            base_spec_params: shim.base_spec_params,
             spec_subsumption: shim.spec_subsumption,
         }
     }
@@ -355,8 +363,10 @@ impl<'a> ShimRegistry<'a> {
                     let entry = TraitShim {
                         path: self.intern_path(b.path),
                         name: b.name,
+                        spec_param_record: b.spec_param_record,
                         spec_record: b.spec_record,
                         base_spec: b.base_spec,
+                        base_spec_params: b.base_spec_params,
                         spec_subsumption: b.spec_subsumption,
                     };
 

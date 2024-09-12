@@ -4,6 +4,8 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
+use std::collections::HashMap;
+
 /// Parsing of `RefinedRust` struct specifications.
 use attribute_parse::{parse, MToken};
 use log::info;
@@ -30,8 +32,6 @@ pub trait InvariantSpecParser {
         &'a mut self,
         ty_name: &str,
         attrs: &'a [&'a AttrItem],
-        params: &'a [specs::LiteralTyParam],
-        lfts: &'a [(Option<String>, specs::Lft)],
     ) -> Result<(specs::InvariantSpec, bool), String>;
 }
 
@@ -45,13 +45,13 @@ struct RfnPattern {
 impl<'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
     fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
         let pat = parse::LitStr::parse(input, meta)?;
-        let (pat, _) = process_coq_literal(pat.value().as_str(), *meta);
+        let (pat, _) = process_coq_literal(pat.value().as_str(), meta);
 
         // optionally, parse a type annotation (otherwise, let Coq inference do its thing)
         if parse::Colon::peek(input) {
             input.parse::<_, MToken![:]>(meta)?;
             let ty: parse::LitStr = input.parse(meta)?;
-            let (ty, _) = process_coq_literal(ty.value().as_str(), *meta);
+            let (ty, _) = process_coq_literal(ty.value().as_str(), meta);
             Ok(Self {
                 rfn_pat: pat,
                 rfn_type: Some(coq::Type::Literal(ty)),
@@ -102,19 +102,19 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
 
                 "type" => {
                     let loc_str: parse::LitStr = input.parse(meta)?;
-                    let (loc_str, mut annot_meta) = process_coq_literal(&loc_str.value(), *meta);
+                    let (loc_str, mut annot_meta) = process_coq_literal(&loc_str.value(), meta);
 
                     input.parse::<_, MToken![:]>(meta)?;
 
                     let rfn_str: parse::LitStr = input.parse(meta)?;
-                    let (rfn_str, annot_meta2) = process_coq_literal(&rfn_str.value(), *meta);
+                    let (rfn_str, annot_meta2) = process_coq_literal(&rfn_str.value(), meta);
 
                     annot_meta.join(&annot_meta2);
 
                     input.parse::<_, MToken![@]>(meta)?;
 
                     let type_str: parse::LitStr = input.parse(meta)?;
-                    let (type_str, annot_meta3) = process_coq_literal(&type_str.value(), *meta);
+                    let (type_str, annot_meta3) = process_coq_literal(&type_str.value(), meta);
 
                     annot_meta.join(&annot_meta3);
 
@@ -136,13 +136,13 @@ impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
                 input.parse::<_, MToken![:]>(meta)?;
 
                 let pure_prop: parse::LitStr = input.parse(meta)?;
-                let (pure_str, _annot_meta) = process_coq_literal(&pure_prop.value(), *meta);
+                let (pure_str, _annot_meta) = process_coq_literal(&pure_prop.value(), meta);
                 // TODO: should we use annot_meta?
 
                 Ok(Self::Pure(pure_str, Some(name_str)))
             } else {
                 // this is a
-                let (lit, _) = process_coq_literal(&name_or_prop_str.value(), *meta);
+                let (lit, _) = process_coq_literal(&name_or_prop_str.value(), meta);
                 Ok(Self::Pure(lit, None))
             }
         }
@@ -171,27 +171,27 @@ impl<U> parse::Parse<U> for InvariantSpecFlags {
     }
 }
 
-pub struct VerboseInvariantSpecParser;
+pub struct VerboseInvariantSpecParser<'a> {
+    scope: &'a LiteralScope,
+}
 
-impl VerboseInvariantSpecParser {
-    pub const fn new() -> Self {
-        Self {}
+impl<'a> VerboseInvariantSpecParser<'a> {
+    pub const fn new(scope: &'a LiteralScope) -> Self {
+        Self { scope }
     }
 }
 
-impl InvariantSpecParser for VerboseInvariantSpecParser {
+impl<'b> InvariantSpecParser for VerboseInvariantSpecParser<'b> {
     fn parse_invariant_spec<'a>(
         &'a mut self,
         ty_name: &str,
         attrs: &'a [&'a AttrItem],
-        params: &'a [specs::LiteralTyParam],
-        lfts: &'a [(Option<String>, specs::Lft)],
     ) -> Result<(specs::InvariantSpec, bool), String> {
         if attrs.is_empty() {
             return Err("no invariant specifications given".to_owned());
         }
 
-        let meta: ParseMeta<'_> = (params, lfts);
+        let meta: ParseMeta<'_> = self.scope;
 
         let mut invariants: Vec<(specs::IProp, specs::InvariantMode)> = Vec::new();
         let mut type_invariants: Vec<specs::TyOwnSpec> = Vec::new();
@@ -329,9 +329,7 @@ where
     field_type: &'a specs::Type<'def>,
 
     /// the type parameters of this struct
-    params: &'a [specs::LiteralTyParam],
-
-    lfts: &'a [(Option<String>, specs::Lft)],
+    scope: &'a LiteralScope,
 
     /// whether to expect a refinement to be specified or not
     expect_rfn: bool,
@@ -347,15 +345,13 @@ where
 {
     pub const fn new(
         field_type: &'a specs::Type<'def>,
-        params: &'a [specs::LiteralTyParam],
-        lfts: &'a [(Option<String>, specs::Lft)],
+        scope: &'a LiteralScope,
         expect_rfn: bool,
         make_literal: F,
     ) -> Self {
         Self {
             field_type,
-            params,
-            lfts,
+            scope,
             expect_rfn,
             make_literal,
         }
@@ -395,7 +391,7 @@ where
     ) -> Result<StructFieldSpec<'def>, String> {
         info!("parsing attributes of field {:?}: {:?}", field_name, attrs);
 
-        let meta = (self.params, self.lfts);
+        let meta = self.scope;
 
         let mut field_type = None;
         let mut parsed_rfn = None;

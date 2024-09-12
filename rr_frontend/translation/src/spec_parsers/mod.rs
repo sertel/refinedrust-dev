@@ -2,12 +2,13 @@ pub mod const_attr_parser;
 pub mod crate_attr_parser;
 pub mod enum_spec_parser;
 pub mod module_attr_parser;
-mod parse_utils;
+pub mod parse_utils;
 pub mod struct_spec_parser;
 pub mod verbose_function_spec_parser;
 
 use attribute_parse::{parse, MToken};
 use parse::Parse;
+use parse_utils::LiteralScope;
 use rr_rustc_interface::ast;
 use rr_rustc_interface::ast::ast::AttrItem;
 

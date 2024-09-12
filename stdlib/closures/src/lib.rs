@@ -39,31 +39,50 @@ pub trait FnOnce<Args: Tuple> {
 
 /*
 #[rr::export_as(core::ops::FnOnce)]
-#[rr::context("FnOnce {rt_of Self} {rts_of Args} {rt_of Output}")]
-pub trait FnOnce2<Args: Tuple> {
+#[rr::exists("Pre" : "{rt_of Self} → {rt_of Args} → iProp Σ")]
+#[rr::exists("Post" : "{rt_of Self} → {rt_of Args} → {rt_of Output} → iProp Σ")]
+pub trait FnOnce<Args: Tuple> {
     /// The returned type after the call operator is used.
     type Output;
 
     /// Performs the call operation.
     #[rr::params("m", "x")]
+    #[rr::requires("Pre m x")]
     #[rr::args("m", "x")]
     #[rr::exists("y")]
-    #[rr::ensures("fnonce_call_rel m x y")]
+    #[rr::ensures("Post m x y")]
     #[rr::returns("y")]
     fn call_once(self, args: Args) -> Self::Output;
 }
 
-
-#[rr::export_as(core::ops::FnOnce)]
-#[rr::parameter("H: FnOnce2")]
-pub trait FnOnce3<Args: Tuple> {
-    /// The returned type after the call operator is used.
-    type Output;
-
+#[rr::export_as(core::ops::FnMut)]
+#[rr::exists("Pre" : "{rt_of Self} → {rt_of Args} → iProp Σ")]
+// Note: the relation gets both the current and the next state
+#[rr::exists("Post" : "{rt_of Self} → {rt_of Args} → {rt_of Self} → {rt_of Output} → iProp Σ")]
+pub trait FnMut<Args: Tuple>: FnOnce<Args> {
     /// Performs the call operation.
-    #[rr::spec("H.(fnonce_call_spec)")] 
-    fn call_once(self, args: Args) -> Self::Output;
+    #[rr::params("m", "γ", "x")]
+    #[rr::requires("Pre m x")]
+    #[rr::args("(#m, γ)", "x")]
+    #[rr::exists("y", "m'")]
+    #[rr::ensures("Post m x m' y")]
+    #[rr::observe("γ": "m'")]
+    #[rr::returns("y")]
+    fn call_mut(&mut self, args: Args) -> Self::Output;
 }
 
+#[rr::export_as(core::ops::Fn)]
+#[rr::exists("Pre" : "{rt_of Self} → {rt_of Args} → iProp Σ")]
+#[rr::exists("Post" : "{rt_of Self} → {rt_of Args} → {rt_of Output} → iProp Σ")]
+pub trait Fn<Args: Tuple>: FnMut<Args> {
 
+    /// Performs the call operation.
+    #[rr::params("m", "x")]
+    #[rr::requires("Pre m x")]
+    #[rr::args("#m", "x")]
+    #[rr::exists("y")]
+    #[rr::ensures("Post m x y")]
+    #[rr::returns("y")]
+    fn call(&self, args: Args) -> Self::Output;
+}
 */

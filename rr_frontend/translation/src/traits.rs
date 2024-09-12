@@ -24,12 +24,40 @@ where
     T: ty::TypeFoldable<ty::TyCtxt<'tcx>>,
 {
     let infer_ctx = tcx.infer_ctxt().build();
+
     trait_selection::traits::fully_normalize(
         &infer_ctx,
         middle::traits::ObligationCause::dummy(),
         param_env,
         ty,
     )
+}
+
+/// Normalize a type in the given environment.
+pub fn normalize_projection_type<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    param_env: ParamEnv<'tcx>,
+    ty: ty::AliasTy<'tcx>,
+) -> Result<ty::Ty<'tcx>, ()> {
+    let canonical_infos = tcx.mk_canonical_var_infos(&[]);
+    let canonical = middle::infer::canonical::Canonical {
+        value: ty::ParamEnvAnd {
+            param_env,
+            value: ty,
+        },
+        variables: canonical_infos,
+        max_universe: ty::UniverseIndex::from(0_usize),
+    };
+    let res: Result<
+        &'tcx middle::infer::canonical::Canonical<
+            'tcx,
+            middle::infer::canonical::QueryResponse<'tcx, middle::traits::query::NormalizationResult<'tcx>>,
+        >,
+        middle::traits::query::NoSolution,
+    > = tcx.normalize_projection_ty(canonical);
+    let res = res.map_err(|a| ())?;
+    let ty = res.value.value.normalized_ty;
+    Ok(ty)
 }
 
 /// Resolve an implementation of a trait using codegen candidate selection.

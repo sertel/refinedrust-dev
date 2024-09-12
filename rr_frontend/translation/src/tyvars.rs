@@ -145,17 +145,17 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyRegionEraseFolder<'tcx> {
 /// A `TypeFolder` that finds all regions occurring in a type.
 pub struct TyRegionCollectFolder<'tcx> {
     tcx: TyCtxt<'tcx>,
-    regions: Vec<Region>,
+    regions: HashSet<Region>,
 }
 impl<'tcx> TyRegionCollectFolder<'tcx> {
-    pub const fn new(tcx: TyCtxt<'tcx>) -> Self {
+    pub fn new(tcx: TyCtxt<'tcx>) -> Self {
         TyRegionCollectFolder {
             tcx,
-            regions: Vec::new(),
+            regions: HashSet::new(),
         }
     }
 
-    pub fn get_regions(self) -> Vec<Region> {
+    pub fn get_regions(self) -> HashSet<Region> {
         self.regions
     }
 }
@@ -174,7 +174,7 @@ impl<'tcx> ty::TypeFolder<TyCtxt<'tcx>> for TyRegionCollectFolder<'tcx> {
 
     fn fold_region(&mut self, r: ty::Region<'tcx>) -> ty::Region<'tcx> {
         if let ty::RegionKind::ReVar(r) = r.kind() {
-            self.regions.push(r);
+            self.regions.insert(r);
         }
 
         r
