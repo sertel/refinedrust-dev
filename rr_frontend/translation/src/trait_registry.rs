@@ -14,7 +14,7 @@ use crate::environment::Environment;
 use crate::function_body::{get_arg_syntypes_for_procedure_call, mangle_name_with_args, FunctionTranslator};
 use crate::spec_parsers::propagate_method_attr_from_impl;
 use crate::type_translator::{
-    generate_args_inst_key, strip_coq_ident, GenericsKey, InFunctionState, LocalTypeTranslator,
+    generate_args_inst_key, strip_coq_ident, GenericsKey, InFunctionState, LocalTypeTranslator, ParamScope,
     TypeTranslator,
 };
 use crate::utils;
@@ -472,17 +472,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         // figure out the parameters this impl gets and make a scope
         let impl_generics: &'tcx ty::Generics = self.env.tcx().generics_of(trait_impl_did);
-        let mut scope = radium::GenericScope::empty();
-        for param in &impl_generics.params {
-            if let ty::GenericParamDefKind::Type { .. } = param.kind {
-                let name = param.name.as_str();
-                let lit = radium::LiteralTyParam::new(name, name);
-                scope.add_ty_param(lit);
-            } else if let ty::GenericParamDefKind::Lifetime { .. } = param.kind {
-                let name = format!("ulft_{}", strip_coq_ident(param.name.as_str()));
-                scope.add_lft_param(name);
-            }
-        }
+        let param_scope = ParamScope::from(impl_generics.params.as_slice());
 
         // figure out the trait ref for this
         let subject = self.env.tcx().impl_subject(trait_impl_did).skip_binder();
@@ -492,18 +482,16 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
             let mut lft_inst = Vec::new();
             for arg in trait_ref.args {
                 if let Some(ty) = arg.as_type() {
-                    // TODO: not in empty scope?
-                    let ty = self.type_translator.translate_type_in_empty_scope(ty)?;
+                    let ty = self.type_translator.translate_type_in_scope(param_scope.clone(), ty)?;
                     params_inst.push(ty);
                 } else if let Some(lft) = arg.as_region() {
-                    let lft = TypeTranslator::translate_region_in_empty_scope(lft)
+                    let lft = TypeTranslator::translate_region_in_scope(param_scope.clone(), lft)
                         .unwrap_or_else(|| "trait_placeholder_lft".to_owned());
                     lft_inst.push(lft);
                 }
             }
 
             // get instantiation for the associated types
-            // and go over all methods
             let mut assoc_types_inst = Vec::new();
 
             // TODO don't rely on definition order
@@ -520,9 +508,9 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                     if let Some(ty_item) = ty_item {
                         let ty_did = ty_item.def_id;
                         let ty = self.env.tcx().type_of(ty_did);
-                        // TODO not in empty scope?
-                        let translated_ty =
-                            self.type_translator.translate_type_in_empty_scope(ty.skip_binder())?;
+                        let translated_ty = self
+                            .type_translator
+                            .translate_type_in_scope(param_scope.clone(), ty.skip_binder())?;
                         assoc_types_inst.push(translated_ty);
                     } else {
                         unreachable!("trait impl does not have required item");
@@ -530,7 +518,13 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                 }
             }
 
-            Ok(radium::TraitRefInst::new(trait_spec_ref, scope, lft_inst, params_inst, assoc_types_inst))
+            Ok(radium::TraitRefInst::new(
+                trait_spec_ref,
+                param_scope.into(),
+                lft_inst,
+                params_inst,
+                assoc_types_inst,
+            ))
         } else {
             unreachable!("Expected trait impl");
         }
@@ -703,23 +697,3 @@ impl<'def> GenericTraitUse<'def> {
         assoc_tys
     }
 }
-
-// Next steps:
-// - add trait registration from code
-
-// Note: if I use a function which has traits, I need to provide it with the specification I provide.
-// This is something I have to provide as the caller
-// I need to look in the trait registry and check for registered instances
-// TODO: add notion of registered instances/ instance registry.
-//
-// I guess when I register that I call a function, I should check whether it requires any trait
-// implementations (i.e., go over its clauses)
-// I should then find out which instance will get picked for it, i.e. which instance gets picked.
-//  either this is a Param instance
-//  or it's an instance I can concretely resolve.
-// in the former case, I guess I give it the spec param recursively
-// in the latter case, I check if I have a registered spec for this instance, and use that.
-//
-// How about structs which use associated types?
-// if it's not statically resolvable, I guess it just acts as another type parameter, and it should
-// TODO: shelve ADTs with trait constraints

@@ -53,8 +53,8 @@ pub struct LiteralTypeWithRef {
     pub meta: specs::TypeAnnotMeta,
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for LiteralTypeWithRef {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for LiteralTypeWithRef {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         // check if a #raw annotation is present
         let loc = input.pos();
         let mut raw = specs::TypeIsRaw::No;
@@ -102,8 +102,8 @@ pub struct LiteralType {
     pub meta: specs::TypeAnnotMeta,
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for LiteralType {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for LiteralType {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let ty: parse::LitStr = input.parse(meta)?;
         let (ty, meta) = process_coq_literal(&ty.value(), meta);
 
@@ -120,8 +120,8 @@ impl From<IProp> for specs::IProp {
 }
 
 /// Parse an iProp string, e.g. `"P ∗ Q ∨ R"`
-impl<'a> parse::Parse<ParseMeta<'a>> for IProp {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for IProp {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let lit: parse::LitStr = input.parse(meta)?;
         let (lit, _) = process_coq_literal(&lit.value(), meta);
 
@@ -140,8 +140,8 @@ pub struct RRParam {
     pub ty: coq::Type,
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for RRParam {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for RRParam {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let name: IdentOrTerm = input.parse(meta)?;
         let name = coq::Name::Named(name.to_string());
 
@@ -166,8 +166,8 @@ pub struct RRParams {
     pub(crate) params: Vec<RRParam>,
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for RRParams {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for RRParams {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let params: parse::Punctuated<RRParam, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
         Ok(Self {
@@ -211,8 +211,8 @@ pub struct RRCoqContextItem {
     /// parameters
     pub at_end: bool,
 }
-impl<'a> parse::Parse<ParseMeta<'a>> for RRCoqContextItem {
-    fn parse(input: parse::Stream, meta: &ParseMeta<'a>) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for RRCoqContextItem {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let item: parse::LitStr = input.parse(meta)?;
         let (item_str, annot_meta) = process_coq_literal(&item.value(), meta);
 
@@ -245,23 +245,11 @@ pub fn str_err(e: parse::Error) -> String {
     format!("{:?}", e)
 }
 
-/// Scope containing information about generics used for processing escape sequences in specs.
-#[derive(Debug)]
-pub struct LiteralScope {
-    // TODO: maybe refactor this to a HashMap, too.
-    generics: Vec<specs::LiteralTyParam>,
-    lifetimes: HashMap<String, specs::Lft>,
+/// Lookup of lifetime and type parameters given their Rust source names.
+pub trait ParamLookup {
+    fn lookup_ty_param(&self, param: &str) -> Option<&specs::LiteralTyParam>;
+    fn lookup_lft(&self, lft: &str) -> Option<&specs::Lft>;
 }
-impl LiteralScope {
-    pub fn new(generics: Vec<specs::LiteralTyParam>, lifetimes: HashMap<String, specs::Lft>) -> Self {
-        Self {
-            generics,
-            lifetimes,
-        }
-    }
-}
-
-pub type ParseMeta<'a> = &'a LiteralScope;
 
 /// Handle escape sequences in the given string.
 pub fn handle_escapes(s: &str) -> String {
@@ -279,10 +267,7 @@ pub fn handle_escapes(s: &str) -> String {
 /// - `{st_of T}` is replaced by the syntactic type of the type parameter `T`
 /// - `{ly_of T}` is replaced by a term giving the layout of the type parameter `T`'s syntactic type
 /// - `{'a}` is replaced by a term corresponding to the lifetime parameter 'a
-pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::TypeAnnotMeta) {
-    let params = &meta.generics;
-    let lfts = &meta.lifetimes;
-
+pub fn process_coq_literal<T: ParamLookup>(s: &str, meta: &T) -> (String, specs::TypeAnnotMeta) {
     let mut literal_lfts: HashSet<String> = HashSet::new();
     let mut literal_tyvars: HashSet<specs::LiteralTyParam> = HashSet::new();
 
@@ -309,7 +294,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
     let cs = &s;
     let cs = RE_RT_OF.replace_all(cs, |c: &Captures<'_>| {
         let t = &c[2];
-        let param = specs::lookup_ty_param(t, params);
+        let param = meta.lookup_ty_param(t);
 
         let Some(param) = param else {
             return "ERR".to_owned();
@@ -321,7 +306,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
 
     let cs = RE_ST_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
-        let param = specs::lookup_ty_param(t, params);
+        let param = meta.lookup_ty_param(t);
 
         let Some(param) = param else {
             return "ERR".to_owned();
@@ -333,7 +318,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
 
     let cs = RE_LY_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
-        let param = specs::lookup_ty_param(t, params);
+        let param = meta.lookup_ty_param(t);
 
         let Some(param) = param else {
             return "ERR".to_owned();
@@ -345,7 +330,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
 
     let cs = RE_TY_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
-        let param = specs::lookup_ty_param(t, params);
+        let param = meta.lookup_ty_param(t);
 
         let Some(param) = param else {
             return "ERR".to_owned();
@@ -357,7 +342,7 @@ pub fn process_coq_literal(s: &str, meta: ParseMeta<'_>) -> (String, specs::Type
 
     let cs = RE_LFT_OF.replace_all(&cs, |c: &Captures<'_>| {
         let t = &c[2];
-        let lft = lfts.get(t);
+        let lft = meta.lookup_lft(t);
 
         let Some(lft) = lft else {
             return "ERR".to_owned();

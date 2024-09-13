@@ -42,8 +42,8 @@ struct RfnPattern {
     rfn_type: Option<coq::Type>,
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for RfnPattern {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for RfnPattern {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let pat = parse::LitStr::parse(input, meta)?;
         let (pat, _) = process_coq_literal(pat.value().as_str(), meta);
 
@@ -79,8 +79,8 @@ enum MetaIProp {
     Shared(specs::IProp),
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for MetaIProp {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         if parse::Pound::peek(input) {
             input.parse::<_, MToken![#]>(meta)?;
             let macro_cmd: parse::Ident = input.parse(meta)?;
@@ -171,17 +171,17 @@ impl<U> parse::Parse<U> for InvariantSpecFlags {
     }
 }
 
-pub struct VerboseInvariantSpecParser<'a> {
-    scope: &'a LiteralScope,
+pub struct VerboseInvariantSpecParser<'a, T> {
+    scope: &'a T,
 }
 
-impl<'a> VerboseInvariantSpecParser<'a> {
-    pub const fn new(scope: &'a LiteralScope) -> Self {
+impl<'a, T: ParamLookup> VerboseInvariantSpecParser<'a, T> {
+    pub const fn new(scope: &'a T) -> Self {
         Self { scope }
     }
 }
 
-impl<'b> InvariantSpecParser for VerboseInvariantSpecParser<'b> {
+impl<'b, T: ParamLookup> InvariantSpecParser for VerboseInvariantSpecParser<'b, T> {
     fn parse_invariant_spec<'a>(
         &'a mut self,
         ty_name: &str,
@@ -190,8 +190,6 @@ impl<'b> InvariantSpecParser for VerboseInvariantSpecParser<'b> {
         if attrs.is_empty() {
             return Err("no invariant specifications given".to_owned());
         }
-
-        let meta: ParseMeta<'_> = self.scope;
 
         let mut invariants: Vec<(specs::IProp, specs::InvariantMode)> = Vec::new();
         let mut type_invariants: Vec<specs::TyOwnSpec> = Vec::new();
@@ -218,7 +216,7 @@ impl<'b> InvariantSpecParser for VerboseInvariantSpecParser<'b> {
             let buffer = parse::Buffer::new(&args.inner_tokens());
             match seg.ident.name.as_str() {
                 "refined_by" => {
-                    let pat = RfnPattern::parse(&buffer, &meta).map_err(str_err)?;
+                    let pat = RfnPattern::parse(&buffer, self.scope).map_err(str_err)?;
 
                     rfn_pat = pat.rfn_pat;
 
@@ -227,7 +225,7 @@ impl<'b> InvariantSpecParser for VerboseInvariantSpecParser<'b> {
                     }
                 },
                 "invariant" => {
-                    let prop = MetaIProp::parse(&buffer, &meta).map_err(str_err)?;
+                    let prop = MetaIProp::parse(&buffer, self.scope).map_err(str_err)?;
 
                     match prop {
                         MetaIProp::Own(iprop) => {
@@ -252,17 +250,17 @@ impl<'b> InvariantSpecParser for VerboseInvariantSpecParser<'b> {
                     }
                 },
                 "exists" => {
-                    let mut params = RRParams::parse(&buffer, &meta).map_err(str_err)?;
+                    let mut params = RRParams::parse(&buffer, self.scope).map_err(str_err)?;
 
                     existentials.append(&mut params.params);
                 },
                 "mode" => {
-                    let mode = InvariantSpecFlags::parse(&buffer, &meta).map_err(str_err)?;
+                    let mode = InvariantSpecFlags::parse(&buffer, self.scope).map_err(str_err)?;
 
                     inv_flags = mode.into();
                 },
                 "refines" => {
-                    let term = IdentOrTerm::parse(&buffer, &meta).map_err(str_err)?;
+                    let term = IdentOrTerm::parse(&buffer, self.scope).map_err(str_err)?;
 
                     if abstracted_refinement.is_some() {
                         return Err("multiple refines specifications given".to_owned());
@@ -270,7 +268,7 @@ impl<'b> InvariantSpecParser for VerboseInvariantSpecParser<'b> {
                     abstracted_refinement = Some(term.to_string());
                 },
                 "context" => {
-                    let param = RRCoqContextItem::parse(&buffer, &meta).map_err(str_err)?;
+                    let param = RRCoqContextItem::parse(&buffer, self.scope).map_err(str_err)?;
 
                     params.push(coq::Param::new(coq::Name::Unnamed, coq::Type::Literal(param.item), true));
                 },
@@ -321,7 +319,7 @@ pub trait StructFieldSpecParser<'def> {
 
 /// Parses attributes on a field to a `StructFieldSpec`, using a given default type for the field
 /// in case none is annotated.
-pub struct VerboseStructFieldSpecParser<'a, 'def, F>
+pub struct VerboseStructFieldSpecParser<'a, 'def, T, F>
 where
     F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
@@ -329,7 +327,7 @@ where
     field_type: &'a specs::Type<'def>,
 
     /// the type parameters of this struct
-    scope: &'a LiteralScope,
+    scope: &'a T,
 
     /// whether to expect a refinement to be specified or not
     expect_rfn: bool,
@@ -339,13 +337,13 @@ where
     //rfnty_scope: &'a [Option<coq::Type>],
 }
 
-impl<'a, 'def, F> VerboseStructFieldSpecParser<'a, 'def, F>
+impl<'a, 'def, T: ParamLookup, F> VerboseStructFieldSpecParser<'a, 'def, T, F>
 where
     F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
     pub const fn new(
         field_type: &'a specs::Type<'def>,
-        scope: &'a LiteralScope,
+        scope: &'a T,
         expect_rfn: bool,
         make_literal: F,
     ) -> Self {
@@ -360,7 +358,6 @@ where
     fn make_type(&self, lit: LiteralType, ty: &specs::Type<'def>) -> specs::Type<'def> {
         // literal type given, we use this literal type as the RR semantic type
         // just use the syntype from the Rust type
-        let st = ty.get_syn_type();
 
         // TODO: get CoqType for refinement.
         // maybe have it as an annotation? the Infer is currently a placeholder.
@@ -371,7 +368,7 @@ where
             rust_name: None,
             type_term: lit.ty.clone(),
             refinement_type: coq::Type::Infer,
-            syn_type: st,
+            syn_type: ty.into(),
         };
         let lit_ref = (self.make_literal)(lit_ty);
         let lit_use = specs::LiteralTypeUse::new_with_annot(lit_ref, vec![], lit.meta);
@@ -380,7 +377,7 @@ where
     }
 }
 
-impl<'a, 'def, F> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'a, 'def, F>
+impl<'a, 'def, T: ParamLookup, F> StructFieldSpecParser<'def> for VerboseStructFieldSpecParser<'a, 'def, T, F>
 where
     F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
@@ -390,8 +387,6 @@ where
         attrs: &[&AttrItem],
     ) -> Result<StructFieldSpec<'def>, String> {
         info!("parsing attributes of field {:?}: {:?}", field_name, attrs);
-
-        let meta = self.scope;
 
         let mut field_type = None;
         let mut parsed_rfn = None;
@@ -411,19 +406,19 @@ where
             }
 
             if self.expect_rfn {
-                let rfn: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                let (rfn, _) = process_coq_literal(rfn.value().as_str(), meta);
+                let rfn: parse::LitStr = buffer.parse(self.scope).map_err(str_err)?;
+                let (rfn, _) = process_coq_literal(rfn.value().as_str(), self.scope);
                 parsed_rfn = Some(rfn);
 
                 if parse::At::peek(&buffer) {
                     info!("expecting type");
-                    buffer.parse::<_, MToken![@]>(&meta).map_err(str_err)?;
+                    buffer.parse::<_, MToken![@]>(self.scope).map_err(str_err)?;
                 } else {
                     continue;
                 }
             }
 
-            let ty = LiteralType::parse(&buffer, &meta).map_err(str_err)?;
+            let ty = LiteralType::parse(&buffer, self.scope).map_err(str_err)?;
 
             if field_type.is_some() {
                 return Err(format!("field attribute specified twice for field {:?}", field_name));

@@ -221,10 +221,6 @@ fn fmt_prod(v: &Vec<Type>) -> String {
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Type {
-    /// free variable that is bound, e.g., by a surrounding struct definition
-    #[display("#{}", _0)]
-    Var(usize),
-
     /// literal types that are not contained in the grammar
     #[display("{}", _0)]
     Literal(String),
@@ -304,98 +300,6 @@ pub enum Type {
     /// the Coq type Prop of propositions
     #[display("Prop")]
     Prop,
-}
-
-impl Type {
-    /// Check if the `CoqType` contains a free variable `Var(i)`.
-    #[must_use]
-    pub fn is_closed(&self) -> bool {
-        match self {
-            Self::Bool
-            | Self::Z
-            | Self::Unit
-            | Self::Gname
-            | Self::Infer
-            | Self::Layout
-            | Self::Lft
-            | Self::Literal(..)
-            | Self::Loc
-            | Self::Rtype
-            | Self::StructLayout
-            | Self::SynType
-            | Self::FunctionTy
-            | Self::Prop
-            | Self::Type => true,
-
-            Self::Function(args, ret) => args.iter().all(Self::is_closed) && ret.is_closed(),
-
-            Self::PList(_, tys) => tys.iter().all(Self::is_closed),
-
-            Self::PlaceRfn(t) => t.is_closed(),
-
-            Self::Prod(v) => v.iter().all(Self::is_closed),
-
-            Self::Ttype(box ty) => ty.is_closed(),
-
-            Self::Var(_) => false,
-        }
-    }
-
-    /// Substitute variables `Var` according to the given substitution (variable `i` is mapped to
-    /// index `i` in the vector).
-    /// The types in `substi` should not contain variables themselves, as this substitution
-    /// operation is capture-incurring!
-    pub fn subst(&mut self, substi: &Vec<Self>) {
-        match self {
-            Self::Bool
-            | Self::Z
-            | Self::Unit
-            | Self::Gname
-            | Self::Infer
-            | Self::Layout
-            | Self::Lft
-            | Self::Literal(..)
-            | Self::Loc
-            | Self::Rtype
-            | Self::StructLayout
-            | Self::SynType
-            | Self::FunctionTy
-            | Self::Prop
-            | Self::Type => (),
-
-            Self::Function(args, ret) => {
-                for t in args.iter_mut() {
-                    t.subst(substi);
-                }
-                ret.subst(substi);
-            },
-
-            Self::PList(_, tys) => {
-                for t in tys.iter_mut() {
-                    t.subst(substi);
-                }
-            },
-
-            Self::PlaceRfn(box t) => {
-                t.subst(substi);
-            },
-
-            Self::Prod(v) => {
-                for t in v.iter_mut() {
-                    t.subst(substi);
-                }
-            },
-
-            Self::Ttype(box t) => t.subst(substi),
-
-            Self::Var(i) => {
-                if let Some(ta) = substi.get(*i) {
-                    assert!(ta.is_closed());
-                    *self = ta.clone();
-                }
-            },
-        }
-    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]

@@ -31,7 +31,6 @@ use crate::environment::polonius_info::PoloniusInfo;
 use crate::environment::procedure::Procedure;
 use crate::environment::{dump_borrowck_info, polonius_info, Environment};
 use crate::inclusion_tracker::*;
-use crate::spec_parsers::parse_utils::LiteralScope;
 use crate::spec_parsers::verbose_function_spec_parser::{
     ClosureMetaInfo, FunctionRequirements, FunctionSpecParser, VerboseFunctionSpecParser,
 };
@@ -400,9 +399,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let params = Self::get_proc_ty_params(env.tcx(), proc_did);
         info!("Function generic args: {:?}", params);
 
-        let (inputs, output, universal_lifetimes, region_substitution) =
-            Self::process_lifetimes_of_args(env, params, sig);
-        info!("Have lifetime parameters: {:?}", universal_lifetimes);
+        let (inputs, output, region_substitution) = Self::process_lifetimes_of_args(env, params, sig);
         info!("inputs: {:?}, output: {:?}", inputs, output);
 
         let type_scope = Self::setup_local_scope(
@@ -412,7 +409,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             proc_did,
             params.as_slice(),
             &mut translated_fn,
-            universal_lifetimes,
             region_substitution,
             false,
             None,
@@ -536,7 +532,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     dump_borrowck_info(env, proc.get_id(), info);
                 }
 
-                let (tupled_inputs, output, mut universal_lifetimes, region_substitution) =
+                let (tupled_inputs, output, mut region_substitution) =
                     Self::process_lifetimes_of_args(env, params, sig);
 
                 // Process the lifetime parameters that come from the captures
@@ -545,7 +541,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     if let ty::RegionKind::ReVar(r) = r.kind() {
                         let lft = info.mk_atomic_region(r);
                         let name = format_atomic_region_direct(&lft, None);
-                        universal_lifetimes.insert(r, (name, None));
+                        region_substitution.region_names.insert(r, name);
                         // TODO: add to region_substitution?
                     } else {
                         unreachable!();
@@ -563,7 +559,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                         info!("using lifetime {:?} for closure universal", r2);
                         let lft = info.mk_atomic_region(r2);
                         let name = format_atomic_region_direct(&lft, None);
-                        universal_lifetimes.insert(r2, (name, None));
+                        region_substitution.region_names.insert(r2, name);
 
                         maybe_outer_lifetime = Some(r2);
                     } else {
@@ -595,7 +591,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 }
 
                 info!("inputs({}): {:?}, output: {:?}", inputs.len(), inputs, output);
-                info!("Have lifetime parameters: {:?}", universal_lifetimes);
 
                 let mut inclusion_tracker = InclusionTracker::new(info);
                 // add placeholder subsets
@@ -618,7 +613,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     proc.get_id(),
                     params,
                     &mut translated_fn,
-                    universal_lifetimes,
                     region_substitution,
                     true,
                     Some(info),
@@ -653,7 +647,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                         captures,
                         capture_tys: &translated_upvars_types,
                         closure_lifetime: maybe_outer_lifetime
-                            .map(|x| scope.lookup_universal_region(x).unwrap()),
+                            .map(|x| scope.lifetime_scope.lookup_region(x).unwrap().to_owned()),
                     };
                 }
 
@@ -713,9 +707,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     dump_borrowck_info(env, proc.get_id(), info);
                 }
 
-                let (inputs, output, universal_lifetimes, region_substitution) =
-                    Self::process_lifetimes_of_args(env, params, sig);
-                info!("Have lifetime parameters: {:?}", universal_lifetimes);
+                let (inputs, output, region_substitution) = Self::process_lifetimes_of_args(env, params, sig);
                 info!("inputs: {:?}, output: {:?}", inputs, output);
 
                 let mut inclusion_tracker = InclusionTracker::new(info);
@@ -739,7 +731,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     proc.get_id(),
                     params.as_slice(),
                     &mut translated_fn,
-                    universal_lifetimes,
                     region_substitution,
                     true,
                     Some(info),
@@ -845,7 +836,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             // type:
             info!("Trying to translate type of local {local:?}: {:?}", ty);
             let tr_ty = self.ty_translator.translate_type(ty)?;
-            let st = tr_ty.get_syn_type();
+            let st = (&tr_ty).into();
 
             let name = Self::make_local_name(body, local, &mut used_names);
             radium_name_map.insert(local, name.clone());
@@ -925,10 +916,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         env: &Environment<'tcx>,
         params: &[ty::GenericArg<'tcx>],
         sig: ty::Binder<'tcx, ty::FnSig<'tcx>>,
-    ) -> (Vec<ty::Ty<'tcx>>, ty::Ty<'tcx>, HashMap<ty::RegionVid, (String, Option<String>)>, EarlyLateRegionMap)
-    {
+    ) -> (Vec<ty::Ty<'tcx>>, ty::Ty<'tcx>, EarlyLateRegionMap) {
         // a mapping of Polonius region IDs to names
-        let mut universal_lifetimes = HashMap::new();
+        let mut universal_lifetimes = BTreeMap::new();
+        let mut lifetime_names = HashMap::new();
 
         let mut region_substitution_early: Vec<Option<ty::RegionVid>> = Vec::new();
 
@@ -949,10 +940,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 match *r {
                     ty::RegionKind::ReEarlyBound(r) => {
                         let name = strip_coq_ident(r.name.as_str());
-                        universal_lifetimes.insert(next_id, (format!("ulft_{}", name), Some(name)));
+                        universal_lifetimes.insert(next_id, format!("ulft_{}", name));
+                        lifetime_names.insert(name, next_id);
                     },
                     _ => {
-                        universal_lifetimes.insert(next_id, (format!("ulft_{}", num_early_bounds), None));
+                        universal_lifetimes.insert(next_id, format!("ulft_{}", num_early_bounds));
                     },
                 }
             } else {
@@ -981,14 +973,14 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                     let mut region_name = strip_coq_ident(sym.as_str());
                     if region_name == "_" {
                         region_name = next_id.as_usize().to_string();
-                        universal_lifetimes.insert(next_id, (format!("ulft_{}", region_name), None));
+                        universal_lifetimes.insert(next_id, format!("ulft_{}", region_name));
                     } else {
-                        universal_lifetimes
-                            .insert(next_id, (format!("ulft_{}", region_name), Some(region_name)));
+                        universal_lifetimes.insert(next_id, format!("ulft_{}", region_name));
+                        lifetime_names.insert(region_name, next_id);
                     }
                 },
                 ty::BoundRegionKind::BrAnon(_) => {
-                    universal_lifetimes.insert(next_id, (format!("ulft_{}", next_id.as_usize()), None));
+                    universal_lifetimes.insert(next_id, format!("ulft_{}", next_id.as_usize()));
                 },
                 _ => (),
             }
@@ -1018,11 +1010,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
         info!("Computed late region map {region_substitution_late:?}");
 
-        let region_map = EarlyLateRegionMap {
-            early_regions: region_substitution_early,
-            late_regions: region_substitution_late,
-        };
-        (inputs, output, universal_lifetimes, region_map)
+        let region_map = EarlyLateRegionMap::new(
+            region_substitution_early,
+            region_substitution_late,
+            universal_lifetimes,
+            lifetime_names,
+        );
+        (inputs, output, region_map)
     }
 
     /// At the start of the function, there's a universal (placeholder) region for reference argument.
@@ -1056,28 +1050,22 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         proc_did: DefId,
         params: &[ty::GenericArg<'tcx>],
         translated_fn: &mut radium::FunctionBuilder<'def>,
-        universal_lifetimes: HashMap<ty::RegionVid, (String, Option<String>)>,
         region_substitution: EarlyLateRegionMap,
         add_trait_specs: bool,
         info: Option<&'def PoloniusInfo<'def, 'tcx>>,
     ) -> Result<TypeTranslationScope<'tcx, 'def>, TranslationError<'tcx>> {
-        for (lft, name) in universal_lifetimes.values() {
-            if let Some(name) = name {
-                translated_fn.add_universal_lifetime_with_name(name.to_owned(), lft.to_string());
-            } else {
-                translated_fn.add_universal_lifetime(lft.to_string());
-            }
+        // add universals to the function
+        // important: these need to be in the right order!
+        for (vid, name) in &region_substitution.region_names {
+            translated_fn.add_universal_lifetime(name.to_owned());
         }
 
         // enter the procedure
-        let universal_lifetime_map: HashMap<_, _> =
-            universal_lifetimes.into_iter().map(|(x, y)| (x, y.0)).collect();
         let param_env: ty::ParamEnv<'tcx> = env.tcx().param_env(proc_did);
         let type_scope = TypeTranslationScope::new_with_traits(
             proc_did,
             env,
             env.tcx().mk_args(params),
-            universal_lifetime_map,
             region_substitution,
             param_env,
             ty_translator,
@@ -1245,20 +1233,26 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         }
 
         let ty_translator = &self.ty_translator;
-        let scope = LiteralScope::new(
-            self.translated_fn.get_ty_params().into(),
-            self.translated_fn.get_lifetime_name_map().to_owned(),
-        );
-        let mut parser =
-            VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, &scope, |lit| {
-                ty_translator.translator.intern_literal(lit)
-            });
+        // Hack: create indirection by tracking the tuple uses we create in here.
+        // (We need a read reference to the scope, so we can't write to it at the same time)
+        let mut tuple_uses = HashMap::new();
+        {
+            let scope = ty_translator.scope.borrow();
+            let mut parser =
+                VerboseFunctionSpecParser::new(&translated_arg_types, &translated_ret_type, &*scope, |lit| {
+                    ty_translator.translator.intern_literal(lit)
+                });
 
-        parser
-            .parse_closure_spec(v, &mut spec_builder, meta, |x| ty_translator.make_tuple_use(x))
-            .map_err(TranslationError::AttributeError)?;
+            parser
+                .parse_closure_spec(v, &mut spec_builder, meta, |x| {
+                    ty_translator.make_tuple_use(x, Some(&mut tuple_uses))
+                })
+                .map_err(TranslationError::AttributeError)?;
 
-        Self::process_function_requirements(&mut self.translated_fn, parser.into());
+            Self::process_function_requirements(&mut self.translated_fn, parser.into());
+        }
+        let mut scope = ty_translator.scope.borrow_mut();
+        scope.tuple_uses.extend(tuple_uses);
         self.translated_fn.add_function_spec_from_builder(spec_builder);
 
         trace!("leaving process_closure_attrs");
@@ -1288,21 +1282,21 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         let parser = rrconfig::attribute_parser();
         match parser.as_str() {
             "verbose" => {
-                let scope = LiteralScope::new(
-                    translator.get_ty_params().into(),
-                    translator.get_lifetime_name_map().to_owned(),
-                );
-                let mut parser: VerboseFunctionSpecParser<'_, 'def, _> = VerboseFunctionSpecParser::new(
-                    &translated_arg_types,
-                    &translated_ret_type,
-                    &scope,
-                    |lit| ty_translator.translator.intern_literal(lit),
-                );
+                {
+                    let scope = ty_translator.scope.borrow();
+                    let mut parser: VerboseFunctionSpecParser<'_, 'def, _, _> =
+                        VerboseFunctionSpecParser::new(
+                            &translated_arg_types,
+                            &translated_ret_type,
+                            &*scope,
+                            |lit| ty_translator.translator.intern_literal(lit),
+                        );
 
-                parser
-                    .parse_function_spec(attrs, &mut spec_builder)
-                    .map_err(TranslationError::AttributeError)?;
-                Self::process_function_requirements(translator, parser.into());
+                    parser
+                        .parse_function_spec(attrs, &mut spec_builder)
+                        .map_err(TranslationError::AttributeError)?;
+                    Self::process_function_requirements(translator, parser.into());
+                }
 
                 Ok(spec_builder)
             },
@@ -1346,15 +1340,17 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 .ty_translator
                 .scope
                 .borrow()
-                .lookup_universal_region(r)
-                .map(radium::UniversalLft::Local),
+                .lifetime_scope
+                .lookup_region(r)
+                .map(|x| radium::UniversalLft::Local(x.to_owned())),
 
             polonius_info::UniversalRegionKind::External => self
                 .ty_translator
                 .scope
                 .borrow()
-                .lookup_universal_region(r)
-                .map(radium::UniversalLft::External),
+                .lifetime_scope
+                .lookup_region(r)
+                .map(|x| radium::UniversalLft::External(x.to_owned())),
         }
     }
 
@@ -1998,7 +1994,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // get locals
         for (_, name, ty) in &self.fn_locals {
             // get the refinement type
-            let mut rfn_ty = ty.get_rfn_type(&[]);
+            let mut rfn_ty = ty.get_rfn_type();
             // wrap it in place_rfn, since we reason about places
             rfn_ty = coq::Type::PlaceRfn(Box::new(rfn_ty));
 
@@ -2529,8 +2525,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let place_ty = self.get_type_of_place(destination);
                 let place_st = self.ty_translator.translate_type_to_syn_type(place_ty.ty)?;
                 let place_expr = self.translate_place(destination)?;
-
-                let ot = self.ty_translator.translate_syn_type_to_op_type(&place_st);
+                let ot = place_st.into();
 
                 let annotated_rhs = radium::Expr::with_optional_annotation(
                     call_expr,
@@ -2634,7 +2629,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 // Possibly handle this differently by making the first argument of a function a dedicated
                 // return place? See also discussion at https://github.com/rust-lang/rust/issues/71117
                 let stmt = radium::Stmt::Return(radium::Expr::Use {
-                    ot: self.ty_translator.translate_syn_type_to_op_type(&self.return_synty),
+                    ot: (&self.return_synty).into(),
                     e: Box::new(radium::Expr::Var(self.return_name.clone())),
                 });
 
@@ -3244,7 +3239,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         // this should be a temporary
                         assert!(plc.projection.is_empty());
 
-                        let ot = self.ty_translator.translate_syn_type_to_op_type(&synty);
+                        let ot = synty.into();
                         cont_stmt = radium::Stmt::Assign {
                             ot,
                             e1: translated_place,
@@ -3275,9 +3270,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                         );
                         let translated_place = self.translate_place(plc)?;
                         let synty = self.ty_translator.translate_type_to_syn_type(plc_ty.ty)?;
-                        let ot = self.ty_translator.translate_syn_type_to_op_type(&synty);
                         cont_stmt = radium::Stmt::Assign {
-                            ot,
+                            ot: synty.into(),
                             e1: translated_place,
                             e2: translated_val,
                             s: Box::new(cont_stmt),
@@ -3432,7 +3426,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let e1_ty = self.get_type_of_operand(e1);
                 let off_ty = BodyTranslator::get_offset_ty(e1_ty)?;
                 let st = self.ty_translator.translate_type_to_syn_type(off_ty)?;
-                let ly = self.ty_translator.translate_syn_type_to_layout(&st);
+                let ly = st.into();
                 Ok(radium::Binop::PtrOffset(ly))
             },
         }
@@ -3486,7 +3480,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         // For borrows, we can safely ignore the downcast type -- we cannot borrow a particularly variant
         let translated_ty = self.ty_translator.translate_type(ty.ty)?;
-        let annot_ty = radium::RustType::of_type(&translated_ty, &[]);
+        let annot_ty = radium::RustType::of_type(&translated_ty);
 
         Ok(Some(annot_ty))
     }
@@ -3549,8 +3543,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let e2_ty = self.get_type_of_operand(e2);
                 let e1_st = self.ty_translator.translate_type_to_syn_type(e1_ty)?;
                 let e2_st = self.ty_translator.translate_type_to_syn_type(e2_ty)?;
-                let e1_ot = self.ty_translator.translate_syn_type_to_op_type(&e1_st);
-                let e2_ot = self.ty_translator.translate_syn_type_to_op_type(&e2_st);
 
                 let translated_e1 = self.translate_operand(e1, true)?;
                 let translated_e2 = self.translate_operand(e2, true)?;
@@ -3558,8 +3550,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 Ok(radium::Expr::BinOp {
                     o: translated_op,
-                    ot1: e1_ot,
-                    ot2: e2_ot,
+                    ot1: e1_st.into(),
+                    ot2: e2_st.into(),
                     e1: Box::new(translated_e1),
                     e2: Box::new(translated_e2),
                 })
@@ -3573,8 +3565,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let e2_ty = self.get_type_of_operand(e2);
                 let e1_st = self.ty_translator.translate_type_to_syn_type(e1_ty)?;
                 let e2_st = self.ty_translator.translate_type_to_syn_type(e2_ty)?;
-                let e1_ot = self.ty_translator.translate_syn_type_to_op_type(&e1_st);
-                let e2_ot = self.ty_translator.translate_syn_type_to_op_type(&e2_st);
 
                 let translated_e1 = self.translate_operand(e1, true)?;
                 let translated_e2 = self.translate_operand(e2, true)?;
@@ -3582,8 +3572,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 Ok(radium::Expr::BinOp {
                     o: translated_op,
-                    ot1: e1_ot,
-                    ot2: e2_ot,
+                    ot1: e1_st.into(),
+                    ot2: e2_st.into(),
                     e1: Box::new(translated_e1),
                     e2: Box::new(translated_e2),
                 })
@@ -3593,12 +3583,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let translated_e1 = self.translate_operand(operand, true)?;
                 let e1_ty = self.get_type_of_operand(operand);
                 let e1_st = self.ty_translator.translate_type_to_syn_type(e1_ty)?;
-                let e1_ot = self.ty_translator.translate_syn_type_to_op_type(&e1_st);
                 let translated_op = BodyTranslator::translate_unop(*op, e1_ty)?;
 
                 Ok(radium::Expr::UnOp {
                     o: translated_op,
-                    ot: e1_ot,
+                    ot: e1_st.into(),
                     e: Box::new(translated_e1),
                 })
             },
@@ -3731,7 +3720,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                             let els = enum_use.generate_raw_syn_type_term();
 
                             info!("generating enum annotation for type {:?}", enum_use);
-                            let ty = radium::RustType::of_type(&radium::Type::Literal(enum_use), &[]);
+                            let ty = radium::RustType::of_type(&radium::Type::Literal(enum_use));
                             let variant_name = variant_def.name.to_string();
 
                             return Ok(radium::Expr::EnumInitE {
@@ -3787,12 +3776,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             Rvalue::Cast(kind, op, to_ty) => {
                 let op_ty = self.get_type_of_operand(op);
                 let op_st = self.ty_translator.translate_type_to_syn_type(op_ty)?;
-                let op_ot = self.ty_translator.translate_syn_type_to_op_type(&op_st);
+                let op_ot = op_st.into();
 
                 let translated_op = self.translate_operand(op, true)?;
 
                 let target_st = self.ty_translator.translate_type_to_syn_type(*to_ty)?;
-                let target_ot = self.ty_translator.translate_syn_type_to_op_type(&target_st);
+                let target_ot = target_st.into();
 
                 match kind {
                     mir::CastKind::PointerCoercion(x) => {
@@ -3951,11 +3940,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 let ty = self.get_type_of_place(place);
 
                 let st = self.ty_translator.translate_type_to_syn_type(ty.ty)?;
-                let ot = self.ty_translator.translate_syn_type_to_op_type(&st);
 
                 if to_rvalue {
                     Ok(radium::Expr::Use {
-                        ot,
+                        ot: st.into(),
                         e: Box::new(translated_place),
                     })
                 } else {
@@ -4100,7 +4088,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             let (code_param_name, ty_hint, lft_hint) =
                 self.register_use_procedure(*defid, params, trait_spec_terms, &ordered_assoc_tys)?;
 
-            let ty_hint = ty_hint.into_iter().map(|x| radium::RustType::of_type(&x, &[])).collect();
+            let ty_hint = ty_hint.into_iter().map(|x| radium::RustType::of_type(&x)).collect();
 
             return Ok(radium::Expr::CallTarget(code_param_name, ty_hint, lft_hint));
         };
@@ -4128,7 +4116,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     trait_spec_terms,
                     &ordered_assoc_tys,
                 )?;
-                let ty_hint = ty_hint.into_iter().map(|x| radium::RustType::of_type(&x, &[])).collect();
+                let ty_hint = ty_hint.into_iter().map(|x| radium::RustType::of_type(&x)).collect();
 
                 Ok(radium::Expr::CallTarget(param_name, ty_hint, lft_hint))
             },
@@ -4140,7 +4128,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     trait_spec_terms,
                     &ordered_assoc_tys,
                 )?;
-                let ty_hint = ty_hint.into_iter().map(|x| radium::RustType::of_type(&x, &[])).collect();
+                let ty_hint = ty_hint.into_iter().map(|x| radium::RustType::of_type(&x)).collect();
 
                 Ok(radium::Expr::CallTarget(param_name, ty_hint, lft_hint))
             },
@@ -4165,7 +4153,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     trait_spec_terms,
                     &ordered_assoc_tys,
                 )?;
-                let ty_hint = ty_hint.into_iter().map(|x| radium::RustType::of_type(&x, &[])).collect();
+                let ty_hint = ty_hint.into_iter().map(|x| radium::RustType::of_type(&x)).collect();
 
                 Ok(radium::Expr::CallTarget(param_name, ty_hint, lft_hint))
             },
@@ -4368,9 +4356,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 ProjectionElem::Deref => {
                     // use the type of the dereferencee
                     let st = self.ty_translator.translate_type_to_syn_type(cur_ty.ty)?;
-                    let ot = self.ty_translator.translate_syn_type_to_op_type(&st);
                     acc_expr = radium::Expr::Deref {
-                        ot,
+                        ot: st.into(),
                         e: Box::new(acc_expr),
                     };
                 },

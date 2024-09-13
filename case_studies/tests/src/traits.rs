@@ -146,17 +146,15 @@ mod foo {
         }
     }
 
-    /* TODO
     impl<'a, T> Foo<i32> for &'a T
     {
         type Output = i32;
 
         #[rr::verify]
         fn bar<U>(&self, x: U) -> (Self::Output, i32, U) {
-            (534, 54, x)
+            (53, 54, x)
         }
     }
-    */
 
 
     impl Foo<i32> for u32

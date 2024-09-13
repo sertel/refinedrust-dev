@@ -13,7 +13,7 @@ use radium::{coq, push_str_list, specs};
 use rr_rustc_interface::ast::ast::AttrItem;
 use rr_rustc_interface::middle::ty;
 
-use crate::spec_parsers::parse_utils::{ParseMeta, *};
+use crate::spec_parsers::parse_utils::*;
 
 pub struct ClosureMetaInfo<'a, 'tcx, 'def> {
     /// the closure kind
@@ -48,7 +48,7 @@ pub trait FunctionSpecParser<'def> {
         make_tuple: F,
     ) -> Result<(), String>
     where
-        F: Fn(Vec<specs::Type<'def>>) -> specs::Type<'def>;
+        F: FnMut(Vec<specs::Type<'def>>) -> specs::Type<'def>;
 
     //fn parse_trait_method_spec<'a, F>(
     //&'a mut self,
@@ -65,8 +65,8 @@ struct RRArgs {
     args: Vec<LiteralTypeWithRef>,
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for RRArgs {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for RRArgs {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let args: parse::Punctuated<LiteralTypeWithRef, MToken![,]> =
             parse::Punctuated::<_, _>::parse_terminated(input, meta)?;
         Ok(Self {
@@ -84,8 +84,8 @@ struct ClosureCaptureSpec {
     post: Option<LiteralTypeWithRef>,
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for ClosureCaptureSpec {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for ClosureCaptureSpec {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let name_str: parse::LitStr = input.parse(meta)?;
         let name = name_str.value();
         input.parse::<_, MToken![:]>(meta)?;
@@ -133,8 +133,8 @@ enum MetaIProp {
     Linktime(String),
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for MetaIProp {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for MetaIProp {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         if parse::Pound::peek(input) {
             input.parse::<_, MToken![#]>(meta)?;
             let macro_cmd: parse::Ident = input.parse(meta)?;
@@ -223,14 +223,14 @@ impl From<MetaIProp> for specs::IProp {
 }
 
 /// The main parser.
-pub struct VerboseFunctionSpecParser<'a, 'def, F> {
+pub struct VerboseFunctionSpecParser<'a, 'def, F, T> {
     /// argument types with substituted type parameters
     arg_types: &'a [specs::Type<'def>],
     /// return types with substituted type parameters
     ret_type: &'a specs::Type<'def>,
 
     /// the scope of generics
-    scope: &'a LiteralScope,
+    scope: &'a T,
 
     /// Function to intern a literal type
     make_literal: F,
@@ -261,13 +261,13 @@ pub struct ProofInfo {
     pub linktime_assumptions: Vec<String>,
 }
 
-impl<'a, 'def, F> From<VerboseFunctionSpecParser<'a, 'def, F>> for FunctionRequirements {
-    fn from(x: VerboseFunctionSpecParser<'a, 'def, F>) -> Self {
+impl<'a, 'def, F, T> From<VerboseFunctionSpecParser<'a, 'def, F, T>> for FunctionRequirements {
+    fn from(x: VerboseFunctionSpecParser<'a, 'def, F, T>) -> Self {
         x.fn_requirements
     }
 }
 
-impl<'a, 'def, F> VerboseFunctionSpecParser<'a, 'def, F>
+impl<'a, 'def, F, T: ParamLookup> VerboseFunctionSpecParser<'a, 'def, F, T>
 where
     F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
@@ -275,7 +275,7 @@ where
     pub fn new(
         arg_types: &'a [specs::Type<'def>],
         ret_type: &'a specs::Type<'def>,
-        scope: &'a LiteralScope,
+        scope: &'a T,
         make_literal: F,
     ) -> Self {
         VerboseFunctionSpecParser {
@@ -293,15 +293,12 @@ where
     /// full type with refinement and, optionally, a Coq refinement type hint that will be used
     /// for the refinement `r`.
     fn make_type_with_ref(
-        &self,
+        &mut self,
         lit: &LiteralTypeWithRef,
         ty: &specs::Type<'def>,
     ) -> (specs::TypeWithRef<'def>, Option<coq::Type>) {
         if let Some(lit_ty) = &lit.ty {
             // literal type given, we use this literal type as the RR semantic type
-            // just use the syntype from the Rust type
-            let st = ty.get_syn_type();
-
             // TODO: get CoqType for refinement. maybe have it as an annotation? the Infer is currently a
             // placeholder.
 
@@ -309,7 +306,7 @@ where
                 rust_name: None,
                 type_term: lit_ty.to_string(),
                 refinement_type: coq::Type::Infer,
-                syn_type: st,
+                syn_type: ty.into(),
             };
             let lit_ref = (self.make_literal)(lit_ty);
             let lit_ty_use = specs::LiteralTypeUse::new_with_annot(lit_ref, vec![], lit.meta.clone());
@@ -319,7 +316,7 @@ where
             // no literal type given, just a refinement
             // we use the translated Rust type with the given refinement
             let mut ty = ty.clone();
-            let rt = ty.get_rfn_type(&[]);
+            let rt = ty.get_rfn_type();
             if lit.raw == specs::TypeIsRaw::Yes {
                 ty.make_raw();
             }
@@ -328,7 +325,7 @@ where
     }
 }
 
-impl<'a, 'def, F> VerboseFunctionSpecParser<'a, 'def, F>
+impl<'a, 'def, F, T: ParamLookup> VerboseFunctionSpecParser<'a, 'def, F, T>
 where
     F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
@@ -338,23 +335,21 @@ where
         name: &str,
         buffer: &parse::Buffer,
         builder: &mut radium::LiteralFunctionSpecBuilder<'def>,
-        scope: &LiteralScope,
+        scope: &T,
     ) -> Result<bool, String> {
-        let meta: ParseMeta = scope;
-
         match name {
             "params" => {
-                let params = RRParams::parse(buffer, &meta).map_err(str_err)?;
+                let params = RRParams::parse(buffer, scope).map_err(str_err)?;
                 for p in params.params {
                     builder.add_param(p.name, p.ty)?;
                 }
             },
             "param" => {
-                let param = RRParam::parse(buffer, &meta).map_err(str_err)?;
+                let param = RRParam::parse(buffer, scope).map_err(str_err)?;
                 builder.add_param(param.name, param.ty)?;
             },
             "args" => {
-                let args = RRArgs::parse(buffer, &meta).map_err(str_err)?;
+                let args = RRArgs::parse(buffer, scope).map_err(str_err)?;
                 if self.arg_types.len() != args.args.len() {
                     return Err(format!(
                         "wrong number of function arguments given: expected {} args",
@@ -375,7 +370,7 @@ where
                 }
             },
             "requires" => {
-                let iprop = MetaIProp::parse(buffer, &meta).map_err(str_err)?;
+                let iprop = MetaIProp::parse(buffer, scope).map_err(str_err)?;
                 if let MetaIProp::Linktime(assum) = iprop {
                     self.fn_requirements.proof_info.linktime_assumptions.push(assum);
                 } else {
@@ -383,41 +378,41 @@ where
                 }
             },
             "ensures" => {
-                let iprop = MetaIProp::parse(buffer, &meta).map_err(str_err)?;
+                let iprop = MetaIProp::parse(buffer, scope).map_err(str_err)?;
                 builder.add_postcondition(iprop.into());
             },
             "observe" => {
                 let m = || {
-                    let gname: parse::LitStr = buffer.parse(&meta)?;
-                    buffer.parse::<_, MToken![:]>(&meta)?;
+                    let gname: parse::LitStr = buffer.parse(scope)?;
+                    buffer.parse::<_, MToken![:]>(scope)?;
 
-                    let term: parse::LitStr = buffer.parse(&meta)?;
-                    let (term, _) = process_coq_literal(&term.value(), meta);
+                    let term: parse::LitStr = buffer.parse(scope)?;
+                    let (term, _) = process_coq_literal(&term.value(), scope);
                     Ok(MetaIProp::Observe(gname.value(), term))
                 };
                 let m = m().map_err(str_err)?;
                 builder.add_postcondition(m.into());
             },
             "returns" => {
-                let tr = LiteralTypeWithRef::parse(buffer, &meta).map_err(str_err)?;
+                let tr = LiteralTypeWithRef::parse(buffer, scope).map_err(str_err)?;
                 // convert to type
                 let (ty, _) = self.make_type_with_ref(&tr, self.ret_type);
                 builder.set_ret_type(ty)?;
                 self.got_ret = true;
             },
             "exists" => {
-                let params = RRParams::parse(buffer, &meta).map_err(str_err)?;
+                let params = RRParams::parse(buffer, scope).map_err(str_err)?;
                 for param in params.params {
                     builder.add_existential(param.name, param.ty)?;
                 }
             },
             "tactics" => {
-                let tacs = parse::LitStr::parse(buffer, &meta).map_err(str_err)?;
+                let tacs = parse::LitStr::parse(buffer, scope).map_err(str_err)?;
                 let tacs = tacs.value();
                 self.fn_requirements.proof_info.sidecond_tactics.push(tacs);
             },
             "context" => {
-                let context_item = RRCoqContextItem::parse(buffer, &meta).map_err(str_err)?;
+                let context_item = RRCoqContextItem::parse(buffer, scope).map_err(str_err)?;
                 let param = coq::Param::new(coq::Name::Unnamed, coq::Type::Literal(context_item.item), true);
                 if context_item.at_end {
                     self.fn_requirements.late_coq_params.push(param);
@@ -443,11 +438,11 @@ where
         &mut self,
         capture_specs: Vec<ClosureCaptureSpec>,
         meta: ClosureMetaInfo<'c, 'tcx, 'def>,
-        make_tuple: H,
+        mut make_tuple: H,
         builder: &mut radium::LiteralFunctionSpecBuilder<'def>,
     ) -> Result<(), String>
     where
-        H: Fn(Vec<specs::Type<'def>>) -> specs::Type<'def>,
+        H: FnMut(Vec<specs::Type<'def>>) -> specs::Type<'def>,
     {
         enum CapturePostRfn {
             // mutable capture: (pattern, ghost_var)
@@ -614,7 +609,7 @@ where
     }
 }
 
-impl<'a, 'def, F> FunctionSpecParser<'def> for VerboseFunctionSpecParser<'a, 'def, F>
+impl<'a, 'def, F, T: ParamLookup> FunctionSpecParser<'def> for VerboseFunctionSpecParser<'a, 'def, F, T>
 where
     F: Fn(specs::LiteralType) -> specs::LiteralTypeRef<'def>,
 {
@@ -626,11 +621,8 @@ where
         make_tuple: H,
     ) -> Result<(), String>
     where
-        H: Fn(Vec<specs::Type<'def>>) -> specs::Type<'def>,
+        H: FnMut(Vec<specs::Type<'def>>) -> specs::Type<'def>,
     {
-        // clone to be able to mutably borrow later
-        let meta: ParseMeta = self.scope;
-
         // TODO: handle args in the common function differently
         let mut capture_specs = Vec::new();
 
@@ -644,7 +636,7 @@ where
                 let buffer = parse::Buffer::new(&args.inner_tokens());
 
                 if seg.ident.name.as_str() == "capture" {
-                    let spec: ClosureCaptureSpec = buffer.parse(&meta).map_err(str_err)?;
+                    let spec: ClosureCaptureSpec = buffer.parse(self.scope).map_err(str_err)?;
                     capture_specs.push(spec);
                 }
             }
@@ -660,7 +652,7 @@ where
                 let buffer = parse::Buffer::new(&it.args.inner_tokens());
                 let name = seg.ident.name.as_str();
 
-                match self.handle_common_attributes(name, &buffer, builder, meta) {
+                match self.handle_common_attributes(name, &buffer, builder, self.scope) {
                     Ok(b) => {
                         if !b && name != "capture" {
                             info!("ignoring function attribute: {:?}", args);
@@ -684,8 +676,6 @@ where
         attrs: &[&AttrItem],
         builder: &mut radium::LiteralFunctionSpecBuilder<'def>,
     ) -> Result<(), String> {
-        let meta: ParseMeta = self.scope;
-
         for &it in attrs {
             let path_segs = &it.path.segments;
             let args = &it.args;
@@ -696,7 +686,7 @@ where
 
             let buffer = parse::Buffer::new(&it.args.inner_tokens());
             let name = seg.ident.name.as_str();
-            match self.handle_common_attributes(name, &buffer, builder, meta) {
+            match self.handle_common_attributes(name, &buffer, builder, self.scope) {
                 Ok(b) => {
                     if !b {
                         info!("ignoring function attribute: {:?}", args);

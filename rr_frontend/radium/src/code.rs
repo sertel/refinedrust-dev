@@ -75,31 +75,25 @@ pub enum RustType {
 
 impl RustType {
     #[must_use]
-    pub fn of_type(ty: &Type<'_>, env: &[Option<LiteralTyParam>]) -> Self {
+    pub fn of_type(ty: &Type<'_>) -> Self {
         info!("Translating rustType: {:?}", ty);
         match ty {
-            Type::Var(var) => {
-                // this must be a generic type variable
-                let ty = env[*var].as_ref().unwrap();
-                Self::TyVar(ty.rust_name.clone())
-            },
-
             Type::Int(it) => Self::Int(*it),
             Type::Bool => Self::Bool,
             Type::Char => Self::Char,
 
             Type::MutRef(ty, lft) => {
-                let ty = Self::of_type(ty, env);
+                let ty = Self::of_type(ty);
                 Self::MutRef(Box::new(ty), lft.clone())
             },
 
             Type::ShrRef(ty, lft) => {
-                let ty = Self::of_type(ty, env);
+                let ty = Self::of_type(ty);
                 Self::ShrRef(Box::new(ty), lft.clone())
             },
 
             Type::BoxType(ty) => {
-                let ty = Self::of_type(ty, env);
+                let ty = Self::of_type(ty);
                 Self::PrimBox(Box::new(ty))
             },
 
@@ -111,14 +105,14 @@ impl RustType {
                 };
 
                 // translate type parameter instantiations
-                let typarams: Vec<_> = as_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
+                let typarams: Vec<_> = as_use.ty_params.iter().map(|ty| Self::of_type(ty)).collect();
                 let ty_name = if is_raw { def.plain_ty_name() } else { def.public_type_name() };
 
                 Self::Lit(vec![ty_name.to_owned()], typarams)
             },
 
             Type::Enum(ae_use) => {
-                let typarams: Vec<_> = ae_use.ty_params.iter().map(|ty| Self::of_type(ty, env)).collect();
+                let typarams: Vec<_> = ae_use.ty_params.iter().map(|ty| Self::of_type(ty)).collect();
 
                 Self::Lit(vec![ae_use.def.public_type_name().to_owned()], typarams)
             },
@@ -126,7 +120,7 @@ impl RustType {
             Type::LiteralParam(lit) => Self::TyVar(lit.rust_name.clone()),
 
             Type::Literal(lit) => {
-                let typarams: Vec<_> = lit.params.iter().map(|ty| Self::of_type(ty, env)).collect();
+                let typarams: Vec<_> = lit.params.iter().map(|ty| Self::of_type(ty)).collect();
                 Self::Lit(vec![lit.def.type_term.clone()], typarams)
             },
 
@@ -688,7 +682,7 @@ impl Display for FunctionCode {
         }
 
         fn fmt_variable(Variable((name, ty)): &Variable) -> String {
-            format!("(\"{}\", {} : layout)", name, ty.layout_term(&[]))
+            format!("(\"{}\", {} : layout)", name, Layout::from(ty))
         }
 
         fn fmt_blocks((name, bb): (&usize, &Stmt)) -> String {
@@ -1185,12 +1179,12 @@ impl<'def> Display for UsedProcedure<'def> {
         let mut gen_rfn_type_inst = Vec::new();
         for p in &self.type_params {
             // use an empty env, these should be closed in the current environment
-            let rfn = p.get_rfn_type(&[]);
+            let rfn = p.get_rfn_type();
             gen_rfn_type_inst.push(format!("({})", rfn));
         }
         // instantiate syntypes
         for p in &self.type_params {
-            let st = p.get_syn_type();
+            let st = SynType::from(p);
             gen_rfn_type_inst.push(format!("({})", st));
         }
 
@@ -1228,9 +1222,6 @@ pub struct FunctionBuilder<'def> {
     /// monomorphizations of the same function!)
     other_functions: Vec<UsedProcedure<'def>>,
 
-    // maps source code lifetime names to lifetimes
-    lft_name_map: HashMap<String, Lft>,
-
     /// required trait assumptions
     trait_requirements: Vec<LiteralTraitSpecUse<'def>>,
 
@@ -1255,7 +1246,6 @@ impl<'def> FunctionBuilder<'def> {
         let code_builder = FunctionCodeBuilder::new();
         let spec = FunctionSpec::empty(spec_name.to_owned(), name.to_owned(), None);
         FunctionBuilder {
-            lft_name_map: HashMap::new(),
             other_functions: Vec::new(),
             code: code_builder,
             spec,
@@ -1284,12 +1274,6 @@ impl<'def> FunctionBuilder<'def> {
         self.spec.generics.add_lft_param(lft);
     }
 
-    /// Adds a lifetime parameter which has a name in the Rust source code.
-    pub fn add_universal_lifetime_with_name(&mut self, rust_name: String, lft: Lft) {
-        self.spec.generics.add_lft_param(lft.clone());
-        self.lft_name_map.insert(rust_name, lft);
-    }
-
     /// Add a manual tactic used for a sidecondition proof.
     pub fn add_manual_tactic(&mut self, tac: String) {
         self.tactics.push(tac);
@@ -1312,14 +1296,8 @@ impl<'def> FunctionBuilder<'def> {
         self.spec.generics.get_lfts()
     }
 
-    #[must_use]
-    pub const fn get_lifetime_name_map(&self) -> &HashMap<String, Lft> {
-        &self.lft_name_map
-    }
-
     /// Add the assumption that a particular syntype is layoutable to the typing proof.
     pub fn assume_synty_layoutable(&mut self, st: SynType) {
-        assert!(st.is_closed());
         self.layoutable_syntys.push(st);
     }
 

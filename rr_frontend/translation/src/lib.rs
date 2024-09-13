@@ -44,7 +44,7 @@ use crate::spec_parsers::crate_attr_parser::{CrateAttrParser, VerboseCrateAttrPa
 use crate::spec_parsers::module_attr_parser::{ModuleAttrParser, ModuleAttrs, VerboseModuleAttrParser};
 use crate::spec_parsers::*;
 use crate::trait_registry::TraitRegistry;
-use crate::type_translator::{normalize_in_function, TypeTranslator};
+use crate::type_translator::{normalize_in_function, ParamScope, TypeTranslator};
 
 /// Order ADT definitions topologically.
 fn order_adt_defs(deps: &HashMap<DefId, HashSet<DefId>>) -> Vec<DefId> {
@@ -1195,7 +1195,8 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
         }
 
         let ty = ty.skip_binder();
-        match vcx.type_translator.translate_type_in_empty_scope(ty).map_err(|x| format!("{:?}", x)) {
+        let scope = ParamScope::default();
+        match vcx.type_translator.translate_type_in_scope(scope, ty).map_err(|x| format!("{:?}", x)) {
             Ok(translated_ty) => {
                 let _full_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(s.to_def_id()));
 

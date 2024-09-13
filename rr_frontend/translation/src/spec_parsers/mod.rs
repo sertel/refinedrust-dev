@@ -8,7 +8,6 @@ pub mod verbose_function_spec_parser;
 
 use attribute_parse::{parse, MToken};
 use parse::Parse;
-use parse_utils::LiteralScope;
 use rr_rustc_interface::ast;
 use rr_rustc_interface::ast::ast::AttrItem;
 

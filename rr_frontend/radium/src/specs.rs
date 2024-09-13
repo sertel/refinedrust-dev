@@ -168,20 +168,6 @@ impl Display for OpType {
     }
 }
 
-/*
-impl From<Layout> for OpType {
-    fn from(ly: Layout) -> OpType {
-        match ly {
-            Layout::PtrLayout => OpType::PtrOp,
-            Layout::IntLayout(it) => OpType::IntOp(it),
-            Layout::BoolLayout => OpType::IntOp(BOOL_REPR),
-            // TODO: handle structs?
-            layout  => OpType::UntypedOp(layout),
-        }
-    }
-}
-*/
-
 // NOTE: see ty::layout::layout_of_uncached for the rustc description of this.
 pub static BOOL_REPR: IntType = IntType::U8;
 
@@ -202,8 +188,6 @@ pub enum SynType {
     Never,
     /// a Coq term, in case of generics. This Coq term is required to have type "syn_type".
     Literal(String),
-    /// a variable that is bound, e.g., by a surrounding struct def
-    Var(usize),
     // no struct or enums - these are specified through literals.
 }
 
@@ -221,108 +205,62 @@ impl Display for SynType {
             Self::Unit | Self::Never => write!(f, "UnitSynType"),
 
             Self::Literal(ca) => write!(f, "{}", ca),
-            Self::Var(i) => write!(f, "#{}", i),
         }
     }
 }
 
-impl SynType {
-    fn layout_term_core<F, G>(&self, env: &[Option<F>], to_syntype: G) -> Layout
-    where
-        G: Fn(&F) -> Self,
-    {
-        match self {
-            Self::Bool => Layout::Bool,
-            Self::Char => Layout::Char,
-            Self::Int(it) => Layout::Int(*it),
-
-            Self::Ptr | Self::FnPtr => Layout::Ptr,
-
-            Self::Untyped(ly) => ly.clone(),
-            Self::Unit | Self::Never => Layout::Unit,
-
-            Self::Literal(ca) => {
-                let rhs = ca.to_owned();
-                Layout::Literal(coq::AppTerm::new("use_layout_alg'".to_owned(), vec![rhs]))
-            },
-
-            Self::Var(i) => {
-                let a = env[*i].as_ref().unwrap();
-                to_syntype(a).layout_term_core(env, to_syntype)
-            },
-        }
+impl From<SynType> for Layout {
+    fn from(x: SynType) -> Self {
+        Self::from(&x)
     }
-
+}
+impl From<&SynType> for Layout {
     /// Get a Coq term for the layout of this syntactic type.
     /// This may call the Coq-level layout algorithm that we assume.
-    #[must_use]
-    pub fn layout_term_typaram(&self, env: &[Option<LiteralTyParam>]) -> Layout {
-        self.layout_term_core(env, |x| Self::Literal(x.syn_type.clone()))
-    }
+    fn from(x: &SynType) -> Self {
+        match x {
+            SynType::Bool => Self::Bool,
+            SynType::Char => Self::Char,
+            SynType::Int(it) => Self::Int(*it),
 
-    /// See `layout_term_typaram`.
-    #[must_use]
-    pub fn layout_term(&self, env: &[Option<Self>]) -> Layout {
-        self.layout_term_core(env, Clone::clone)
-    }
+            SynType::Ptr | SynType::FnPtr => Self::Ptr,
 
-    fn optype_core<F, G>(&self, env: &[Option<F>], to_syntype: G) -> OpType
-    where
-        G: Fn(&F) -> Self,
-    {
-        match self {
-            Self::Bool => OpType::Bool,
-            Self::Char => OpType::Char,
-            Self::Int(it) => OpType::Int(*it),
+            SynType::Untyped(ly) => ly.clone(),
+            SynType::Unit | SynType::Never => Self::Unit,
 
-            Self::Ptr | Self::FnPtr => OpType::Ptr,
-
-            Self::Untyped(ly) => OpType::Untyped(ly.clone()),
-            Self::Unit => OpType::Struct(coq::AppTerm::new_lhs("unit_sl".to_owned()), Vec::new()),
-            Self::Never => OpType::Untyped(Layout::Unit),
-
-            Self::Literal(ca) => {
+            SynType::Literal(ca) => {
                 let rhs = ca.to_owned();
-                OpType::Literal(coq::AppTerm::new("use_op_alg'".to_owned(), vec![rhs]))
-            },
-
-            Self::Var(i) => {
-                let a = env[*i].as_ref().unwrap();
-                to_syntype(a).optype_core(env, to_syntype)
+                Self::Literal(coq::AppTerm::new("use_layout_alg'".to_owned(), vec![rhs]))
             },
         }
     }
+}
 
+impl From<SynType> for OpType {
+    fn from(x: SynType) -> Self {
+        Self::from(&x)
+    }
+}
+impl From<&SynType> for OpType {
     /// Determine the optype used to access a value of this syntactic type.
     /// Note that we may also always use `UntypedOp`, but this here computes the more specific
     /// `op_type` that triggers more UB on invalid values.
-    #[must_use]
-    pub fn optype_typaram(&self, env: &[Option<LiteralTyParam>]) -> OpType {
-        self.optype_core(env, |x| Self::Literal(x.syn_type.clone()))
-    }
+    fn from(x: &SynType) -> Self {
+        match x {
+            SynType::Bool => Self::Bool,
+            SynType::Char => Self::Char,
+            SynType::Int(it) => Self::Int(*it),
 
-    /// See `optype_typaram`.
-    #[must_use]
-    pub fn optype(&self, env: &[Option<Self>]) -> OpType {
-        self.optype_core(env, Clone::clone)
-    }
+            SynType::Ptr | SynType::FnPtr => Self::Ptr,
 
-    /// Check if the `SynType` contains a free variable `Var(i)`.
-    #[must_use]
-    pub const fn is_closed(&self) -> bool {
-        !matches!(self, Self::Var(_))
-    }
+            SynType::Untyped(ly) => Self::Untyped(ly.clone()),
+            SynType::Unit => Self::Struct(coq::AppTerm::new_lhs("unit_sl".to_owned()), Vec::new()),
+            SynType::Never => Self::Untyped(Layout::Unit),
 
-    /// Substitute variables `Var` according to the given substitution (variable `i` is mapped to
-    /// index `i` in the vector).
-    /// The types in `substi` should not contain variables themselves, as this substitution
-    /// operation is capture-incurring!
-    pub fn subst(&mut self, substi: &[Option<Self>]) {
-        if let Self::Var(i) = self {
-            if let Some(Some(ta)) = substi.get(*i) {
-                assert!(ta.is_closed());
-                *self = ta.clone();
-            }
+            SynType::Literal(ca) => {
+                let rhs = ca.to_owned();
+                Self::Literal(coq::AppTerm::new("use_op_alg'".to_owned(), vec![rhs]))
+            },
         }
     }
 }
@@ -398,7 +336,6 @@ pub struct LiteralTypeUse<'def> {
 }
 
 impl<'def> LiteralTypeUse<'def> {
-    /// `params` should not contain `Var`
     #[must_use]
     pub fn new(s: LiteralTypeRef<'def>, params: Vec<Type<'def>>) -> Self {
         LiteralTypeUse {
@@ -408,7 +345,6 @@ impl<'def> LiteralTypeUse<'def> {
         }
     }
 
-    /// `params` should not contain `Var`
     #[must_use]
     pub fn new_with_annot(s: LiteralTypeRef<'def>, params: Vec<Type<'def>>, annot: TypeAnnotMeta) -> Self {
         LiteralTypeUse {
@@ -435,7 +371,7 @@ impl<'def> LiteralTypeUse<'def> {
     #[must_use]
     pub fn get_rfn_type(&self) -> String {
         let rfn_instantiations: Vec<String> =
-            self.params.iter().map(|ty| ty.get_rfn_type(&[]).to_string()).collect();
+            self.params.iter().map(|ty| ty.get_rfn_type().to_string()).collect();
 
         let rfn_type = self.def.refinement_type.to_string();
         let applied = coq::AppTerm::new(rfn_type, rfn_instantiations);
@@ -448,7 +384,7 @@ impl<'def> LiteralTypeUse<'def> {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
         for p in &self.params {
-            let st = p.get_syn_type();
+            let st: SynType = p.into();
             param_sts.push(format!("({})", st));
         }
         let specialized_spec = coq::AppTerm::new(self.def.syn_type.clone(), param_sts);
@@ -460,7 +396,7 @@ impl<'def> LiteralTypeUse<'def> {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
         for p in &self.params {
-            let st = p.get_syn_type();
+            let st: SynType = p.into();
             param_sts.push(format!("({})", st));
         }
         let specialized_spec = coq::AppTerm::new(self.def.syn_type.clone(), param_sts).to_string();
@@ -484,6 +420,8 @@ impl<'def> LiteralTypeUse<'def> {
 pub enum TyParamOrigin {
     /// Declared in a surrounding trait declaration.
     SurroundingTrait,
+    /// Declared in a surrounding trait impl
+    SurroundingImpl,
     /// Associated type of a trait we assume.
     TraitAssoc,
     /// A direct parameter of a method or impl.
@@ -548,8 +486,6 @@ impl LiteralTyParam {
 /// 'def is the lifetime of the frontend for referencing struct definitions.
 #[derive(Clone, PartialEq, Debug)]
 pub enum Type<'def> {
-    /// variable that is bound, e.g., by a surrounding struct definition
-    Var(usize),
     Int(IntType),
     Bool,
     Char,
@@ -596,8 +532,36 @@ impl<'def> Display for Type<'def> {
             Self::Uninit(ly) => write!(f, "(uninit ({}))", ly),
             Self::Unit => write!(f, "unit_t"),
             Self::Never => write!(f, "never_t"),
+        }
+    }
+}
 
-            Self::Var(i) => write!(f, "#{}", i),
+impl<'def> From<Type<'def>> for SynType {
+    fn from(x: Type<'def>) -> Self {
+        Self::from(&x)
+    }
+}
+impl<'def> From<&Type<'def>> for SynType {
+    /// Get the layout of a type.
+    fn from(x: &Type<'def>) -> Self {
+        match x {
+            Type::Bool => Self::Bool,
+            Type::Char => Self::Char,
+            Type::Int(it) => Self::Int(*it),
+
+            Type::MutRef(..) | Type::ShrRef(..) | Type::BoxType(..) | Type::RawPtr => Self::Ptr,
+
+            Type::Struct(s) => s.generate_syn_type_term(),
+            Type::Enum(s) => s.generate_syn_type_term(),
+
+            Type::Literal(lit) => lit.generate_syn_type_term(),
+            Type::Uninit(st) => st.clone(),
+
+            Type::Unit => Self::Unit,
+            // NOTE: for now, just treat Never as a ZST
+            Type::Never => Self::Never,
+
+            Type::LiteralParam(lit) => Self::Literal(lit.syn_type.clone()),
         }
     }
 }
@@ -613,19 +577,18 @@ impl<'def> Type<'def> {
     }
 
     /// Determines the type this type is refined by.
-    /// `env` gives the environment for `Var(i)` constructors.
     #[must_use]
-    pub fn get_rfn_type(&self, env: &[Option<coq::Type>]) -> coq::Type {
+    pub fn get_rfn_type(&self) -> coq::Type {
         match self {
             Self::Bool => coq::Type::Bool,
             Self::Char | Self::Int(_) => coq::Type::Z,
 
             Self::MutRef(box ty, _) => {
-                coq::Type::Prod(vec![coq::Type::PlaceRfn(Box::new(ty.get_rfn_type(env))), coq::Type::Gname])
+                coq::Type::Prod(vec![coq::Type::PlaceRfn(Box::new(ty.get_rfn_type())), coq::Type::Gname])
             },
 
             Self::ShrRef(box ty, _) | Self::BoxType(box ty) => {
-                coq::Type::PlaceRfn(Box::new(ty.get_rfn_type(env)))
+                coq::Type::PlaceRfn(Box::new(ty.get_rfn_type()))
             },
 
             Self::RawPtr => coq::Type::Loc,
@@ -647,41 +610,6 @@ impl<'def> Type<'def> {
                 // NOTE: could also choose to use an uninhabited type for Never
                 coq::Type::Unit
             },
-
-            Self::Var(i) => match env.get(*i) {
-                Some(e) => match e.as_ref() {
-                    Some(e) => e.clone(),
-                    None => unimplemented!("expected type parameter, got lifetime"),
-                },
-                None => {
-                    unimplemented!("did not find type parameter {i} in environment {:?}", env)
-                },
-            },
-        }
-    }
-
-    /// Get the layout of a type.
-    #[must_use]
-    pub fn get_syn_type(&self) -> SynType {
-        match self {
-            Self::Bool => SynType::Bool,
-            Self::Char => SynType::Char,
-            Self::Int(it) => SynType::Int(*it),
-
-            Self::MutRef(..) | Self::ShrRef(..) | Self::BoxType(..) | Self::RawPtr => SynType::Ptr,
-
-            Self::Struct(s) => s.generate_syn_type_term(),
-            Self::Enum(s) => s.generate_syn_type_term(),
-
-            Self::Literal(lit) => lit.generate_syn_type_term(),
-            Self::Uninit(st) => st.clone(),
-
-            Self::Unit => SynType::Unit,
-            // NOTE: for now, just treat Never as a ZST
-            Self::Never => SynType::Never,
-
-            Self::LiteralParam(lit) => SynType::Literal(lit.syn_type.clone()),
-            Self::Var(i) => SynType::Var(*i),
         }
     }
 
@@ -710,10 +638,6 @@ impl<'def> Type<'def> {
                 // TODO: use meta
                 s.insert(format!("ty_lfts {}", lit.type_term));
             },
-
-            Self::Var(_i) => {
-                s.insert("RAW".to_owned());
-            },
         }
     }
 
@@ -739,65 +663,7 @@ impl<'def> Type<'def> {
             Self::LiteralParam(lit) => {
                 s.insert(format!("ty_wf_elctx {}", lit.type_term));
             },
-
-            Self::Var(_) => {
-                s.insert("RAW".to_owned());
-            },
         }
-    }
-
-    /// Check if the Type contains a free variable `Var(i)`.
-    #[must_use]
-    pub fn is_closed(&self) -> bool {
-        match self {
-            Self::Var(_) => false,
-            Self::MutRef(box t, _) | Self::ShrRef(box t, _) | Self::BoxType(box t) => t.is_closed(),
-            _ => true,
-        }
-    }
-
-    fn subst_core<F, G>(&mut self, substi: &[Option<F>], to_type: &G)
-    where
-        G: Fn(&F) -> Type<'def>,
-    {
-        match self {
-            Self::MutRef(box t, _) | Self::ShrRef(box t, _) | Self::BoxType(box t) => {
-                t.subst_core(substi, to_type);
-            },
-
-            Self::Struct(s) => {
-                // the struct def itself should be closed, but the arguments to it may contain
-                // further variables
-                s.ty_params.iter_mut().map(|a| a.subst_core(substi, to_type)).count();
-            },
-
-            Self::Enum(s) => {
-                s.ty_params.iter_mut().map(|a| a.subst_core(substi, to_type)).count();
-            },
-
-            Self::Var(i) => {
-                if let Some(Some(ta)) = substi.get(*i) {
-                    let ta_ty: Type<'def> = to_type(ta);
-                    assert!(ta_ty.is_closed());
-                    *self = ta_ty;
-                }
-            },
-
-            _ => (),
-        }
-    }
-
-    /// Substitute variables `Var` according to the given substitution (variable `i` is mapped to
-    /// index `i` in the vector).
-    /// The types in `substi` should not contain variables themselves, as this substitution
-    /// operation is capture-incurring!
-    pub fn subst(&mut self, substi: &[Option<Type<'def>>]) {
-        self.subst_core(substi, &Clone::clone);
-    }
-
-    /// Substitute variables `Var` with `substi`. See `subst` for documentation.
-    pub fn subst_params(&mut self, substi: &[Option<LiteralTyParam>]) {
-        self.subst_core(substi, &|x| Type::LiteralParam(x.clone()));
     }
 }
 
@@ -1288,11 +1154,8 @@ pub fn lookup_ty_param<'a>(name: &'_ str, env: &'a [LiteralTyParam]) -> Option<&
 /// Description of a variant of a struct or enum.
 #[derive(Clone, PartialEq, Debug)]
 pub struct AbstractVariant<'def> {
-    /// the fields. The types are closed, i.e. have no `Var` variables (but may have literals
-    /// referring to the Coq binders introduced by a surrounding AbstractStruct)
+    /// the fields, closed under a surrounding scope
     fields: Vec<(String, Type<'def>)>,
-    /// `fields` with type variables substituted with literal coq strings for their definition
-    subst_fields: Vec<(String, Type<'def>)>,
     /// the refinement type of the plain struct
     rfn_type: coq::Type,
     /// the struct representation mode
@@ -1330,8 +1193,8 @@ impl<'def> AbstractVariant<'def> {
             self.name
         ));
 
-        push_str_list!(out, &self.subst_fields, ";", |(name, ty)| {
-            let synty = ty.get_syn_type();
+        push_str_list!(out, &self.fields, ";", |(name, ty)| {
+            let synty: SynType = ty.into();
 
             format!("\n{indent}{indent}(\"{name}\", {synty})")
         });
@@ -1380,7 +1243,7 @@ impl<'def> AbstractVariant<'def> {
         let mut out = String::with_capacity(200);
 
         out.push_str(&format!("struct_t {} +[", coq::AppTerm::new(&self.sls_def_name, sls_app)));
-        push_str_list!(out, &self.subst_fields, ";", |(_, ty)| ty.to_string());
+        push_str_list!(out, &self.fields, ";", |(_, ty)| ty.to_string());
         out.push(']');
 
         out
@@ -1527,9 +1390,7 @@ pub struct AbstractStruct<'def> {
     /// the actual definition of the variant
     variant_def: AbstractVariant<'def>,
 
-    /// names for the type parameters (for the Coq definitions) in De Bruijn representation
-    /// (that is, in the Coq definition, we will substitute the variable `Var(0)` in `fields`
-    /// for the first element of this vector)
+    /// names for the type parameters (for the Coq definitions)
     /// TODO: will make those options once we handle lifetime parameters properly.
     ty_params: Vec<LiteralTyParam>,
 }
@@ -1649,35 +1510,20 @@ pub struct VariantBuilder<'def> {
 
 impl<'def> VariantBuilder<'def> {
     #[must_use]
-    pub fn finish(self, ty_params: &[LiteralTyParam]) -> AbstractVariant<'def> {
+    pub fn finish(self) -> AbstractVariant<'def> {
         let sls_def_name: String = format!("{}_sls", &self.name);
         let st_def_name: String = format!("{}_st", &self.name);
         let plain_ty_name: String = format!("{}_ty", &self.name);
         let plain_rt_def_name: String = format!("{}_rt", &self.name);
 
-        let ty_env: Vec<Option<Type<'def>>> =
-            ty_params.iter().map(|lit| Some(Type::LiteralParam(lit.clone()))).collect();
-
-        // create a fully substituted version of the types now
-        let subst_fields: Vec<_> = self
-            .fields
-            .iter()
-            .map(|(name, ty)| {
-                let mut ty2 = ty.clone();
-                ty2.subst(&ty_env);
-                (name.clone(), ty2)
-            })
-            .collect();
-
         let rfn_type = coq::Type::PList(
             "place_rfn".to_owned(),
-            subst_fields.iter().map(|(_, t)| t.get_rfn_type(&[])).collect(),
+            self.fields.iter().map(|(_, t)| t.get_rfn_type()).collect(),
         );
 
         AbstractVariant {
             rfn_type,
             fields: self.fields,
-            subst_fields,
             repr: self.repr,
             name: self.name,
             plain_ty_name,
@@ -1690,7 +1536,7 @@ impl<'def> VariantBuilder<'def> {
     /// Finish building the struct type and generate an abstract struct definition.
     #[must_use]
     pub fn finish_as_struct(self, ty_params: Vec<LiteralTyParam>) -> AbstractStruct<'def> {
-        let variant = self.finish(&ty_params);
+        let variant = self.finish();
         AbstractStruct {
             variant_def: variant,
             invariant: None,
@@ -1725,12 +1571,12 @@ pub fn make_tuple_struct_repr<'def>(num_fields: usize) -> AbstractStruct<'def> {
         let param_name = format!("T{}", i);
         ty_params.push(param_name);
     }
-    let ty_param_defs = ty_params.iter().map(|name| LiteralTyParam::new(name, name)).collect();
+    let ty_param_defs: Vec<_> = ty_params.iter().map(|name| LiteralTyParam::new(name, name)).collect();
 
     let mut builder = VariantBuilder::new(name, StructRepr::ReprRust);
 
-    for i in 0..num_fields {
-        builder.add_field(&i.to_string(), Type::Var(num_fields - i - 1));
+    for (i, lit) in ty_param_defs.iter().enumerate() {
+        builder.add_field(&i.to_string(), Type::LiteralParam(lit.to_owned()));
     }
 
     builder.finish_as_struct(ty_param_defs)
@@ -1741,14 +1587,13 @@ pub fn make_tuple_struct_repr<'def>(num_fields: usize) -> AbstractStruct<'def> {
 pub struct AbstractStructUse<'def> {
     /// reference to the struct's definition, or None if unit
     pub def: Option<&'def AbstractStruct<'def>>,
-    /// Instantiations for type parameters. These should _not_ contain `Var` constructors.
+    /// Instantiations for type parameters
     pub ty_params: Vec<Type<'def>>,
     /// does this refer to the raw type without invariants?
     pub raw: TypeIsRaw,
 }
 
 impl<'def> AbstractStructUse<'def> {
-    /// `params` should not contain `Var`
     #[must_use]
     pub fn new(s: Option<&'def AbstractStruct<'def>>, params: Vec<Type<'def>>, raw: TypeIsRaw) -> Self {
         AbstractStructUse {
@@ -1804,7 +1649,7 @@ impl<'def> AbstractStructUse<'def> {
         };
 
         let rfn_instantiations: Vec<String> =
-            self.ty_params.iter().map(|ty| ty.get_rfn_type(&[]).to_string()).collect();
+            self.ty_params.iter().map(|ty| ty.get_rfn_type().to_string()).collect();
 
         let inv = &def.invariant;
 
@@ -1829,7 +1674,7 @@ impl<'def> AbstractStructUse<'def> {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
         for p in &self.ty_params {
-            let st = p.get_syn_type();
+            let st: SynType = p.into();
             param_sts.push(format!("({})", st));
         }
 
@@ -1847,7 +1692,7 @@ impl<'def> AbstractStructUse<'def> {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
         for p in &self.ty_params {
-            let st = p.get_syn_type();
+            let st: SynType = p.into();
             param_sts.push(format!("({})", st));
         }
         // TODO generates too many apps
@@ -1866,7 +1711,7 @@ impl<'def> AbstractStructUse<'def> {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
         for p in &self.ty_params {
-            let st = p.get_syn_type();
+            let st: SynType = p.into();
             param_sts.push(format!("({})", st));
         }
         // TODO generates too many apps
@@ -2407,12 +2252,11 @@ impl<'def> EnumBuilder<'def> {
 pub struct AbstractEnumUse<'def> {
     /// reference to the enum's definition
     pub def: &'def AbstractEnum<'def>,
-    /// Instantiations for type parameters. These should _not_ contain `Var` constructors.
+    /// Instantiations for type parameters
     pub ty_params: Vec<Type<'def>>,
 }
 
 impl<'def> AbstractEnumUse<'def> {
-    /// `params` should not contain `Var`
     #[must_use]
     pub fn new(s: &'def AbstractEnum<'def>, params: Vec<Type<'def>>) -> Self {
         AbstractEnumUse {
@@ -2437,15 +2281,7 @@ impl<'def> AbstractEnumUse<'def> {
     /// This requires that all type parameters of the enum have been instantiated.
     #[must_use]
     pub fn get_rfn_type(&self) -> coq::Type {
-        let env = Vec::new(); // we use the empty environment per our assumption
-        let rfn_instantiations: Vec<coq::Type> =
-            self.ty_params.iter().map(|ty| ty.get_rfn_type(&env)).collect();
-
-        let mut rfn_type = self.def.spec.rfn_type.clone();
-        rfn_type.subst(&rfn_instantiations);
-
-        assert!(rfn_type.is_closed());
-        rfn_type
+        self.def.spec.rfn_type.clone()
     }
 
     /// Generate a term for the enum layout (of type `struct_layout`)
@@ -2454,7 +2290,7 @@ impl<'def> AbstractEnumUse<'def> {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
         for p in &self.ty_params {
-            let st = p.get_syn_type();
+            let st: SynType = p.into();
             param_sts.push(format!("({})", st));
         }
 
@@ -2469,7 +2305,7 @@ impl<'def> AbstractEnumUse<'def> {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
         for p in &self.ty_params {
-            let st = p.get_syn_type();
+            let st: SynType = p.into();
             param_sts.push(format!("({})", st));
         }
 
@@ -2483,7 +2319,7 @@ impl<'def> AbstractEnumUse<'def> {
         // first get the syntys for the type params
         let mut param_sts = Vec::new();
         for p in &self.ty_params {
-            let st = p.get_syn_type();
+            let st: SynType = p.into();
             param_sts.push(format!("({})", st));
         }
 
@@ -3377,10 +3213,10 @@ impl<'def> Display for SpecializedTraitSpec<'def> {
         write!(f, "({} ", self.spec_name)?;
         if let Some(ty_params) = &self.ty_params {
             // specialize to rts
-            write_list!(f, ty_params, " ", |x| { format!("{}", x.get_rfn_type(&[])) })?;
+            write_list!(f, ty_params, " ", |x| { format!("{}", x.get_rfn_type()) })?;
             // specialize to sts
             write!(f, " ")?;
-            write_list!(f, ty_params, " ", |x| { format!("{}", x.get_syn_type()) })?;
+            write_list!(f, ty_params, " ", |x| { format!("{}", SynType::from(x)) })?;
             // specialize to semtys
             write!(f, " ")?;
             write_list!(f, ty_params, " ", |x| { format!("<TY> {}", x) })?;
@@ -3674,7 +3510,7 @@ fn make_trait_instance<'def>(
             }
 
             // provide type annotation
-            let num_lifetimes = spec.generics.get_num_lifetimes();
+            let num_lifetimes = spec.generics.get_num_lifetimes() - scope.lfts.len();
             write!(body, " : (spec_with {num_lifetimes} [")?;
             write_list!(
                 body,
@@ -4032,17 +3868,17 @@ impl<'def> InstantiatedTraitFunctionSpec<'def> {
         let mut params = Vec::new();
         // add rt params
         for ty in &self.trait_ref.params_inst {
-            params.push(format!("{}", ty.get_rfn_type(&[])));
+            params.push(format!("{}", ty.get_rfn_type()));
         }
         for ty in &self.trait_ref.assoc_types_inst {
-            params.push(format!("{}", ty.get_rfn_type(&[])));
+            params.push(format!("{}", ty.get_rfn_type()));
         }
         // add syntype params
         for ty in &self.trait_ref.params_inst {
-            params.push(format!("{}", ty.get_syn_type()));
+            params.push(format!("{}", SynType::from(ty)));
         }
         for ty in &self.trait_ref.assoc_types_inst {
-            params.push(format!("{}", ty.get_syn_type()));
+            params.push(format!("{}", SynType::from(ty)));
         }
         let mut applied_base_spec = String::with_capacity(100);
         write!(applied_base_spec, "{}", coq::AppTerm::new(&self.trait_ref.of_trait.base_spec, params))?;

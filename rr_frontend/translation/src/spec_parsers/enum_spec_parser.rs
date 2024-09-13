@@ -38,8 +38,8 @@ pub struct EnumPattern {
     pub args: Vec<String>,
 }
 
-impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
-    fn parse(input: parse::Stream, meta: &ParseMeta) -> parse::Result<Self> {
+impl<T: ParamLookup> parse::Parse<T> for EnumPattern {
+    fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         // parse the pattern
         let pat: parse::LitStr = input.parse(meta)?;
         let (pat, _) = process_coq_literal(&pat.value(), meta);
@@ -68,25 +68,23 @@ impl<'a> parse::Parse<ParseMeta<'a>> for EnumPattern {
 }
 
 #[allow(clippy::module_name_repetitions)]
-pub struct VerboseEnumSpecParser<'a> {
-    scope: &'a LiteralScope,
+pub struct VerboseEnumSpecParser<'a, T> {
+    scope: &'a T,
 }
 
-impl<'a> VerboseEnumSpecParser<'a> {
-    pub const fn new(scope: &'a LiteralScope) -> Self {
+impl<'a, T: ParamLookup> VerboseEnumSpecParser<'a, T> {
+    pub const fn new(scope: &'a T) -> Self {
         Self { scope }
     }
 }
 
-impl<'b> EnumSpecParser for VerboseEnumSpecParser<'b> {
+impl<'b, T: ParamLookup> EnumSpecParser for VerboseEnumSpecParser<'b, T> {
     fn parse_enum_spec<'a>(
         &'a mut self,
         ty_name: &str,
         attrs: &'a [&'a AttrItem],
         variant_attrs: &[Vec<&'a AttrItem>],
     ) -> Result<specs::EnumSpec, String> {
-        let meta = self.scope;
-
         let mut variant_patterns: Vec<(String, Vec<String>, String)> = Vec::new();
         let mut rfn_type = None;
 
@@ -101,8 +99,8 @@ impl<'b> EnumSpecParser for VerboseEnumSpecParser<'b> {
             let buffer = parse::Buffer::new(&it.args.inner_tokens());
             match seg.ident.name.as_str() {
                 "refined_by" => {
-                    let ty: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                    let (ty, _) = process_coq_literal(ty.value().as_str(), meta);
+                    let ty: parse::LitStr = buffer.parse(self.scope).map_err(str_err)?;
+                    let (ty, _) = process_coq_literal(ty.value().as_str(), self.scope);
                     rfn_type = Some(coq::Type::Literal(ty));
                 },
                 "export_as" => {},
@@ -126,12 +124,12 @@ impl<'b> EnumSpecParser for VerboseEnumSpecParser<'b> {
                 let buffer = parse::Buffer::new(&it.args.inner_tokens());
                 match seg.ident.name.as_str() {
                     "pattern" => {
-                        let pat: EnumPattern = buffer.parse(&meta).map_err(str_err)?;
+                        let pat: EnumPattern = buffer.parse(self.scope).map_err(str_err)?;
                         pattern = Some(pat);
                     },
                     "refinement" => {
-                        let rfn: parse::LitStr = buffer.parse(&meta).map_err(str_err)?;
-                        let (rfn, _) = process_coq_literal(rfn.value().as_str(), meta);
+                        let rfn: parse::LitStr = buffer.parse(self.scope).map_err(str_err)?;
+                        let (rfn, _) = process_coq_literal(rfn.value().as_str(), self.scope);
                         refinement = Some(rfn);
                     },
                     _ => {
