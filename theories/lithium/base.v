@@ -172,6 +172,19 @@ Lemma list_eq_split {A} i (l1 l2 : list A):
   l1 = l2.
 Proof. move => ??. rewrite -(take_drop i l1) -(take_drop i l2). congruence. Qed.
 
+(** Nested pairs for plist *)
+Section plist.
+  Local Set Universe Polymorphism.
+  Inductive nil_unit: Set := nil_tt: nil_unit.
+  Record cons_prod (A B: Type) : Type := cons_pair { phd' : A; ptl' : B }.
+
+  Context {A} {F : A → Type}.
+  Fixpoint plist (Xl: list A) : Type :=
+    match Xl with [] => nil_unit | X :: Xl' => cons_prod (F X) (plist Xl') end.
+End plist.
+Global Arguments cons_pair {_ _} _ _.
+Global Arguments phd' {_ _} _.
+Global Arguments ptl' {_ _} _.
 
 (** * typeclasses *)
 Inductive TCOneIsSome {A} : option A → option A → Prop :=

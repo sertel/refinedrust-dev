@@ -125,11 +125,11 @@ Definition spec_with `{!typeGS Σ} (lfts : nat) (rts : list Type) (SPEC : Type) 
   prod_vec lft lfts → plist type rts → SPEC.
 Arguments spec_with {_ _} / _ _ .
 
-Notation "x '<TY>' T" := (spec_instantiate_typaram_fst _ _ T x) (left associativity, at level 81) : stdpp_scope.
-Notation "x '<TY>@{' n '}' T" := (spec_instantiate_typaram _ n _ T x) (left associativity, at level 81) : stdpp_scope.
-Notation "x '<LFT>' T" := (spec_instantiate_lft_fst _ T x) (left associativity, at level 81) : stdpp_scope.
+Notation "x '<TY>' T" := (spec_instantiate_typaram_fst _ _ T x) (left associativity, at level 81, only printing) : stdpp_scope.
+Notation "x '<TY>@{' n '}' T" := (spec_instantiate_typaram _ n _ T x) (left associativity, at level 81, only printing) : stdpp_scope.
+Notation "x '<LFT>' T" := (spec_instantiate_lft_fst _ T x) (left associativity, at level 81, only printing) : stdpp_scope.
 Notation "x '<INST!>'" := (spec_instantiated x) (left associativity, at level 81) : stdpp_scope.
-Notation "x '<MERGE!>'" := (spec_collapse_params _ _ x) (left associativity, at level 181) : stdpp_scope.
+Notation "x '<MERGE!>'" := (spec_collapse_params _ _ x) (left associativity, at level 181, only printing) : stdpp_scope.
 
 
 Notation "x '<TY>' T" := (

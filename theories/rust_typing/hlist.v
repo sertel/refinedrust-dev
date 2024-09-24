@@ -190,19 +190,6 @@ Notation "( fl +$.)" := (happly fl) (only parsing).
 
 (** * Passive Heterogeneous List *)
 (** Defined as nested pairs *)
-Inductive nil_unit: Set := nil_tt: nil_unit.
-Record cons_prod (A B: Type) : Type := cons_pair { phd' : A; ptl' : B }.
-Arguments cons_pair {_ _} _ _.
-Arguments phd' {_ _} _.
-Arguments ptl' {_ _} _.
-
-Section plist.
-  Context {A} {F : A → Type}.
-  #[universes(polymorphic)]
-  Fixpoint plist (Xl: list A) : Type :=
-    match Xl with [] => nil_unit | X :: Xl' => cons_prod (F X) (plist Xl') end.
-End plist.
-
 Definition pcons {A} {F : A → Type} {a X} (hd : F a) (tl : plist X) : plist (a :: X) :=
   cons_pair hd tl.
 Definition pnil {A} {F : A → Type} : plist (F := F) [] := nil_tt.

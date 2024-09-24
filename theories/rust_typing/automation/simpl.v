@@ -80,11 +80,7 @@ Global Instance simpl_exist_hlist_cons {X} (F : X → Type) (x : X) xs (Q : hlis
 Proof.
   intros (p & ps & Hx). exists (p +:: ps). done.
 Qed.
-Global Instance simpl_exist_plist_nil {X} (F : X → Type) Q :
-  SimplExist (plist F []) Q (Q -[]).
-Proof.
-  rewrite /SimplExist. naive_solver.
-Qed.
+(* The instance for plist _ [] is built into Lithium's liExist *)
 Global Instance simpl_exist_plist_cons {X} (F : X → Type) (x : X) xs (Q : plist F (x :: xs) → Prop) :
   SimplExist (plist F (x :: xs)) Q (∃ p : F x, ∃ ps : plist F xs, Q (p -:: ps)).
 Proof.

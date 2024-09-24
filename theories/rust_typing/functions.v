@@ -534,6 +534,7 @@ Ltac get_params_of_fntype x :=
   | prod_vec _ _ → plist _ _ → ?A → fn_params =>
       let B := eval simpl in A in
       constr:(B)
+  | _ → ?A => get_params_of_fntype A
   end.
 Notation "<get_params_of> x" := (
   ltac:(

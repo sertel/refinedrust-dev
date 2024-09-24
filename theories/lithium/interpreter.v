@@ -219,10 +219,12 @@ Ltac liExist protect :=
         | prod _ _ => apply: tac_exist_prod
         | sigT _ => apply: tac_exist_sigT
         | unit => exists tt
+        | nil_unit => exists nil_tt
+        | @plist _ _ [] => exists nil_tt
         | _ =>
             first [
                 let p := constr:(_ : SimplExist A P _) in
-                refine (@simpl_exist_proof _ _ _ p _)
+                refine (@simpl_exist_proof A P _ p _)
               |
                 lazymatch protect with
                 | true => let Hevar := create_protected_evar A in exists (protected Hevar)

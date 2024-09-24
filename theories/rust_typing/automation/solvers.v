@@ -1742,21 +1742,39 @@ Ltac maybe_simplify_layout ly :=
   | use_union_layout_alg' _ => simplify_layout_go ly
   | ot_layout _ => simplify_layout_go ly
   end.
-Ltac simplify_layout_goal :=
-  repeat match goal with
-  | |- context[?ly] =>
-      match type of ly with
-      | layout => maybe_simplify_layout ly
-      end
-  end.
-Ltac simplify_layout_assum :=
-  repeat match goal with
+Ltac simplify_layout_assum_step :=
+  match goal with
   | H: context[?ly] |- _ =>
       assert_is_not_cached H;
       match type of ly with
       | layout => maybe_simplify_layout ly
       end
   end.
+Ltac simplify_layout_assum :=
+  repeat simplify_layout_assum_step.
+Ltac simplify_layout_in A :=
+  match A with
+  | context[use_layout_alg' ?st] => simplify_layout_go (use_layout_alg' st)
+  | context[use_struct_layout_alg' ?st] => simplify_layout_go (use_struct_layout_alg' st)
+  | context[use_enum_layout_alg' ?st] => simplify_layout_go (use_enum_layout_alg' st)
+  | context[use_union_layout_alg' ?st] => simplify_layout_go (use_union_layout_alg' st)
+  | context[ot_layout ?ot] => simplify_layout_go (ot_layout ot)
+  end.
+Ltac simplify_layout_goal_step :=
+  match goal with
+  (* If we are working on a Lithium goal, don't simplify in the continuation *)
+  | |- envs_entails _ (?A _) =>
+      simplify_layout_in A
+  | |- envs_entails ?H _ =>
+      simplify_layout_in H
+  | |- ?H ∧ envs_entails _ _ =>
+      simplify_layout_in H
+  | |- ?H → envs_entails _ _ =>
+      simplify_layout_in H
+  | |- ?G => simplify_layout_in G
+  end.
+Ltac simplify_layout_goal :=
+  repeat simplify_layout_goal_step.
 
 (** Solve goals of the form [layout_wf ly]. *)
 Section layout.
@@ -1882,7 +1900,7 @@ Ltac solve_layout_alg_prepare :=
   lazymatch goal with
   | |- syn_type_is_layoutable ?st => refine (syn_type_is_layoutable_layout_tac st _ _)
   | |- use_layout_alg ?st = Some ?ly => refine (use_layout_alg_layout_tac st ly _)
-  | |- use_layout_alg' ?st = ?ly => refine (use_layout_alg'_layout_tac st ly)
+  | |- use_layout_alg' ?st = ?ly => refine (use_layout_alg'_layout_tac st ly _)
   | |- syn_type_has_layout ?st ?ly => idtac
   (* structs *)
   | |- use_struct_layout_alg ?sls = ?Some ?sl => refine (use_struct_layout_alg_layout_tac _ _ _)
