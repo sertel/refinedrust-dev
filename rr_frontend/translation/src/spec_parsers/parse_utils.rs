@@ -449,7 +449,7 @@ mod tests {
             if path.len() == 1 {
                 self.ty_names.get(path[0])
             } else if path.len() == 2 {
-                self.assoc_names.get(&(path[0].to_string(), path[1].to_string()))
+                self.assoc_names.get(&(path[0].to_owned(), path[1].to_owned()))
             } else {
                 None
             }
@@ -460,16 +460,17 @@ mod tests {
         }
 
         fn lookup_literal(&self, path: &[&str]) -> Option<&str> {
-            let key: Vec<String> = path.into_iter().map(|x| x.to_string()).collect();
-            self.literals.get(&key).map(|x| x.as_str())
+            use std::string::ToString;
+            let key: Vec<String> = path.iter().map(ToString::to_string).collect();
+            self.literals.get(&key).map(String::as_str)
         }
     }
 
     #[test]
     fn test_literal1() {
-        let lit = r"{rt_of T} * {rt_of T}";
+        let lit = "{rt_of T} * {rt_of T}";
         let mut scope = TestScope::default();
-        scope.ty_names.insert("T".to_string(), radium::LiteralTyParam::new("T", "T"));
+        scope.ty_names.insert("T".to_owned(), radium::LiteralTyParam::new("T", "T"));
 
         let (res, _) = super::process_coq_literal(lit, &scope);
         assert_eq!(res, "T_rt * T_rt");
@@ -477,9 +478,9 @@ mod tests {
 
     #[test]
     fn test_literal2() {
-        let lit = r"{ty_of T} * {ty_of T}";
+        let lit = "{ty_of T} * {ty_of T}";
         let mut scope = TestScope::default();
-        scope.ty_names.insert("T".to_string(), radium::LiteralTyParam::new("T", "T"));
+        scope.ty_names.insert("T".to_owned(), radium::LiteralTyParam::new("T", "T"));
 
         let (res, _) = super::process_coq_literal(lit, &scope);
         assert_eq!(res, "T_ty * T_ty");
@@ -487,9 +488,9 @@ mod tests {
 
     #[test]
     fn test_literal3() {
-        let lit = r"{rt_of Self} * {rt_of Self}";
+        let lit = "{rt_of Self} * {rt_of Self}";
         let mut scope = TestScope::default();
-        scope.ty_names.insert("Self".to_string(), radium::LiteralTyParam::new("Self", "Self"));
+        scope.ty_names.insert("Self".to_owned(), radium::LiteralTyParam::new("Self", "Self"));
 
         let (res, _) = super::process_coq_literal(lit, &scope);
         assert_eq!(res, "Self_rt * Self_rt");
@@ -497,9 +498,9 @@ mod tests {
 
     #[test]
     fn test_literal4() {
-        let lit = r"{{rt_of Bla}}";
+        let lit = "{{rt_of Bla}}";
         let mut scope = TestScope::default();
-        scope.ty_names.insert("Self".to_string(), radium::LiteralTyParam::new("Self", "Self"));
+        scope.ty_names.insert("Self".to_owned(), radium::LiteralTyParam::new("Self", "Self"));
 
         let (res, _) = super::process_coq_literal(lit, &scope);
         assert_eq!(res, "{rt_of Bla}");
@@ -507,11 +508,11 @@ mod tests {
 
     #[test]
     fn test_assoc_1() {
-        let lit = r"{rt_of Bla::Blub}";
+        let lit = "{rt_of Bla::Blub}";
         let mut scope = TestScope::default();
-        scope.ty_names.insert("Bla".to_string(), radium::LiteralTyParam::new("Bla", "Bla"));
+        scope.ty_names.insert("Bla".to_owned(), radium::LiteralTyParam::new("Bla", "Bla"));
         scope.assoc_names.insert(
-            ("Bla".to_string(), "Blub".to_string()),
+            ("Bla".to_owned(), "Blub".to_owned()),
             radium::LiteralTyParam::new("Bla_Blub", "Bla_Blub"),
         );
 
@@ -521,9 +522,9 @@ mod tests {
 
     #[test]
     fn test_lit_1() {
-        let lit = r"{Size} 4";
+        let lit = "{Size} 4";
         let mut scope = TestScope::default();
-        scope.literals.insert(vec!["Size".to_string()], "(trait_attrs).(size)".to_string());
+        scope.literals.insert(vec!["Size".to_owned()], "(trait_attrs).(size)".to_owned());
 
         let (res, _) = super::process_coq_literal(lit, &scope);
         assert_eq!(res, "(trait_attrs).(size) 4");
