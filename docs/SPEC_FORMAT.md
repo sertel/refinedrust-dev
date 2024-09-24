@@ -137,6 +137,19 @@ enum option<T> {
 
 In addition, enums also support the `export_as` attribute (same as structs).
 
+### Refinement generation
+Instead of refining an enum with an existing Coq type, RefinedRust can also generate a new Coq type corresponding to the Rust enum declaration.
+For this, the `rr::refine_as` attribute can be used used, which takes the desired Coq name of the definition as its argument.
+
+For instance:
+```
+#[rr::refine_as("option")]
+enum option<T> {
+    None,
+    Some(T),
+}
+```
+
 ## Static attributes
 RefinedRust supports `static` (but currently not `static mut`) variables.
 They can be used as if they were behind a shared reference with `static` lifetime.
@@ -145,6 +158,23 @@ For a static variable to be used by the RefinedRust type checker, the respective
 using the `initialized π "name" r` predicate, where `r` is the assumed refinement of the static variable.
 To specify the name that is used to refer to the variable here, `static` variables can be annotated with a `rr::name` attribute:
 - `#[rr::name("my_static_int")]` indicates that the name `my_static_int` should be used to refer to the static in specifications.
+
+## Trait attributes
+Traits can have additional "specification attributes" which are instantiated by impls.
+The generic specification of trait methods can mention these specification attributes in order to be parameterizable over implementations.
+
+To specify an attribute, trait declarations can be annotated with a `rr::exists` attribute:
+- `#[rr::exists("Done" : "{rt_of Self} → Prop")]` indicates that an attribute `Done` of the given Coq type should be declared, using the escape sequences explained below.
+
+For further specifications in the trait declaration (e.g. for the specification of the trait's methods), the name `Done` will be in scope, enclosed with braces (e.g. `{Done}`).
+The attribute declarations can depend on each other in the definition order, e.g. it would be valid to specify:
+`#[rr::exists("DoneDec" : "∀ x, Decision {Done}")]`
+
+## Trait impl attributes
+Trait implementations have to instantiate the specification attributes declared on the trait they're implementing, using `rr::instantiate` attributes:
+- `#[rr::instantiate("Done" := "λ _, True")]` indicates that the `Done` attribute should be instantiated with the given term for this impl.
+
+In the proof of the specifications for the trait's methods, this instantiation is assumed.
 
 ## Module attributes
 Inside a module, the following mod-level attributes can be specified:
@@ -181,7 +211,7 @@ These escape sequences are literally replaced by the frontend.
 In particular, we support the following escape sequences:
 | Example | Purpose |
 |---------|---------|
-| `{T}`   | Gets substituted by the RefinedRust type corresponding to the Rust type variable `T` |
+| `{ty_of T}`   | Gets substituted by the RefinedRust type corresponding to the Rust type variable `T` |
 | `{st_of T}` | Gets substituted by the syntactic type (providing layout information) of the type parameter `T` |
 | `{ly_of T}` | Gets substituted by a term giving the layout of the type parameter `T`'s syntactic type |
 | `{rt_of T}` | Gets substituted by the refinement type (mathematical model) of the type parameter `T` |
