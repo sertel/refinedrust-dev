@@ -175,14 +175,22 @@ impl From<ParamScope> for radium::GenericScope {
     }
 }
 impl ParamLookup for ParamScope {
-    fn lookup_ty_param(&self, param: &str) -> Option<&radium::LiteralTyParam> {
-        let idx = self.ty_names.get(param)?;
-        self.lookup_ty_param_idx(*idx)
+    fn lookup_ty_param(&self, path: &[&str]) -> Option<&radium::LiteralTyParam> {
+        if path.len() == 1 {
+            let idx = self.ty_names.get(path[0])?;
+            self.lookup_ty_param_idx(*idx)
+        } else {
+            None
+        }
     }
 
     fn lookup_lft(&self, lft: &str) -> Option<&radium::Lft> {
         let idx = self.lft_names.get(lft)?;
         self.lookup_region_idx(*idx)
+    }
+
+    fn lookup_literal(&self, path: &[&str]) -> Option<&str> {
+        None
     }
 }
 impl ParamScope {
@@ -313,15 +321,23 @@ pub struct TypeTranslationScope<'tcx, 'def> {
 }
 
 impl<'tcx, 'def> ParamLookup for TypeTranslationScope<'tcx, 'def> {
-    fn lookup_ty_param(&self, param: &str) -> Option<&radium::LiteralTyParam> {
-        let idx = self.generic_names.get(param)?;
-        let name = self.generic_scope.get(*idx)?;
-        name.as_ref()
+    fn lookup_ty_param(&self, path: &[&str]) -> Option<&radium::LiteralTyParam> {
+        if path.len() == 1 {
+            let idx = self.generic_names.get(path[0])?;
+            let name = self.generic_scope.get(*idx)?;
+            name.as_ref()
+        } else {
+            None
+        }
     }
 
     fn lookup_lft(&self, lft: &str) -> Option<&radium::Lft> {
         let vid = self.lifetime_scope.lft_names.get(lft)?;
         self.lifetime_scope.region_names.get(vid)
+    }
+
+    fn lookup_literal(&self, path: &[&str]) -> Option<&str> {
+        None
     }
 }
 
@@ -475,6 +491,8 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
         // So I should ideally get the trait requirements and bundle together the requirements on
         // its associated types as well.
 
+        // TODO: add scope for referring to associated types in specs
+
         let requirements = trait_registry::get_nontrivial_trait_requirements(env.tcx(), param_env);
         for trait_ref in &requirements {
             // check if we are in the process of translating a trait decl
@@ -496,8 +514,6 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
                 // TODO
                 // Problem: we have some circularity here.
                 //  I guess I might use some associated types (aliases) in the generics of other traits.
-                // For now, we just disallow this, by translating the trait use in a scope without
-                // traits
 
                 let trait_use = GenericTraitUse::new(
                     type_translator,
@@ -571,6 +587,17 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
     /// Get trait uses in the current scope.
     pub const fn get_trait_uses(&self) -> &HashMap<(DefId, GenericsKey<'tcx>), GenericTraitUse<'def>> {
         &self.used_traits
+    }
+
+    /// Within a trait declaration, get the associated types of the Self trait.
+    pub fn get_self_trait_assoc_types(&self, env: &Environment<'tcx>) -> Option<Vec<radium::Type<'def>>> {
+        for trait_use in self.used_traits.values() {
+            // check if this is the Self trait use
+            if trait_use.trait_use.is_used_in_self_trait {
+                return Some(trait_use.get_associated_type_uses(env));
+            }
+        }
+        None
     }
 
     /// Get the associated types we require in the current scope.

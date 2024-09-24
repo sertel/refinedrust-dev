@@ -4,6 +4,8 @@ pub mod enum_spec_parser;
 pub mod module_attr_parser;
 pub mod parse_utils;
 pub mod struct_spec_parser;
+pub mod trait_attr_parser;
+pub mod trait_impl_attr_parser;
 pub mod verbose_function_spec_parser;
 
 use attribute_parse::{parse, MToken};

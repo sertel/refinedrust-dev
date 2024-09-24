@@ -1,5 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::fmt::Write;
 use std::string::ToString;
 
 use derive_more::{Constructor, Display};
@@ -13,6 +14,8 @@ use crate::base::TranslationError;
 use crate::environment::Environment;
 use crate::function_body::{get_arg_syntypes_for_procedure_call, mangle_name_with_args, FunctionTranslator};
 use crate::spec_parsers::propagate_method_attr_from_impl;
+use crate::spec_parsers::trait_attr_parser::{TraitAttrParser, VerboseTraitAttrParser};
+use crate::spec_parsers::trait_impl_attr_parser::{TraitImplAttrParser, VerboseTraitImplAttrParser};
 use crate::type_translator::{
     generate_args_inst_key, strip_coq_ident, GenericsKey, InFunctionState, LocalTypeTranslator, ParamScope,
     TypeTranslator,
@@ -48,6 +51,10 @@ pub enum Error<'tcx> {
     /// Cannot find this trait instance in the local environment
     #[display("An instance for this trait {:?} cannot by found with generic args {:?}", _0, _1)]
     UnknownLocalInstance(DefId, ty::GenericArgsRef<'tcx>),
+    #[display("An error occurred when parsing the specification of the trait {:?}: {:?}", _0, _1)]
+    TraitSpec(DefId, String),
+    #[display("An error occurred when parsing the specification of the trait impl {:?}: {:?}", _0, _1)]
+    TraitImplSpec(DefId, String),
     /// Unknown error
     #[display("Unknown Error")]
     Unknown,
@@ -203,10 +210,16 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
     }
 
     /// Generate names for a trait.
-    fn make_literal_trait_spec(&self, did: DefId, name: String) -> specs::LiteralTraitSpec {
+    fn make_literal_trait_spec(
+        &self,
+        did: DefId,
+        name: String,
+        declared_attrs: HashSet<String>,
+    ) -> specs::LiteralTraitSpec {
         let phys_record = format!("{name}_phys");
         let spec_record = format!("{name}_spec");
         let spec_params_record = format!("{name}_spec_params");
+        let spec_attrs_record = format!("{name}_spec_attrs");
         let base_spec = format!("{name}_base_spec");
         let base_spec_params = format!("{name}_base_spec_params");
         let spec_subsumption = format!("{name}_spec_incl");
@@ -216,9 +229,11 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
             assoc_tys: self.get_associated_type_names(did),
             spec_record,
             spec_params_record,
+            spec_attrs_record,
             base_spec,
             base_spec_params,
             spec_subsumption,
+            declared_attrs,
         }
     }
 
@@ -242,34 +257,32 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         // We also do not generate trait dep parameters.
         // We should depend on the assoc types of the other traits as well as the specs.
 
-        // make the literal we are going to use
+        // get generics
+        let trait_generics: &'tcx ty::Generics = self.env.tcx().generics_of(did.to_def_id());
+        let param_scope = ParamScope::from(trait_generics.params.as_slice());
+        // TODO: add associated types
+
         let trait_name = strip_coq_ident(&self.env.get_absolute_item_name(did.to_def_id()));
-        let lit_trait_spec = self.make_literal_trait_spec(did.to_def_id(), trait_name.clone());
-        // already register it for use.
+
+        // parse trait spec
+        let trait_attrs = utils::filter_tool_attrs(self.env.get_attributes(did.into()));
+        // As different attributes of the spec may depend on each other, we need to pass a closure
+        // determining under which Coq name we are going to introduce them
+        // Note: This needs to match up with `radium::LiteralTraitSpec.make_spec_attr_name`!
+        let mut attr_parser = VerboseTraitAttrParser::new(&param_scope, |id| format!("{trait_name}_{id}"));
+        let trait_spec =
+            attr_parser.parse_trait_attrs(&trait_attrs).map_err(|e| Error::TraitSpec(did.into(), e))?;
+
+        // get the declared attributes that are allowed on impls
+        let valid_attrs: HashSet<String> = trait_spec.attrs.attrs.keys().cloned().collect();
+
+        // make the literal we are going to use
+        let lit_trait_spec = self.make_literal_trait_spec(did.to_def_id(), trait_name.clone(), valid_attrs);
+        // already register it for use
         // In particular, this is also needed to be able to register the methods of this trait
         // below, as they need to be able to access the associated types of this trait already.
         // (in fact, their environment contains their self instance)
         let lit_trait_spec_ref = self.register_shim(did.to_def_id(), lit_trait_spec)?;
-
-        // get generics
-        let trait_generics: &'tcx ty::Generics = self.env.tcx().generics_of(did.to_def_id());
-        let mut generic_env = radium::GenericScope::empty();
-        for param in &trait_generics.params {
-            if let ty::GenericParamDefKind::Type { .. } = param.kind {
-                let name = param.name.as_str();
-                let lit = radium::LiteralTyParam::new(name, name);
-                generic_env.add_ty_param(lit);
-            } else if let ty::GenericParamDefKind::Lifetime { .. } = param.kind {
-                // TODO
-                let lft = "placeholder".to_owned();
-                generic_env.add_lft_param(lft);
-            }
-        }
-
-        // get extra context items from trait annotation
-        // TODO
-        let extra_context_items = Vec::new();
-        let extra_context_items = coq::ParamList::new(extra_context_items);
 
         // get items
         let mut methods = HashMap::new();
@@ -314,10 +327,11 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         let base_instance_spec = radium::TraitInstanceSpec::new(methods);
         let decl = radium::TraitSpecDecl::new(
             lit_trait_spec_ref,
-            extra_context_items,
-            generic_env,
+            radium::coq::ParamList::new(trait_spec.context_items),
+            param_scope.into(),
             assoc_types,
             base_instance_spec,
+            trait_spec.attrs,
         );
 
         let mut scope = self.trait_decls.borrow_mut();
@@ -386,6 +400,25 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         impl_literals.get(&impl_did).copied()
     }
 
+    /// Get the term for referring to the attribute record of a particular impl within a function of
+    /// that impl.
+    pub fn get_impl_attrs_term(&self, impl_did: DefId) -> Result<String, TranslationError<'tcx>> {
+        let impl_ref = self.lookup_impl(impl_did).ok_or(Error::UnregisteredImpl(impl_did))?;
+        let attr_record = &impl_ref.spec_attrs_record;
+        let info = self.get_trait_impl_info(impl_did)?;
+        // TODO: maybe it would be better to do the formatting in radium
+
+        let mut attr_term = String::with_capacity(100);
+        write!(attr_term, "{attr_record}").unwrap();
+
+        // add the type parameters of the impl
+        for ty in info.generics.get_ty_params() {
+            write!(attr_term, " {}", ty.refinement_type).unwrap();
+        }
+
+        Ok(attr_term)
+    }
+
     /// Get the term for the specification of a trait impl (applied to the given arguments of the trait),
     /// as well as the list of associated types.
     pub fn get_impl_spec_term(
@@ -402,16 +435,6 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         let trait_instance = self.lookup_trait(trait_did).ok_or(Error::NotATrait(trait_did))?;
 
-        // all args of the base spec
-        let mut all_trait_args = Vec::new();
-        // this includes Self as the first arg
-        for arg in trait_args {
-            if let ty::GenericArgKind::Type(ty) = arg.unpack() {
-                let ty = ty_translator.translate_type(ty)?;
-                all_trait_args.push(ty);
-            }
-        }
-
         let mut assoc_args = Vec::new();
         // get associated types of this impl
         // Since we know the concrete impl, we can directly resolve all of the associated types
@@ -424,10 +447,6 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                 let subst_ty = item_ty.instantiate(self.env.tcx(), impl_args);
 
                 assoc_args.push(subst_ty);
-
-                // also add it to the trait args
-                let translated_ty = ty_translator.translate_type(subst_ty)?;
-                all_trait_args.push(translated_ty);
             }
         }
 
@@ -441,10 +460,23 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                     all_impl_args.push(ty);
                 }
             }
-            radium::SpecializedTraitSpec::new_with_params(impl_spec.spec_record.clone(), all_impl_args)
+
+            // instantiate the attrs suitably
+            let mut args = Vec::new();
+            for ty in &all_impl_args {
+                args.push(format!("{}", ty.get_rfn_type()));
+            }
+            let attr_term =
+                format!("{}", radium::coq::AppTerm::new(impl_spec.spec_attrs_record.clone(), args));
+
+            radium::SpecializedTraitSpec::new_with_params(
+                impl_spec.spec_record.clone(),
+                Some(all_impl_args),
+                attr_term,
+                false,
+            )
         } else {
-            // the base_spec gets all the trait's args as well as the associated types
-            radium::SpecializedTraitSpec::new_with_params(trait_instance.base_spec.clone(), all_trait_args)
+            return Err(TranslationError::TraitTranslation(Error::UnregisteredImpl(impl_did)));
         };
 
         trace!("leave TraitRegistry::get_impl_spec_term");
@@ -473,6 +505,13 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         // figure out the parameters this impl gets and make a scope
         let impl_generics: &'tcx ty::Generics = self.env.tcx().generics_of(trait_impl_did);
         let param_scope = ParamScope::from(impl_generics.params.as_slice());
+
+        // parse specification
+        let trait_impl_attrs = utils::filter_tool_attrs(self.env.get_attributes(trait_impl_did));
+        let mut attr_parser = VerboseTraitImplAttrParser::new(&param_scope);
+        let impl_spec = attr_parser
+            .parse_trait_impl_attrs(&trait_impl_attrs)
+            .map_err(|e| Error::TraitImplSpec(trait_impl_did, e))?;
 
         // figure out the trait ref for this
         let subject = self.env.tcx().impl_subject(trait_impl_did).skip_binder();
@@ -524,6 +563,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                 lft_inst,
                 params_inst,
                 assoc_types_inst,
+                impl_spec.attrs,
             ))
         } else {
             unreachable!("Expected trait impl");
@@ -628,12 +668,9 @@ impl<'def> GenericTraitUse<'def> {
     ) -> Self {
         let did = trait_ref.def_id;
 
-        let self_ty = trait_ref.args[0];
-        let args = &trait_ref.args.as_slice()[1..];
-
         // translate the arguments in the scope of the function
         let mut translated_args = Vec::new();
-        for arg in args {
+        for arg in trait_ref.args {
             if let ty::GenericArgKind::Type(ty) = arg.unpack() {
                 let translated_ty = type_translator.translate_type(ty, scope).unwrap();
                 translated_args.push(translated_ty);
@@ -641,8 +678,7 @@ impl<'def> GenericTraitUse<'def> {
         }
 
         // the self param should be a Param that is bound in the function's scope
-        let translated_self = type_translator.translate_type(self_ty.expect_ty(), scope).unwrap();
-        let param = if let ty::TyKind::Param(param) = self_ty.expect_ty().kind() {
+        let param = if let ty::TyKind::Param(param) = trait_ref.args[0].expect_ty().kind() {
             *param
         } else {
             unreachable!("self should be a Param");
@@ -655,7 +691,6 @@ impl<'def> GenericTraitUse<'def> {
         let mangled_base = mangle_name_with_args(&spec_ref.name, trait_ref.args.as_slice());
         let spec_use = radium::LiteralTraitSpecUse::new(
             spec_ref,
-            translated_self,
             translated_args,
             mangled_base,
             spec_override,

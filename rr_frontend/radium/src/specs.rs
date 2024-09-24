@@ -2992,6 +2992,20 @@ pub struct TraitInstanceSpec<'def> {
     pub methods: HashMap<String, &'def FunctionSpec<InnerFunctionSpec<'def>>>,
 }
 
+/// Specification attribute declaration of a trait
+#[derive(Constructor, Clone, Debug)]
+pub struct TraitSpecAttrsDecl {
+    /// a map of attributes and their types
+    pub attrs: HashMap<String, coq::Type>,
+}
+
+/// Implementation of the attributes of a trait
+#[derive(Constructor, Clone, Debug)]
+pub struct TraitSpecAttrsInst {
+    /// a map of attributes and their implementation
+    pub attrs: HashMap<String, coq::GallinaTerm>,
+}
+
 /// A using occurrence of a trait spec.
 #[derive(Debug, Clone)]
 pub struct LiteralTraitSpec {
@@ -3002,6 +3016,8 @@ pub struct LiteralTraitSpec {
 
     /// The name of the Coq definition for the spec param information
     pub spec_params_record: String,
+    /// The name of the Coq definition for the spec attributes
+    pub spec_attrs_record: String,
 
     /// The name of the Coq definition for the spec information
     pub spec_record: String,
@@ -3014,6 +3030,9 @@ pub struct LiteralTraitSpec {
     /// The subsumption relation between specs
     /// (Coq def has no parameters)
     pub spec_subsumption: String,
+
+    /// declared attributes of the trait
+    pub declared_attrs: HashSet<String>,
 }
 pub type LiteralTraitSpecRef<'def> = &'def LiteralTraitSpec;
 
@@ -3030,6 +3049,11 @@ impl LiteralTraitSpec {
     }
 
     #[must_use]
+    pub fn make_spec_attr_name(&self, attr: &str) -> String {
+        format!("{}_{attr}", self.name)
+    }
+
+    #[must_use]
     pub fn spec_record_constructor_name(&self) -> String {
         format!("mk_{}", self.spec_record)
     }
@@ -3040,8 +3064,18 @@ impl LiteralTraitSpec {
     }
 
     #[must_use]
+    pub fn spec_record_attrs_constructor_name(&self) -> String {
+        format!("mk_{}", self.spec_attrs_record)
+    }
+
+    #[must_use]
     pub fn spec_incl_name(&self) -> String {
         self.spec_subsumption.clone()
+    }
+
+    #[must_use]
+    pub fn make_fnspec_attr_param_name(&self) -> String {
+        format!("{}_attrs", self.name)
     }
 }
 
@@ -3049,9 +3083,7 @@ impl LiteralTraitSpec {
 #[derive(Debug, Clone)]
 pub struct LiteralTraitSpecUse<'def> {
     pub trait_ref: LiteralTraitSpecRef<'def>,
-    /// the instantiation for the self parameter
-    pub self_inst: Type<'def>,
-    /// the instantiation for the type parameters
+    /// the instantiation for the type parameters (self is at 0)
     pub params_inst: Vec<Type<'def>>,
 
     /// optionally, an override for the trait specification we assume
@@ -3071,7 +3103,6 @@ impl<'def> LiteralTraitSpecUse<'def> {
     #[must_use]
     pub fn new(
         trait_ref: LiteralTraitSpecRef<'def>,
-        self_inst: Type<'def>,
         params_inst: Vec<Type<'def>>,
         mangled_base: String,
         overridden_spec_def: Option<String>,
@@ -3080,7 +3111,6 @@ impl<'def> LiteralTraitSpecUse<'def> {
     ) -> Self {
         Self {
             trait_ref,
-            self_inst,
             params_inst,
             overridden_spec_def,
             mangled_base,
@@ -3101,27 +3131,41 @@ impl<'def> LiteralTraitSpecUse<'def> {
         format!("{}_spec_params", self.mangled_base)
     }
 
+    /// Get the name for a spec attrs parameter for this trait instance.
+    #[must_use]
+    pub fn make_spec_attrs_param_name(&self) -> String {
+        format!("{}_spec_attrs", self.mangled_base)
+    }
+
+    /// Get the instantiation of associated types.
+    #[must_use]
+    pub fn get_assoc_ty_inst(&self) -> Vec<Type<'def>> {
+        let mut assoc_tys = Vec::new();
+        for x in &self.trait_ref.assoc_tys {
+            let ty = self.make_assoc_type_use(x);
+            assoc_tys.push(ty.clone());
+        }
+        assoc_tys
+    }
+
     /// Make the precondition on the spec parameter we need to require.
     #[must_use]
     pub fn make_spec_param_precond(&self) -> IProp {
         // the spec we have to require for this verification
-        let spec_to_require = if let Some(override_spec) = &self.overridden_spec_def {
-            override_spec.to_string()
+        let (spec_to_require, need_attrs) = if let Some(override_spec) = &self.overridden_spec_def {
+            (override_spec.to_string(), false)
         } else {
-            self.trait_ref.base_spec.clone()
+            (self.trait_ref.base_spec.clone(), true)
         };
 
         // the spec gets all the rts, then all sts, then all semtys
-        let mut all_args = Vec::new();
-        all_args.push(self.self_inst.clone());
-        for x in &self.params_inst {
-            all_args.push(x.to_owned());
-        }
-        for x in &self.trait_ref.assoc_tys {
-            let ty = self.make_assoc_type_use(x);
-            all_args.push(ty.clone());
-        }
-        let specialized_spec = SpecializedTraitSpec::new_with_params(spec_to_require, all_args);
+        let all_args = self.params_inst.iter().cloned().chain(self.get_assoc_ty_inst()).collect();
+        let specialized_spec = SpecializedTraitSpec::new_with_params(
+            spec_to_require,
+            Some(all_args),
+            self.make_spec_attrs_param_name(),
+            need_attrs,
+        );
 
         let spec = format!(
             "trait_incl_marker ({} {} {specialized_spec})",
@@ -3185,25 +3229,27 @@ impl<'def> LiteralTraitSpecUse<'def> {
 /// A specialized trait specification applied to some type parameters
 #[derive(Clone, Debug)]
 pub struct SpecializedTraitSpec<'def> {
-    spec_name: String,
+    pub spec_name: String,
     /// if none, this is already maximally specialized (i.e. from a parameter)
-    ty_params: Option<Vec<Type<'def>>>,
+    pub ty_params: Option<Vec<Type<'def>>>,
+    /// the specialized spec attribute term
+    pub specialized_attr: String,
+    pub spec_needs_attr: bool,
 }
 
 impl<'def> SpecializedTraitSpec<'def> {
     #[must_use]
-    pub const fn new(spec_name: String) -> Self {
+    pub const fn new_with_params(
+        spec_name: String,
+        ty_params: Option<Vec<Type<'def>>>,
+        specialized_attr: String,
+        spec_needs_attr: bool,
+    ) -> Self {
         Self {
             spec_name,
-            ty_params: None,
-        }
-    }
-
-    #[must_use]
-    pub const fn new_with_params(spec_name: String, ty_params: Vec<Type<'def>>) -> Self {
-        Self {
-            spec_name,
-            ty_params: Some(ty_params),
+            ty_params,
+            specialized_attr,
+            spec_needs_attr,
         }
     }
 }
@@ -3211,16 +3257,22 @@ impl<'def> SpecializedTraitSpec<'def> {
 impl<'def> Display for SpecializedTraitSpec<'def> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "({} ", self.spec_name)?;
-        if let Some(ty_params) = &self.ty_params {
+        if let Some(params) = &self.ty_params {
             // specialize to rts
-            write_list!(f, ty_params, " ", |x| { format!("{}", x.get_rfn_type()) })?;
+            write_list!(f, params, " ", |x| { format!("{}", x.get_rfn_type()) })?;
             // specialize to sts
             write!(f, " ")?;
-            write_list!(f, ty_params, " ", |x| { format!("{}", SynType::from(x)) })?;
+            write_list!(f, params, " ", |x| { format!("{}", SynType::from(x)) })?;
+            // specialize to further args
+            if self.spec_needs_attr {
+                write!(f, " {}", self.specialized_attr)?;
+            }
             // specialize to semtys
             write!(f, " ")?;
-            write_list!(f, ty_params, " ", |x| { format!("<TY> {}", x) })?;
-            write!(f, "<INST!>")?;
+            write_list!(f, params, " ", |x| { format!("<TY> {}", x) })?;
+            write!(f, " <INST!>")?;
+        } else if self.spec_needs_attr {
+            write!(f, " {}", self.specialized_attr)?;
         }
         write!(f, ")")
     }
@@ -3403,11 +3455,19 @@ impl Display for GenericScope {
 /// Generate the record instances for a trait impl.
 /// - `scope` quantifies the generics of this instance
 /// - `assoc_types` has the associated types that we quantify over
+/// - `params_inst` is the instantiation of the trait's type parameters
+/// - `assoc_inst` is the instantiation of the trait's associated types
+/// - `spec` is the specification of all the functions
+/// - `of_trait` gives the trait of which we make an instance
+/// -
 fn make_trait_instance<'def>(
     scope: &GenericScope,
     assoc_types: &[LiteralTyParam],
+    param_inst: &[Type<'def>],
+    assoc_inst: &[Type<'def>],
     spec: &TraitInstanceSpec<'def>,
     of_trait: LiteralTraitSpecRef<'def>,
+    is_base_spec: bool,
     spec_record_name: &str,
     spec_record_params_name: &str,
 ) -> Result<coq::TopLevelAssertions, fmt::Error> {
@@ -3464,16 +3524,30 @@ fn make_trait_instance<'def>(
     };
     assertions.push(coq::TopLevelAssertion::Definition(param_record_definition));
 
+    // write the attr record decl, if provided
+    let mut attrs_type_rts = Vec::new();
+    for param in param_inst.iter().chain(assoc_inst) {
+        attrs_type_rts.push(format!("{}", param.get_rfn_type()));
+    }
+    let attrs_type = coq::AppTerm::new(of_trait.spec_attrs_record.clone(), attrs_type_rts);
+    let attrs_type = coq::Type::Literal(format!("{attrs_type}"));
+
     // write the spec record decl
     let mut def_params = Vec::new();
+    // all rts
     for param in scope.tys.iter().chain(assoc_types) {
         let rt_param =
             coq::Param::new(coq::Name::Named(param.refinement_type.clone()), coq::Type::Type, false);
         def_params.push(rt_param);
     }
+    // all sts
     for param in scope.tys.iter().chain(assoc_types) {
         let st_param = coq::Param::new(coq::Name::Named(param.syn_type.clone()), coq::Type::SynType, false);
         def_params.push(st_param);
+    }
+    // then, the attrs. these also get the associated types
+    if is_base_spec {
+        def_params.push(coq::Param::new(coq::Name::Named("_ATTRS".to_owned()), attrs_type, false));
     }
     let def_params = coq::ParamList::new(def_params);
 
@@ -3492,9 +3566,14 @@ fn make_trait_instance<'def>(
             let param_uses = params.make_using_terms();
 
             let mut body = String::with_capacity(100);
-            write!(body, "{} ", spec.spec_name)?;
 
+            write!(body, "{} ", spec.spec_name)?;
             write_list!(body, &param_uses, " ")?;
+
+            // then the attrs
+            if is_base_spec {
+                write!(body, " _ATTRS")?;
+            }
 
             // instantiate with the scope's items
             for x in &scope.tys {
@@ -3580,6 +3659,9 @@ pub struct TraitSpecDecl<'def> {
 
     /// The default specification from the trait declaration
     pub default_spec: TraitInstanceSpec<'def>,
+
+    /// the spec attributes
+    pub attrs: TraitSpecAttrsDecl,
 }
 
 impl<'def> Display for TraitSpecDecl<'def> {
@@ -3589,6 +3671,7 @@ impl<'def> Display for TraitSpecDecl<'def> {
 
         let spec_record_constructor = self.lit.spec_record_constructor_name();
         let spec_param_record_constructor = self.lit.spec_record_params_constructor_name();
+        let spec_attrs_record_constructor = self.lit.spec_record_attrs_constructor_name();
 
         // write spec param record
         let mut record_items = Vec::new();
@@ -3613,6 +3696,43 @@ impl<'def> Display for TraitSpecDecl<'def> {
             body: record_items,
         };
         write!(f, "{spec_param_record}\n")?;
+
+        // write attr record
+        let mut record_items = Vec::new();
+        for (item_name, item_ty) in &self.attrs.attrs {
+            let record_item_name = self.lit.make_spec_attr_name(item_name);
+
+            let item = coq::RecordDeclItem {
+                name: record_item_name,
+                params: coq::ParamList::empty(),
+                ty: item_ty.to_owned(),
+            };
+            record_items.push(item);
+        }
+        // this is parametric in the params and associated types
+        let mut attr_params = Vec::new();
+        for param in self.generics.get_ty_params().iter().chain(self.assoc_types.iter()) {
+            attr_params.push(coq::Param::new(
+                coq::Name::Named(param.refinement_type.clone()),
+                coq::Type::Type,
+                true,
+            ));
+        }
+        let spec_attr_record = coq::Record {
+            name: self.lit.spec_attrs_record.clone(),
+            params: coq::ParamList::new(attr_params),
+            ty: coq::Type::Type,
+            constructor: Some(spec_attrs_record_constructor.clone()),
+            body: record_items,
+        };
+        write!(f, "{spec_attr_record}\n")?;
+        write!(f, "Global Arguments {} : clear implicits.\n", self.lit.spec_attrs_record)?;
+        write!(f, "Global Arguments {} ", spec_attrs_record_constructor)?;
+        let attr_param_count = self.generics.get_num_ty_params() + self.assoc_types.len();
+        for i in 0..attr_param_count {
+            write!(f, " {{_}}")?;
+        }
+        write!(f, ".\n")?;
 
         // write spec record
         let mut record_items = Vec::new();
@@ -3732,16 +3852,20 @@ impl<'def> Display for TraitSpecDecl<'def> {
             write!(f, "{item_spec}\n")?;
         }
 
+        // use the identity instantiation of the trait
+        let param_inst: Vec<_> =
+            self.generics.get_ty_params().iter().map(|x| Type::LiteralParam(x.to_owned())).collect();
+        let assoc_inst: Vec<_> = self.assoc_types.iter().map(|x| Type::LiteralParam(x.to_owned())).collect();
+
         // write the bundled records
-        // for that, make a new scope
-        let mut scope = GenericScope::empty();
-        // add all the the generics (including Self)
-        scope.append(&self.generics);
         let base_decls = make_trait_instance(
-            &scope,
+            &self.generics,
             &self.assoc_types,
+            &param_inst,
+            &assoc_inst,
             &self.default_spec,
             self.lit,
+            true,
             &self.lit.base_spec,
             &self.lit.base_spec_params,
         )?;
@@ -3757,6 +3881,7 @@ pub struct LiteralTraitImpl {
     /// The name of the record instance for spec information
     pub spec_record: String,
     pub spec_params_record: String,
+    pub spec_attrs_record: String,
     /// The name of the proof that the base spec is implied by the more specific spec
     pub spec_subsumption_proof: String,
 }
@@ -3765,15 +3890,29 @@ pub type LiteralTraitImplRef<'def> = &'def LiteralTraitImpl;
 /// A full instantiation of a trait spec.
 #[derive(Constructor, Clone, Debug)]
 pub struct TraitRefInst<'def> {
-    of_trait: LiteralTraitSpecRef<'def>,
+    pub of_trait: LiteralTraitSpecRef<'def>,
     /// type parameters this is generic over
-    generics: GenericScope,
-    lft_inst: Vec<Lft>,
+    pub generics: GenericScope,
+    pub lft_inst: Vec<Lft>,
     /// the instantiation for the type parameters (including self)
-    params_inst: Vec<Type<'def>>,
+    pub params_inst: Vec<Type<'def>>,
     /// the implementation of the associated types
     /// NOTE: in the same order as in the trait definition
-    assoc_types_inst: Vec<Type<'def>>,
+    pub assoc_types_inst: Vec<Type<'def>>,
+    /// the spec attributes
+    pub attrs: TraitSpecAttrsInst,
+}
+
+impl<'def> TraitRefInst<'def> {
+    #[must_use]
+    pub fn get_trait_param_inst(&self) -> &[Type<'def>] {
+        &self.params_inst
+    }
+
+    #[must_use]
+    pub fn get_trait_assoc_inst(&self) -> &[Type<'def>] {
+        &self.assoc_types_inst
+    }
 }
 
 /// When translating an impl block, we should generate this, which bundles all components of the
@@ -3781,16 +3920,67 @@ pub struct TraitRefInst<'def> {
 #[derive(Constructor, Clone, Debug)]
 pub struct TraitImplSpec<'def> {
     /// Coq names to use
-    names: LiteralTraitImplRef<'def>,
+    pub names: LiteralTraitImplRef<'def>,
 
     /// the instantiation of the trait
-    trait_ref: TraitRefInst<'def>,
+    pub trait_ref: TraitRefInst<'def>,
 
     /// the name of the Coq def of the method definition and all type parameters it needs
-    methods: TraitInstanceSpec<'def>,
+    pub methods: TraitInstanceSpec<'def>,
 }
 
 impl<'def> TraitImplSpec<'def> {
+    /// Generate the definition of the attribute record of this trait impl.
+    #[must_use]
+    pub fn generate_attr_decl(&self) -> coq::TopLevelAssertion {
+        let attrs = &self.trait_ref.attrs;
+        let attrs_name = &self.names.spec_attrs_record;
+        let param_inst = &self.trait_ref.params_inst;
+        let assoc_inst = &self.trait_ref.assoc_types_inst;
+        let of_trait = &self.trait_ref.of_trait;
+
+        let mut def_rts_params = Vec::new();
+        for param in &self.trait_ref.generics.tys {
+            let rt_param =
+                coq::Param::new(coq::Name::Named(param.refinement_type.clone()), coq::Type::Type, false);
+            def_rts_params.push(rt_param);
+        }
+        let def_rts_params = coq::ParamList::new(def_rts_params);
+        let def_rts_params_uses = def_rts_params.make_using_terms();
+
+        // write the attr record decl
+        let mut attrs_type_rts = Vec::new();
+        for param in param_inst.iter().chain(assoc_inst) {
+            attrs_type_rts.push(format!("{}", param.get_rfn_type()));
+        }
+        let attrs_type = coq::AppTerm::new(of_trait.spec_attrs_record.clone(), attrs_type_rts);
+        let attrs_type = coq::Type::Literal(format!("{attrs_type}"));
+        let attr_record_term = if attrs.attrs.is_empty() {
+            coq::GallinaTerm::Literal(of_trait.spec_record_attrs_constructor_name())
+        } else {
+            let mut components = Vec::new();
+            for (attr_name, inst) in &attrs.attrs {
+                let record_item_name = of_trait.make_spec_attr_name(attr_name);
+
+                let item = coq::RecordBodyItem {
+                    name: record_item_name,
+                    params: coq::ParamList::empty(),
+                    term: inst.to_owned(),
+                };
+                components.push(item);
+            }
+            let record_body = coq::RecordBodyTerm { items: components };
+            coq::GallinaTerm::RecordBody(record_body)
+        };
+        let attr_record_definition = coq::Definition {
+            name: attrs_name.to_owned(),
+            params: def_rts_params,
+            ty: Some(attrs_type),
+            body: coq::DefBody::Term(attr_record_term),
+            kind: coq::DefinitionKind::Definition,
+        };
+        coq::TopLevelAssertion::Definition(attr_record_definition)
+    }
     /*
     fn generate_proof(&self) -> coq::TopLevelAssertion {
         let mut params = Vec::new();
@@ -3832,8 +4022,11 @@ impl<'def> Display for TraitImplSpec<'def> {
             let base_decls = make_trait_instance(
                 &self.trait_ref.generics,
                 &[],
+                &self.trait_ref.params_inst,
+                &self.trait_ref.assoc_types_inst,
                 &self.methods,
                 self.trait_ref.of_trait,
+                false,
                 &self.names.spec_record,
                 &self.names.spec_params_record,
             )?;
@@ -3854,6 +4047,8 @@ pub struct InstantiatedTraitFunctionSpec<'def> {
     trait_ref: TraitRefInst<'def>,
     /// name of the trait method we are instantiating
     trait_method_name: String,
+    /// attribute term that we are instantiating with
+    trait_attr_term: String,
 }
 
 impl<'def> InstantiatedTraitFunctionSpec<'def> {
@@ -3880,6 +4075,10 @@ impl<'def> InstantiatedTraitFunctionSpec<'def> {
         for ty in &self.trait_ref.assoc_types_inst {
             params.push(format!("{}", SynType::from(ty)));
         }
+
+        // also instantiate with the attrs that are quantified on the outside
+        params.push(self.trait_attr_term.clone());
+
         let mut applied_base_spec = String::with_capacity(100);
         write!(applied_base_spec, "{}", coq::AppTerm::new(&self.trait_ref.of_trait.base_spec, params))?;
         // instantiate semantic types

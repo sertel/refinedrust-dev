@@ -4,6 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
+#![feature(fn_traits)]
 #![feature(box_patterns)]
 #![feature(let_chains)]
 #![feature(rustc_private)]
@@ -212,6 +213,60 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     }
 
     /// Make a shim entry for a trait.
+    fn make_trait_impl_shim_entry(
+        &self,
+        did: DefId,
+        decl: &radium::TraitImplSpec<'rcx>,
+    ) -> Option<shim_registry::TraitImplShim> {
+        info!("making shim entry for impl {did:?}");
+        let impl_ref: Option<ty::EarlyBinder<ty::TraitRef<'_>>> = self.env.tcx().impl_trait_ref(did);
+
+        let Some(impl_ref) = impl_ref else {
+            trace!("leave make_trait_impl_shim_entry (failed getting impl ref)");
+            return None;
+        };
+
+        let impl_ref = normalize_in_function(did, self.env.tcx(), impl_ref.skip_binder()).unwrap();
+
+        let args = impl_ref.args;
+        let trait_did = impl_ref.def_id;
+
+        // the first arg is self, skip that
+        // TODO don't handle Self specially, but treat it as any other arg
+        let trait_args = &args.as_slice()[1..];
+        let impl_for = args[0].expect_ty();
+
+        // flatten the trait reference
+        let trait_path = utils::PathWithArgs::from_item(self.env, trait_did, trait_args)?;
+        trace!("got trait path: {:?}", trait_path);
+
+        // flatten the self type.
+        let Some(for_type) = utils::convert_ty_to_flat_type(self.env, impl_for) else {
+            trace!("leave make_impl_shim_entry (failed transating self type)");
+            return None;
+        };
+
+        trace!("implementation for: {:?}", impl_for);
+
+        let mut method_specs = HashMap::new();
+        for (name, spec) in &decl.methods.methods {
+            method_specs.insert(name.to_owned(), (spec.function_name.clone(), spec.spec_name.clone()));
+        }
+
+        let a = shim_registry::TraitImplShim {
+            trait_path,
+            for_type,
+            method_specs,
+            spec_params_record: decl.names.spec_params_record.clone(),
+            spec_attrs_record: decl.names.spec_attrs_record.clone(),
+            spec_record: decl.names.spec_record.clone(),
+            spec_subsumption_proof: decl.names.spec_subsumption_proof.clone(),
+        };
+
+        Some(a)
+    }
+
+    /// Make a shim entry for a trait.
     fn make_trait_shim_entry(
         &self,
         did: LocalDefId,
@@ -224,10 +279,12 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 path: interned_path,
                 name: decl.name.clone(),
                 spec_param_record: decl.spec_params_record.clone(),
+                spec_attrs_record: decl.spec_attrs_record.clone(),
                 spec_record: decl.spec_record.clone(),
                 base_spec: decl.base_spec.clone(),
                 base_spec_params: decl.base_spec_params.clone(),
                 spec_subsumption: decl.spec_subsumption.clone(),
+                allowed_attrs: decl.declared_attrs.clone(),
             };
             return Some(a);
         }
@@ -260,12 +317,22 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         let mut adt_shims = Vec::new();
         let mut trait_method_shims = Vec::new();
         let mut trait_shims = Vec::new();
+        let mut trait_impl_shims = Vec::new();
 
         // traits
         let decls = self.trait_registry.get_trait_decls();
         for (did, decl) in &decls {
             if let Some(entry) = self.make_trait_shim_entry(*did, decl.lit) {
                 trait_shims.push(entry);
+            }
+        }
+
+        // trait impls
+        for (did, decl) in &self.trait_impls {
+            if let Some(entry) = self.make_trait_impl_shim_entry(*did, decl) {
+                trait_impl_shims.push(entry);
+            } else {
+                info!("Creating trait impl shim entry failed for {did:?}");
             }
         }
 
@@ -322,8 +389,13 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
 
         // trait methods
         for (did, fun) in trait_methods {
-            if let Some(shim) = self.make_shim_trait_method_entry(*did, &fun.spec_name) {
-                trait_method_shims.push(shim);
+            if let Some(impl_did) = self.env.tcx().impl_of_method(*did) {
+                // only register this as a separate method if it isn't part of a complete impl
+                if self.trait_impls.get(&impl_did).is_none() {
+                    if let Some(shim) = self.make_shim_trait_method_entry(*did, &fun.spec_name) {
+                        trait_method_shims.push(shim);
+                    }
+                }
             }
         }
 
@@ -346,6 +418,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             function_shims,
             trait_method_shims,
             trait_shims,
+            trait_impl_shims,
         );
     }
 
@@ -433,6 +506,16 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         for did in dep_order {
             let decl = &trait_decls[&did.as_local().unwrap()];
             write!(spec_file, "{decl}\n").unwrap();
+        }
+
+        // write the attribute spec declarations of trait impls
+        {
+            writeln!(spec_file, "Section attrs.").unwrap();
+            writeln!(spec_file, "Context `{{RRGS : !refinedrustGS Σ}}.").unwrap();
+            for spec in self.trait_impls.values() {
+                writeln!(spec_file, "{}\n", spec.generate_attr_decl()).unwrap();
+            }
+            writeln!(spec_file, "End attrs.\n").unwrap();
         }
 
         // write translated source code of functions
@@ -894,11 +977,13 @@ fn register_shims<'tcx>(vcx: &mut VerificationCtxt<'tcx, '_>) -> Result<(), base
             let spec = radium::LiteralTraitSpec {
                 assoc_tys,
                 name: shim.name.clone(),
+                spec_attrs_record: shim.spec_attrs_record.clone(),
                 spec_params_record: shim.spec_param_record.clone(),
                 spec_record: shim.spec_record.clone(),
                 base_spec: shim.base_spec.clone(),
                 base_spec_params: shim.base_spec_params.clone(),
                 spec_subsumption: shim.spec_subsumption.clone(),
+                declared_attrs: shim.allowed_attrs.clone(),
             };
 
             vcx.trait_registry.register_shim(did, spec)?;
@@ -907,7 +992,7 @@ fn register_shims<'tcx>(vcx: &mut VerificationCtxt<'tcx, '_>) -> Result<(), base
         }
     }
 
-    for shim in vcx.shim_registry.get_trait_method_shims() {
+    for shim in vcx.shim_registry.get_trait_impl_shims() {
         // resolve the trait
         let Some((trait_did, args)) = shim.trait_path.to_item(vcx.env.tcx()) else {
             println!("Warning: cannot resolve {:?} as a trait, skipping shim", shim.trait_path);
@@ -925,35 +1010,50 @@ fn register_shims<'tcx>(vcx: &mut VerificationCtxt<'tcx, '_>) -> Result<(), base
             continue;
         };
 
-        let trait_method_did = utils::try_resolve_trait_method_did(
-            vcx.env.tcx(),
-            trait_did,
-            &args,
-            &shim.method_ident,
-            for_type,
-        );
+        let trait_impl_did = utils::try_resolve_trait_impl_did(vcx.env.tcx(), trait_did, &args, for_type);
 
-        let Some(did) = trait_method_did else {
+        let Some(did) = trait_impl_did else {
             println!(
-                "Warning: cannot find defid for implementation of {:?}::{:?} for {:?}",
-                shim.trait_path, shim.method_ident, for_type
+                "Warning: cannot find defid for implementation of {:?} for {:?}",
+                shim.trait_path, for_type
             );
             continue;
         };
 
-        // register as usual in the procedure registry
-        info!(
-            "registering shim for implementation of {:?}::{:?} for {:?}, using method {:?}",
-            shim.trait_path, shim.method_ident, for_type, trait_method_did
+        let impl_lit = radium::LiteralTraitImpl::new(
+            shim.spec_record.clone(),
+            shim.spec_params_record.clone(),
+            shim.spec_attrs_record.clone(),
+            shim.spec_subsumption_proof.clone(),
         );
+        vcx.trait_registry.register_impl_shim(did, impl_lit)?;
 
-        let meta = function_body::ProcedureMeta::new(
-            shim.spec_name.clone(),
-            shim.name.clone(),
-            function_body::ProcedureMode::Shim,
-        );
+        // now register all the method shims
+        let impl_assoc_items: &ty::AssocItems = vcx.env.tcx().associated_items(did);
+        for (method_name, (name, spec_name)) in &shim.method_specs {
+            // find the right item
+            if let Some(item) = impl_assoc_items.find_by_name_and_kind(
+                vcx.env.tcx(),
+                span::symbol::Ident::from_str(method_name),
+                ty::AssocKind::Fn,
+                trait_did,
+            ) {
+                let method_did = item.def_id;
+                // register as usual in the procedure registry
+                info!(
+                    "registering shim for implementation of {:?}::{:?} for {:?}, using method {:?}",
+                    shim.trait_path, method_name, for_type, method_did
+                );
 
-        vcx.procedure_registry.register_function(did, meta)?;
+                let meta = function_body::ProcedureMeta::new(
+                    spec_name.clone(),
+                    name.clone(),
+                    function_body::ProcedureMode::Shim,
+                );
+
+                vcx.procedure_registry.register_function(method_did, meta)?;
+            }
+        }
     }
 
     // add the extra exports
@@ -1296,11 +1396,13 @@ fn register_trait_impls(vcx: &VerificationCtxt<'_, '_>) -> Result<(), String> {
             let base_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(did));
             let spec_name = format!("{base_name}_spec");
             let spec_params_name = format!("{base_name}_spec_params");
+            let spec_attrs_name = format!("{base_name}_spec_attrs");
             let proof_name = format!("{base_name}_spec_subsumption");
 
             let impl_lit = radium::LiteralTraitImpl {
                 spec_record: spec_name,
                 spec_params_record: spec_params_name,
+                spec_attrs_record: spec_attrs_name,
                 spec_subsumption_proof: proof_name,
             };
             vcx.trait_registry
@@ -1520,11 +1622,12 @@ where
         fn_arena: &fn_spec_arena,
     };
 
+    // this needs to be first, in order to ensure consistent ADT use
+    register_shims(&mut vcx).map_err(|x| x.to_string())?;
+
     register_functions(&mut vcx).map_err(|x| x.to_string())?;
 
     register_traits(&vcx)?;
-
-    register_shims(&mut vcx).map_err(|x| x.to_string())?;
 
     register_consts(&mut vcx)?;
 

@@ -1,6 +1,7 @@
+#![rr::include("option")]
 
 mod add {
-    trait MyAdd {
+    pub trait MyAdd {
         #[rr::params("x", "y")]
         #[rr::args("x", "y")]
         #[rr::exists("z")]
@@ -96,15 +97,6 @@ fn foobar2<W, T> (x: &W) where W: Foo<T> {
 fn call_foobar2() {
     let a = 0;
     foobar2(&a);
-}
-*/
-
-// Note: this is invalid!
-/*
-trait FooB<T> 
-    where Self : FooB<T>
-{
-    type Output;
 }
 */
 
@@ -353,24 +345,19 @@ mod assoc_dep {
 
 }
 
-mod data {
-    trait Magic {
-        
-    }
-
-    trait DS<T> where T: Magic {
-
-    }
-
-    //impl Magic for DS<T> {
-        
-    //}
-}
-
 mod iter {
+    #[rr::exists("Next" : "{rt_of Self} → Prop")]
     trait Iter {
         type Elem;
 
+        #[rr::params("it_state" : "{rt_of Self}", "γ")]
+        #[rr::args("(#it_state, γ)")]
+        /// Postcondition: There exists an optional next item and the successor state of the iterator.
+        #[rr::exists("x", "new_it_state" : "{rt_of Self}")]
+        #[rr::observe("γ": "new_it_state")]
+        #[rr::ensures("{Next} new_it_state")]
+        /// Postcondition: We return the optional next element.
+        #[rr::returns("<#>@{option} x")]
         fn next(&mut self) -> Option<Self::Elem>;
     }
 
@@ -378,13 +365,33 @@ mod iter {
         cur: i32,
         max: i32,
     }
+    impl Counter {
+        #[rr::params("c", "m")]
+        #[rr::args("c", "m")]
+        #[rr::returns("-[ #c; #m]")]
+        fn new(cur: i32, max: i32) -> Self {
+            Self {
+                cur,
+                max,
+            }
+        }
+    }
 
+    #[rr::instantiate("Next" := "λ _, True")]
     impl Iter for Counter {
         type Elem = i32;
 
+        #[rr::verify]
         fn next(&mut self) -> Option<i32> {
             None
         }
+    }
+
+    #[rr::verify]
+    fn test_counter_1() {
+        let mut c = Counter::new(0, 10); 
+
+        c.next();
     }
 
 }

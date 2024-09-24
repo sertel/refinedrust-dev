@@ -11,7 +11,7 @@ use std::fmt::Write as fmtWrite;
 use std::io::Write as ioWrite;
 use std::{fmt, io};
 
-use derive_more::Display;
+use derive_more::{Constructor, Display};
 use indent_write::indentable::Indentable;
 use indent_write::io::IndentWriter;
 use indoc::{formatdoc, writedoc};
@@ -1119,12 +1119,15 @@ pub struct ConstPlaceMeta<'def> {
 }
 
 /// Information about another procedure this function uses
-#[derive(Clone, Debug)]
+#[derive(Constructor, Clone, Debug)]
 pub struct UsedProcedure<'def> {
     /// The name to use for the location parameter
     pub loc_name: String,
     /// The name of the specification definition
     pub spec_name: String,
+
+    /// extra arguments to pass to the spec
+    pub extra_spec_args: Vec<String>,
 
     /// Type parameters to quantify over
     /// This includes:
@@ -1147,28 +1150,6 @@ pub struct UsedProcedure<'def> {
     /// The syntactic types of all arguments
     pub syntype_of_all_args: Vec<SynType>,
 }
-impl<'def> UsedProcedure<'def> {
-    #[must_use]
-    pub fn new(
-        loc_name: String,
-        spec_name: String,
-        trait_specs: Vec<SpecializedTraitSpec<'def>>,
-        quantified_scope: GenericScope,
-        type_params: Vec<Type<'def>>,
-        lifetimes: Vec<Lft>,
-        syntypes_of_args: Vec<SynType>,
-    ) -> Self {
-        Self {
-            loc_name,
-            spec_name,
-            trait_specs,
-            quantified_scope,
-            type_params,
-            lifetimes,
-            syntype_of_all_args: syntypes_of_args,
-        }
-    }
-}
 
 impl<'def> Display for UsedProcedure<'def> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1188,10 +1169,13 @@ impl<'def> Display for UsedProcedure<'def> {
             gen_rfn_type_inst.push(format!("({})", st));
         }
 
-        write!(f, "{} {} ", self.spec_name, gen_rfn_type_inst.join(" "))?;
+        write!(f, "{} {} {} ", self.spec_name, gen_rfn_type_inst.join(" "), self.extra_spec_args.join(" "))?;
 
         // apply to trait specs
-        write_list!(f, &self.trait_specs, " ")?;
+        for x in &self.trait_specs {
+            write!(f, "{} ", x.specialized_attr)?;
+            write!(f, "{} ", x)?;
+        }
 
         // instantiate lifetimes
         for lft in &self.lifetimes {
@@ -1341,9 +1325,11 @@ impl<'def> FunctionBuilder<'def> {
         // TODO: is this the right place to do this?
         for trait_use in &self.trait_requirements {
             let spec_params_param_name = trait_use.make_spec_params_param_name();
+
             let spec_params_type_name = trait_use.trait_ref.spec_params_record.clone();
 
             let spec_param_name = trait_use.make_spec_param_name();
+            let spec_attrs_param_name = trait_use.make_spec_attrs_param_name();
             let spec_type = format!("{} {spec_params_param_name}", trait_use.trait_ref.spec_record);
 
             // add the spec params
@@ -1351,6 +1337,21 @@ impl<'def> FunctionBuilder<'def> {
                 coq::Name::Named(spec_params_param_name),
                 coq::Type::Literal(spec_params_type_name),
                 true,
+            ));
+
+            // add the attr params
+            let all_args: Vec<_> = trait_use
+                .params_inst
+                .iter()
+                .map(Type::get_rfn_type)
+                .chain(trait_use.get_assoc_ty_inst().into_iter().map(|x| x.get_rfn_type()))
+                .collect();
+            let mut attr_param = format!("{} ", trait_use.trait_ref.spec_attrs_record);
+            push_str_list!(attr_param, &all_args, " ");
+            self.spec.late_coq_params.0.push(coq::Param::new(
+                coq::Name::Named(spec_attrs_param_name),
+                coq::Type::Literal(attr_param),
+                false,
             ));
 
             // add the spec itself

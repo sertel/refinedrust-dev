@@ -4,6 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
+use std::collections::{HashMap, HashSet};
 /// Registry of shims for Rust functions that get mapped to custom `RefinedRust`
 /// implementations.
 /// Provides deserialization from a JSON file defining this registry.
@@ -43,6 +44,8 @@ struct ShimTraitEntry {
     name: String,
     /// the Coq def name of the spec param record
     spec_param_record: String,
+    /// the Coq def name of the spec attrs record
+    spec_attrs_record: String,
     /// the Coq def name of the spec record
     spec_record: String,
     /// the Coq def name of the base spec
@@ -51,6 +54,32 @@ struct ShimTraitEntry {
     base_spec_params: String,
     /// the Coq def name of spec subsumption relation
     spec_subsumption: String,
+    /// allowed attributes on impls of this trait
+    allowed_attrs: HashSet<String>,
+}
+
+/// A file entry for a trait method implementation.
+#[derive(Serialize, Deserialize)]
+struct ShimTraitImplEntry {
+    /// The rustc path for the trait
+    trait_path: PathWithArgs,
+    /// for which type is this implementation?
+    for_type: FlatType,
+    // TODO: additional constraints like the required clauses for disambiguation
+    /// a kind: always "trait_impl"
+    kind: String,
+
+    /// map from method names to (base name, specification name)
+    method_specs: HashMap<String, (String, String)>,
+
+    /// the Coq def name of the spec record inst
+    spec_record: String,
+    /// the Coq def name of the spec params record inst
+    spec_params_record: String,
+    /// the Coq def name of the spec attrs record inst
+    spec_attrs_record: String,
+    /// the Coq lemma name of the spec subsumption proof
+    spec_subsumption_proof: String,
 }
 
 /// A file entry for a trait method implementation.
@@ -91,6 +120,7 @@ pub enum ShimKind {
     Method,
     Function,
     TraitMethod,
+    TraitImpl,
     Adt,
     Trait,
 }
@@ -110,6 +140,33 @@ impl<'a> From<FunctionShim<'a>> for ShimFunctionEntry {
             kind: if shim.is_method { "method".to_owned() } else { "function".to_owned() },
             name: shim.name,
             spec: shim.spec_name,
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct TraitImplShim {
+    pub trait_path: PathWithArgs,
+    pub for_type: FlatType,
+
+    pub method_specs: HashMap<String, (String, String)>,
+
+    pub spec_record: String,
+    pub spec_params_record: String,
+    pub spec_attrs_record: String,
+    pub spec_subsumption_proof: String,
+}
+impl From<TraitImplShim> for ShimTraitImplEntry {
+    fn from(shim: TraitImplShim) -> Self {
+        Self {
+            trait_path: shim.trait_path,
+            for_type: shim.for_type,
+            method_specs: shim.method_specs,
+            kind: "trait_impl".to_owned(),
+            spec_record: shim.spec_record,
+            spec_params_record: shim.spec_params_record,
+            spec_attrs_record: shim.spec_attrs_record,
+            spec_subsumption_proof: shim.spec_subsumption_proof,
         }
     }
 }
@@ -141,10 +198,12 @@ pub struct TraitShim<'a> {
     pub path: Path<'a>,
     pub name: String,
     pub spec_param_record: String,
+    pub spec_attrs_record: String,
     pub spec_record: String,
     pub base_spec: String,
     pub base_spec_params: String,
     pub spec_subsumption: String,
+    pub allowed_attrs: HashSet<String>,
 }
 
 impl<'a> From<TraitShim<'a>> for ShimTraitEntry {
@@ -154,10 +213,12 @@ impl<'a> From<TraitShim<'a>> for ShimTraitEntry {
             kind: "trait".to_owned(),
             name: shim.name,
             spec_param_record: shim.spec_param_record,
+            spec_attrs_record: shim.spec_attrs_record,
             spec_record: shim.spec_record,
             base_spec: shim.base_spec,
             base_spec_params: shim.base_spec_params,
             spec_subsumption: shim.spec_subsumption,
+            allowed_attrs: shim.allowed_attrs,
         }
     }
 }
@@ -209,6 +270,9 @@ pub struct ShimRegistry<'a> {
     /// trait shims
     trait_shims: Vec<TraitShim<'a>>,
 
+    /// trait impl shims
+    trait_impl_shims: Vec<TraitImplShim>,
+
     /// extra module dependencies
     dependencies: Vec<coq::Path>,
 }
@@ -225,6 +289,7 @@ impl<'a> ShimRegistry<'a> {
             "adt" => Ok(ShimKind::Adt),
             "trait" => Ok(ShimKind::Trait),
             "trait_method" => Ok(ShimKind::TraitMethod),
+            "trait_impl" => Ok(ShimKind::TraitImpl),
             k => Err(format!("unknown kind {:?}", k)),
         }
     }
@@ -247,6 +312,7 @@ impl<'a> ShimRegistry<'a> {
             exports: Vec::new(),
             dependencies: Vec::new(),
             trait_shims: Vec::new(),
+            trait_impl_shims: Vec::new(),
         }
     }
 
@@ -358,16 +424,33 @@ impl<'a> ShimRegistry<'a> {
 
                     self.trait_method_shims.push(entry);
                 },
+                ShimKind::TraitImpl => {
+                    let b: ShimTraitImplEntry =
+                        serde_json::value::from_value(i).map_err(|e| e.to_string())?;
+                    let entry = TraitImplShim {
+                        trait_path: b.trait_path,
+                        for_type: b.for_type,
+                        method_specs: b.method_specs,
+                        spec_record: b.spec_record,
+                        spec_params_record: b.spec_params_record,
+                        spec_attrs_record: b.spec_attrs_record,
+                        spec_subsumption_proof: b.spec_subsumption_proof,
+                    };
+
+                    self.trait_impl_shims.push(entry);
+                },
                 ShimKind::Trait => {
                     let b: ShimTraitEntry = serde_json::value::from_value(i).map_err(|e| e.to_string())?;
                     let entry = TraitShim {
                         path: self.intern_path(b.path),
                         name: b.name,
                         spec_param_record: b.spec_param_record,
+                        spec_attrs_record: b.spec_attrs_record,
                         spec_record: b.spec_record,
                         base_spec: b.base_spec,
                         base_spec_params: b.base_spec_params,
                         spec_subsumption: b.spec_subsumption,
+                        allowed_attrs: b.allowed_attrs,
                     };
 
                     self.trait_shims.push(entry);
@@ -398,6 +481,10 @@ impl<'a> ShimRegistry<'a> {
         &self.trait_shims
     }
 
+    pub fn get_trait_impl_shims(&self) -> &[TraitImplShim] {
+        &self.trait_impl_shims
+    }
+
     pub fn get_extra_dependencies(&self) -> &[coq::Path] {
         &self.dependencies
     }
@@ -414,6 +501,7 @@ pub fn write_shims<'a>(
     function_shims: Vec<FunctionShim<'a>>,
     trait_method_shims: Vec<TraitMethodImplShim>,
     trait_shims: Vec<TraitShim>,
+    trait_impl_shims: Vec<TraitImplShim>,
 ) {
     let writer = BufWriter::new(f);
 
@@ -432,6 +520,10 @@ pub fn write_shims<'a>(
     }
     for x in trait_shims {
         let x: ShimTraitEntry = x.into();
+        values.push(serde_json::to_value(x).unwrap());
+    }
+    for x in trait_impl_shims {
+        let x: ShimTraitImplEntry = x.into();
         values.push(serde_json::to_value(x).unwrap());
     }
 

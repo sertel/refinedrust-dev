@@ -82,6 +82,27 @@ impl PathWithArgs {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "ty::IntTy")]
+pub enum IntTyDef {
+    Isize,
+    I8,
+    I16,
+    I32,
+    I64,
+    I128,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "ty::UintTy")]
+pub enum UintTyDef {
+    Usize,
+    U8,
+    U16,
+    U32,
+    U64,
+    U128,
+}
+
 #[derive(Clone, Eq, PartialEq, Debug, Serialize, Deserialize)]
 /// A "flattened" representation of types that should be suitable serialized storage, and should be
 /// stable enough to resolve to the same actual type across compilations.
@@ -90,40 +111,54 @@ pub enum FlatType {
     /// Path + generic args
     /// empty args represents the identity substitution
     Adt(PathWithArgs),
+    #[serde(with = "IntTyDef")]
+    Int(ty::IntTy),
+    #[serde(with = "UintTyDef")]
+    Uint(ty::UintTy),
+    Char,
+    Bool,
+    // TODO: more cases
 }
 
 impl FlatType {
     /// Try to convert a flat type to a type.
     pub fn to_type<'tcx>(&self, tcx: ty::TyCtxt<'tcx>) -> Option<ty::Ty<'tcx>> {
-        let Self::Adt(path_with_args) = self;
-        let (did, flat_args) = path_with_args.to_item(tcx)?;
+        match self {
+            Self::Adt(path_with_args) => {
+                let (did, flat_args) = path_with_args.to_item(tcx)?;
 
-        let ty: ty::EarlyBinder<ty::Ty<'tcx>> = tcx.type_of(did);
-        let ty::TyKind::Adt(_, args) = ty.skip_binder().kind() else {
-            return None;
-        };
+                let ty: ty::EarlyBinder<ty::Ty<'tcx>> = tcx.type_of(did);
+                let ty::TyKind::Adt(_, args) = ty.skip_binder().kind() else {
+                    return None;
+                };
 
-        // build substitution
-        let mut substs = Vec::new();
-        for (ty_arg, flat_arg) in args.iter().zip(flat_args.into_iter()) {
-            match ty_arg.unpack() {
-                ty::GenericArgKind::Type(_) => {
-                    if let Some(flat_arg) = flat_arg {
-                        substs.push(flat_arg);
+                // build substitution
+                let mut substs = Vec::new();
+                for (ty_arg, flat_arg) in args.iter().zip(flat_args.into_iter()) {
+                    match ty_arg.unpack() {
+                        ty::GenericArgKind::Type(_) => {
+                            if let Some(flat_arg) = flat_arg {
+                                substs.push(flat_arg);
+                            }
+                        },
+                        _ => {
+                            substs.push(ty_arg);
+                        },
                     }
-                },
-                _ => {
-                    substs.push(ty_arg);
-                },
-            }
+                }
+
+                // substitute
+                info!("substituting {:?} with {:?}", ty, substs);
+                let subst_ty =
+                    if substs.is_empty() { ty.instantiate_identity() } else { ty.instantiate(tcx, &substs) };
+
+                Some(subst_ty)
+            },
+            Self::Bool => Some(tcx.mk_ty_from_kind(ty::TyKind::Bool)),
+            Self::Char => Some(tcx.mk_ty_from_kind(ty::TyKind::Char)),
+            Self::Int(it) => Some(tcx.mk_ty_from_kind(ty::TyKind::Int(it.to_owned()))),
+            Self::Uint(it) => Some(tcx.mk_ty_from_kind(ty::TyKind::Uint(it.to_owned()))),
         }
-
-        // substitute
-        info!("substituting {:?} with {:?}", ty, substs);
-        let subst_ty =
-            if substs.is_empty() { ty.instantiate_identity() } else { ty.instantiate(tcx, &substs) };
-
-        Some(subst_ty)
     }
 }
 
@@ -136,6 +171,10 @@ pub fn convert_ty_to_flat_type<'tcx>(env: &Environment<'tcx>, ty: ty::Ty<'tcx>) 
             let path_with_args = PathWithArgs::from_item(env, did, args.as_slice())?;
             Some(FlatType::Adt(path_with_args))
         },
+        ty::TyKind::Bool => Some(FlatType::Bool),
+        ty::TyKind::Char => Some(FlatType::Char),
+        ty::TyKind::Int(it) => Some(FlatType::Int(it.to_owned())),
+        ty::TyKind::Uint(it) => Some(FlatType::Uint(it.to_owned())),
         _ => None,
     }
 }
@@ -292,6 +331,65 @@ fn args_match_types<'tcx>(
 //tcx.implementations_of_trait
 //tcx.trait_impls_of
 //tcx.trait_impls_in_crate
+/// Try to resolve the `DefId` of an implementation of a trait for a particular type.
+/// Note that this does not, in general, find a unique solution, in case there are complex things
+/// with different where clauses going on.
+pub fn try_resolve_trait_impl_did<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    trait_did: DefId,
+    trait_args: &[Option<ty::GenericArg<'tcx>>],
+    for_type: ty::Ty<'tcx>,
+) -> Option<DefId> {
+    // get all impls of this trait
+    let impls: &ty::trait_def::TraitImpls = tcx.trait_impls_of(trait_did);
+
+    let simplified_type =
+        middle::ty::fast_reject::simplify_type(tcx, for_type, ty::fast_reject::TreatParams::AsCandidateKey)?;
+    let defs = impls.non_blanket_impls().get(&simplified_type)?;
+    info!("found implementations: {:?}", impls);
+
+    let mut solution = None;
+    for did in defs {
+        let impl_self_ty: ty::Ty<'tcx> = tcx.type_of(did).instantiate_identity();
+        let impl_self_ty = normalize_in_function(*did, tcx, impl_self_ty).unwrap();
+
+        // check if this is an implementation for the right type
+        // TODO: is this the right way to compare the types?
+        if impl_self_ty == for_type {
+            let impl_ref: Option<ty::EarlyBinder<ty::TraitRef<'_>>> = tcx.impl_trait_ref(did);
+
+            if let Some(impl_ref) = impl_ref {
+                let impl_ref = normalize_in_function(*did, tcx, impl_ref.skip_binder()).unwrap();
+
+                let this_impl_args = impl_ref.args;
+                // filter by the generic instantiation for the trait
+                info!("found impl with args {:?}", this_impl_args);
+                // args has self at position 0 and generics of the trait at position 1..
+
+                // check if the generic argument types match up
+                if !args_match_types(&this_impl_args.as_slice()[1..], trait_args) {
+                    continue;
+                }
+
+                info!("found impl {:?}", impl_ref);
+                if solution.is_some() {
+                    println!(
+                        "Warning: Ambiguous resolution for impl of trait {:?} on type {:?}; solution {:?} but found also {:?}",
+                        trait_did,
+                        for_type,
+                        solution.unwrap(),
+                        impl_ref.def_id,
+                    );
+                } else {
+                    solution = Some(*did);
+                }
+            }
+        }
+    }
+
+    solution
+}
+
 /// Try to resolve the `DefId` of a method in an implementation of a trait for a particular type.
 /// Note that this does not, in general, find a unique solution, in case there are complex things
 /// with different where clauses going on.
