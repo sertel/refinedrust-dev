@@ -83,7 +83,7 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
     type_translator: &'rcx TypeTranslator<'rcx, 'tcx>,
     trait_registry: &'rcx TraitRegistry<'tcx, 'rcx>,
     functions: &'rcx [LocalDefId],
-    fn_arena: &'rcx Arena<radium::FunctionSpec<radium::InnerFunctionSpec<'rcx>>>,
+    fn_arena: &'rcx Arena<radium::FunctionSpec<'rcx, radium::InnerFunctionSpec<'rcx>>>,
 
     /// the second component determines whether to include it in the code file as well
     extra_exports: HashSet<(coq::Export, bool)>,

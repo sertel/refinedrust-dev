@@ -194,7 +194,7 @@ pub struct ProcedureScope<'def> {
     /// track the actually translated functions
     translated_functions: BTreeMap<DefId, radium::Function<'def>>,
     /// track the functions with just a specification (rr::only_spec)
-    specced_functions: BTreeMap<DefId, &'def radium::FunctionSpec<radium::InnerFunctionSpec<'def>>>,
+    specced_functions: BTreeMap<DefId, &'def radium::FunctionSpec<'def, radium::InnerFunctionSpec<'def>>>,
 }
 
 impl<'def> ProcedureScope<'def> {
@@ -215,7 +215,7 @@ impl<'def> ProcedureScope<'def> {
     pub fn lookup_function_spec(
         &self,
         did: DefId,
-    ) -> Option<&'def radium::FunctionSpec<radium::InnerFunctionSpec<'def>>> {
+    ) -> Option<&'def radium::FunctionSpec<'def, radium::InnerFunctionSpec<'def>>> {
         if let Some(translated_fn) = self.translated_functions.get(&did) {
             Some(translated_fn.spec)
         } else if let Some(translated_spec) = self.specced_functions.get(&did) {
@@ -267,7 +267,7 @@ impl<'def> ProcedureScope<'def> {
     pub fn provide_specced_function(
         &mut self,
         did: DefId,
-        spec: &'def radium::FunctionSpec<radium::InnerFunctionSpec<'def>>,
+        spec: &'def radium::FunctionSpec<'def, radium::InnerFunctionSpec<'def>>,
     ) {
         let meta = &self.name_map[&did];
         assert!(meta.get_mode().is_only_spec());
@@ -282,7 +282,7 @@ impl<'def> ProcedureScope<'def> {
     /// Iterate over the functions we have generated only specs for.
     pub fn iter_only_spec(
         &self,
-    ) -> btree_map::Iter<'_, DefId, &'def radium::FunctionSpec<radium::InnerFunctionSpec<'def>>> {
+    ) -> btree_map::Iter<'_, DefId, &'def radium::FunctionSpec<'def, radium::InnerFunctionSpec<'def>>> {
         self.specced_functions.iter()
     }
 }
@@ -336,7 +336,7 @@ struct CallRegions {
 /// Determines how to specialize the callee's generics in our spec assumption.
 struct AbstractedGenerics<'def> {
     /// the scope with new generics to quantify over for the function's specialized spec
-    scope: radium::GenericScope,
+    scope: radium::GenericScope<'def>,
     /// instantiations for the specialized spec hint
     callee_lft_param_inst: Vec<radium::Lft>,
     callee_ty_param_inst: Vec<radium::Type<'def>>,
@@ -410,7 +410,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
         attrs: &'a [&'a ast::ast::AttrItem],
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
         trait_registry: &'def TraitRegistry<'tcx, 'def>,
-    ) -> Result<radium::FunctionSpec<radium::InnerFunctionSpec<'def>>, TranslationError<'tcx>> {
+    ) -> Result<radium::FunctionSpec<'def, radium::InnerFunctionSpec<'def>>, TranslationError<'tcx>> {
         let mut translated_fn = radium::FunctionBuilder::new(name, spec_name);
 
         let ty: ty::EarlyBinder<Ty<'tcx>> = env.tcx().type_of(proc_did);
@@ -826,7 +826,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
     pub fn translate(
         mut self,
-        spec_arena: &'def Arena<radium::FunctionSpec<radium::InnerFunctionSpec<'def>>>,
+        spec_arena: &'def Arena<radium::FunctionSpec<'def, radium::InnerFunctionSpec<'def>>>,
     ) -> Result<radium::Function<'def>, TranslationError<'tcx>> {
         let body = self.proc.get_mir();
 
@@ -1117,24 +1117,11 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             translated_fn.add_ty_param(t.clone());
         }
 
-        // add associated types of generics to the fn as type parameters
-        let assoc_tys = type_scope.get_associated_type_literals(env);
-        for t in assoc_tys {
-            translated_fn.add_ty_param(t);
-        }
-
         // add specs for traits of generics
-        if add_trait_specs {
-            let trait_uses = type_scope.get_trait_uses();
-            for ((did, params), trait_use) in trait_uses {
-                if trait_use.trait_use.is_used_in_self_trait {
-                    continue;
-                }
-                translated_fn.add_trait_requirement(trait_use.trait_use.clone());
-            }
+        let trait_uses = type_scope.get_trait_uses();
+        for ((did, params), trait_use) in trait_uses {
+            translated_fn.add_trait_requirement(trait_use.trait_use.clone());
         }
-
-        // In our case, we are in a trait impl declaration, right?
 
         // check if we are in the implementation of a trait or trait impl
         let mut trait_attr_map = HashMap::new();
@@ -1142,42 +1129,13 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             // we are in a trait declaration
             if let Some(trait_ref) = trait_registry.lookup_trait(trait_did) {
                 // make the parameter for the attrs that the function is parametric over
-                let param_name = trait_ref.make_fnspec_attr_param_name();
-
-                // we need to apply it to the trait's type parameters and associated types which should be in
-                // scope here
-                let trait_generics = env.tcx().generics_of(trait_did);
-                let param_scope = ParamScope::from(trait_generics.params.as_slice());
-                let generics_scope: radium::GenericScope = param_scope.into();
-
-                let assoc_tys = type_scope
-                    .get_self_trait_assoc_types(env)
-                    .expect("There should be a Self trait use within a trait declaration");
-
-                let mut param_ty_args = Vec::new();
-                for ty in generics_scope.get_ty_params() {
-                    param_ty_args.push(ty.refinement_type.clone());
-                }
-                for ty in &assoc_tys {
-                    param_ty_args.push(format!("{}", ty.get_rfn_type()));
-                }
-                let param_ty = format!(
-                    "{}",
-                    radium::coq::AppTerm::new(trait_ref.spec_attrs_record.clone(), param_ty_args)
-                );
-                let param = radium::coq::Param::new(
-                    radium::coq::Name::Named(param_name.clone()),
-                    radium::coq::Type::Literal(param_ty),
-                    false,
-                );
-
-                // add it as a parameter to the function after the generics
-                translated_fn.add_late_coq_param(param);
-
-                // add the corresponding record entries to the map
-                for attr in &trait_ref.declared_attrs {
-                    let record_item = trait_ref.make_spec_attr_name(attr);
-                    trait_attr_map.insert(attr.to_owned(), format!("{param_name}.({record_item})"));
+                if let Some(trait_use) = type_scope.get_self_trait_use() {
+                    let param_name = trait_use.trait_use.make_spec_attrs_param_name();
+                    // add the corresponding record entries to the map
+                    for attr in &trait_ref.declared_attrs {
+                        let record_item = trait_ref.make_spec_attr_name(attr);
+                        trait_attr_map.insert(attr.to_owned(), format!("{param_name}.({record_item})"));
+                    }
                 }
             }
         }
@@ -1185,32 +1143,6 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             if let Some(trait_did) = env.tcx().trait_id_of_impl(impl_did) {
                 // we are in a trait impl
                 if let Some(trait_ref) = trait_registry.lookup_trait(trait_did) {
-                    /*
-                    // We can get the info here because it's in the current crate
-                    let impl_ref = trait_registry.get_trait_impl_info(impl_did)?;
-
-                    // make the parameter for the attrs that the function is parametric over
-                    let param_name = trait_ref.make_fnspec_attr_param_name();
-                    // we need to apply it to the trait's parameters in this impl
-                    let mut param_ty_args = Vec::new();
-                    for ty in impl_ref.get_trait_param_inst().iter().chain(impl_ref.get_trait_assoc_inst()) {
-                        param_ty_args.push(format!("{}", ty.get_rfn_type()));
-                    }
-                    let param_ty = format!("{}", radium::coq::AppTerm::new(trait_ref.spec_attrs_record.clone(), param_ty_args));
-                    let param = radium::coq::Param::new(radium::coq::Name::Named(param_name.clone()), radium::coq::Type::Literal(param_ty), false);
-
-                    // add it as parameter to the function after the generics
-                    translated_fn.add_late_coq_param(param);
-
-                    // add the corresponding record entries to the map
-                    for attr in &trait_ref.declared_attrs {
-                        let record_item = trait_ref.make_spec_attr_name(attr);
-                        trait_attr_map.insert(attr.to_owned(), format!("{param_name}.({record_item})"));
-                    }
-                    */
-
-                    // Now we should not add this parameter anymore. But when
-
                     let attrs = trait_registry.get_impl_attrs_term(impl_did)?;
                     // add the corresponding record entries to the map
                     for attr in &trait_ref.declared_attrs {
@@ -1485,7 +1417,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
     /// Translation that only generates a specification.
     pub fn generate_spec(
         self,
-    ) -> Result<radium::FunctionSpec<radium::InnerFunctionSpec<'def>>, TranslationError<'tcx>> {
+    ) -> Result<radium::FunctionSpec<'def, radium::InnerFunctionSpec<'def>>, TranslationError<'tcx>> {
         self.translated_fn.try_into().map_err(TranslationError::AttributeError)
     }
 
@@ -1696,7 +1628,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
     pub fn translate(
         mut self,
         initial_constraints: Vec<(polonius_info::AtomicRegion, polonius_info::AtomicRegion)>,
-        spec_arena: &'def Arena<radium::FunctionSpec<radium::InnerFunctionSpec<'def>>>,
+        spec_arena: &'def Arena<radium::FunctionSpec<'def, radium::InnerFunctionSpec<'def>>>,
     ) -> Result<radium::Function<'def>, TranslationError<'tcx>> {
         // add loop info
         let loop_info = self.proc.loop_info();

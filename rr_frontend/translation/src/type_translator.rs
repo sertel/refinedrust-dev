@@ -157,7 +157,7 @@ pub struct ParamScope {
     /// map types to their index
     ty_names: HashMap<String, usize>,
 }
-impl From<ParamScope> for radium::GenericScope {
+impl<'def> From<ParamScope> for radium::GenericScope<'def> {
     fn from(x: ParamScope) -> Self {
         let mut scope = Self::empty();
         for x in x.scope {
@@ -589,17 +589,18 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
         &self.used_traits
     }
 
-    /// Within a trait declaration, get the associated types of the Self trait.
-    pub fn get_self_trait_assoc_types(&self, env: &Environment<'tcx>) -> Option<Vec<radium::Type<'def>>> {
+    /// Within a trait declaration, get the Self trait use.
+    pub fn get_self_trait_use(&self) -> Option<&GenericTraitUse<'def>> {
         for trait_use in self.used_traits.values() {
             // check if this is the Self trait use
             if trait_use.trait_use.is_used_in_self_trait {
-                return Some(trait_use.get_associated_type_uses(env));
+                return Some(trait_use);
             }
         }
         None
     }
 
+    /*
     /// Get the associated types we require in the current scope.
     pub fn get_associated_type_literals(&self, env: &Environment<'tcx>) -> Vec<radium::LiteralTyParam> {
         let mut assoc_tys: Vec<radium::LiteralTyParam> = Vec::new();
@@ -623,6 +624,7 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
 
         assoc_tys
     }
+    */
 }
 
 #[derive(Clone, Debug, Default)]

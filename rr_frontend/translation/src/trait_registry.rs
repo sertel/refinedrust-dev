@@ -121,7 +121,7 @@ pub struct TraitRegistry<'tcx, 'def> {
     /// arena for allocating impl literals
     impl_arena: &'def Arena<specs::LiteralTraitImpl>,
     /// arena for function specifications
-    fn_spec_arena: &'def Arena<specs::FunctionSpec<specs::InnerFunctionSpec<'def>>>,
+    fn_spec_arena: &'def Arena<specs::FunctionSpec<'def, specs::InnerFunctionSpec<'def>>>,
 }
 
 impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
@@ -131,7 +131,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         ty_translator: &'def TypeTranslator<'def, 'tcx>,
         trait_arena: &'def Arena<specs::LiteralTraitSpec>,
         impl_arena: &'def Arena<specs::LiteralTraitImpl>,
-        fn_spec_arena: &'def Arena<specs::FunctionSpec<specs::InnerFunctionSpec<'def>>>,
+        fn_spec_arena: &'def Arena<specs::FunctionSpec<'def, specs::InnerFunctionSpec<'def>>>,
     ) -> Self {
         Self {
             env,

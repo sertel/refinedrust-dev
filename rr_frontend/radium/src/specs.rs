@@ -2534,7 +2534,7 @@ pub enum InnerFunctionSpec<'def> {
 }
 
 impl<'def> InnerFunctionSpec<'def> {
-    pub(crate) fn write_spec_term<F>(&self, f: &mut F, scope: &GenericScope) -> fmt::Result
+    pub(crate) fn write_spec_term<F>(&self, f: &mut F, scope: &GenericScope<'def>) -> fmt::Result
     where
         F: fmt::Write,
     {
@@ -2551,27 +2551,35 @@ impl<'def> InnerFunctionSpec<'def> {
             Self::TraitDefault(_) => None,
         }
     }
+
+    #[must_use]
+    fn needs_trait_req_params(&self) -> bool {
+        match self {
+            Self::Lit(_) => true,
+            Self::TraitDefault(_) => false,
+        }
+    }
 }
 
 /// A Radium function specification.
 #[derive(Clone, Debug)]
-pub struct FunctionSpec<T> {
+pub struct FunctionSpec<'def, T> {
     /// The name of the spec
     pub spec_name: String,
     pub function_name: String,
 
     /// Generics
-    pub generics: GenericScope,
+    pub generics: GenericScope<'def>,
 
     /// Coq-level parameters the typing statement needs
-    pub early_coq_params: coq::ParamList,
-    pub late_coq_params: coq::ParamList,
+    early_coq_params: coq::ParamList,
+    late_coq_params: coq::ParamList,
 
     pub spec: T,
 }
 
-impl<T> FunctionSpec<T> {
-    pub fn replace_spec<U>(self, new_spec: U) -> FunctionSpec<U> {
+impl<'def, T> FunctionSpec<'def, T> {
+    pub fn replace_spec<U>(self, new_spec: U) -> FunctionSpec<'def, U> {
         FunctionSpec {
             spec: new_spec,
             spec_name: self.spec_name,
@@ -2598,7 +2606,7 @@ impl<T> FunctionSpec<T> {
     pub const fn new(
         spec_name: String,
         function_name: String,
-        generics: GenericScope,
+        generics: GenericScope<'def>,
         early_params: coq::ParamList,
         late_params: coq::ParamList,
         spec: T,
@@ -2618,6 +2626,15 @@ impl<T> FunctionSpec<T> {
         &self.spec_name
     }
 
+    pub fn add_early_coq_param(&mut self, param: coq::Param) {
+        self.early_coq_params.0.push(param);
+    }
+    pub fn add_late_coq_param(&mut self, param: coq::Param) {
+        self.late_coq_params.0.push(param);
+    }
+}
+
+impl<'def> FunctionSpec<'def, InnerFunctionSpec<'def>> {
     #[must_use]
     pub fn get_all_coq_params(&self) -> coq::ParamList {
         // Important: early parameters should always be first, as they include trait specs.
@@ -2627,11 +2644,54 @@ impl<T> FunctionSpec<T> {
         params.append(self.generics.get_coq_ty_params().0);
         params.append(self.late_coq_params.0.clone());
 
+        // add trait reqs
+        if self.spec.needs_trait_req_params() {
+            for trait_use in &self.generics.trait_requirements {
+                let spec_params_param_name = trait_use.make_spec_params_param_name();
+
+                let spec_params_type_name = trait_use.trait_ref.spec_params_record.clone();
+
+                let spec_param_name = trait_use.make_spec_param_name();
+                let spec_attrs_param_name = trait_use.make_spec_attrs_param_name();
+                let spec_type = format!("{} {spec_params_param_name}", trait_use.trait_ref.spec_record);
+
+                // add the attr params
+                let all_args: Vec<_> = trait_use
+                    .params_inst
+                    .iter()
+                    .map(Type::get_rfn_type)
+                    .chain(trait_use.get_assoc_ty_inst().into_iter().map(|x| x.get_rfn_type()))
+                    .collect();
+                let mut attr_param = format!("{} ", trait_use.trait_ref.spec_attrs_record);
+                push_str_list!(attr_param, &all_args, " ");
+                params.0.push(coq::Param::new(
+                    coq::Name::Named(spec_attrs_param_name),
+                    coq::Type::Literal(attr_param),
+                    false,
+                ));
+
+                if !trait_use.is_used_in_self_trait {
+                    // add the spec params
+                    params.0.push(coq::Param::new(
+                        coq::Name::Named(spec_params_param_name),
+                        coq::Type::Literal(spec_params_type_name),
+                        true,
+                    ));
+                    // add the spec itself
+                    params.0.push(coq::Param::new(
+                        coq::Name::Named(spec_param_name),
+                        coq::Type::Literal(spec_type),
+                        false,
+                    ));
+                }
+            }
+        }
+
         params
     }
 }
 
-impl<'def> FunctionSpec<InnerFunctionSpec<'def>> {
+impl<'def> FunctionSpec<'def, InnerFunctionSpec<'def>> {
     /// Check whether this spec is complete.
     #[must_use]
     pub const fn is_complete(&self) -> bool {
@@ -2642,12 +2702,16 @@ impl<'def> FunctionSpec<InnerFunctionSpec<'def>> {
     }
 }
 
-impl<'def> Display for FunctionSpec<InnerFunctionSpec<'def>> {
+impl<'def> Display for FunctionSpec<'def, InnerFunctionSpec<'def>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let params = self.get_all_coq_params();
 
         let mut term = String::with_capacity(100);
         self.spec.write_spec_term(&mut term, &self.generics)?;
+            //let spec_precond = trait_use.make_spec_param_precond();
+            // this should be proved after typarams are instantiated
+            //spec_builder.add_late_precondition(spec_precond);
+
 
         let coq_def = coq::Definition {
             name: self.spec_name.clone(),
@@ -2671,9 +2735,6 @@ pub struct LiteralFunctionSpec<'def> {
     pub elctx: Vec<ExtLftConstr>,
     /// precondition as a separating conjunction
     pub pre: IProp,
-    /// precondition as a separating conjunction which is required after the typarams have been
-    /// instantiated
-    pub late_pre: IProp,
     /// argument types including refinements
     pub args: Vec<TypeWithRef<'def>>,
     /// existential quantifiers for the postcondition
@@ -2689,7 +2750,7 @@ pub struct LiteralFunctionSpec<'def> {
 
 impl<'def> LiteralFunctionSpec<'def> {
     /// Format the external lifetime contexts, consisting of constraints between lifetimes.
-    fn format_elctx(&self, scope: &GenericScope) -> String {
+    fn format_elctx(&self, scope: &GenericScope<'def>) -> String {
         let mut out = String::with_capacity(100);
 
         out.push_str("λ ϝ, [");
@@ -2753,39 +2814,25 @@ impl<'def> LiteralFunctionSpec<'def> {
 
     /// Write the core spec term. Assumes that the coq parameters for the type parameters (as given by
     /// `get_coq_ty_params`) are in scope.
-    pub(crate) fn write_spec_term<F>(&self, f: &mut F, scope: &GenericScope) -> Result<(), fmt::Error>
+    pub(crate) fn write_spec_term<F>(&self, f: &mut F, scope: &GenericScope<'def>) -> Result<(), fmt::Error>
     where
         F: fmt::Write,
     {
-        /* fn(∀ [lft_pat] : [lft_count] | | [param_pat] : [param_type]; [elctx]; [args]; [pre]; [late_pre])
+        /* fn(∀ [lft_pat] : [lft_count] | | [param_pat] : [param_type]; [elctx]; [args]; [pre]; [trait_reqs])
                → ∃ [exist_pat] : [exist_type], [ret_type]; [post]
         */
-
-        let mut lft_pattern = String::with_capacity(100);
-        write!(lft_pattern, "( *[")?;
-        write_list!(lft_pattern, &scope.lfts, "; ", |x| { format!("{}", x) })?;
-        write!(lft_pattern, "])")?;
-
-        let mut typarams_pattern = String::with_capacity(100);
-        write!(typarams_pattern, "( *[")?;
-        write_list!(typarams_pattern, &scope.tys, "; ", |x| { format!("{}", x.type_term) })?;
-        write!(typarams_pattern, "])")?;
-
-        let mut typarams_ty_list = String::with_capacity(100);
-        write!(typarams_ty_list, "[")?;
-        write_list!(typarams_ty_list, &scope.tys, "; ", |x| {
-            format!("({}, {})", x.refinement_type, x.syn_type)
-        })?;
-        write!(typarams_ty_list, "]")?;
 
         let param = Self::uncurry_typed_binders(self.params.iter());
 
         let existential = Self::uncurry_typed_binders(&self.existentials);
 
+        // introduce generics
+        write!(f, "fn(∀ ")?;
+        scope.format(f, true, true, &[], &[])?;
+
         write!(
             f,
-            "fn(∀ {lft_pattern} : {} | {typarams_pattern} : {typarams_ty_list} | {} : {}, ({}); ",
-            scope.lfts.len(),
+            " | {} : {}, ({}); ",
             param.0,
             param.1,
             self.format_elctx(scope).as_str()
@@ -2794,7 +2841,16 @@ impl<'def> LiteralFunctionSpec<'def> {
             write!(f, "{}; ", self.format_args().as_str())?;
         }
         write!(f, "(λ π : thread_id, {}) | ", self.pre)?;
-        write!(f, "(λ π : thread_id, {}))\n", self.late_pre)?;
+
+        let mut late_pre = Vec::new();
+        for trait_use in scope.get_trait_requirements() {
+            if !trait_use.is_used_in_self_trait {
+                let spec_precond = trait_use.make_spec_param_precond();
+                late_pre.push(spec_precond);
+            }
+        }
+
+        write!(f, "(λ π : thread_id, {}))\n", IProp::Sep(late_pre))?;
 
         write!(
             f,
@@ -2810,7 +2866,6 @@ pub struct LiteralFunctionSpecBuilder<'def> {
     params: Vec<(coq::Name, coq::Type)>,
     elctx: Vec<ExtLftConstr>,
     pre: IProp,
-    late_pre: IProp,
     args: Vec<TypeWithRef<'def>>,
     existential: Vec<(coq::Name, coq::Type)>,
     ret: Option<TypeWithRef<'def>>,
@@ -2829,7 +2884,6 @@ impl<'def> LiteralFunctionSpecBuilder<'def> {
             params: Vec::new(),
             elctx: Vec::new(),
             pre: IProp::Sep(Vec::new()),
-            late_pre: IProp::Sep(Vec::new()),
             args: Vec::new(),
             existential: Vec::new(),
             ret: None,
@@ -2917,18 +2971,6 @@ impl<'def> LiteralFunctionSpecBuilder<'def> {
         v.push(pre);
     }
 
-    /// Add a new (separating) conjunct to the function's late precondition, which is proved after
-    /// generics have been instantiated.
-    pub fn add_late_precondition(&mut self, pre: IProp) {
-        assert!(matches!(self.late_pre, IProp::Sep(_)));
-
-        let IProp::Sep(v) = &mut self.late_pre else {
-            unreachable!("An incorrect parameter has been given");
-        };
-
-        v.push(pre);
-    }
-
     /// Add a new (separating) conjunct to the function's postcondition.
     pub fn add_postcondition(&mut self, post: IProp) {
         assert!(matches!(self.post, IProp::Sep(_)));
@@ -2975,7 +3017,6 @@ impl<'def> LiteralFunctionSpecBuilder<'def> {
             params: self.params,
             elctx: self.elctx,
             pre: self.pre,
-            late_pre: self.late_pre,
             args: self.args,
             existentials: self.existential,
             ret: self.ret.unwrap_or_else(TypeWithRef::make_unit),
@@ -2989,7 +3030,7 @@ impl<'def> LiteralFunctionSpecBuilder<'def> {
 #[derive(Constructor, Clone, Debug)]
 pub struct TraitInstanceSpec<'def> {
     /// a map from the identifiers to the method specs
-    pub methods: HashMap<String, &'def FunctionSpec<InnerFunctionSpec<'def>>>,
+    pub methods: HashMap<String, &'def FunctionSpec<'def, InnerFunctionSpec<'def>>>,
 }
 
 /// Specification attribute declaration of a trait
@@ -3148,6 +3189,18 @@ impl<'def> LiteralTraitSpecUse<'def> {
         assoc_tys
     }
 
+    /// Get the associated types we need to quantify over.
+    #[must_use]
+    pub fn get_assoc_ty_params(&self) -> Vec<LiteralTyParam> {
+        let mut assoc_tys = Vec::new();
+        for x in &self.trait_ref.assoc_tys {
+            if self.assoc_ty_constraints.get(x).is_none() {
+                assoc_tys.push(self.make_assoc_type_lit(x));
+            }
+        }
+        assoc_tys
+    }
+
     /// Make the precondition on the spec parameter we need to require.
     #[must_use]
     pub fn make_spec_param_precond(&self) -> IProp {
@@ -3280,17 +3333,19 @@ impl<'def> Display for SpecializedTraitSpec<'def> {
 
 /// A scope of generics
 #[derive(Clone, Debug)]
-pub struct GenericScope {
+pub struct GenericScope<'def> {
     tys: Vec<LiteralTyParam>,
+    trait_requirements: Vec<LiteralTraitSpecUse<'def>>,
     lfts: Vec<Lft>,
 }
 
-impl GenericScope {
+impl<'def> GenericScope<'def> {
     /// Create an empty scope.
     #[must_use]
     pub fn empty() -> Self {
         Self {
             tys: Vec::new(),
+            trait_requirements: Vec::new(),
             lfts: Vec::new(),
         }
     }
@@ -3301,8 +3356,23 @@ impl GenericScope {
     }
 
     #[must_use]
+    pub fn get_assoc_ty_params(&self) -> Vec<LiteralTyParam> {
+        self.trait_requirements.iter().map(|x| x.get_assoc_ty_params()).concat()
+    }
+
+    #[must_use]
+    pub fn get_all_ty_params(&self) -> Vec<LiteralTyParam> {
+        self.get_ty_params().iter().cloned().chain(self.get_assoc_ty_params().into_iter()).collect()
+    }
+
+    #[must_use]
     pub fn get_lfts(&self) -> &[Lft] {
         &self.lfts
+    }
+
+    #[must_use]
+    pub fn get_trait_requirements(&self) -> &[LiteralTraitSpecUse<'def>] {
+        &self.trait_requirements
     }
 
     pub fn add_ty_param(&mut self, ty: LiteralTyParam) {
@@ -3313,12 +3383,19 @@ impl GenericScope {
         self.lfts.push(lft);
     }
 
+    pub fn add_trait_requirement(&mut self, req: LiteralTraitSpecUse<'def>) {
+        self.trait_requirements.push(req);
+    }
+
     pub fn append(&mut self, other: &Self) {
         for ty in &other.tys {
             self.tys.push(ty.to_owned());
         }
         for lft in &other.lfts {
             self.lfts.push(lft.to_owned());
+        }
+        for req in &other.trait_requirements {
+            self.trait_requirements.push(req.to_owned());
         }
     }
 
@@ -3333,11 +3410,10 @@ impl GenericScope {
     }
 
     /// Format this generic scope.
-    /// If `as_fn` is `true`, this is formatted as the scope of a function type, otherwise as a
-    /// regular scope.
     pub fn format<F>(
         &self,
         f: &mut F,
+        only_core: bool,
         as_fn: bool,
         extra_tys: &[LiteralTyParam],
         extra_lfts: &[Lft],
@@ -3350,16 +3426,18 @@ impl GenericScope {
         write_list!(lft_pattern, self.lfts.iter().chain(extra_lfts), "; ", |x| { format!("{}", x) })?;
         write!(lft_pattern, "])")?;
 
+        let assoc_ty_params = self.get_assoc_ty_params();
+
         let mut typarams_pattern = String::with_capacity(100);
         write!(typarams_pattern, "( *[")?;
-        write_list!(typarams_pattern, self.tys.iter().chain(extra_tys), "; ", |x| {
+        write_list!(typarams_pattern, self.tys.iter().chain(&assoc_ty_params).chain(extra_tys), "; ", |x| {
             format!("{}", x.type_term)
         })?;
         write!(typarams_pattern, "])")?;
 
         let mut typarams_ty_list = String::with_capacity(100);
         write!(typarams_ty_list, "[")?;
-        write_list!(typarams_ty_list, self.tys.iter().chain(extra_tys), "; ", |x| {
+        write_list!(typarams_ty_list, self.tys.iter().chain(&assoc_ty_params).chain(extra_tys), "; ", |x| {
             if as_fn {
                 format!("({}, {})", x.refinement_type, x.syn_type)
             } else {
@@ -3368,10 +3446,10 @@ impl GenericScope {
         })?;
         write!(typarams_ty_list, "]")?;
 
-        if as_fn {
+        if only_core {
             write!(
                 f,
-                "fnspec! {lft_pattern} : {} | {typarams_pattern} : ({typarams_ty_list} : list (Type * syn_type)%type),",
+                "{lft_pattern} : {} | {typarams_pattern} : ({typarams_ty_list} : list (Type * syn_type)%type)",
                 self.lfts.len() + extra_lfts.len()
             )
         } else {
@@ -3386,15 +3464,16 @@ impl GenericScope {
     /// Get the Coq parameters that need to be in scope for the type parameters of this function.
     #[must_use]
     fn get_coq_ty_params(&self) -> coq::ParamList {
+        let assoc_ty_params = self.get_assoc_ty_params();
         let mut ty_coq_params = Vec::new();
-        for names in &self.tys {
+        for names in self.tys.iter().chain(&assoc_ty_params) {
             ty_coq_params.push(coq::Param::new(
                 coq::Name::Named(names.refinement_type.clone()),
                 coq::Type::Type,
                 false,
             ));
         }
-        for names in &self.tys {
+        for names in self.tys.iter().chain(&assoc_ty_params) {
             ty_coq_params.push(coq::Param::new(
                 coq::Name::Named(names.syn_type.clone()),
                 coq::Type::SynType,
@@ -3407,8 +3486,9 @@ impl GenericScope {
     /// Get the Coq parameters that need to be in scope for the type parameters of this function.
     #[must_use]
     pub fn get_coq_ty_st_params(&self) -> coq::ParamList {
+        let assoc_ty_params = self.get_assoc_ty_params();
         let mut ty_coq_params = Vec::new();
-        for names in &self.tys {
+        for names in self.tys.iter().chain(&assoc_ty_params) {
             ty_coq_params.push(names.make_syntype_param());
         }
         coq::ParamList::new(ty_coq_params)
@@ -3446,9 +3526,9 @@ impl GenericScope {
     }
 }
 
-impl Display for GenericScope {
+impl<'def> Display for GenericScope<'def> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.format(f, false, &[], &[])
+        self.format(f, false, false, &[], &[])
     }
 }
 
@@ -3461,7 +3541,7 @@ impl Display for GenericScope {
 /// - `of_trait` gives the trait of which we make an instance
 /// -
 fn make_trait_instance<'def>(
-    scope: &GenericScope,
+    scope: &GenericScope<'def>,
     assoc_types: &[LiteralTyParam],
     param_inst: &[Type<'def>],
     assoc_inst: &[Type<'def>],
@@ -3621,7 +3701,7 @@ fn make_trait_instance<'def>(
     // add the surrounding quantifiers over the semantic types
     // TODO
     let mut term_with_specs = String::with_capacity(100);
-    scope.format(&mut term_with_specs, false, assoc_types, &[])?;
+    scope.format(&mut term_with_specs, false, false, assoc_types, &[])?;
     write!(term_with_specs, " {body_term}")?;
 
     let mut ty_annot = String::with_capacity(100);
@@ -3652,7 +3732,7 @@ pub struct TraitSpecDecl<'def> {
     pub extra_coq_context: coq::ParamList,
 
     /// The generics this trait uses
-    pub generics: GenericScope,
+    pub generics: GenericScope<'def>,
 
     /// associated types
     pub assoc_types: Vec<LiteralTyParam>,
@@ -3892,7 +3972,7 @@ pub type LiteralTraitImplRef<'def> = &'def LiteralTraitImpl;
 pub struct TraitRefInst<'def> {
     pub of_trait: LiteralTraitSpecRef<'def>,
     /// type parameters this is generic over
-    pub generics: GenericScope,
+    pub generics: GenericScope<'def>,
     pub lft_inst: Vec<Lft>,
     /// the instantiation for the type parameters (including self)
     pub params_inst: Vec<Type<'def>>,
@@ -4052,12 +4132,17 @@ pub struct InstantiatedTraitFunctionSpec<'def> {
 }
 
 impl<'def> InstantiatedTraitFunctionSpec<'def> {
-    fn write_spec_term<F>(&self, f: &mut F, scope: &GenericScope) -> fmt::Result
+    fn write_spec_term<F>(&self, f: &mut F, scope: &GenericScope<'def>) -> fmt::Result
     where
         F: fmt::Write,
     {
+        // TODO: probably we need to handle the trait requirements in some way here, if the trait
+        // extends other traits
+
         // write the scope
-        self.trait_ref.generics.format(f, true, &[], &[])?;
+        write!(f, "fnspec!")?;
+        self.trait_ref.generics.format(f, true, true, &[], &[])?;
+        write!(f, ", ")?;
 
         // apply the trait's base spec
         let mut params = Vec::new();

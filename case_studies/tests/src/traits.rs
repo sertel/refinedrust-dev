@@ -148,6 +148,15 @@ mod foo {
         }
     }
 
+    impl<T: Foo<i32>> Foo<i32> for (T, T) {
+        type Output = i32;
+
+        #[rr::verify]
+        fn bar<U>(&self, x: U) -> (Self::Output, i32, U) {
+            (53, 54, x)
+        }
+    }
+
 
     impl Foo<i32> for u32
     {
