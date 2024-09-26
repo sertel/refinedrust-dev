@@ -1296,7 +1296,7 @@ pub fn register_consts<'rcx, 'tcx>(vcx: &mut VerificationCtxt<'tcx, 'rcx>) -> Re
 
         let ty = ty.skip_binder();
         let scope = ParamScope::default();
-        match vcx.type_translator.translate_type_in_scope(scope, ty).map_err(|x| format!("{:?}", x)) {
+        match vcx.type_translator.translate_type_in_scope(&scope, ty).map_err(|x| format!("{:?}", x)) {
             Ok(translated_ty) => {
                 let _full_name = type_translator::strip_coq_ident(&vcx.env.get_item_name(s.to_def_id()));
 
@@ -1356,7 +1356,7 @@ fn register_traits(vcx: &VerificationCtxt<'_, '_>) -> Result<(), String> {
         }
 
         vcx.trait_registry
-            .register_trait(vcx.type_translator, t)
+            .register_trait(t)
             .map_err(|x| format!("{x:?}"))
             .map_err(|e| format!("{e:?}"))?;
     }

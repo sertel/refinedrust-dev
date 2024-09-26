@@ -70,16 +70,25 @@ pub fn get_arg_syntypes_for_procedure_call<'tcx, 'def>(
 ) -> Result<Vec<radium::SynType>, TranslationError<'tcx>> {
     let caller_did = ty_translator.get_proc_did();
 
-    // Get the type of the callee.
+    // Get the type of the callee, fully instantiated
     let full_ty: ty::EarlyBinder<Ty<'tcx>> = tcx.type_of(callee_did);
     let full_ty = full_ty.instantiate(tcx, ty_params);
+
+    // We create a dummy scope in order to make the lifetime lookups succeed, since we only want
+    // syntactic types here.
+    // Since we do the substitution of the generics above, we should now translate generics and
+    // traits in the caller's scope.
+    let scope = ty_translator.scope.borrow();
+    let param_env: ty::ParamEnv<'tcx> = tcx.param_env(scope.did);
+    let callee_state = CalleeTranslationState::new(&param_env, &scope.generic_scope);
+    let mut dummy_state = TranslationStateInner::CalleeTranslation(callee_state);
 
     let mut syntypes = Vec::new();
     match full_ty.kind() {
         ty::TyKind::FnDef(_, _) => {
             let sig = full_ty.fn_sig(tcx);
             for ty in sig.inputs().skip_binder() {
-                let st = ty_translator.translate_type_to_syn_type(*ty)?;
+                let st = ty_translator.translator.translate_type_to_syn_type(*ty, &mut dummy_state)?;
                 syntypes.push(st);
             }
         },
@@ -95,12 +104,12 @@ pub fn get_arg_syntypes_for_procedure_call<'tcx, 'def>(
                     syntypes.push(radium::SynType::Ptr);
                 },
                 ty::ClosureKind::FnOnce => {
-                    let st = ty_translator.translate_type_to_syn_type(tuple_ty)?;
+                    let st = ty_translator.translator.translate_type_to_syn_type(tuple_ty, &mut dummy_state)?;
                     syntypes.push(st);
                 },
             }
             for ty in pre_sig.inputs() {
-                let st = ty_translator.translate_type_to_syn_type(*ty)?;
+                let st = ty_translator.translator.translate_type_to_syn_type(*ty, &mut dummy_state)?;
                 syntypes.push(st);
             }
         },
@@ -1113,12 +1122,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
 
         // add generic args to the fn
         let generics = &type_scope.generic_scope;
-        for t in generics.iter().flatten() {
-            translated_fn.add_ty_param(t.clone());
+        for t in generics.tyvars() {
+            translated_fn.add_ty_param(t);
         }
 
         // add specs for traits of generics
-        let trait_uses = type_scope.get_trait_uses();
+        let trait_uses = type_scope.generic_scope.trait_scope.get_trait_uses();
         for ((did, params), trait_use) in trait_uses {
             translated_fn.add_trait_requirement(trait_use.trait_use.clone());
         }
@@ -1129,7 +1138,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
             // we are in a trait declaration
             if let Some(trait_ref) = trait_registry.lookup_trait(trait_did) {
                 // make the parameter for the attrs that the function is parametric over
-                if let Some(trait_use) = type_scope.get_self_trait_use() {
+                if let Some(trait_use) = type_scope.generic_scope.trait_scope.get_self_trait_use() {
                     let param_name = trait_use.trait_use.make_spec_attrs_param_name();
                     // add the corresponding record entries to the map
                     for attr in &trait_ref.declared_attrs {
@@ -1666,8 +1675,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // assume that all generics are layoutable
         {
             let scope = self.ty_translator.scope.borrow();
-            for ty in scope.generic_scope.iter().flatten() {
-                self.translated_fn.assume_synty_layoutable(radium::SynType::Literal(ty.syn_type.clone()));
+            for ty in scope.generic_scope.tyvars() {
+                self.translated_fn.assume_synty_layoutable(radium::SynType::Literal(ty.syn_type));
             }
         }
         // assume that all used literals are layoutable
@@ -1778,7 +1787,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 num_param_regions += 1;
 
                 let lft_name =
-                    self.ty_translator.translate_region(region).unwrap_or_else(|| "unknown".to_owned());
+                    self.ty_translator.translate_region(region)?;
                 callee_lft_param_inst.push(lft_name);
             }
         }

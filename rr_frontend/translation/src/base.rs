@@ -8,6 +8,8 @@ use derive_more::Display;
 use rr_rustc_interface::borrowck::consumers::RustcFacts;
 use rr_rustc_interface::middle::mir::Location;
 use rr_rustc_interface::polonius_engine::FactTypes;
+use rr_rustc_interface::middle::ty;
+use crate::environment::borrowck::facts;
 
 use crate::trait_registry::Error;
 
@@ -43,12 +45,28 @@ pub enum TranslationError<'tcx> {
     UnknownAttributeParser(String),
     #[display("Unknown procedure: {}", _0)]
     UnknownProcedure(String),
+    #[display("Unknown early region: {:?}", _0)]
+    UnknownEarlyRegion(ty::EarlyBoundRegion),
+    #[display("Unknown late region (outside function): {}", _0)]
+    UnknownLateRegionOutsideFunction(usize),
+    #[display("Unknown late region: {}", _0)]
+    UnknownLateRegion(usize),
+    #[display("Cannot translate placeholder region")]
+    PlaceholderRegion(),
+    #[display("Cannot translate unknown region: {:?}", _0)]
+    UnknownRegion(ty::Region<'tcx>),
+    #[display("Encountered Polonius region outside function: {:?}", _0)]
+    PoloniusRegionOutsideFunction(facts::Region),
+    #[display("Cannot translate Polonius region: {:?}", _0)]
+    UnknownPoloniusRegion(facts::Region),
     #[display("Trait could not be resolved: {}", _0)]
     TraitResolution(String),
     #[display("Trait translation failed: {}", _0)]
     TraitTranslation(Error<'tcx>),
     #[display("Procedure could not be registered: {}", _0)]
     ProcedureRegistry(String),
+    #[display("Lookup in a dummy scope: {}", _0)]
+    DummyScope(String),
 }
 
 impl<'tcx> From<Error<'tcx>> for TranslationError<'tcx> {

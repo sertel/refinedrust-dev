@@ -17,7 +17,7 @@ use crate::spec_parsers::propagate_method_attr_from_impl;
 use crate::spec_parsers::trait_attr_parser::{TraitAttrParser, VerboseTraitAttrParser};
 use crate::spec_parsers::trait_impl_attr_parser::{TraitImplAttrParser, VerboseTraitImplAttrParser};
 use crate::type_translator::{
-    generate_args_inst_key, strip_coq_ident, GenericsKey, InFunctionState, LocalTypeTranslator, ParamScope,
+    generate_args_inst_key, strip_coq_ident, GenericsKey, TranslationState, LocalTypeTranslator, ParamScope,
     TypeTranslator,
 };
 use crate::utils;
@@ -240,7 +240,6 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
     /// Register a new annotated trait in the local crate with the registry.
     pub fn register_trait(
         &'def self,
-        ty_translator: &'def TypeTranslator<'def, 'tcx>,
         did: LocalDefId,
     ) -> Result<(), TranslationError<'tcx>> {
         trace!("enter TraitRegistry::register_trait for did={did:?}");
@@ -254,13 +253,13 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         // TODO: can we handle the case that this depends on a generic having the same trait?
         // In principle, yes, but currently the implementation does not allow it.
-        // We also do not generate trait dep parameters.
-        // We should depend on the assoc types of the other traits as well as the specs.
+        // => Think more about this.
 
         // get generics
         let trait_generics: &'tcx ty::Generics = self.env.tcx().generics_of(did.to_def_id());
-        let param_scope = ParamScope::from(trait_generics.params.as_slice());
-        // TODO: add associated types
+        let param_env: ty::ParamEnv<'tcx> = self.env.tcx().param_env(did.to_def_id());
+        let mut param_scope = ParamScope::from(trait_generics.params.as_slice());
+        param_scope.add_param_env(Some(did.to_def_id()), self.env, param_env, self.type_translator, &self)?;
 
         let trait_name = strip_coq_ident(&self.env.get_absolute_item_name(did.to_def_id()));
 
@@ -308,7 +307,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                     &name,
                     &spec_name,
                     attrs.as_slice(),
-                    ty_translator,
+                    self.type_translator,
                     self,
                 )?;
                 let spec_ref = self.fn_spec_arena.alloc(spec);
@@ -504,7 +503,10 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         // figure out the parameters this impl gets and make a scope
         let impl_generics: &'tcx ty::Generics = self.env.tcx().generics_of(trait_impl_did);
-        let param_scope = ParamScope::from(impl_generics.params.as_slice());
+        let param_env = self.env.tcx().param_env(trait_impl_did);
+        let mut param_scope = ParamScope::from(impl_generics.params.as_slice());
+        param_scope.add_param_env(None, self.env, param_env, self.type_translator, &self)?;
+        
 
         // parse specification
         let trait_impl_attrs = utils::filter_tool_attrs(self.env.get_attributes(trait_impl_did));
@@ -521,11 +523,10 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
             let mut lft_inst = Vec::new();
             for arg in trait_ref.args {
                 if let Some(ty) = arg.as_type() {
-                    let ty = self.type_translator.translate_type_in_scope(param_scope.clone(), ty)?;
+                    let ty = self.type_translator.translate_type_in_scope(&param_scope, ty)?;
                     params_inst.push(ty);
                 } else if let Some(lft) = arg.as_region() {
-                    let lft = TypeTranslator::translate_region_in_scope(param_scope.clone(), lft)
-                        .unwrap_or_else(|| "trait_placeholder_lft".to_owned());
+                    let lft = TypeTranslator::translate_region_in_scope(&param_scope, lft)?;
                     lft_inst.push(lft);
                 }
             }
@@ -549,7 +550,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
                         let ty = self.env.tcx().type_of(ty_did);
                         let translated_ty = self
                             .type_translator
-                            .translate_type_in_scope(param_scope.clone(), ty.skip_binder())?;
+                            .translate_type_in_scope(&param_scope, ty.skip_binder())?;
                         assoc_types_inst.push(translated_ty);
                     } else {
                         unreachable!("trait impl does not have required item");
@@ -660,7 +661,7 @@ impl<'def> GenericTraitUse<'def> {
     #[must_use]
     pub fn new<'tcx>(
         type_translator: &TypeTranslator<'def, 'tcx>,
-        scope: InFunctionState<'_, 'def, 'tcx>,
+        scope: TranslationState<'_, '_, 'def, 'tcx>,
         trait_ref: ty::TraitRef<'tcx>,
         spec_ref: radium::LiteralTraitSpecRef<'def>,
         is_used_in_self_trait: bool,
@@ -672,7 +673,7 @@ impl<'def> GenericTraitUse<'def> {
         let mut translated_args = Vec::new();
         for arg in trait_ref.args {
             if let ty::GenericArgKind::Type(ty) = arg.unpack() {
-                let translated_ty = type_translator.translate_type(ty, scope).unwrap();
+                let translated_ty = type_translator.translate_type_in_state(ty, scope).unwrap();
                 translated_args.push(translated_ty);
             }
         }

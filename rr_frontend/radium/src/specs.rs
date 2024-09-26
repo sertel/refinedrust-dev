@@ -4098,10 +4098,12 @@ impl<'def> Display for TraitImplSpec<'def> {
             let mut f = IndentWriter::new(BASE_INDENT, &mut *f);
             write!(f, "{}\n", coq::TopLevelAssertion::ContextDecl(coq::ContextDecl::refinedrust()))?;
 
+            let assoc_types = self.trait_ref.generics.get_assoc_ty_params();
+
             // write the bundled records
             let base_decls = make_trait_instance(
                 &self.trait_ref.generics,
-                &[],
+                &assoc_types,
                 &self.trait_ref.params_inst,
                 &self.trait_ref.assoc_types_inst,
                 &self.methods,
