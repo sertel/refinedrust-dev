@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-//! The [eval] section. This module will be renamed `eval`.
+//! The [eval] section.
 //!
 //! [eval]: https://coq.inria.fr/doc/v8.20/refman/proofs/writing-proofs/equality.html#computing-in-a-term-eval-and-eval
 

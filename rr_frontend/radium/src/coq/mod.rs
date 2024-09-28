@@ -46,23 +46,26 @@
 //!
 //! This code can be generated with the following Rust code:
 //! ```
-//! # use radium::coq::{*, eval_new::*, module::*, syntax_new::*, term_new::*};
+//! # use radium::coq::*;
+//! # use {command_new as command, term_new as term};
 //! Document(vec![
-//!     Sentence::CommandAttrs(CommandAttrs {
+//!     Sentence::CommandAttrs(command::CommandAttrs {
 //!         attributes: None,
-//!         command: Command::FromRequire(FromRequire {
-//!             from: Some(DirPath(vec!["Coq".to_owned(), "Strings".to_owned()])),
+//!         command: command::Command::FromRequire(module::FromRequire {
+//!             from: Some(module::DirPath(vec!["Coq".to_owned(), "Strings".to_owned()])),
 //!             import: vec!["String".to_owned()],
-//!             kind: Kind::Import,
+//!             kind: module::Kind::Import,
 //!         }),
 //!     }),
-//!     Sentence::CommandAttrs(CommandAttrs {
+//!     Sentence::CommandAttrs(command::CommandAttrs {
 //!         attributes: None,
-//!         command: Command::OpenScope(OpenScope("string_scope".to_owned())),
+//!         command: command::Command::OpenScope(syntax::OpenScope("string_scope".to_owned())),
 //!     }),
-//!     Sentence::QueryCommandAttrs(QueryCommandAttrs {
+//!     Sentence::QueryCommandAttrs(command::QueryCommandAttrs {
 //!         attributes: None,
-//!         command: QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))),
+//!         command: command::QueryCommand::Compute(eval::Compute(term::Term::String(
+//!             "Hello World".to_owned(),
+//!         ))),
 //!         natural: None,
 //!     }),
 //! ]);
@@ -70,12 +73,17 @@
 //!
 //! This code can be reduced using coercions in the following Rust code:
 //! ```
-//! # use radium::coq::{*, eval_new::*, module::*, syntax_new::*, term_new::*};
+//! # use radium::coq::*;
+//! # use {command_new as command, term_new as term};
 //! let mut doc = Document::default();
 //!
-//! doc.push(Command::FromRequire(Import::new(vec!["String"]).from(vec!["Coq", "Strings"]).into()));
-//! doc.push(Command::OpenScope(OpenScope::new("string_scope")));
-//! doc.push(QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))));
+//! doc.push(command::Command::FromRequire(
+//!     module::Import::new(vec!["String"]).from(vec!["Coq", "Strings"]).into(),
+//! ));
+//! doc.push(command::Command::OpenScope(syntax::OpenScope::new("string_scope")));
+//! doc.push(command::QueryCommand::Compute(eval::Compute(term::Term::String(
+//!     "Hello World".to_owned(),
+//! ))));
 //! ```
 //!
 //! # Notes
@@ -315,13 +323,12 @@
 //! [sections]: https://coq.inria.fr/doc/v8.20/refman/language/core/sections.html
 
 pub mod command;
-pub mod eval_new;
+pub mod command_new;
+pub mod eval;
 pub mod module;
-pub mod syntax_new;
+pub mod syntax;
 pub mod term;
 pub mod term_new;
-
-use std::fmt;
 
 use derive_more::{Deref, DerefMut, Display, From};
 use from_variants::FromVariants;
@@ -346,130 +353,19 @@ impl Document {
     }
 }
 
-/// A [sentence].
+/// A [sentence], or a comment.
 ///
 /// [sentence]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-sentence
 #[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
 pub enum Sentence {
     #[display("{}", _0)]
-    CommandAttrs(CommandAttrs),
+    CommandAttrs(command_new::CommandAttrs),
 
     #[display("{}", _0)]
-    QueryCommandAttrs(QueryCommandAttrs),
-}
+    QueryCommandAttrs(command_new::QueryCommandAttrs),
 
-/// A [command], with optional attributes.
-///
-/// [command]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-command
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub struct CommandAttrs {
-    pub command: Command,
-    pub attributes: Option<Attribute>,
-}
-
-impl Display for CommandAttrs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(attributes) = &self.attributes {
-            write!(f, "{} ", attributes)?;
-        }
-
-        write!(f, "{}.", self.command)
-    }
-}
-
-impl CommandAttrs {
-    #[must_use]
-    pub fn new(command: impl Into<Command>) -> Self {
-        Self {
-            attributes: None,
-            command: command.into(),
-        }
-    }
-
-    #[must_use]
-    pub fn attributes(self, attributes: impl Into<Attribute>) -> Self {
-        let attributes = Some(attributes.into());
-
-        Self { attributes, ..self }
-    }
-}
-
-/// A [command].
-///
-/// [command]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-command
-#[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
-pub enum Command {
-    #[display("{}", _0)]
-    FromRequire(module::FromRequire),
-
-    #[display("{}", _0)]
-    OpenScope(syntax_new::OpenScope),
-
-    #[display("Proof")]
-    Proof,
-}
-
-impl From<Command> for Sentence {
-    fn from(command: Command) -> Self {
-        Self::CommandAttrs(CommandAttrs::new(command))
-    }
-}
-
-/// A [query command], with optional attributes.
-///
-/// [query command]: https://coq.inria.fr/doc/v8.20/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub struct QueryCommandAttrs {
-    pub command: QueryCommand,
-    pub natural: Option<i32>,
-    pub attributes: Option<Attribute>,
-}
-
-impl Display for QueryCommandAttrs {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Some(attributes) = &self.attributes {
-            write!(f, "{} ", attributes)?;
-        }
-
-        if let Some(natural) = &self.natural {
-            write!(f, "{}: ", natural)?;
-        }
-
-        write!(f, "{}.", self.command)
-    }
-}
-
-impl QueryCommandAttrs {
-    #[must_use]
-    pub fn new(command: impl Into<QueryCommand>) -> Self {
-        Self {
-            attributes: None,
-            natural: None,
-            command: command.into(),
-        }
-    }
-
-    #[must_use]
-    pub fn attributes(self, attributes: impl Into<Attribute>) -> Self {
-        let attributes = Some(attributes.into());
-
-        Self { attributes, ..self }
-    }
-}
-
-/// A [query command].
-///
-/// [query command]: https://coq.inria.fr/doc/v8.20/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
-#[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
-pub enum QueryCommand {
-    #[display("{}", _0)]
-    Compute(eval_new::Compute),
-}
-
-impl From<QueryCommand> for Sentence {
-    fn from(command: QueryCommand) -> Self {
-        Self::QueryCommandAttrs(QueryCommandAttrs::new(command))
-    }
+    #[display("(* {} *)", _0)]
+    Comment(String),
 }
 
 /// An [attribute].
@@ -482,10 +378,7 @@ pub struct Attribute(String);
 
 #[cfg(test)]
 mod tests {
-    use eval_new::Compute;
-    use module::{DirPath, FromRequire, Import, Kind};
-    use syntax_new::OpenScope;
-    use term_new::Term;
+    use {command_new as command, term_new as term};
 
     use super::*;
 
@@ -493,9 +386,11 @@ mod tests {
     fn hello_world_compact() {
         let mut doc = Document::default();
 
-        doc.push(Command::FromRequire(Import::new(vec!["String"]).from(vec!["Coq", "Strings"]).into()));
-        doc.push(Command::OpenScope(OpenScope::new("string_scope")));
-        doc.push(QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))));
+        doc.push(command::Command::FromRequire(
+            module::Import::new(vec!["String"]).from(vec!["Coq", "Strings"]).into(),
+        ));
+        doc.push(command::Command::OpenScope(syntax::OpenScope::new("string_scope")));
+        doc.push(command::QueryCommand::Compute(eval::Compute(term::Term::String("Hello World".to_owned()))));
 
         assert_eq!(doc.to_string(), indoc::indoc! {r#"
             From Coq.Strings Require Import String.
@@ -507,21 +402,23 @@ mod tests {
     #[test]
     fn hello_world_extended() {
         let doc = Document(vec![
-            Sentence::CommandAttrs(CommandAttrs {
+            Sentence::CommandAttrs(command::CommandAttrs {
                 attributes: None,
-                command: Command::FromRequire(FromRequire {
-                    from: Some(DirPath(vec!["Coq".to_owned(), "Strings".to_owned()])),
+                command: command::Command::FromRequire(module::FromRequire {
+                    from: Some(module::DirPath(vec!["Coq".to_owned(), "Strings".to_owned()])),
                     import: vec!["String".to_owned()],
-                    kind: Kind::Import,
+                    kind: module::Kind::Import,
                 }),
             }),
-            Sentence::CommandAttrs(CommandAttrs {
+            Sentence::CommandAttrs(command::CommandAttrs {
                 attributes: None,
-                command: Command::OpenScope(OpenScope("string_scope".to_owned())),
+                command: command::Command::OpenScope(syntax::OpenScope("string_scope".to_owned())),
             }),
-            Sentence::QueryCommandAttrs(QueryCommandAttrs {
+            Sentence::QueryCommandAttrs(command::QueryCommandAttrs {
                 attributes: None,
-                command: QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))),
+                command: command::QueryCommand::Compute(eval::Compute(term::Term::String(
+                    "Hello World".to_owned(),
+                ))),
                 natural: None,
             }),
         ]);

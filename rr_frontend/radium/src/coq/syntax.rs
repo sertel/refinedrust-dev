@@ -4,7 +4,7 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-//! The [syntax and notations] section. This module will be renamed `syntax`.
+//! The [syntax and notations] section.
 //!
 //! [syntax and notations]: https://coq.inria.fr/doc/v8.20/refman/user-extensions/syntax-extensions.html
 
