@@ -188,16 +188,16 @@ impl<T: ParamLookup> parse::Parse<T> for RRParams {
     }
 }
 
-pub struct CoqModule(coq::module::Module);
+pub struct CoqExportModule(coq::module::Export);
 
-impl From<CoqModule> for coq::module::Module {
-    fn from(path: CoqModule) -> Self {
+impl From<CoqExportModule> for coq::module::Export {
+    fn from(path: CoqExportModule) -> Self {
         path.0
     }
 }
 
 /// Parse a `CoqModule`.
-impl<U> parse::Parse<U> for CoqModule {
+impl<U> parse::Parse<U> for CoqExportModule {
     fn parse(input: parse::Stream, meta: &U) -> parse::Result<Self> {
         let path_or_module: parse::LitStr = input.parse(meta)?;
         let path_or_module = path_or_module.value();
@@ -207,9 +207,9 @@ impl<U> parse::Parse<U> for CoqModule {
             let module: parse::LitStr = input.parse(meta)?;
             let module = module.value();
 
-            Ok(Self(coq::module::Module::new_with_path(&module, coq::module::Path::new(&path_or_module))))
+            Ok(Self(coq::module::Export::new(vec![module]).from(vec![path_or_module])))
         } else {
-            Ok(Self(coq::module::Module::new(&path_or_module)))
+            Ok(Self(coq::module::Export::new(vec![path_or_module])))
         }
     }
 }

@@ -54,8 +54,8 @@ impl CrateAttrParser for VerboseCrateAttrParser {
             let buffer = parse::Buffer::new(&it.args.inner_tokens());
             match seg.ident.name.as_str() {
                 "import" => {
-                    let path: parse_utils::CoqModule = buffer.parse(&()).map_err(str_err)?;
-                    exports.push(coq::module::Export::new(path.into()));
+                    let path: parse_utils::CoqExportModule = buffer.parse(&()).map_err(str_err)?;
+                    exports.push(path.into());
                 },
                 "include" => {
                     let name: parse::LitStr = buffer.parse(&()).map_err(str_err)?;

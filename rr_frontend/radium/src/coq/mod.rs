@@ -46,13 +46,13 @@
 //!
 //! This code can be generated with the following Rust code:
 //! ```
-//! # use radium::coq::{*, eval_new::*, module_new::*, syntax_new::*, term_new::*};
+//! # use radium::coq::{*, eval_new::*, module::*, syntax_new::*, term_new::*};
 //! Document(vec![
 //!     Sentence::CommandAttrs(CommandAttrs {
 //!         attributes: None,
 //!         command: Command::FromRequire(FromRequire {
-//!             from: Some("Coq.Strings".to_owned()),
-//!             import: vec![DirPath(vec!["String".to_owned()])],
+//!             from: Some(DirPath(vec!["Coq".to_owned(), "Strings".to_owned()])),
+//!             import: vec!["String".to_owned()],
 //!             kind: Kind::Import,
 //!         }),
 //!     }),
@@ -70,10 +70,10 @@
 //!
 //! This code can be reduced using coercions in the following Rust code:
 //! ```
-//! # use radium::coq::{*, eval_new::*, module_new::*, syntax_new::*, term_new::*};
+//! # use radium::coq::{*, eval_new::*, module::*, syntax_new::*, term_new::*};
 //! let mut doc = Document::default();
 //!
-//! doc.push(Command::FromRequire(Import::new(vec![vec!["String"]]).from("Coq.Strings").into()));
+//! doc.push(Command::FromRequire(Import::new(vec!["String"]).from(vec!["Coq", "Strings"]).into()));
 //! doc.push(Command::OpenScope(OpenScope::new("string_scope")));
 //! doc.push(QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))));
 //! ```
@@ -317,7 +317,6 @@
 pub mod command;
 pub mod eval_new;
 pub mod module;
-pub mod module_new;
 pub mod syntax_new;
 pub mod term;
 pub mod term_new;
@@ -401,7 +400,7 @@ impl CommandAttrs {
 #[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
 pub enum Command {
     #[display("{}", _0)]
-    FromRequire(module_new::FromRequire),
+    FromRequire(module::FromRequire),
 
     #[display("{}", _0)]
     OpenScope(syntax_new::OpenScope),
@@ -484,7 +483,7 @@ pub struct Attribute(String);
 #[cfg(test)]
 mod tests {
     use eval_new::Compute;
-    use module_new::{DirPath, FromRequire, Import, Kind};
+    use module::{DirPath, FromRequire, Import, Kind};
     use syntax_new::OpenScope;
     use term_new::Term;
 
@@ -494,7 +493,7 @@ mod tests {
     fn hello_world_compact() {
         let mut doc = Document::default();
 
-        doc.push(Command::FromRequire(Import::new(vec![vec!["String"]]).from("Coq.Strings").into()));
+        doc.push(Command::FromRequire(Import::new(vec!["String"]).from(vec!["Coq", "Strings"]).into()));
         doc.push(Command::OpenScope(OpenScope::new("string_scope")));
         doc.push(QueryCommand::Compute(Compute(Term::String("Hello World".to_owned()))));
 
@@ -511,8 +510,8 @@ mod tests {
             Sentence::CommandAttrs(CommandAttrs {
                 attributes: None,
                 command: Command::FromRequire(FromRequire {
-                    from: Some("Coq.Strings".to_owned()),
-                    import: vec![DirPath(vec!["String".to_owned()])],
+                    from: Some(DirPath(vec!["Coq".to_owned(), "Strings".to_owned()])),
+                    import: vec!["String".to_owned()],
                     kind: Kind::Import,
                 }),
             }),
