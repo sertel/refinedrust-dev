@@ -654,7 +654,7 @@ pub struct FunctionCode {
     required_parameters: Vec<(coq::term::Name, coq::term::Type)>,
 }
 
-fn make_map_string(sep0: &str, sep: &str, els: &Vec<(String, String)>) -> String {
+fn make_map_string(sep: &str, els: &Vec<(String, String)>) -> String {
     let mut out = String::with_capacity(100);
     for (key, value) in els {
         out.push_str(sep);
@@ -1040,7 +1040,6 @@ impl<'def> Function<'def> {
 
         // initialize tyvars
         let formatted_tyvars = make_map_string(
-            " ",
             " ",
             &self
                 .spec
