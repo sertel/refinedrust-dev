@@ -311,8 +311,8 @@
 //!
 //! [RefinedRust project]: https://plv.mpi-sws.org/refinedrust/
 //! [Rocq]: https://coq.inria.fr
-//! [Rocq reference]: https://coq.inria.fr/doc/master/refman/index.html
-//! [sections]: https://coq.inria.fr/doc/master/refman/language/core/sections.html
+//! [Rocq reference]: https://coq.inria.fr/doc/v8.20/refman/index.html
+//! [sections]: https://coq.inria.fr/doc/v8.20/refman/language/core/sections.html
 
 pub mod command;
 pub mod eval_new;
@@ -331,7 +331,7 @@ use crate::display_list;
 
 /// A [document].
 ///
-/// [document]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-document
+/// [document]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-document
 #[derive(Clone, Eq, PartialEq, Debug, Display, Default, Deref, DerefMut)]
 #[display("{}\n", display_list!(_0, "\n"))]
 pub struct Document(pub Vec<Sentence>);
@@ -349,7 +349,7 @@ impl Document {
 
 /// A [sentence].
 ///
-/// [sentence]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-sentence
+/// [sentence]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-sentence
 #[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
 pub enum Sentence {
     #[display("{}", _0)]
@@ -361,7 +361,7 @@ pub enum Sentence {
 
 /// A [command], with optional attributes.
 ///
-/// [command]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-command
+/// [command]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-command
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct CommandAttrs {
     pub command: Command,
@@ -397,7 +397,7 @@ impl CommandAttrs {
 
 /// A [command].
 ///
-/// [command]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-command
+/// [command]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-command
 #[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
 pub enum Command {
     #[display("{}", _0)]
@@ -418,7 +418,7 @@ impl From<Command> for Sentence {
 
 /// A [query command], with optional attributes.
 ///
-/// [query command]: https://coq.inria.fr/doc/master/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
+/// [query command]: https://coq.inria.fr/doc/v8.20/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
 #[derive(Clone, Eq, PartialEq, Debug)]
 pub struct QueryCommandAttrs {
     pub command: QueryCommand,
@@ -460,7 +460,7 @@ impl QueryCommandAttrs {
 
 /// A [query command].
 ///
-/// [query command]: https://coq.inria.fr/doc/master/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
+/// [query command]: https://coq.inria.fr/doc/v8.20/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
 #[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
 pub enum QueryCommand {
     #[display("{}", _0)]
@@ -475,7 +475,7 @@ impl From<QueryCommand> for Sentence {
 
 /// An [attribute].
 ///
-/// [attribute]: https://coq.inria.fr/doc/master/refman/language/core/basic.html#grammar-token-attribute
+/// [attribute]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-attribute
 #[derive(Clone, Eq, PartialEq, Debug, Display, From)]
 #[from(forward)]
 #[display("{}", _0)]

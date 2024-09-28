@@ -6,7 +6,7 @@
 
 /// The [module system].
 ///
-/// [module system]: https://coq.inria.fr/doc/master/refman/language/core/modules.html
+/// [module system]: https://coq.inria.fr/doc/v8.20/refman/language/core/modules.html
 use std::fmt;
 
 use derive_more::{Deref, Display};

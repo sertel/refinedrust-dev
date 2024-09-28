@@ -6,7 +6,7 @@
 
 //! The [eval] section. This module will be renamed `eval`.
 //!
-//! [eval]: https://coq.inria.fr/doc/master/refman/proofs/writing-proofs/equality.html#computing-in-a-term-eval-and-eval
+//! [eval]: https://coq.inria.fr/doc/v8.20/refman/proofs/writing-proofs/equality.html#computing-in-a-term-eval-and-eval
 
 use derive_more::{Deref, DerefMut, Display};
 
@@ -14,7 +14,7 @@ use crate::coq::term_new;
 
 /// The [`Compute`] command.
 ///
-/// [`Compute`]: https://coq.inria.fr/doc/master/refman/proofs/writing-proofs/equality.html#coq:cmd.Compute
+/// [`Compute`]: https://coq.inria.fr/doc/v8.20/refman/proofs/writing-proofs/equality.html#coq:cmd.Compute
 #[derive(Clone, Eq, PartialEq, Debug, Display, Deref, DerefMut)]
 #[display("Compute {}", _0)]
 pub struct Compute(pub term_new::Term);
