@@ -148,26 +148,26 @@ impl<T: ParamLookup> parse::Parse<T> for RRCoqType {
 /// `"y"`,
 /// `z`,
 /// `w : "(Z * Z)%type"`
-#[derive(Debug)]
-pub struct RRParam {
-    pub name: coq::term::Name,
-    pub ty: coq::term::Type,
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct RRParam(coq::term::Binder);
+
+impl From<RRParam> for coq::term::Binder {
+    fn from(param: RRParam) -> Self {
+        param.0
+    }
 }
 
 impl<T: ParamLookup> parse::Parse<T> for RRParam {
     fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let name: IdentOrTerm = input.parse(meta)?;
-        let name = coq::term::Name::Named(name.to_string());
+        let name = name.to_string();
 
         if parse::Colon::peek(input) {
             input.parse::<_, MToken![:]>(meta)?;
             let ty: RRCoqType = input.parse(meta)?;
-            Ok(Self { name, ty: ty.ty })
+            Ok(Self(coq::term::Binder::new(Some(name), ty.ty)))
         } else {
-            Ok(Self {
-                name,
-                ty: coq::term::Type::Infer,
-            })
+            Ok(Self(coq::term::Binder::new(Some(name), coq::term::Type::Infer)))
         }
     }
 }

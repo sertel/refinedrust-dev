@@ -26,7 +26,7 @@ pub trait ModuleAttrParser {
 pub struct ModuleAttrs {
     pub exports: Vec<coq::module::Export>,
     pub includes: Vec<String>,
-    pub context_params: Vec<coq::term::Param>,
+    pub context_params: Vec<coq::term::Binder>,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -68,11 +68,9 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
                 },
                 "context" => {
                     let param: parse_utils::RRGlobalCoqContextItem = buffer.parse(&()).map_err(str_err)?;
-                    context_params.push(coq::term::Param::new(
-                        coq::term::Name::Unnamed,
-                        coq::term::Type::Literal(param.item),
-                        true,
-                    ));
+                    context_params.push(
+                        coq::term::Binder::new(None, coq::term::Type::Literal(param.item)).set_implicit(true),
+                    );
                 },
                 _ => {
                     return Err(format!("unknown attribute for module specification: {:?}", args));

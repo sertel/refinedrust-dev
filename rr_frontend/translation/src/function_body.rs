@@ -1163,11 +1163,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> FunctionTranslator<'a, 'def, 'tcx> {
                 }
                 let param_ty =
                     format!("{}", coq::term::App::new(trait_ref.spec_attrs_record.clone(), param_ty_args));
-                let param = coq::term::Param::new(
-                    coq::term::Name::Named(param_name.clone()),
-                    coq::term::Type::Literal(param_ty),
-                    false,
-                );
+                let param =
+                    coq::term::Binder::new(Some(param_name.clone()), coq::term::Type::Literal(param_ty));
 
                 // add it as a parameter to the function after the generics
                 translated_fn.add_late_coq_param(param);
@@ -2131,8 +2128,8 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             //let initialized = true; // TODO
             // determine the actual refinement type for the current initialization status.
 
-            let rfn_name = coq::term::Name::Named(format!("r_{}", name));
-            rfn_binders.push(radium::specs::CoqBinder::new(rfn_name, rfn_ty));
+            let rfn_name = format!("r_{}", name);
+            rfn_binders.push(coq::term::Binder::new(Some(rfn_name), rfn_ty));
         }
 
         // TODO what do we do about stuff connecting borrows?

@@ -510,7 +510,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             writeln!(spec_file, "Section attrs.").unwrap();
             writeln!(spec_file, "Context `{{RRGS : !refinedrustGS Σ}}.").unwrap();
             for spec in self.trait_impls.values() {
-                writeln!(spec_file, "{}\n", spec.generate_attr_decl()).unwrap();
+                writeln!(spec_file, "{}.\n", spec.generate_attr_decl()).unwrap();
             }
             writeln!(spec_file, "End attrs.\n").unwrap();
         }

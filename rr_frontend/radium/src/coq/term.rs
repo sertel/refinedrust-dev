@@ -4,7 +4,10 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-/// Rocq terms.
+//! The [terms] section.
+//!
+//! [terms]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#term-term
+
 use std::fmt::{self, Write};
 
 use derive_more::Display;
@@ -12,7 +15,34 @@ use indent_write::fmt::IndentWriter;
 use indent_write::indentable::Indentable;
 use itertools::Itertools;
 
-use crate::{display_list, make_indent, write_list, BASE_INDENT};
+use crate::{display_list, make_indent, BASE_INDENT};
+
+/// A [term].
+///
+/// [term]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-term
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum Gallina {
+    /// a literal
+    Literal(String),
+
+    /// Application
+    App(Box<App<Gallina, Gallina>>),
+
+    /// a record body
+    RecordBody(RecordBody),
+
+    /// Projection a.(b) from a record
+    RecordProj(Box<Gallina>, String),
+
+    /// Universal quantifiers
+    All(BinderList, Box<Gallina>),
+
+    /// Existential quantifiers
+    Exists(BinderList, Box<Gallina>),
+
+    /// Infix operators
+    Infix(String, Vec<Gallina>),
+}
 
 /// Represents an application of a term to an rhs.
 /// (commonly used for layouts and instantiating them with generics).
@@ -28,7 +58,7 @@ impl<T: Display, U: Display> Display for App<T, U> {
             return write!(f, "{}", self.lhs);
         }
 
-        write_list!(f, &self.rhs, " ", "({})")
+        write!(f, "({} {})", self.lhs, display_list!(&self.rhs, " ", "({})"))
     }
 }
 
@@ -49,29 +79,10 @@ impl<T, U> App<T, U> {
     }
 }
 
-/// A Coq Gallina term.
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum Gallina {
-    /// a literal
-    Literal(String),
-    /// Application
-    App(Box<App<Gallina, Gallina>>),
-    /// a record body
-    RecordBody(RecordBody),
-    /// Projection a.(b) from a record
-    RecordProj(Box<Gallina>, String),
-    /// Universal quantifiers
-    All(ParamList, Box<Gallina>),
-    /// Existential quantifiers
-    Exists(ParamList, Box<Gallina>),
-    /// Infix operators
-    Infix(String, Vec<Gallina>),
-}
-
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecordBodyItem {
     pub name: String,
-    pub params: ParamList,
+    pub params: BinderList,
     pub term: Gallina,
 }
 
@@ -135,18 +146,6 @@ impl Display for Gallina {
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Ord, PartialOrd, Debug, Display)]
-pub enum Name {
-    #[display("{}", _0)]
-    Named(String),
-
-    #[display("_")]
-    Unnamed,
-}
-
-/// A Coq pattern, e.g., "x" or "'(x, y)".
-pub type Pattern = String;
-
 fn fmt_prod(v: &Vec<Type>) -> String {
     match v.as_slice() {
         [] => "unit".to_owned(),
@@ -155,13 +154,16 @@ fn fmt_prod(v: &Vec<Type>) -> String {
     }
 }
 
+/// A [type], limited to specific cases.
+///
+/// [type]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-type
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 pub enum Type {
-    /// literal types that are not contained in the grammar
+    /// Literal types that are not contained in the grammar
     #[display("{}", _0)]
     Literal(String),
 
-    /// function types; the argument vector should be non-empty
+    /// Function types; the argument vector should be non-empty
     #[display("{} → {}", display_list!(_0, " → ", "({})"), *_1)]
     Function(Vec<Type>, Box<Type>),
 
@@ -169,51 +171,51 @@ pub enum Type {
     #[display("_")]
     Infer,
 
-    /// Coq type `lft`
+    /// Rocq type `lft`
     #[display("lft")]
     Lft,
 
-    /// Coq type `loc`
+    /// Rocq type `loc`
     #[display("loc")]
     Loc,
 
-    /// Coq type `layout`
+    /// Rocq type `layout`
     #[display("layout")]
     Layout,
 
-    /// Coq type `syn_type`
+    /// Rocq type `syn_type`
     #[display("syn_type")]
     SynType,
 
-    /// Coq type `struct_layout`
+    /// Rocq type `struct_layout`
     #[display("struct_layout")]
     StructLayout,
 
-    /// Coq type `Type`
+    /// Rocq type `Type`
     #[display("Type")]
     Type,
 
-    /// Coq type `type rt`
+    /// Rocq type `type rt`
     #[display("(type {})", &_0)]
     Ttype(Box<Type>),
 
-    /// Coq type `rtype`
+    /// Rocq type `rtype`
     #[display("rtype")]
     Rtype,
 
-    /// the unit type
+    /// Unit type
     #[display("unit")]
     Unit,
 
-    /// the type of integers
+    /// Integers
     #[display("Z")]
     Z,
 
-    /// the type of booleans
+    /// Booleans
     #[display("bool")]
     Bool,
 
-    /// product types
+    /// Product type
     #[display("{}", fmt_prod(_0))]
     Prod(Vec<Type>),
 
@@ -225,103 +227,115 @@ pub enum Type {
     #[display("gname")]
     Gname,
 
-    /// a plist with a given type constructor over a list of types
+    /// A plist with a given type constructor over a list of types
     #[display("plist {} [{}]", _0, display_list!(_1, "; ", "{} : Type"))]
     PList(String, Vec<Type>),
 
-    /// the semantic type of a function
+    /// The semantic type of a function
     #[display("function_ty")]
     FunctionTy,
 
-    /// the Coq type Prop of propositions
+    /// The Rocq type Prop of propositions
     #[display("Prop")]
     Prop,
 }
 
+/// A Coq pattern, e.g., "x" or "'(x, y)".
+pub type Pattern = String;
+
+/// A [binder].
+///
+/// [binder]: https://coq.inria.fr/doc/v8.20/refman/language/core/assumptions.html#grammar-token-binder
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("{}", self.format(true))]
-pub struct Param {
-    /// the name
-    name: Name,
-
-    /// the type
+pub struct Binder {
+    name: Option<String>,
     ty: Type,
-
-    /// implicit or not?
-    implicit: bool,
-
-    /// does this depend on Σ?
+    is_implicit: bool,
     depends_on_sigma: bool,
 }
 
-impl Param {
+impl Binder {
     #[must_use]
-    pub fn new(name: Name, ty: Type, implicit: bool) -> Self {
+    pub fn new(name: Option<String>, ty: Type) -> Self {
         let depends_on_sigma = if let Type::Literal(lit) = &ty { lit.contains('Σ') } else { false };
 
         Self {
             name,
             ty,
-            implicit,
+            is_implicit: false,
             depends_on_sigma,
         }
     }
 
     #[must_use]
-    pub fn with_name(&self, name: String) -> Self {
-        Self::new(Name::Named(name), self.ty.clone(), self.implicit)
+    pub fn set_implicit(self, is_implicit: bool) -> Self {
+        Self {
+            is_implicit,
+            ..self
+        }
     }
 
     #[must_use]
-    pub fn get_name_ref(&self) -> Option<&str> {
-        match &self.name {
-            Name::Named(s) => Some(s),
-            Name::Unnamed => None,
+    pub fn set_name(self, name: String) -> Self {
+        Self {
+            name: Some(name),
+            ..self
         }
+    }
+
+    #[must_use]
+    pub(crate) fn get_name(&self) -> String {
+        let Some(name) = &self.name else { return "_".to_owned() };
+        name.clone()
+    }
+
+    pub(crate) const fn get_name_ref(&self) -> &Option<String> {
+        &self.name
+    }
+
+    pub(crate) const fn get_type(&self) -> &Type {
+        &self.ty
+    }
+
+    pub(crate) const fn is_implicit(&self) -> bool {
+        self.is_implicit
+    }
+
+    pub(crate) const fn is_dependent_on_sigma(&self) -> bool {
+        self.depends_on_sigma
     }
 
     #[allow(clippy::collapsible_else_if)]
     #[must_use]
     fn format(&self, make_implicits: bool) -> String {
-        if !self.implicit {
-            return format!("({} : {})", self.name, self.ty);
+        if !self.is_implicit {
+            return format!("({} : {})", self.get_name(), self.ty);
         }
 
         if make_implicits {
-            if let Name::Named(name) = &self.name {
+            if let Some(name) = &self.name {
                 format!("`{{{} : !{}}}", name, self.ty)
             } else {
                 format!("`{{!{}}}", self.ty)
             }
         } else {
-            if let Name::Named(name) = &self.name {
+            if let Some(name) = &self.name {
                 format!("`({} : !{})", name, self.ty)
             } else {
                 format!("`(!{})", self.ty)
             }
         }
     }
-
-    pub(crate) const fn get_name(&self) -> &Name {
-        &self.name
-    }
-
-    pub(crate) const fn is_implicit(&self) -> bool {
-        self.implicit
-    }
-
-    pub(crate) const fn is_dependent_on_sigma(&self) -> bool {
-        self.depends_on_sigma
-    }
 }
 
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
 #[display("{}", display_list!(_0, " "))]
-pub struct ParamList(pub Vec<Param>);
+pub struct BinderList(pub Vec<Binder>);
 
-impl ParamList {
+impl BinderList {
     #[must_use]
-    pub const fn new(params: Vec<Param>) -> Self {
+    pub const fn new(params: Vec<Binder>) -> Self {
         Self(params)
     }
 
@@ -330,66 +344,23 @@ impl ParamList {
         Self(vec![])
     }
 
-    pub fn append(&mut self, params: Vec<Param>) {
+    pub fn append(&mut self, params: Vec<Binder>) {
         self.0.extend(params);
     }
 
     /// Make using terms for this list of binders
     #[must_use]
     pub fn make_using_terms(&self) -> Vec<Gallina> {
-        self.0.iter().map(|x| Gallina::Literal(format!("{}", x.name))).collect()
+        self.0.iter().map(|x| Gallina::Literal(format!("{}", x.get_name()))).collect()
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("{} {}", name, params)]
-pub struct Variant {
-    name: String,
-    params: ParamList,
-}
-
-impl Variant {
-    #[must_use]
-    pub fn new(name: &str, params: Vec<Param>) -> Self {
-        Self {
-            name: name.to_owned(),
-            params: ParamList::new(params),
-        }
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("{}", display_list!(_0, "\n| "))]
-struct VariantList(Vec<Variant>);
-
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("Inductive {} {} :=\n{}\n.", name, parameters, variants.indented(&make_indent(1)))]
-pub struct Inductive {
-    name: String,
-    parameters: ParamList,
-    variants: VariantList,
-}
-
-impl Inductive {
-    #[must_use]
-    pub fn new(name: &str, parameters: Vec<Param>, variants: Vec<Variant>) -> Self {
-        Self {
-            name: name.to_owned(),
-            parameters: ParamList(parameters),
-            variants: VariantList(variants),
-        }
-    }
-
-    pub(crate) const fn get_name(&self) -> &String {
-        &self.name
-    }
-}
-
+/* TODO */
 #[derive(Clone, Debug, Display, Eq, PartialEq)]
 #[display("{} {} : {}", name, params, ty)]
 pub struct RecordDeclItem {
     pub name: String,
-    pub params: ParamList,
+    pub params: BinderList,
     pub ty: Type,
 }
 
@@ -397,7 +368,7 @@ pub struct RecordDeclItem {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Record {
     pub name: String,
-    pub params: ParamList,
+    pub params: BinderList,
     pub ty: Type,
     pub constructor: Option<String>,
     pub body: Vec<RecordDeclItem>,

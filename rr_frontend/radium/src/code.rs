@@ -651,7 +651,7 @@ pub struct FunctionCode {
     basic_blocks: BTreeMap<usize, Stmt>,
 
     /// Coq parameters that the function is parameterized over
-    required_parameters: Vec<(coq::term::Name, coq::term::Type)>,
+    required_parameters: Vec<coq::term::Binder>,
 }
 
 fn make_map_string(sep: &str, els: &Vec<(String, String)>) -> String {
@@ -677,10 +677,6 @@ fn make_lft_map_string(els: &Vec<(String, String)>) -> String {
 
 impl Display for FunctionCode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fn fmt_params((name, ty): &(coq::term::Name, coq::term::Type)) -> String {
-            format!("({} : {})", name, ty)
-        }
-
         fn fmt_variable(Variable((name, ty)): &Variable) -> String {
             format!("(\"{}\", {} : layout)", name, Layout::from(ty))
         }
@@ -696,7 +692,7 @@ impl Display for FunctionCode {
             )
         }
 
-        let params = display_list!(&self.required_parameters, " ", fmt_params);
+        let params = display_list!(&self.required_parameters, " ");
         let args = display_list!(&self.stack_layout.args, ";\n", fmt_variable);
         let locals = display_list!(&self.stack_layout.locals, ";\n", fmt_variable);
         let blocks = display_list!(&self.basic_blocks, "\n", fmt_blocks);
@@ -982,13 +978,13 @@ impl<'def> Function<'def> {
                 }
 
                 let mut p_count = 0;
-                for (n, _) in params {
+                for param in params {
                     if p_count > 1 {
                         ip_params.push_str(" ]");
                     }
                     ip_params.push(' ');
                     p_count += 1;
-                    ip_params.push_str(&n.to_string());
+                    ip_params.push_str(&param.get_name());
                 }
 
                 if p_count > 1 {
@@ -1026,8 +1022,8 @@ impl<'def> Function<'def> {
         // destruct specification-level parameters
         if let Some(params) = params {
             write!(f, "prepare_parameters (")?;
-            for (n, _) in params {
-                write!(f, " {}", n)?;
+            for param in params {
+                write!(f, " {}", param.get_name())?;
             }
             write!(f, " );\n")?;
         }
@@ -1293,12 +1289,12 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Add a Coq-level param that comes before the type parameters.
-    pub fn add_early_coq_param(&mut self, param: coq::term::Param) {
+    pub fn add_early_coq_param(&mut self, param: coq::term::Binder) {
         self.spec.early_coq_params.0.push(param);
     }
 
     /// Add a Coq-level param that comes after the type parameters.
-    pub fn add_late_coq_param(&mut self, param: coq::term::Param) {
+    pub fn add_late_coq_param(&mut self, param: coq::term::Binder) {
         self.spec.late_coq_params.0.push(param);
     }
 
@@ -1332,11 +1328,13 @@ impl<'def> FunctionBuilder<'def> {
             let spec_type = format!("{} {spec_params_param_name}", trait_use.trait_ref.spec_record);
 
             // add the spec params
-            self.spec.late_coq_params.0.push(coq::term::Param::new(
-                coq::term::Name::Named(spec_params_param_name),
-                coq::term::Type::Literal(spec_params_type_name),
-                true,
-            ));
+            self.spec.late_coq_params.0.push(
+                coq::term::Binder::new(
+                    Some(spec_params_param_name),
+                    coq::term::Type::Literal(spec_params_type_name),
+                )
+                .set_implicit(true),
+            );
 
             // add the attr params
             let all_args: Vec<_> = trait_use
@@ -1347,18 +1345,16 @@ impl<'def> FunctionBuilder<'def> {
                 .collect();
             let mut attr_param = format!("{} ", trait_use.trait_ref.spec_attrs_record);
             push_str_list!(attr_param, &all_args, " ");
-            self.spec.late_coq_params.0.push(coq::term::Param::new(
-                coq::term::Name::Named(spec_attrs_param_name),
+            self.spec.late_coq_params.0.push(coq::term::Binder::new(
+                Some(spec_attrs_param_name),
                 coq::term::Type::Literal(attr_param),
-                false,
             ));
 
             // add the spec itself
-            self.spec.late_coq_params.0.push(coq::term::Param::new(
-                coq::term::Name::Named(spec_param_name),
-                coq::term::Type::Literal(spec_type),
-                false,
-            ));
+            self.spec
+                .late_coq_params
+                .0
+                .push(coq::term::Binder::new(Some(spec_param_name), coq::term::Type::Literal(spec_type)));
 
             let spec_precond = trait_use.make_spec_param_precond();
             // this should be proved after typarams are instantiated
@@ -1382,18 +1378,19 @@ impl<'def> FunctionBuilder<'def> {
 
         // generate location parameters for other functions used by this one, as well as syntypes
         // These are parameters that the code gets
-        let mut parameters: Vec<(coq::term::Name, coq::term::Type)> = self
+        let mut parameters: Vec<coq::term::Binder> = self
             .other_functions
             .iter()
-            .map(|f_inst| (coq::term::Name::Named(f_inst.loc_name.clone()), coq::term::Type::Loc))
+            .map(|f_inst| (coq::term::Binder::new(Some(f_inst.loc_name.clone()), coq::term::Type::Loc)))
             .collect();
 
         // generate location parameters for statics used by this function
         let mut statics_parameters = self
             .used_statics
             .iter()
-            .map(|s| (coq::term::Name::Named(s.loc_name.clone()), coq::term::Type::Loc))
+            .map(|s| coq::term::Binder::new(Some(s.loc_name.clone()), coq::term::Type::Loc))
             .collect();
+
         parameters.append(&mut statics_parameters);
 
         // add generic syntype parameters for generics that this function uses.
@@ -1402,8 +1399,9 @@ impl<'def> FunctionBuilder<'def> {
             .generics
             .get_ty_params()
             .iter()
-            .map(|names| (coq::term::Name::Named(names.syn_type.clone()), coq::term::Type::SynType))
+            .map(|names| coq::term::Binder::new(Some(names.syn_type.clone()), coq::term::Type::SynType))
             .collect();
+
         parameters.append(&mut gen_st_parameters);
 
         let code = FunctionCode {

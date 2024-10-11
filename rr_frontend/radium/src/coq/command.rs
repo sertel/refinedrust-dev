@@ -4,274 +4,219 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
-/// Rocq commands.
+//! The [command] section.
+//!
+//! [command]: https://coq.inria.fr/doc/v8.20/refman/coq-cmdindex.html
+
 use std::fmt;
-use std::fmt::Write as fmtWrite;
 
 use derive_more::Display;
-use indent_write::fmt::IndentWriter;
+use from_variants::FromVariants;
+use indent_write::indentable::Indentable;
 
-use crate::coq::term;
-use crate::{display_list, BASE_INDENT};
+use crate::coq::{eval, inductive, module, syntax, term, typeclasses, Attribute, Document, Sentence};
+use crate::make_indent;
 
-/// A single tactic call.
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum ProofItem {
-    #[display("{}.", _0)]
-    Literal(String),
+/// A [command], with optional attributes.
+///
+/// [command]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-command
+#[allow(clippy::module_name_repetitions)]
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct CommandAttrs {
+    pub command: Command,
+    pub attributes: Option<Attribute>,
 }
 
-/// A Coq proof script.
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("{}\n", display_list!(_0, "\n"))]
-pub struct ProofScript(pub Vec<ProofItem>);
+impl Display for CommandAttrs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(attributes) = &self.attributes {
+            write!(f, "{} ", attributes)?;
+        }
+        write!(f, "{}.", self.command)
+    }
+}
 
-/// A terminator for a proof script
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum ProofScriptTerminator {
+impl CommandAttrs {
+    #[must_use]
+    pub fn new(command: impl Into<Command>) -> Self {
+        Self {
+            attributes: None,
+            command: command.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn attributes(self, attributes: impl Into<Attribute>) -> Self {
+        let attributes = Some(attributes.into());
+
+        Self { attributes, ..self }
+    }
+}
+
+/// A [query command], with optional attributes.
+///
+/// [query command]: https://coq.inria.fr/doc/v8.20/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct QueryCommandAttrs {
+    pub command: QueryCommand,
+    pub natural: Option<i32>,
+    pub attributes: Option<Attribute>,
+}
+
+impl Display for QueryCommandAttrs {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(attributes) = &self.attributes {
+            write!(f, "{} ", attributes)?;
+        }
+
+        if let Some(natural) = &self.natural {
+            write!(f, "{}: ", natural)?;
+        }
+
+        write!(f, "{}.", self.command)
+    }
+}
+
+impl QueryCommandAttrs {
+    #[must_use]
+    pub fn new(command: impl Into<QueryCommand>) -> Self {
+        Self {
+            attributes: None,
+            natural: None,
+            command: command.into(),
+        }
+    }
+
+    #[must_use]
+    pub fn attributes(self, attributes: impl Into<Attribute>) -> Self {
+        let attributes = Some(attributes.into());
+
+        Self { attributes, ..self }
+    }
+}
+
+/// A [command].
+///
+/// [command]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-command
+#[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
+pub enum Command {
+    /// The [`From ... Require`] command.
+    ///
+    /// [`From ... Require`]: https://coq.inria.fr/doc/v8.20/refman/proof-engine/vernacular-commands.html#coq:cmd.From-%E2%80%A6-Require
+    #[display("{}", _0)]
+    FromRequire(module::FromRequire),
+
+    /// The [`Inductive`] command.
+    ///
+    /// [`Inductive`]: https://coq.inria.fr/doc/v8.20/refman/language/core/inductive.html#inductive-types
+    #[display("{}", _0)]
+    Inductive(inductive::Inductive),
+
+    /// The [`Instance`] command.
+    ///
+    /// [`Instance`]: https://coq.inria.fr/doc/v8.20/refman/addendum/type-classes.html#coq:cmd.Instance
+    #[display("{}", _0)]
+    Instance(typeclasses::Instance),
+
+    /// The [`Proof`] command.
+    ///
+    /// [`Proof`]: https://coq.inria.fr/doc/v8.20/refman/proofs/writing-proofs/proof-mode.html#coq:cmd.Proof
+    #[display("Proof")]
+    Proof,
+
+    /// The [`Open Scope`] command.
+    ///
+    /// [`Open Scope`]: https://coq.inria.fr/doc/v8.20/refman/user-extensions/syntax-extensions.html#coq:cmd.Open-Scope
+    #[display("{}", _0)]
+    OpenScope(syntax::OpenScope),
+
+    /// The [`Qed`] command.
+    ///
+    /// [`Qed`]: https://coq.inria.fr/doc/v8.20/refman/proofs/writing-proofs/proof-mode.html#coq:cmd.Qed
     #[display("Qed")]
     Qed,
 
-    #[display("Defined")]
-    Defined,
+    /* TODO */
+    #[display("{}", _0)]
+    RecordDecl(term::Record),
 
-    #[display("Admitted")]
-    Admitted,
+    #[display("{}", _0)]
+    ContextDecl(ContextDecl),
+
+    #[display("{}", _0)]
+    Definition(Definition),
+
+    #[display("Section {}.\n{}End {}.", _0.0, _0.1.to_string().indented(&make_indent(1)), _0.0)]
+    Section((String, Document)),
 }
 
-/// A body of a Coq definition
-#[derive(Clone, Eq, PartialEq, Debug)]
-pub enum DefBody {
-    /// a proof script invoking Ltac tactics
-    Script(ProofScript, ProofScriptTerminator),
-
-    /// a proof term
-    Term(term::Gallina),
-}
-
-impl Display for DefBody {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Script(script, terminator) => {
-                write!(f, ".\n")?;
-                write!(f, "Proof.\n")?;
-                let mut f2 = IndentWriter::new(BASE_INDENT, &mut *f);
-                write!(f2, "{}", script)?;
-                write!(f, "{}.", terminator)?;
-            },
-            Self::Term(term) => {
-                write!(f, " := {}.", term)?;
-            },
-        }
-        Ok(())
+impl From<Command> for Sentence {
+    fn from(command: Command) -> Self {
+        Self::CommandAttrs(CommandAttrs::new(command))
     }
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum Attribute {
-    #[display("global")]
-    Global,
-
-    #[display("local")]
-    Local,
+/// A [query command].
+///
+/// [query command]: https://coq.inria.fr/doc/v8.20/refman/proof-engine/vernacular-commands.html#grammar-token-query_command
+#[allow(clippy::module_name_repetitions)]
+#[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
+pub enum QueryCommand {
+    #[display("{}", _0)]
+    Compute(eval::Compute),
 }
 
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("{}",
-    if attrs.is_empty() { String::new() } else {
-        format!("#[ {} ]", display_list!(attrs, ", "))
-    }
-)]
-pub struct Attributes {
-    attrs: Vec<Attribute>,
-}
-
-impl Attributes {
-    #[must_use]
-    pub const fn empty() -> Self {
-        Self { attrs: vec![] }
-    }
-
-    #[must_use]
-    pub fn new(attrs: Vec<Attribute>) -> Self {
-        Self { attrs }
-    }
-
-    #[must_use]
-    pub fn singleton(attr: Attribute) -> Self {
-        Self { attrs: vec![attr] }
+impl From<QueryCommand> for Sentence {
+    fn from(command: QueryCommand) -> Self {
+        Self::QueryCommandAttrs(QueryCommandAttrs::new(command))
     }
 }
 
-/// A Coq typeclass instance declaration
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("#[global] Instance : {}{}", ty, body)]
-pub struct InstanceDecl {
-    ty: term::Type,
-    body: DefBody,
-}
-
-impl InstanceDecl {
-    #[must_use]
-    pub const fn new(ty: term::Type, body: DefBody) -> Self {
-        Self { ty, body }
-    }
-}
-
-#[derive(Clone, Debug, Display, Eq, PartialEq)]
-#[display("{} {} : {}", name, params, ty)]
-pub struct RecordDeclItem {
-    pub name: String,
-    pub params: term::ParamList,
-    pub ty: term::Type,
-}
-
-/// A record declaration.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Record {
-    pub name: String,
-    pub params: term::ParamList,
-    pub ty: term::Type,
-    pub constructor: Option<String>,
-    pub body: Vec<RecordDeclItem>,
-}
-
-impl Display for Record {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let constructor = self.constructor.clone().unwrap_or_default();
-        write!(f, "Record {} {} : {} := {constructor} {{\n", self.name, self.params, self.ty)?;
-        let mut f2 = IndentWriter::new(BASE_INDENT, &mut *f);
-        for it in &self.body {
-            write!(f2, "{it};\n")?;
-        }
-        write!(f, "}}.")
-    }
-}
-
+/* TODO */
 /// A Context declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContextDecl {
-    pub items: term::ParamList,
+    pub items: term::BinderList,
 }
 
 impl ContextDecl {
     #[must_use]
-    pub const fn new(items: term::ParamList) -> Self {
+    pub const fn new(items: term::BinderList) -> Self {
         Self { items }
     }
 
     #[must_use]
     pub fn refinedrust() -> Self {
         Self {
-            items: term::ParamList::new(vec![term::Param::new(
-                term::Name::Named("RRGS".to_owned()),
-                term::Type::Literal("refinedrustGS Σ".to_owned()),
-                true,
-            )]),
+            items: term::BinderList::new(vec![
+                term::Binder::new(Some("RRGS".to_owned()), term::Type::Literal("refinedrustGS Σ".to_owned()))
+                    .set_implicit(true),
+            ]),
         }
     }
 }
 
 impl Display for ContextDecl {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.items.0.is_empty() { Ok(()) } else { write!(f, "Context {}.", self.items) }
+        if self.items.0.is_empty() { Ok(()) } else { write!(f, "Context {}", self.items) }
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Display)]
-pub enum DefinitionKind {
-    #[display("Definition")]
-    Definition,
-    #[display("Lemma")]
-    Lemma,
-}
-
-/// A Coq definition
+/// A Rocq definition
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Definition {
     pub name: String,
-    pub params: term::ParamList,
+    pub params: term::BinderList,
     pub ty: Option<term::Type>,
-    pub body: DefBody,
-    pub kind: DefinitionKind,
+    pub body: term::Gallina,
 }
 
 impl Display for Definition {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Some(ty) = &self.ty {
-            write!(f, "{} {} {} : {ty}{}", self.kind, self.name, self.params, self.body)
+            write!(f, "Definition {} {} : {ty} := {}", self.name, self.params, self.body)
         } else {
-            write!(f, "{} {} {}{}", self.kind, self.name, self.params, self.body)
+            write!(f, "Definition {} {} := {}", self.name, self.params, self.body)
         }
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-pub enum TopLevelAssertion<'a> {
-    /// A declaration of a Coq Inductive
-    #[display("{}", _0)]
-    InductiveDecl(&'a term::Inductive),
-
-    /// A declaration of a Coq instance
-    #[display("{}", _0)]
-    InstanceDecl(&'a InstanceDecl),
-
-    /// A declaration of a Coq record
-    #[display("{}", _0)]
-    RecordDecl(Record),
-
-    /// A declaration of Coq context items
-    #[display("{}", _0)]
-    ContextDecl(ContextDecl),
-
-    /// A Coq Definition
-    #[display("{}", _0)]
-    Definition(Definition),
-
-    /// A Coq comment
-    #[display("(* {} *)", _0)]
-    Comment(&'a str),
-
-    /// A Coq section
-    #[display("Section {}.\n{}End{}.", _0, Indented::new(_1), _0)]
-    Section(String, TopLevelAssertions<'a>),
-
-    /// A Coq section start
-    #[display("Section {}.", _0)]
-    SectionStart(String),
-
-    /// A Coq section end
-    #[display("End {}.", _0)]
-    SectionEnd(String),
-}
-
-/// Type for writing contents indented via Display.
-struct Indented<T> {
-    x: T,
-}
-impl<T> Indented<T> {
-    pub const fn new(x: T) -> Self {
-        Self { x }
-    }
-}
-impl<T: Display> Display for Indented<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut indent_writer = IndentWriter::new(BASE_INDENT, f);
-        write!(indent_writer, "{}", self.x)
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("{}", display_list!(_0, "\n"))]
-pub struct TopLevelAssertions<'a>(pub Vec<TopLevelAssertion<'a>>);
-
-impl<'a> TopLevelAssertions<'a> {
-    #[must_use]
-    pub(crate) const fn empty() -> Self {
-        Self(vec![])
-    }
-
-    pub(crate) fn push(&mut self, a: TopLevelAssertion<'a>) {
-        self.0.push(a);
     }
 }

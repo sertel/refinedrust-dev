@@ -47,7 +47,6 @@
 //! This code can be generated with the following Rust code:
 //! ```
 //! # use radium::coq::*;
-//! # use {command_new as command, term_new as term};
 //! Document(vec![
 //!     Sentence::CommandAttrs(command::CommandAttrs {
 //!         attributes: None,
@@ -63,8 +62,8 @@
 //!     }),
 //!     Sentence::QueryCommandAttrs(command::QueryCommandAttrs {
 //!         attributes: None,
-//!         command: command::QueryCommand::Compute(eval::Compute(term::Term::String(
-//!             "Hello World".to_owned(),
+//!         command: command::QueryCommand::Compute(eval::Compute(term::Gallina::Literal(
+//!             "\"Hello World\"".to_owned(),
 //!         ))),
 //!         natural: None,
 //!     }),
@@ -74,15 +73,14 @@
 //! This code can be reduced using coercions in the following Rust code:
 //! ```
 //! # use radium::coq::*;
-//! # use {command_new as command, term_new as term};
 //! let mut doc = Document::default();
 //!
 //! doc.push(command::Command::FromRequire(
 //!     module::Import::new(vec!["String"]).from(vec!["Coq", "Strings"]).into(),
 //! ));
 //! doc.push(command::Command::OpenScope(syntax::OpenScope::new("string_scope")));
-//! doc.push(command::QueryCommand::Compute(eval::Compute(term::Term::String(
-//!     "Hello World".to_owned(),
+//! doc.push(command::QueryCommand::Compute(eval::Compute(term::Gallina::Literal(
+//!     "\"Hello World\"".to_owned(),
 //! ))));
 //! ```
 //!
@@ -323,12 +321,13 @@
 //! [sections]: https://coq.inria.fr/doc/v8.20/refman/language/core/sections.html
 
 pub mod command;
-pub mod command_new;
 pub mod eval;
+pub mod inductive;
+pub mod ltac;
 pub mod module;
 pub mod syntax;
 pub mod term;
-pub mod term_new;
+pub mod typeclasses;
 
 use derive_more::{Deref, DerefMut, Display, From};
 use from_variants::FromVariants;
@@ -359,10 +358,13 @@ impl Document {
 #[derive(Clone, Eq, PartialEq, Debug, Display, FromVariants)]
 pub enum Sentence {
     #[display("{}", _0)]
-    CommandAttrs(command_new::CommandAttrs),
+    CommandAttrs(command::CommandAttrs),
 
     #[display("{}", _0)]
-    QueryCommandAttrs(command_new::QueryCommandAttrs),
+    QueryCommandAttrs(command::QueryCommandAttrs),
+
+    #[display("{}", _0)]
+    LTacAttrs(ltac::LTacAttrs),
 
     #[display("(* {} *)", _0)]
     Comment(String),
@@ -373,13 +375,11 @@ pub enum Sentence {
 /// [attribute]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#grammar-token-attribute
 #[derive(Clone, Eq, PartialEq, Debug, Display, From)]
 #[from(forward)]
-#[display("{}", _0)]
+#[display("#[{}]", _0)]
 pub struct Attribute(String);
 
 #[cfg(test)]
 mod tests {
-    use {command_new as command, term_new as term};
-
     use super::*;
 
     #[test]
@@ -390,7 +390,9 @@ mod tests {
             module::Import::new(vec!["String"]).from(vec!["Coq", "Strings"]).into(),
         ));
         doc.push(command::Command::OpenScope(syntax::OpenScope::new("string_scope")));
-        doc.push(command::QueryCommand::Compute(eval::Compute(term::Term::String("Hello World".to_owned()))));
+        doc.push(command::QueryCommand::Compute(eval::Compute(term::Gallina::Literal(
+            "\"Hello World\"".to_owned(),
+        ))));
 
         assert_eq!(doc.to_string(), indoc::indoc! {r#"
             From Coq.Strings Require Import String.
@@ -416,8 +418,8 @@ mod tests {
             }),
             Sentence::QueryCommandAttrs(command::QueryCommandAttrs {
                 attributes: None,
-                command: command::QueryCommand::Compute(eval::Compute(term::Term::String(
-                    "Hello World".to_owned(),
+                command: command::QueryCommand::Compute(eval::Compute(term::Gallina::Literal(
+                    "\"Hello World\"".to_owned(),
                 ))),
                 natural: None,
             }),

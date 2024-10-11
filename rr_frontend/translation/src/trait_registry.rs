@@ -327,7 +327,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         let base_instance_spec = radium::TraitInstanceSpec::new(methods);
         let decl = radium::TraitSpecDecl::new(
             lit_trait_spec_ref,
-            coq::term::ParamList::new(trait_spec.context_items),
+            coq::term::BinderList::new(trait_spec.context_items),
             param_scope.into(),
             assoc_types,
             base_instance_spec,
