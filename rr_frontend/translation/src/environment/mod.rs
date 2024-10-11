@@ -321,6 +321,21 @@ impl<'tcx> Environment<'tcx> {
         assoc_tys
     }
 
+    /// Get the id of a trait impl surrounding a method.
+    #[must_use]
+    pub fn trait_impl_of_method(&self, method_did: DefId) -> Option<DefId> {
+        if let Some(impl_did) = self.tcx().impl_of_method(method_did) {
+            if self.tcx().trait_id_of_impl(impl_did).is_some() {
+                Some(impl_did)
+            }
+            else {
+                None
+            }
+        } else {
+            None
+        }
+    }
+
     /// Get a Procedure.
     pub fn get_procedure(&self, proc_def_id: ProcedureDefId) -> Procedure<'tcx> {
         Procedure::new(self, proc_def_id)

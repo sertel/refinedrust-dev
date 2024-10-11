@@ -1802,7 +1802,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
         let mut scope = radium::GenericScope::empty();
 
-        // instantiations for the function spec's paramters
+        // instantiations for the function spec's parameters
         let mut fn_lft_param_inst = Vec::new();
         let mut fn_ty_param_inst = Vec::new();
 
@@ -1844,6 +1844,12 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             }
         }
 
+        // TODO: be careful with the order here. 
+        // - the ty_params are all the generics the function has.
+        // - the assoc_tys are also all the associated types the function has
+        // We need to distinguish these between direct and surrounding.
+        // Move the classification here, I guess.
+        
         // figure out instantiation for the function's generics
         for v in ty_params {
             if let Some(ty) = v.as_type() {
@@ -4030,18 +4036,16 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         }
     }
 
-    /// Translate the use of an `FnDef`, registering that the current function needs to link against
-    /// a particular monomorphization of the used function.
-    /// Is guaranteed to return a `radium::Expr::CallTarget` with the parameter instantiation of
-    /// this function annotated.
-    fn translate_fn_def_use(&mut self, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError<'tcx>> {
-        let TyKind::FnDef(defid, params) = ty.kind() else {
-            return Err(TranslationError::UnknownError("not a FnDef type".to_owned()));
-        };
+    /// Resolve the trait requirements of a function call.
+    // TODO: we should do this after resolving the destination, not before.
+    // The concrete impl might have additional requirements that just the trait does not have.
+    // Refactor accordingly!!
+    fn resolve_trait_requirements_of_call(&self, did: DefId, params: ty::GenericArgsRef<'tcx>) -> 
+        Result<(Vec<radium::SpecializedTraitSpec<'def>>, Vec<Ty<'tcx>>), TranslationError<'tcx>>
+    {
+        let current_param_env: ty::ParamEnv<'tcx> = self.env.tcx().param_env(self.proc.get_id());
 
-        let key: ty::ParamEnv<'tcx> = self.env.tcx().param_env(self.proc.get_id());
-
-        let callee_param_env = self.env.tcx().param_env(defid);
+        let callee_param_env = self.env.tcx().param_env(did);
         info!("callee param env {callee_param_env:?}");
 
         // Get the trait requirements of the callee
@@ -4049,14 +4053,20 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         info!("non-trivial callee requirements: {callee_requirements:?}");
         info!("subsituting with args {:?}", params);
 
-        // Check whether we are calling into a trait method
-        let calling_trait = self.env.tcx().trait_of_item(*defid);
+        // Check whether we are calling into a trait method.
+        // This works since we did not resolve concrete instances, so this is always an abstract
+        // reference to the trait.
+        let calling_trait = self.env.tcx().trait_of_item(did);
+        //let calling_trait_impl = self.env.trait_impl_of_method
+
         // Get the params of the trait we're calling
         let calling_trait_params = if let Some(trait_did) = calling_trait {
             Some(LocalTypeTranslator::split_trait_method_args(self.env, trait_did, params).0)
         } else {
             None
         };
+
+        // 
 
         // For each trait requirement, resolve to a trait spec that we can provide
         // TODO: make sure to provide the list of trait instantiations in a consistent order with the callee
@@ -4085,10 +4095,14 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                 }
             }
 
+            // TODO figure out the origin of the requirement
+            //      - for the typarams, just count the number of surrounding parameters 
+            // TODO Try to keep the spec and the assoc types bundled in some datatstructure, maybe
+
             // try to infer an instance for this
             let subst_args = self.env.tcx().mk_args(subst_args.as_slice());
             if let Some((impl_did, impl_args, kind)) =
-                traits::resolve_trait(self.env.tcx(), key, trait_ref.def_id, subst_args)
+                traits::resolve_trait(self.env.tcx(), current_param_env, trait_ref.def_id, subst_args)
             {
                 info!("resolved trait impl as {impl_did:?} with {args:?} {kind:?}");
 
@@ -4150,15 +4164,37 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
                     },
                 }
             } else {
-                //return Err(TranslationError::TraitResolution(
-                //"could not resolve trait required for method call".to_owned(),
-                //));
+                return Err(TranslationError::TraitResolution(
+                "could not resolve trait required for method call".to_owned(),
+                ));
             }
         }
         info!("collected spec terms: {trait_spec_terms:?}");
 
+        Ok((trait_spec_terms, ordered_assoc_tys))
+    }
+
+    /// Translate the use of an `FnDef`, registering that the current function needs to link against
+    /// a particular monomorphization of the used function.
+    /// Is guaranteed to return a `radium::Expr::CallTarget` with the parameter instantiation of
+    /// this function annotated.
+    fn translate_fn_def_use(&mut self, ty: Ty<'tcx>) -> Result<radium::Expr, TranslationError<'tcx>> {
+        let TyKind::FnDef(defid, params) = ty.kind() else {
+            return Err(TranslationError::UnknownError("not a FnDef type".to_owned()));
+        };
+
+        let current_param_env: ty::ParamEnv<'tcx> = self.env.tcx().param_env(self.proc.get_id());
+
+        // Check whether we are calling into a trait method.
+        // This works since we did not resolve concrete instances, so this is always an abstract
+        // reference to the trait.
+        let calling_trait = self.env.tcx().trait_of_item(*defid);
+
         // Check whether we are calling a plain function or a trait method
         let Some(calling_trait) = calling_trait else {
+            // resolve the trait requirements
+            let (trait_spec_terms, ordered_assoc_tys) = self.resolve_trait_requirements_of_call(*defid, params)?;
+
             // track that we are using this function and generate the Coq location name
             let (code_param_name, ty_hint, lft_hint) =
                 self.register_use_procedure(*defid, vec![], params, trait_spec_terms, &ordered_assoc_tys)?;
@@ -4171,7 +4207,7 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
         // Otherwise, we are calling a trait method
         // Resolve the trait instance using trait selection
         let Some((resolved_did, resolved_params, kind)) =
-            traits::resolve_assoc_item(self.env.tcx(), key, *defid, params)
+            traits::resolve_assoc_item(self.env.tcx(), current_param_env, *defid, params)
         else {
             return Err(TranslationError::TraitResolution(format!("Could not resolve trait {:?}", defid)));
         };
@@ -4185,6 +4221,9 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
             traits::TraitResolutionKind::UserDefined => {
                 // We can statically resolve the particular trait instance,
                 // but need to apply the spec to the instance's spec attributes
+
+                // resolve the trait requirements
+                let (trait_spec_terms, ordered_assoc_tys) = self.resolve_trait_requirements_of_call(resolved_did, resolved_params)?;
 
                 let (param_name, ty_hint, lft_hint) = self.register_use_procedure(
                     resolved_did,
@@ -4200,6 +4239,9 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
             traits::TraitResolutionKind::Param => {
                 // In this case, we have already applied it to the spec attribute
+
+                // resolve the trait requirements
+                let (trait_spec_terms, ordered_assoc_tys) = self.resolve_trait_requirements_of_call(*defid, params)?;
 
                 let (param_name, ty_hint, lft_hint) = self.register_use_trait_method(
                     resolved_did,
@@ -4225,6 +4267,10 @@ impl<'a, 'def: 'a, 'tcx: 'def> BodyTranslator<'a, 'def, 'tcx> {
 
                 // the args are just the closure args. We can ignore them.
                 let _clos_args = resolved_params.as_closure();
+
+                // resolve the trait requirements
+                let (trait_spec_terms, ordered_assoc_tys) = self.resolve_trait_requirements_of_call(*defid, params)?;
+
 
                 let (param_name, ty_hint, lft_hint) = self.register_use_procedure(
                     resolved_did,

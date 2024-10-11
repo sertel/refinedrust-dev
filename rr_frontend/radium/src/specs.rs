@@ -416,14 +416,12 @@ impl<'def> LiteralTypeUse<'def> {
 }
 
 /// The origin of a type parameter.
-#[derive(Clone, Eq, PartialEq, Hash, Debug)]
+#[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
 pub enum TyParamOrigin {
     /// Declared in a surrounding trait declaration.
     SurroundingTrait,
     /// Declared in a surrounding trait impl
     SurroundingImpl,
-    /// Associated type of a trait we assume.
-    TraitAssoc,
     /// A direct parameter of a method or impl.
     Direct,
 }
@@ -3121,7 +3119,7 @@ impl LiteralTraitSpec {
 }
 
 /// A reference to a trait instantiated with its parameters in the verification of a function.
-#[derive(Debug, Clone)]
+#[derive(Debug, Constructor, Clone)]
 pub struct LiteralTraitSpecUse<'def> {
     pub trait_ref: LiteralTraitSpecRef<'def>,
     /// the instantiation for the type parameters (self is at 0)
@@ -3138,28 +3136,12 @@ pub struct LiteralTraitSpecUse<'def> {
 
     /// optional constraints for each associated type
     pub assoc_ty_constraints: HashMap<String, Type<'def>>,
+
+    /// origin of this trait assumption
+    pub origin: TyParamOrigin,
 }
 
 impl<'def> LiteralTraitSpecUse<'def> {
-    #[must_use]
-    pub fn new(
-        trait_ref: LiteralTraitSpecRef<'def>,
-        params_inst: Vec<Type<'def>>,
-        mangled_base: String,
-        overridden_spec_def: Option<String>,
-        is_used_in_self_trait: bool,
-        assoc_ty_constraints: HashMap<String, Type<'def>>,
-    ) -> Self {
-        Self {
-            trait_ref,
-            params_inst,
-            overridden_spec_def,
-            mangled_base,
-            is_used_in_self_trait,
-            assoc_ty_constraints,
-        }
-    }
-
     /// Get the name for a spec parameter for this trait instance.
     #[must_use]
     pub fn make_spec_param_name(&self) -> String {
@@ -3254,7 +3236,7 @@ impl<'def> LiteralTraitSpecUse<'def> {
         } else {
             format!("{}_{}", self.mangled_base, assoc_type)
         };
-        LiteralTyParam::new_with_origin(&rust_name, &rust_name, TyParamOrigin::TraitAssoc)
+        LiteralTyParam::new_with_origin(&rust_name, &rust_name, self.origin)
     }
 
     /// Check if this associated type is a fully generic parameter.
@@ -3279,7 +3261,8 @@ impl<'def> LiteralTraitSpecUse<'def> {
     }
 }
 
-/// A specialized trait specification applied to some type parameters
+/// A specialized trait specification applied to some type parameters.
+/// Used to instantiate other function's assumptions in the verification of a function.
 #[derive(Clone, Debug)]
 pub struct SpecializedTraitSpec<'def> {
     pub spec_name: String,
@@ -3362,7 +3345,7 @@ impl<'def> GenericScope<'def> {
 
     #[must_use]
     pub fn get_all_ty_params(&self) -> Vec<LiteralTyParam> {
-        self.get_ty_params().iter().cloned().chain(self.get_assoc_ty_params().into_iter()).collect()
+        Self::ordered_ty_params(self.get_ty_params().into_iter().chain(self.get_assoc_ty_params().iter()))
     }
 
     #[must_use]
@@ -3429,15 +3412,16 @@ impl<'def> GenericScope<'def> {
         let assoc_ty_params = self.get_assoc_ty_params();
 
         let mut typarams_pattern = String::with_capacity(100);
+        let ordered_ty_params = Self::ordered_ty_params(self.tys.iter().chain(extra_tys).chain(&assoc_ty_params));
         write!(typarams_pattern, "( *[")?;
-        write_list!(typarams_pattern, self.tys.iter().chain(&assoc_ty_params).chain(extra_tys), "; ", |x| {
+        write_list!(typarams_pattern, &ordered_ty_params, "; ", |x| {
             format!("{}", x.type_term)
         })?;
         write!(typarams_pattern, "])")?;
 
         let mut typarams_ty_list = String::with_capacity(100);
         write!(typarams_ty_list, "[")?;
-        write_list!(typarams_ty_list, self.tys.iter().chain(&assoc_ty_params).chain(extra_tys), "; ", |x| {
+        write_list!(typarams_ty_list, &ordered_ty_params, "; ", |x| {
             if as_fn {
                 format!("({}, {})", x.refinement_type, x.syn_type)
             } else {
@@ -3461,25 +3445,47 @@ impl<'def> GenericScope<'def> {
         }
     }
 
+    /// Create an ordered list of type parameters, according to the order in which they should
+    /// appear on a declaration: first indirect parameters and associated types, then direct ones.
+    fn ordered_ty_params<'a>(params: impl Iterator<Item=&'a LiteralTyParam>) -> Vec<LiteralTyParam> {
+        let mut ordered = Vec::new();
+        let mut direct = Vec::new();
+
+        for names in params {
+            if names.origin == TyParamOrigin::Direct {
+                direct.push(names.to_owned());
+            } else {
+                ordered.push(names.to_owned());
+            }
+        }
+        ordered.extend(direct);
+
+        ordered
+    }
+
     /// Get the Coq parameters that need to be in scope for the type parameters of this function.
     #[must_use]
     fn get_coq_ty_params(&self) -> coq::ParamList {
-        let assoc_ty_params = self.get_assoc_ty_params();
         let mut ty_coq_params = Vec::new();
-        for names in self.tys.iter().chain(&assoc_ty_params) {
+
+        let ordered_params = self.get_all_ty_params();
+
+        // first add surrounding params
+        for names in &ordered_params {
             ty_coq_params.push(coq::Param::new(
                 coq::Name::Named(names.refinement_type.clone()),
                 coq::Type::Type,
                 false,
             ));
         }
-        for names in self.tys.iter().chain(&assoc_ty_params) {
+        for names in &ordered_params {
             ty_coq_params.push(coq::Param::new(
                 coq::Name::Named(names.syn_type.clone()),
                 coq::Type::SynType,
                 false,
             ));
         }
+
         coq::ParamList(ty_coq_params)
     }
 
@@ -3555,6 +3561,7 @@ fn make_trait_instance<'def>(
 
     // write the param record decl
     let mut def_rts_params = Vec::new();
+    // TODO associated types in scope?
     for param in scope.tys.iter().chain(assoc_types) {
         let rt_param =
             coq::Param::new(coq::Name::Named(param.refinement_type.clone()), coq::Type::Type, false);
@@ -3571,18 +3578,21 @@ fn make_trait_instance<'def>(
             let record_item_name = of_trait.make_spec_method_params_name(item_name);
 
             // we only require the direct Coq type parameters
+            // TODO: associated types?
             let params = spec.generics.get_direct_coq_ty_rt_params();
 
             let mut body = String::with_capacity(100);
             write!(body, "<get_params_of> {} ", spec.spec_name)?;
 
             // instantiate with all the refinement types the instance is parametric over
+            // TODO: associated types?
             write_list!(body, &scope.tys, " ", |x| { format!("{}", x.refinement_type) })?;
             write!(body, " ")?;
             // pass the function's own generics
             write_list!(body, &params.0, " ", |x| { x.get_name().unwrap_or("unnamed").to_owned() })?;
             write!(body, " ")?;
             // finally pass the associated types
+            // TODO this should be ordered before, probably
             write_list!(body, &assoc_types, " ", |x| { format!("{}", x.refinement_type) })?;
 
             let item = coq::RecordBodyItem {
@@ -3606,6 +3616,7 @@ fn make_trait_instance<'def>(
 
     // write the attr record decl, if provided
     let mut attrs_type_rts = Vec::new();
+    // TODO ?
     for param in param_inst.iter().chain(assoc_inst) {
         attrs_type_rts.push(format!("{}", param.get_rfn_type()));
     }
@@ -3663,9 +3674,10 @@ fn make_trait_instance<'def>(
                 write!(body, " <LFT> {x}")?;
             }
             // instantiate with associated types, making sure to skip over the function's own generics
-            let offset = spec.generics.get_direct_coq_ty_rt_params().0.len();
+            // TODO: 
+            //let offset = spec.generics.get_direct_coq_ty_rt_params().0.len();
             for x in assoc_types {
-                write!(body, " <TY>@{{ {offset} }} {}", x.type_term)?;
+                write!(body, " <TY> {}", x.type_term)?;
             }
 
             // provide type annotation
@@ -3759,6 +3771,7 @@ impl<'def> Display for TraitSpecDecl<'def> {
             let record_item_name = self.lit.make_spec_method_params_name(item_name);
 
             // params are the rt of the direct type parameters
+            // TODO: should this also include direct associated types?
             let params = item_spec.generics.get_direct_coq_ty_rt_params();
 
             let item = coq::RecordDeclItem {
@@ -3791,6 +3804,7 @@ impl<'def> Display for TraitSpecDecl<'def> {
         }
         // this is parametric in the params and associated types
         let mut attr_params = Vec::new();
+        // TODO: also quantify over the associated types in the generic scope
         for param in self.generics.get_ty_params().iter().chain(self.assoc_types.iter()) {
             attr_params.push(coq::Param::new(
                 coq::Name::Named(param.refinement_type.clone()),
@@ -3821,6 +3835,7 @@ impl<'def> Display for TraitSpecDecl<'def> {
             let record_params_item_name = self.lit.make_spec_method_params_name(item_name);
 
             // params are the rt and st of the direct type parameters
+            // TODO: also associated types?
             let params = item_spec.generics.get_direct_coq_ty_params();
 
             // get number of lifetime parameters of the function
@@ -3890,6 +3905,7 @@ impl<'def> Display for TraitSpecDecl<'def> {
         ];
         let mut incls = Vec::new();
         for (name, decl) in &self.default_spec.methods {
+            // TODO: associated types?
             let param_uses = decl.generics.get_direct_coq_ty_params().make_using_terms();
             let record_item_name = self.lit.make_spec_method_name(name);
             let incl_term = coq::GallinaTerm::All(
@@ -3933,6 +3949,7 @@ impl<'def> Display for TraitSpecDecl<'def> {
         }
 
         // use the identity instantiation of the trait
+        // TODO: associated types?
         let param_inst: Vec<_> =
             self.generics.get_ty_params().iter().map(|x| Type::LiteralParam(x.to_owned())).collect();
         let assoc_inst: Vec<_> = self.assoc_types.iter().map(|x| Type::LiteralParam(x.to_owned())).collect();

@@ -257,9 +257,8 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         // get generics
         let trait_generics: &'tcx ty::Generics = self.env.tcx().generics_of(did.to_def_id());
-        let param_env: ty::ParamEnv<'tcx> = self.env.tcx().param_env(did.to_def_id());
         let mut param_scope = ParamScope::from(trait_generics.params.as_slice());
-        param_scope.add_param_env(Some(did.to_def_id()), self.env, param_env, self.type_translator, &self)?;
+        param_scope.add_param_env(did.to_def_id(), self.env, self.type_translator, &self)?;
 
         let trait_name = strip_coq_ident(&self.env.get_absolute_item_name(did.to_def_id()));
 
@@ -503,10 +502,8 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
 
         // figure out the parameters this impl gets and make a scope
         let impl_generics: &'tcx ty::Generics = self.env.tcx().generics_of(trait_impl_did);
-        let param_env = self.env.tcx().param_env(trait_impl_did);
         let mut param_scope = ParamScope::from(impl_generics.params.as_slice());
-        param_scope.add_param_env(None, self.env, param_env, self.type_translator, &self)?;
-        
+        param_scope.add_param_env(trait_impl_did, self.env, self.type_translator, &self)?;
 
         // parse specification
         let trait_impl_attrs = utils::filter_tool_attrs(self.env.get_attributes(trait_impl_did));
@@ -666,6 +663,7 @@ impl<'def> GenericTraitUse<'def> {
         spec_ref: radium::LiteralTraitSpecRef<'def>,
         is_used_in_self_trait: bool,
         assoc_ty_constraints: HashMap<String, radium::Type<'def>>,
+        origin: radium::TyParamOrigin,
     ) -> Self {
         let did = trait_ref.def_id;
 
@@ -693,10 +691,11 @@ impl<'def> GenericTraitUse<'def> {
         let spec_use = radium::LiteralTraitSpecUse::new(
             spec_ref,
             translated_args,
-            mangled_base,
             spec_override,
+            mangled_base,
             is_used_in_self_trait,
             assoc_ty_constraints,
+            origin,
         );
 
         Self {

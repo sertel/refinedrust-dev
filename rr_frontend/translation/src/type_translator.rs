@@ -217,7 +217,7 @@ impl<'tcx, 'def> ParamScope<'tcx, 'def> {
                 }
             }
         }
-        // Check if there is a surrouding trait impl that introduces this parameter
+        // Check if there is a surrounding trait impl that introduces this parameter
         if let Some(impl_did) = tcx.impl_of_method(did) {
             let generics: &'tcx ty::Generics = tcx.generics_of(impl_did);
 
@@ -228,6 +228,28 @@ impl<'tcx, 'def> ParamScope<'tcx, 'def> {
             }
         }
 
+        radium::TyParamOrigin::Direct
+    }
+
+    /// Determine the origin of a trait obligation.
+    /// `surrounding_reqs` are the requirements of a surrounding impl or decl.
+    fn determine_origin_of_trait_requirement(
+        did: DefId,
+        tcx: ty::TyCtxt<'tcx>,
+        surrounding_reqs: &Option<Vec<ty::TraitRef<'tcx>>>,
+        req: ty::TraitRef<'tcx>
+    ) -> radium::TyParamOrigin {
+        if let Some(surrounding_reqs) = surrounding_reqs {
+            let in_trait_decl = tcx.trait_of_item(did);
+
+            if surrounding_reqs.contains(&req) {
+                if in_trait_decl.is_some() {
+                    return radium::TyParamOrigin::SurroundingTrait;
+                } else {
+                    return radium::TyParamOrigin::SurroundingImpl;
+                }
+            }
+        }
         radium::TyParamOrigin::Direct
     }
 
@@ -314,15 +336,37 @@ impl<'tcx, 'def> ParamScope<'tcx, 'def> {
         res
     }
 
+    /// Add a `ParamEnv` of a given `DefId` to the scope to process trait obligations.
     pub fn add_param_env(&mut self,
-        current_trait_decl_did: Option<DefId>, 
+        did: DefId,
         env: &Environment<'tcx>, 
-        param_env: ty::ParamEnv<'tcx>,
         type_translator: &TypeTranslator<'def, 'tcx>,
         trait_registry: &TraitRegistry<'tcx, 'def>,
     ) 
         -> Result<(), TranslationError<'tcx>>
     {
+        let param_env: ty::ParamEnv<'tcx> = env.tcx().param_env(did);
+
+        // Are we declaring the scope of a trait?
+        let is_trait = env.tcx().is_trait(did);
+
+        // Determine whether we are declaring the scope of a trait method or trait impl method
+        let in_trait_decl = env.tcx().trait_of_item(did);
+        let in_trait_impl = env.trait_impl_of_method(did);
+
+        // if this has a surrounding scope, get the requirements declared on that, so that we can
+        // determine the origin of this requirement below
+        let surrounding_reqs =
+            if let Some(trait_did) = in_trait_decl {
+                let trait_param_env = env.tcx().param_env(trait_did);
+                Some(trait_registry::get_nontrivial_trait_requirements(env.tcx(), trait_param_env))
+            } else if let Some(impl_did) = in_trait_impl {
+                let impl_param_env = env.tcx().param_env(impl_did);
+                Some(trait_registry::get_nontrivial_trait_requirements(env.tcx(), impl_param_env))
+            } else {
+                None
+            };
+
         let clauses = param_env.caller_bounds();
         info!("Caller bounds: {:?}", clauses);
 
@@ -333,20 +377,28 @@ impl<'tcx, 'def> ParamScope<'tcx, 'def> {
         // TODO: add scope for referring to associated types in specs
 
         let requirements = trait_registry::get_nontrivial_trait_requirements(env.tcx(), param_env);
+
         for trait_ref in &requirements {
             // check if we are in the process of translating a trait decl
-
+            let is_self = trait_ref.args[0].as_type().unwrap().is_param(0);
             let mut is_used_in_self_trait = false;
-            if let Some(trait_decl_did) = current_trait_decl_did {
+            if let Some(trait_decl_did) = in_trait_decl {
                 // is this a reference to the trait we are currently declaring
                 let is_use_of_self_trait = trait_decl_did == trait_ref.def_id;
-                let is_self = trait_ref.args[0].as_type().unwrap().is_param(0);
 
                 if is_use_of_self_trait && is_self {
                     // this is the self assumption of the trait we are currently implementing
                     is_used_in_self_trait = true;
                 }
             }
+
+            // we are processing the Self requirement in a trait scope, so skip this
+            if is_trait && is_self {
+                continue;
+            }
+
+            let origin = Self::determine_origin_of_trait_requirement(did, env.tcx(), &surrounding_reqs, *trait_ref);
+            info!("Determined origin of requirement {trait_ref:?} as {origin:?}");
 
             // lookup the trait in the trait registry
             if let Some(trait_spec) = trait_registry.lookup_trait(trait_ref.def_id) {
@@ -368,15 +420,13 @@ impl<'tcx, 'def> ParamScope<'tcx, 'def> {
                     // trait associated types are fully generic for now, we make a second pass
                     // below
                     HashMap::new(),
+                    origin,
                 );
 
                 let key = (trait_ref.def_id, generate_args_inst_key(env.tcx(), trait_ref.args).unwrap());
                 self.trait_scope.used_traits.insert(key.clone(), trait_use);
                 self.trait_scope.ordered_assumptions.push(key);
             } else {
-                if is_used_in_self_trait {
-                    continue;
-                }
 
                 return Err(trait_registry::Error::UnregisteredTrait(trait_ref.def_id).into());
             }
@@ -587,8 +637,7 @@ impl<'tcx, 'def> TypeTranslationScope<'tcx, 'def> {
         info!("Entering procedure with ty_params {:?} and lifetimes {:?}", ty_params, lifetimes);
         let mut generics = ParamScope::new_from_generics(ty_params, Some((env.tcx(), did)));
 
-        let in_trait_decl = env.tcx().trait_of_item(did);
-        generics.add_param_env(in_trait_decl, env, param_env, type_translator, trait_registry)?;
+        generics.add_param_env(did, env, type_translator, trait_registry)?;
 
         Ok(Self {
             did,
