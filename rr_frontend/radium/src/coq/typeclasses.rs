@@ -16,5 +16,5 @@ use crate::coq::term;
 ///
 /// [`Instance`]: https://coq.inria.fr/doc/v8.20/refman/addendum/type-classes.html#coq:cmd.Instance
 #[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("Instance {}", _0)]
+#[display("Instance: {}", _0)]
 pub struct Instance(pub term::Type);

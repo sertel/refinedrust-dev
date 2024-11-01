@@ -245,9 +245,9 @@ pub struct VerboseFunctionSpecParser<'a, 'def, F, T> {
 #[derive(Default)]
 pub struct FunctionRequirements {
     /// additional late coq parameters
-    pub late_coq_params: Vec<coq::term::Binder>,
+    pub late_coq_params: Vec<coq::binder::Binder>,
     /// additional early coq parameters
-    pub early_coq_params: Vec<coq::term::Binder>,
+    pub early_coq_params: Vec<coq::binder::Binder>,
     /// proof information
     pub proof_info: ProofInfo,
 }
@@ -413,8 +413,11 @@ where
             },
             "context" => {
                 let context_item = RRCoqContextItem::parse(buffer, scope).map_err(str_err)?;
-                let param = coq::term::Binder::new(None, coq::term::Type::Literal(context_item.item))
-                    .set_implicit(true);
+                let param = coq::binder::Binder::new_generalized(
+                    coq::binder::Kind::MaxImplicit,
+                    None,
+                    coq::term::Type::Literal(context_item.item),
+                );
                 if context_item.at_end {
                     self.fn_requirements.late_coq_params.push(param);
                 } else {
@@ -535,7 +538,7 @@ where
 
         // push everything to the builder
         for x in new_ghost_vars {
-            builder.add_param(coq::term::Binder::new(Some(x), coq::term::Type::Gname)).unwrap();
+            builder.add_param(coq::binder::Binder::new(Some(x), coq::term::Type::Gname)).unwrap();
         }
 
         // assemble a string for the closure arg
@@ -584,7 +587,7 @@ where
                 // wrap the argument in a mutable reference
                 let post_name = "__γclos";
                 builder
-                    .add_param(coq::term::Binder::new(Some(post_name.to_owned()), coq::term::Type::Gname))
+                    .add_param(coq::binder::Binder::new(Some(post_name.to_owned()), coq::term::Type::Gname))
                     .unwrap();
 
                 let lft = meta.closure_lifetime.unwrap();

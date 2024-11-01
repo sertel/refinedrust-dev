@@ -49,7 +49,7 @@ impl<'a, T: ParamLookup> ParamLookup for TraitAttrScope<'a, T> {
 #[derive(Clone, Debug)]
 pub struct TraitAttrs {
     pub attrs: radium::TraitSpecAttrsDecl,
-    pub context_items: Vec<coq::term::Binder>,
+    pub context_items: Vec<coq::binder::Binder>,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -108,8 +108,11 @@ where
                 },
                 "context" => {
                     let context_item: RRCoqContextItem = buffer.parse(&self.scope).map_err(str_err)?;
-                    let param = coq::term::Binder::new(None, coq::term::Type::Literal(context_item.item))
-                        .set_implicit(true);
+                    let param = coq::binder::Binder::new_generalized(
+                        coq::binder::Kind::MaxImplicit,
+                        None,
+                        coq::term::Type::Literal(context_item.item),
+                    );
                     context_items.push(param);
                 },
                 "export_as" => (),

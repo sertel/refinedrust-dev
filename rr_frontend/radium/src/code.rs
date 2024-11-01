@@ -651,7 +651,7 @@ pub struct FunctionCode {
     basic_blocks: BTreeMap<usize, Stmt>,
 
     /// Coq parameters that the function is parameterized over
-    required_parameters: Vec<coq::term::Binder>,
+    required_parameters: Vec<coq::binder::Binder>,
 }
 
 fn make_map_string(sep: &str, els: &Vec<(String, String)>) -> String {
@@ -1289,12 +1289,12 @@ impl<'def> FunctionBuilder<'def> {
     }
 
     /// Add a Coq-level param that comes before the type parameters.
-    pub fn add_early_coq_param(&mut self, param: coq::term::Binder) {
+    pub fn add_early_coq_param(&mut self, param: coq::binder::Binder) {
         self.spec.early_coq_params.0.push(param);
     }
 
     /// Add a Coq-level param that comes after the type parameters.
-    pub fn add_late_coq_param(&mut self, param: coq::term::Binder) {
+    pub fn add_late_coq_param(&mut self, param: coq::binder::Binder) {
         self.spec.late_coq_params.0.push(param);
     }
 
@@ -1328,13 +1328,11 @@ impl<'def> FunctionBuilder<'def> {
             let spec_type = format!("{} {spec_params_param_name}", trait_use.trait_ref.spec_record);
 
             // add the spec params
-            self.spec.late_coq_params.0.push(
-                coq::term::Binder::new(
-                    Some(spec_params_param_name),
-                    coq::term::Type::Literal(spec_params_type_name),
-                )
-                .set_implicit(true),
-            );
+            self.spec.late_coq_params.0.push(coq::binder::Binder::new_generalized(
+                coq::binder::Kind::MaxImplicit,
+                Some(spec_params_param_name),
+                coq::term::Type::Literal(spec_params_type_name),
+            ));
 
             // add the attr params
             let all_args: Vec<_> = trait_use
@@ -1345,7 +1343,7 @@ impl<'def> FunctionBuilder<'def> {
                 .collect();
             let mut attr_param = format!("{} ", trait_use.trait_ref.spec_attrs_record);
             push_str_list!(attr_param, &all_args, " ");
-            self.spec.late_coq_params.0.push(coq::term::Binder::new(
+            self.spec.late_coq_params.0.push(coq::binder::Binder::new(
                 Some(spec_attrs_param_name),
                 coq::term::Type::Literal(attr_param),
             ));
@@ -1354,7 +1352,7 @@ impl<'def> FunctionBuilder<'def> {
             self.spec
                 .late_coq_params
                 .0
-                .push(coq::term::Binder::new(Some(spec_param_name), coq::term::Type::Literal(spec_type)));
+                .push(coq::binder::Binder::new(Some(spec_param_name), coq::term::Type::Literal(spec_type)));
 
             let spec_precond = trait_use.make_spec_param_precond();
             // this should be proved after typarams are instantiated
@@ -1378,17 +1376,17 @@ impl<'def> FunctionBuilder<'def> {
 
         // generate location parameters for other functions used by this one, as well as syntypes
         // These are parameters that the code gets
-        let mut parameters: Vec<coq::term::Binder> = self
+        let mut parameters: Vec<coq::binder::Binder> = self
             .other_functions
             .iter()
-            .map(|f_inst| (coq::term::Binder::new(Some(f_inst.loc_name.clone()), coq::term::Type::Loc)))
+            .map(|f_inst| (coq::binder::Binder::new(Some(f_inst.loc_name.clone()), coq::term::Type::Loc)))
             .collect();
 
         // generate location parameters for statics used by this function
         let mut statics_parameters = self
             .used_statics
             .iter()
-            .map(|s| coq::term::Binder::new(Some(s.loc_name.clone()), coq::term::Type::Loc))
+            .map(|s| coq::binder::Binder::new(Some(s.loc_name.clone()), coq::term::Type::Loc))
             .collect();
 
         parameters.append(&mut statics_parameters);
@@ -1399,7 +1397,7 @@ impl<'def> FunctionBuilder<'def> {
             .generics
             .get_ty_params()
             .iter()
-            .map(|names| coq::term::Binder::new(Some(names.syn_type.clone()), coq::term::Type::SynType))
+            .map(|names| coq::binder::Binder::new(Some(names.syn_type.clone()), coq::term::Type::SynType))
             .collect();
 
         parameters.append(&mut gen_st_parameters);

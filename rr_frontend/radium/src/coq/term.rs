@@ -8,13 +8,14 @@
 //!
 //! [terms]: https://coq.inria.fr/doc/v8.20/refman/language/core/basic.html#term-term
 
-use std::fmt::{self, Write};
+use std::fmt;
 
 use derive_more::Display;
 use indent_write::fmt::IndentWriter;
 use indent_write::indentable::Indentable;
 use itertools::Itertools;
 
+use crate::coq::binder;
 use crate::{display_list, make_indent, BASE_INDENT};
 
 /// A [term].
@@ -35,10 +36,10 @@ pub enum Gallina {
     RecordProj(Box<Gallina>, String),
 
     /// Universal quantifiers
-    All(BinderList, Box<Gallina>),
+    All(binder::BinderList, Box<Gallina>),
 
     /// Existential quantifiers
-    Exists(BinderList, Box<Gallina>),
+    Exists(binder::BinderList, Box<Gallina>),
 
     /// Infix operators
     Infix(String, Vec<Gallina>),
@@ -82,12 +83,14 @@ impl<T, U> App<T, U> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RecordBodyItem {
     pub name: String,
-    pub params: BinderList,
+    pub params: binder::BinderList,
     pub term: Gallina,
 }
 
 impl Display for RecordBodyItem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use fmt::Write;
+
         let mut writer = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
         write!(writer, "{} {} :=\n{};", self.name, self.params, self.term)
     }
@@ -100,6 +103,8 @@ pub struct RecordBody {
 
 impl Display for RecordBody {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use fmt::Write;
+
         write!(f, "{{|\n")?;
         let mut f2 = IndentWriter::new(BASE_INDENT, &mut *f);
         for it in &self.items {
@@ -111,6 +116,8 @@ impl Display for RecordBody {
 
 impl Display for Gallina {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use fmt::Write;
+
         match self {
             Self::Literal(lit) => {
                 let mut f2 = IndentWriter::new_skip_initial(BASE_INDENT, &mut *f);
@@ -240,127 +247,12 @@ pub enum Type {
     Prop,
 }
 
-/// A Coq pattern, e.g., "x" or "'(x, y)".
-pub type Pattern = String;
-
-/// A [binder].
-///
-/// [binder]: https://coq.inria.fr/doc/v8.20/refman/language/core/assumptions.html#grammar-token-binder
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("{}", self.format(true))]
-pub struct Binder {
-    name: Option<String>,
-    ty: Type,
-    is_implicit: bool,
-    depends_on_sigma: bool,
-}
-
-impl Binder {
-    #[must_use]
-    pub fn new(name: Option<String>, ty: Type) -> Self {
-        let depends_on_sigma = if let Type::Literal(lit) = &ty { lit.contains('Σ') } else { false };
-
-        Self {
-            name,
-            ty,
-            is_implicit: false,
-            depends_on_sigma,
-        }
-    }
-
-    #[must_use]
-    pub fn set_implicit(self, is_implicit: bool) -> Self {
-        Self {
-            is_implicit,
-            ..self
-        }
-    }
-
-    #[must_use]
-    pub fn set_name(self, name: String) -> Self {
-        Self {
-            name: Some(name),
-            ..self
-        }
-    }
-
-    #[must_use]
-    pub(crate) fn get_name(&self) -> String {
-        let Some(name) = &self.name else { return "_".to_owned() };
-        name.clone()
-    }
-
-    pub(crate) const fn get_name_ref(&self) -> &Option<String> {
-        &self.name
-    }
-
-    pub(crate) const fn get_type(&self) -> &Type {
-        &self.ty
-    }
-
-    pub(crate) const fn is_implicit(&self) -> bool {
-        self.is_implicit
-    }
-
-    pub(crate) const fn is_dependent_on_sigma(&self) -> bool {
-        self.depends_on_sigma
-    }
-
-    #[allow(clippy::collapsible_else_if)]
-    #[must_use]
-    fn format(&self, make_implicits: bool) -> String {
-        if !self.is_implicit {
-            return format!("({} : {})", self.get_name(), self.ty);
-        }
-
-        if make_implicits {
-            if let Some(name) = &self.name {
-                format!("`{{{} : !{}}}", name, self.ty)
-            } else {
-                format!("`{{!{}}}", self.ty)
-            }
-        } else {
-            if let Some(name) = &self.name {
-                format!("`({} : !{})", name, self.ty)
-            } else {
-                format!("`(!{})", self.ty)
-            }
-        }
-    }
-}
-
-#[derive(Clone, Eq, PartialEq, Debug, Display)]
-#[display("{}", display_list!(_0, " "))]
-pub struct BinderList(pub Vec<Binder>);
-
-impl BinderList {
-    #[must_use]
-    pub const fn new(params: Vec<Binder>) -> Self {
-        Self(params)
-    }
-
-    #[must_use]
-    pub const fn empty() -> Self {
-        Self(vec![])
-    }
-
-    pub fn append(&mut self, params: Vec<Binder>) {
-        self.0.extend(params);
-    }
-
-    /// Make using terms for this list of binders
-    #[must_use]
-    pub fn make_using_terms(&self) -> Vec<Gallina> {
-        self.0.iter().map(|x| Gallina::Literal(format!("{}", x.get_name()))).collect()
-    }
-}
-
 /* TODO */
 #[derive(Clone, Debug, Display, Eq, PartialEq)]
 #[display("{} {} : {}", name, params, ty)]
 pub struct RecordDeclItem {
     pub name: String,
-    pub params: BinderList,
+    pub params: binder::BinderList,
     pub ty: Type,
 }
 
@@ -368,7 +260,7 @@ pub struct RecordDeclItem {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Record {
     pub name: String,
-    pub params: BinderList,
+    pub params: binder::BinderList,
     pub ty: Type,
     pub constructor: Option<String>,
     pub body: Vec<RecordDeclItem>,
@@ -376,6 +268,8 @@ pub struct Record {
 
 impl Display for Record {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use fmt::Write;
+
         let constructor = self.constructor.clone().unwrap_or_default();
         write!(f, "Record {} {} : {} := {constructor} {{\n", self.name, self.params, self.ty)?;
         let mut f2 = IndentWriter::new(BASE_INDENT, &mut *f);

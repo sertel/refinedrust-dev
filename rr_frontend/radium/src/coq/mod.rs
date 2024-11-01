@@ -320,6 +320,7 @@
 //! [Rocq reference]: https://coq.inria.fr/doc/v8.20/refman/index.html
 //! [sections]: https://coq.inria.fr/doc/v8.20/refman/language/core/sections.html
 
+pub mod binder;
 pub mod command;
 pub mod eval;
 pub mod inductive;

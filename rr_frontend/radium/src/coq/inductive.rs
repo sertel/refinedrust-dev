@@ -11,7 +11,7 @@
 use derive_more::{Constructor, Display};
 use indent_write::indentable::Indentable;
 
-use crate::coq::term;
+use crate::coq::binder;
 use crate::{display_list, make_indent};
 
 /// An [Inductive] type.
@@ -25,7 +25,7 @@ use crate::{display_list, make_indent};
 )]
 pub struct Inductive {
     name: String,
-    parameters: term::BinderList,
+    parameters: binder::BinderList,
     variants: Vec<Variant>,
 }
 
@@ -40,12 +40,12 @@ impl Inductive {
 #[display("{} {}", name, display_list!(params, " "))]
 pub struct Variant {
     name: String,
-    params: Vec<term::Binder>,
+    params: Vec<binder::Binder>,
 }
 
 impl Variant {
     #[must_use]
-    pub fn new(name: String, params: Vec<term::Binder>) -> Self {
+    pub fn new(name: String, params: Vec<binder::Binder>) -> Self {
         Self { name, params }
     }
 }

@@ -472,13 +472,13 @@ impl LiteralTyParam {
     }
 
     #[must_use]
-    pub fn make_refinement_param(&self) -> coq::term::Binder {
-        coq::term::Binder::new(Some(self.refinement_type.clone()), coq::term::Type::Type)
+    pub fn make_refinement_param(&self) -> coq::binder::Binder {
+        coq::binder::Binder::new(Some(self.refinement_type.clone()), coq::term::Type::Type)
     }
 
     #[must_use]
-    pub fn make_syntype_param(&self) -> coq::term::Binder {
-        coq::term::Binder::new(Some(self.syn_type.clone()), coq::term::Type::SynType)
+    pub fn make_syntype_param(&self) -> coq::binder::Binder {
+        coq::binder::Binder::new(Some(self.syn_type.clone()), coq::term::Type::SynType)
     }
 }
 
@@ -738,10 +738,10 @@ pub struct InvariantSpec {
     /// the refinement type of this struct
     rfn_type: coq::term::Type,
     /// the binding pattern for the refinement of this type
-    rfn_pat: coq::term::Pattern,
+    rfn_pat: coq::binder::Pattern,
 
     /// existentials that are introduced in the invariant
-    existentials: Vec<coq::term::Binder>,
+    existentials: Vec<coq::binder::Binder>,
 
     /// an optional invariant as a separating conjunction,
     invariants: Vec<(IProp, InvariantMode)>,
@@ -749,11 +749,11 @@ pub struct InvariantSpec {
     ty_own_invariants: Vec<TyOwnSpec>,
 
     /// the specification of the abstracted refinement under a context where rfn_pat is bound
-    abstracted_refinement: Option<coq::term::Pattern>,
+    abstracted_refinement: Option<coq::binder::Pattern>,
 
     // TODO add stuff for non-atomic/atomic invariants
     /// name, type, implicit or not
-    coq_params: Vec<coq::term::Binder>,
+    coq_params: Vec<coq::binder::Binder>,
 }
 
 impl InvariantSpec {
@@ -763,12 +763,12 @@ impl InvariantSpec {
         flags: InvariantSpecFlags,
         shr_lft_binder: String,
         rfn_type: coq::term::Type,
-        rfn_pat: coq::term::Pattern,
-        existentials: Vec<coq::term::Binder>,
+        rfn_pat: coq::binder::Pattern,
+        existentials: Vec<coq::binder::Binder>,
         invariants: Vec<(IProp, InvariantMode)>,
         ty_own_invariants: Vec<TyOwnSpec>,
-        abstracted_refinement: Option<coq::term::Pattern>,
-        coq_params: Vec<coq::term::Binder>,
+        abstracted_refinement: Option<coq::binder::Pattern>,
+        coq_params: Vec<coq::binder::Binder>,
     ) -> Self {
         if flags == InvariantSpecFlags::Persistent {
             assert!(invariants.iter().all(|it| it.1 == InvariantMode::All) && ty_own_invariants.is_empty());
@@ -789,7 +789,7 @@ impl InvariantSpec {
     }
 
     /// Add the abstracted refinement, if it was not already provided.
-    pub fn provide_abstracted_refinement(&mut self, abstracted_refinement: coq::term::Pattern) {
+    pub fn provide_abstracted_refinement(&mut self, abstracted_refinement: coq::binder::Pattern) {
         if self.abstracted_refinement.is_some() {
             panic!("abstracted refinement for {} already provided", self.type_name);
         }
@@ -1299,7 +1299,7 @@ impl<'def> AbstractVariant<'def> {
     pub fn generate_coq_type_def(
         &self,
         ty_params: &[LiteralTyParam],
-        extra_context: &[coq::term::Binder],
+        extra_context: &[coq::binder::Binder],
     ) -> String {
         let mut out = String::with_capacity(200);
         let indent = "  ";
@@ -1348,7 +1348,7 @@ impl<'def> AbstractVariant<'def> {
 }
 
 fn format_extra_context_items<F>(
-    items: &[coq::term::Binder],
+    items: &[coq::binder::Binder],
     f: &mut F,
 ) -> Result<(Vec<String>, bool), fmt::Error>
 where
@@ -2434,8 +2434,8 @@ pub enum IProp {
     Disj(Vec<IProp>),
     Conj(Vec<IProp>),
     Wand(Box<IProp>, Box<IProp>),
-    Exists(Vec<coq::term::Binder>, Box<IProp>),
-    All(Vec<coq::term::Binder>, Box<IProp>),
+    Exists(Vec<coq::binder::Binder>, Box<IProp>),
+    All(Vec<coq::binder::Binder>, Box<IProp>),
 }
 
 fn fmt_with_op<T>(v: &[T], op: &str, f: &mut Formatter<'_>) -> Result<(), fmt::Error>
@@ -2449,7 +2449,7 @@ where
     write_list!(f, v, &format!(" {op} "), "({})")
 }
 
-fn fmt_binders(binders: &[coq::term::Binder], op: &str, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
+fn fmt_binders(binders: &[coq::binder::Binder], op: &str, f: &mut Formatter<'_>) -> Result<(), fmt::Error> {
     write!(f, "{} ", op)?;
     write_list!(f, binders, " ")
 }
@@ -2480,13 +2480,13 @@ impl Display for IProp {
 /// Representation of an Iris predicate
 #[derive(Clone, Debug)]
 pub struct IPropPredicate {
-    binders: Vec<coq::term::Binder>,
+    binders: Vec<coq::binder::Binder>,
     prop: IProp,
 }
 
 impl IPropPredicate {
     #[must_use]
-    pub fn new(binders: Vec<coq::term::Binder>, prop: IProp) -> Self {
+    pub fn new(binders: Vec<coq::binder::Binder>, prop: IProp) -> Self {
         Self { binders, prop }
     }
 }
@@ -2524,7 +2524,7 @@ impl<'def> InnerFunctionSpec<'def> {
     }
 
     #[must_use]
-    pub fn get_params(&self) -> Option<&[coq::term::Binder]> {
+    pub fn get_params(&self) -> Option<&[coq::binder::Binder]> {
         match self {
             Self::Lit(lit) => Some(&lit.params),
             Self::TraitDefault(_) => None,
@@ -2543,8 +2543,8 @@ pub struct FunctionSpec<T> {
     pub generics: GenericScope,
 
     /// Coq-level parameters the typing statement needs
-    pub early_coq_params: coq::term::BinderList,
-    pub late_coq_params: coq::term::BinderList,
+    pub early_coq_params: coq::binder::BinderList,
+    pub late_coq_params: coq::binder::BinderList,
 
     pub spec: T,
 }
@@ -2567,8 +2567,8 @@ impl<T> FunctionSpec<T> {
             spec_name,
             function_name,
             generics: GenericScope::empty(),
-            early_coq_params: coq::term::BinderList::empty(),
-            late_coq_params: coq::term::BinderList::empty(),
+            early_coq_params: coq::binder::BinderList::empty(),
+            late_coq_params: coq::binder::BinderList::empty(),
             spec,
         }
     }
@@ -2578,8 +2578,8 @@ impl<T> FunctionSpec<T> {
         spec_name: String,
         function_name: String,
         generics: GenericScope,
-        early_params: coq::term::BinderList,
-        late_params: coq::term::BinderList,
+        early_params: coq::binder::BinderList,
+        late_params: coq::binder::BinderList,
         spec: T,
     ) -> Self {
         Self {
@@ -2598,7 +2598,7 @@ impl<T> FunctionSpec<T> {
     }
 
     #[must_use]
-    pub fn get_all_coq_params(&self) -> coq::term::BinderList {
+    pub fn get_all_coq_params(&self) -> coq::binder::BinderList {
         // Important: early parameters should always be first, as they include trait specs.
         // Important: the type parameters should be introduced before late parameters to ensure they are in
         // scope.
@@ -2645,7 +2645,7 @@ impl<'def> Display for FunctionSpec<InnerFunctionSpec<'def>> {
 /// A function specification below generics.
 #[derive(Clone, Debug)]
 pub struct LiteralFunctionSpec<'def> {
-    pub params: Vec<coq::term::Binder>,
+    pub params: Vec<coq::binder::Binder>,
 
     /// external lifetime context
     pub elctx: Vec<ExtLftConstr>,
@@ -2657,7 +2657,7 @@ pub struct LiteralFunctionSpec<'def> {
     /// argument types including refinements
     pub args: Vec<TypeWithRef<'def>>,
     /// existential quantifiers for the postcondition
-    pub existentials: Vec<coq::term::Binder>,
+    pub existentials: Vec<coq::binder::Binder>,
     /// return type
     pub ret: TypeWithRef<'def>,
     /// postcondition as a separating conjunction
@@ -2696,9 +2696,9 @@ impl<'def> LiteralFunctionSpec<'def> {
         out
     }
 
-    fn uncurry_typed_binders<'a, F>(v: F) -> (coq::term::Pattern, coq::term::Type)
+    fn uncurry_typed_binders<'a, F>(v: F) -> (coq::binder::Pattern, coq::term::Type)
     where
-        F: IntoIterator<Item = &'a coq::term::Binder>,
+        F: IntoIterator<Item = &'a coq::binder::Binder>,
     {
         let mut v = v.into_iter().peekable();
 
@@ -2787,12 +2787,12 @@ impl<'def> LiteralFunctionSpec<'def> {
 
 #[derive(Debug)]
 pub struct LiteralFunctionSpecBuilder<'def> {
-    params: Vec<coq::term::Binder>,
+    params: Vec<coq::binder::Binder>,
     elctx: Vec<ExtLftConstr>,
     pre: IProp,
     late_pre: IProp,
     args: Vec<TypeWithRef<'def>>,
-    existential: Vec<coq::term::Binder>,
+    existential: Vec<coq::binder::Binder>,
     ret: Option<TypeWithRef<'def>>,
     post: IProp,
 
@@ -2826,7 +2826,7 @@ impl<'def> LiteralFunctionSpecBuilder<'def> {
     }
 
     /// Adds a (universally-quantified) parameter with a given Coq name for the spec.
-    pub fn add_param(&mut self, binder: coq::term::Binder) -> Result<(), String> {
+    pub fn add_param(&mut self, binder: coq::binder::Binder) -> Result<(), String> {
         self.ensure_coq_not_bound(binder.get_name_ref())?;
         self.push_coq_name(binder.get_name_ref());
         self.params.push(binder);
@@ -2843,7 +2843,7 @@ impl<'def> LiteralFunctionSpecBuilder<'def> {
 
             if param_name == name {
                 if *param.get_type() == coq::term::Type::Infer {
-                    *param = coq::term::Binder::new(Some(name.clone()), ty);
+                    *param = coq::binder::Binder::new(Some(name.clone()), ty);
                 }
                 return Ok(());
             }
@@ -2935,7 +2935,7 @@ impl<'def> LiteralFunctionSpecBuilder<'def> {
     }
 
     /// Add an existentially-quantified variable to the postcondition.
-    pub fn add_existential(&mut self, binder: coq::term::Binder) -> Result<(), String> {
+    pub fn add_existential(&mut self, binder: coq::binder::Binder) -> Result<(), String> {
         self.ensure_coq_not_bound(binder.get_name_ref())?;
         self.existential.push(binder);
         // TODO: if we add some kind of name analysis to postcondition, we need to handle the
@@ -3370,54 +3370,54 @@ impl GenericScope {
 
     /// Get the Coq parameters that need to be in scope for the type parameters of this function.
     #[must_use]
-    fn get_coq_ty_params(&self) -> coq::term::BinderList {
+    fn get_coq_ty_params(&self) -> coq::binder::BinderList {
         let mut ty_coq_params = Vec::new();
         for names in &self.tys {
             ty_coq_params
-                .push(coq::term::Binder::new(Some(names.refinement_type.clone()), coq::term::Type::Type));
+                .push(coq::binder::Binder::new(Some(names.refinement_type.clone()), coq::term::Type::Type));
         }
         for names in &self.tys {
             ty_coq_params
-                .push(coq::term::Binder::new(Some(names.syn_type.clone()), coq::term::Type::SynType));
+                .push(coq::binder::Binder::new(Some(names.syn_type.clone()), coq::term::Type::SynType));
         }
-        coq::term::BinderList(ty_coq_params)
+        coq::binder::BinderList(ty_coq_params)
     }
 
     /// Get the Coq parameters that need to be in scope for the type parameters of this function.
     #[must_use]
-    pub fn get_coq_ty_st_params(&self) -> coq::term::BinderList {
+    pub fn get_coq_ty_st_params(&self) -> coq::binder::BinderList {
         let mut ty_coq_params = Vec::new();
         for names in &self.tys {
             ty_coq_params.push(names.make_syntype_param());
         }
-        coq::term::BinderList::new(ty_coq_params)
+        coq::binder::BinderList::new(ty_coq_params)
     }
 
     /// Get the direct Coq parameters that need to be in scope for the type parameters of this function.
     #[must_use]
-    pub fn get_direct_coq_ty_st_params(&self) -> coq::term::BinderList {
+    pub fn get_direct_coq_ty_st_params(&self) -> coq::binder::BinderList {
         let mut ty_coq_params = Vec::new();
         for names in &self.tys {
             if names.origin == TyParamOrigin::Direct {
                 ty_coq_params.push(names.make_syntype_param());
             }
         }
-        coq::term::BinderList::new(ty_coq_params)
+        coq::binder::BinderList::new(ty_coq_params)
     }
 
     #[must_use]
-    pub fn get_direct_coq_ty_rt_params(&self) -> coq::term::BinderList {
+    pub fn get_direct_coq_ty_rt_params(&self) -> coq::binder::BinderList {
         let mut ty_coq_params = Vec::new();
         for names in &self.tys {
             if names.origin == TyParamOrigin::Direct {
                 ty_coq_params.push(names.make_refinement_param());
             }
         }
-        coq::term::BinderList::new(ty_coq_params)
+        coq::binder::BinderList::new(ty_coq_params)
     }
 
     #[must_use]
-    pub fn get_direct_coq_ty_params(&self) -> coq::term::BinderList {
+    pub fn get_direct_coq_ty_params(&self) -> coq::binder::BinderList {
         let mut rt_params = self.get_direct_coq_ty_rt_params();
         let st_params = self.get_direct_coq_ty_st_params();
         rt_params.append(st_params.0);
@@ -3455,10 +3455,10 @@ fn make_trait_instance<'def>(
     // write the param record decl
     let mut def_rts_params = Vec::new();
     for param in scope.tys.iter().chain(assoc_types) {
-        let rt_param = coq::term::Binder::new(Some(param.refinement_type.clone()), coq::term::Type::Type);
+        let rt_param = coq::binder::Binder::new(Some(param.refinement_type.clone()), coq::term::Type::Type);
         def_rts_params.push(rt_param);
     }
-    let def_rts_params = coq::term::BinderList::new(def_rts_params);
+    let def_rts_params = coq::binder::BinderList::new(def_rts_params);
     let def_rts_params_uses = def_rts_params.make_using_terms();
 
     let param_record_term = if spec.methods.is_empty() {
@@ -3515,19 +3515,19 @@ fn make_trait_instance<'def>(
     let mut def_params = Vec::new();
     // all rts
     for param in scope.tys.iter().chain(assoc_types) {
-        let rt_param = coq::term::Binder::new(Some(param.refinement_type.clone()), coq::term::Type::Type);
+        let rt_param = coq::binder::Binder::new(Some(param.refinement_type.clone()), coq::term::Type::Type);
         def_params.push(rt_param);
     }
     // all sts
     for param in scope.tys.iter().chain(assoc_types) {
-        let st_param = coq::term::Binder::new(Some(param.syn_type.clone()), coq::term::Type::SynType);
+        let st_param = coq::binder::Binder::new(Some(param.syn_type.clone()), coq::term::Type::SynType);
         def_params.push(st_param);
     }
     // then, the attrs. these also get the associated types
     if is_base_spec {
-        def_params.push(coq::term::Binder::new(Some("_ATTRS".to_owned()), attrs_type));
+        def_params.push(coq::binder::Binder::new(Some("_ATTRS".to_owned()), attrs_type));
     }
-    let def_params = coq::term::BinderList::new(def_params);
+    let def_params = coq::binder::BinderList::new(def_params);
 
     // for this, we assume that the semantic type parameters are all in scope
     let body_term = if spec.methods.is_empty() {
@@ -3625,7 +3625,7 @@ pub struct TraitSpecDecl<'def> {
     pub lit: LiteralTraitSpecRef<'def>,
 
     /// a list of extra things we assume in the Coq context
-    pub extra_coq_context: coq::term::BinderList,
+    pub extra_coq_context: coq::binder::BinderList,
 
     /// The generics this trait uses
     pub generics: GenericScope,
@@ -3667,7 +3667,7 @@ impl<'def> Display for TraitSpecDecl<'def> {
         }
         let spec_param_record = coq::term::Record {
             name: self.lit.spec_params_record.clone(),
-            params: coq::term::BinderList::empty(),
+            params: coq::binder::BinderList::empty(),
             ty: coq::term::Type::Type,
             constructor: Some(spec_param_record_constructor),
             body: record_items,
@@ -3681,7 +3681,7 @@ impl<'def> Display for TraitSpecDecl<'def> {
 
             let item = coq::term::RecordDeclItem {
                 name: record_item_name,
-                params: coq::term::BinderList::empty(),
+                params: coq::binder::BinderList::empty(),
                 ty: item_ty.to_owned(),
             };
             record_items.push(item);
@@ -3689,14 +3689,15 @@ impl<'def> Display for TraitSpecDecl<'def> {
         // this is parametric in the params and associated types
         let mut attr_params = Vec::new();
         for param in self.generics.get_ty_params().iter().chain(self.assoc_types.iter()) {
-            attr_params.push(
-                coq::term::Binder::new(Some(param.refinement_type.clone()), coq::term::Type::Type)
-                    .set_implicit(true),
-            );
+            attr_params.push(coq::binder::Binder::new_generalized(
+                coq::binder::Kind::MaxImplicit,
+                Some(param.refinement_type.clone()),
+                coq::term::Type::Type,
+            ));
         }
         let spec_attr_record = coq::term::Record {
             name: self.lit.spec_attrs_record.clone(),
-            params: coq::term::BinderList::new(attr_params),
+            params: coq::binder::BinderList::new(attr_params),
             ty: coq::term::Type::Type,
             constructor: Some(spec_attrs_record_constructor.clone()),
             body: record_items,
@@ -3737,16 +3738,14 @@ impl<'def> Display for TraitSpecDecl<'def> {
             };
             record_items.push(item);
         }
-        let spec_params = vec![
-            coq::term::Binder::new(
-                Some("_P".to_owned()),
-                coq::term::Type::Literal(self.lit.spec_params_record.clone()),
-            )
-            .set_implicit(true),
-        ];
+        let spec_params = vec![coq::binder::Binder::new_generalized(
+            coq::binder::Kind::MaxImplicit,
+            Some("_P".to_owned()),
+            coq::term::Type::Literal(self.lit.spec_params_record.clone()),
+        )];
         let spec_record = coq::term::Record {
             name: self.lit.spec_record.clone(),
-            params: coq::term::BinderList::new(spec_params),
+            params: coq::binder::BinderList::new(spec_params),
             ty: coq::term::Type::Type,
             constructor: Some(spec_record_constructor),
             body: record_items,
@@ -3764,22 +3763,22 @@ impl<'def> Display for TraitSpecDecl<'def> {
         let spec_param_type2 = format!("{} _P2", self.lit.spec_record);
         let spec_incl_params = vec![
             // the two spec params
-            coq::term::Binder::new(
+            coq::binder::Binder::new_generalized(
+                coq::binder::Kind::MaxImplicit,
                 Some("_P1".to_owned()),
                 coq::term::Type::Literal(self.lit.spec_params_record.clone()),
-            )
-            .set_implicit(true),
-            coq::term::Binder::new(
+            ),
+            coq::binder::Binder::new_generalized(
+                coq::binder::Kind::MaxImplicit,
                 Some("_P2".to_owned()),
                 coq::term::Type::Literal(self.lit.spec_params_record.clone()),
-            )
-            .set_implicit(true),
+            ),
             // the two actual specs
-            coq::term::Binder::new(
+            coq::binder::Binder::new(
                 Some(spec_param_name1.clone()),
                 coq::term::Type::Literal(spec_param_type1),
             ),
-            coq::term::Binder::new(
+            coq::binder::Binder::new(
                 Some(spec_param_name2.clone()),
                 coq::term::Type::Literal(spec_param_type2),
             ),
@@ -3816,7 +3815,7 @@ impl<'def> Display for TraitSpecDecl<'def> {
 
         let spec_incl_def = coq::command::Definition {
             name: spec_incl_name,
-            params: coq::term::BinderList::new(spec_incl_params),
+            params: coq::binder::BinderList::new(spec_incl_params),
             ty: Some(coq::term::Type::Prop),
             body,
         };
@@ -3916,10 +3915,11 @@ impl<'def> TraitImplSpec<'def> {
 
         let mut def_rts_params = Vec::new();
         for param in &self.trait_ref.generics.tys {
-            let rt_param = coq::term::Binder::new(Some(param.refinement_type.clone()), coq::term::Type::Type);
+            let rt_param =
+                coq::binder::Binder::new(Some(param.refinement_type.clone()), coq::term::Type::Type);
             def_rts_params.push(rt_param);
         }
-        let def_rts_params = coq::term::BinderList::new(def_rts_params);
+        let def_rts_params = coq::binder::BinderList::new(def_rts_params);
         let def_rts_params_uses = def_rts_params.make_using_terms();
 
         // write the attr record decl
@@ -3938,7 +3938,7 @@ impl<'def> TraitImplSpec<'def> {
 
                 let item = coq::term::RecordBodyItem {
                     name: record_item_name,
-                    params: coq::term::BinderList::empty(),
+                    params: coq::binder::BinderList::empty(),
                     term: inst.to_owned(),
                 };
                 components.push(item);

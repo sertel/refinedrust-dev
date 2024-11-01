@@ -14,7 +14,7 @@ use derive_more::Display;
 use from_variants::FromVariants;
 use indent_write::indentable::Indentable;
 
-use crate::coq::{eval, inductive, module, syntax, term, typeclasses, Attribute, Document, Sentence};
+use crate::coq::{binder, eval, inductive, module, syntax, term, typeclasses, Attribute, Document, Sentence};
 use crate::make_indent;
 
 /// A [command], with optional attributes.
@@ -176,22 +176,23 @@ impl From<QueryCommand> for Sentence {
 /// A Context declaration.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContextDecl {
-    pub items: term::BinderList,
+    pub items: binder::BinderList,
 }
 
 impl ContextDecl {
     #[must_use]
-    pub const fn new(items: term::BinderList) -> Self {
+    pub const fn new(items: binder::BinderList) -> Self {
         Self { items }
     }
 
     #[must_use]
     pub fn refinedrust() -> Self {
         Self {
-            items: term::BinderList::new(vec![
-                term::Binder::new(Some("RRGS".to_owned()), term::Type::Literal("refinedrustGS Σ".to_owned()))
-                    .set_implicit(true),
-            ]),
+            items: binder::BinderList::new(vec![binder::Binder::new_generalized(
+                binder::Kind::MaxImplicit,
+                Some("RRGS".to_owned()),
+                term::Type::Literal("refinedrustGS Σ".to_owned()),
+            )]),
         }
     }
 }
@@ -206,7 +207,7 @@ impl Display for ContextDecl {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Definition {
     pub name: String,
-    pub params: term::BinderList,
+    pub params: binder::BinderList,
     pub ty: Option<term::Type>,
     pub body: term::Gallina,
 }

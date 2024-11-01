@@ -39,7 +39,7 @@ pub trait InvariantSpecParser {
 /// Parse a binder pattern with an optional Coq type annotation, e.g.
 /// `"(x, y)" : "(Z * Z)%type"`
 struct RfnPattern {
-    rfn_pat: coq::term::Pattern,
+    rfn_pat: coq::binder::Pattern,
     rfn_type: Option<coq::term::Type>,
 }
 
@@ -199,12 +199,12 @@ impl<'b, T: ParamLookup> InvariantSpecParser for VerboseInvariantSpecParser<'b, 
         let mut rfn_pat = "placeholder_pat".to_owned();
         let mut rfn_type = coq::term::Type::Infer;
 
-        let mut existentials: Vec<coq::term::Binder> = Vec::new();
+        let mut existentials: Vec<coq::binder::Binder> = Vec::new();
 
         // use Plain as the default
         let mut inv_flags = specs::InvariantSpecFlags::Plain;
 
-        let mut params: Vec<coq::term::Binder> = Vec::new();
+        let mut params: Vec<coq::binder::Binder> = Vec::new();
 
         for &it in attrs {
             let path_segs = &it.path.segments;
@@ -270,9 +270,11 @@ impl<'b, T: ParamLookup> InvariantSpecParser for VerboseInvariantSpecParser<'b, 
                 "context" => {
                     let param = RRCoqContextItem::parse(&buffer, self.scope).map_err(str_err)?;
 
-                    params.push(
-                        coq::term::Binder::new(None, coq::term::Type::Literal(param.item)).set_implicit(true),
-                    );
+                    params.push(coq::binder::Binder::new_generalized(
+                        coq::binder::Kind::MaxImplicit,
+                        None,
+                        coq::term::Type::Literal(param.item),
+                    ));
                 },
                 _ => {
                     //skip, this may be part of an enum spec

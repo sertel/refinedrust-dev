@@ -23,7 +23,7 @@ pub struct CrateAttrs {
     pub prefix: Option<String>,
     pub includes: Vec<String>,
     pub package: Option<String>,
-    pub context_params: Vec<coq::term::Binder>,
+    pub context_params: Vec<coq::binder::Binder>,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -77,9 +77,11 @@ impl CrateAttrParser for VerboseCrateAttrParser {
                 },
                 "context" => {
                     let param: parse_utils::RRGlobalCoqContextItem = buffer.parse(&()).map_err(str_err)?;
-                    context_params.push(
-                        coq::term::Binder::new(None, coq::term::Type::Literal(param.item)).set_implicit(true),
-                    );
+                    context_params.push(coq::binder::Binder::new_generalized(
+                        coq::binder::Kind::MaxImplicit,
+                        None,
+                        coq::term::Type::Literal(param.item),
+                    ));
                 },
                 _ => {
                     return Err(format!("unknown attribute for crate specification: {:?}", args));
