@@ -5,7 +5,7 @@
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
 use attribute_parse::parse;
-use radium::{coq, specs};
+use radium::coq;
 use rr_rustc_interface::ast::ast::AttrItem;
 use rr_rustc_interface::hir::def_id::LocalDefId;
 
@@ -24,9 +24,9 @@ pub trait ModuleAttrParser {
 
 #[derive(Clone, Debug)]
 pub struct ModuleAttrs {
-    pub exports: Vec<coq::Export>,
+    pub exports: Vec<coq::module::Export>,
     pub includes: Vec<String>,
-    pub context_params: Vec<coq::Param>,
+    pub context_params: Vec<coq::binder::Binder>,
 }
 
 #[allow(clippy::module_name_repetitions)]
@@ -44,7 +44,7 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
         _did: LocalDefId,
         attrs: &'a [&'a AttrItem],
     ) -> Result<ModuleAttrs, String> {
-        let mut exports: Vec<coq::Export> = Vec::new();
+        let mut exports: Vec<coq::module::Export> = Vec::new();
         let mut includes: Vec<String> = Vec::new();
         let mut context_params = Vec::new();
 
@@ -59,8 +59,8 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
             let buffer = parse::Buffer::new(&it.args.inner_tokens());
             match seg.ident.name.as_str() {
                 "import" => {
-                    let path: parse_utils::CoqModule = buffer.parse(&()).map_err(str_err)?;
-                    exports.push(coq::Export::new(path.into()));
+                    let path: parse_utils::CoqExportModule = buffer.parse(&()).map_err(str_err)?;
+                    exports.push(path.into());
                 },
                 "include" => {
                     let name: parse::LitStr = buffer.parse(&()).map_err(str_err)?;
@@ -68,10 +68,10 @@ impl ModuleAttrParser for VerboseModuleAttrParser {
                 },
                 "context" => {
                     let param: parse_utils::RRGlobalCoqContextItem = buffer.parse(&()).map_err(str_err)?;
-                    context_params.push(coq::Param::new(
-                        coq::Name::Unnamed,
-                        coq::Type::Literal(param.item),
-                        true,
+                    context_params.push(coq::binder::Binder::new_generalized(
+                        coq::binder::Kind::MaxImplicit,
+                        None,
+                        coq::term::Type::Literal(param.item),
                     ));
                 },
                 _ => {

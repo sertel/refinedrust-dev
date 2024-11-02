@@ -327,7 +327,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
         let base_instance_spec = radium::TraitInstanceSpec::new(methods);
         let decl = radium::TraitSpecDecl::new(
             lit_trait_spec_ref,
-            radium::coq::ParamList::new(trait_spec.context_items),
+            coq::binder::BinderList::new(trait_spec.context_items),
             param_scope.into(),
             assoc_types,
             base_instance_spec,
@@ -466,8 +466,7 @@ impl<'tcx, 'def> TraitRegistry<'tcx, 'def> {
             for ty in &all_impl_args {
                 args.push(format!("{}", ty.get_rfn_type()));
             }
-            let attr_term =
-                format!("{}", radium::coq::AppTerm::new(impl_spec.spec_attrs_record.clone(), args));
+            let attr_term = format!("{}", coq::term::App::new(impl_spec.spec_attrs_record.clone(), args));
 
             radium::SpecializedTraitSpec::new_with_params(
                 impl_spec.spec_record.clone(),

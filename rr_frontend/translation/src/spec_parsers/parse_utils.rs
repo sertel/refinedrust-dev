@@ -4,13 +4,13 @@
 // If a copy of the BSD-3-clause license was not distributed with this
 // file, You can obtain one at https://opensource.org/license/bsd-3-clause/.
 
+/// This provides some general utilities for RefinedRust-specific attribute parsing.
 use std::collections::{HashMap, HashSet};
 
 use attribute_parse::{parse, MToken};
 use lazy_static::lazy_static;
 use log::info;
 use parse::{Parse, Peek};
-/// This provides some general utilities for RefinedRust-specific attribute parsing.
 use radium::{coq, specs};
 use regex::{self, Captures, Regex};
 
@@ -132,13 +132,13 @@ impl<T: ParamLookup> parse::Parse<T> for IProp {
 
 /// Parse a Coq type.
 pub struct RRCoqType {
-    pub ty: coq::Type,
+    pub ty: coq::term::Type,
 }
 impl<T: ParamLookup> parse::Parse<T> for RRCoqType {
     fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let ty: parse::LitStr = input.parse(meta)?;
         let (ty, _) = process_coq_literal(&ty.value(), meta);
-        let ty = coq::Type::Literal(ty);
+        let ty = coq::term::Type::Literal(ty);
         Ok(Self { ty })
     }
 }
@@ -148,26 +148,26 @@ impl<T: ParamLookup> parse::Parse<T> for RRCoqType {
 /// `"y"`,
 /// `z`,
 /// `w : "(Z * Z)%type"`
-#[derive(Debug)]
-pub struct RRParam {
-    pub name: coq::Name,
-    pub ty: coq::Type,
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub struct RRParam(coq::binder::Binder);
+
+impl From<RRParam> for coq::binder::Binder {
+    fn from(param: RRParam) -> Self {
+        param.0
+    }
 }
 
 impl<T: ParamLookup> parse::Parse<T> for RRParam {
     fn parse(input: parse::Stream, meta: &T) -> parse::Result<Self> {
         let name: IdentOrTerm = input.parse(meta)?;
-        let name = coq::Name::Named(name.to_string());
+        let name = name.to_string();
 
         if parse::Colon::peek(input) {
             input.parse::<_, MToken![:]>(meta)?;
             let ty: RRCoqType = input.parse(meta)?;
-            Ok(Self { name, ty: ty.ty })
+            Ok(Self(coq::binder::Binder::new(Some(name), ty.ty)))
         } else {
-            Ok(Self {
-                name,
-                ty: coq::Type::Infer,
-            })
+            Ok(Self(coq::binder::Binder::new(Some(name), coq::term::Type::Infer)))
         }
     }
 }
@@ -188,16 +188,16 @@ impl<T: ParamLookup> parse::Parse<T> for RRParams {
     }
 }
 
-pub struct CoqModule(coq::Module);
+pub struct CoqExportModule(coq::module::Export);
 
-impl From<CoqModule> for coq::Module {
-    fn from(path: CoqModule) -> Self {
+impl From<CoqExportModule> for coq::module::Export {
+    fn from(path: CoqExportModule) -> Self {
         path.0
     }
 }
 
 /// Parse a `CoqModule`.
-impl<U> parse::Parse<U> for CoqModule {
+impl<U> parse::Parse<U> for CoqExportModule {
     fn parse(input: parse::Stream, meta: &U) -> parse::Result<Self> {
         let path_or_module: parse::LitStr = input.parse(meta)?;
         let path_or_module = path_or_module.value();
@@ -207,9 +207,9 @@ impl<U> parse::Parse<U> for CoqModule {
             let module: parse::LitStr = input.parse(meta)?;
             let module = module.value();
 
-            Ok(Self(coq::Module::new_with_path(&module, coq::Path::new(&path_or_module))))
+            Ok(Self(coq::module::Export::new(vec![module]).from(vec![path_or_module])))
         } else {
-            Ok(Self(coq::Module::new(&path_or_module)))
+            Ok(Self(coq::module::Export::new(vec![path_or_module])))
         }
     }
 }

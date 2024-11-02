@@ -265,7 +265,7 @@ pub struct ShimRegistry<'a> {
     adt_shims: Vec<AdtShim<'a>>,
 
     /// extra exports
-    exports: Vec<coq::Export>,
+    exports: Vec<coq::module::Export>,
 
     /// trait shims
     trait_shims: Vec<TraitShim<'a>>,
@@ -274,7 +274,7 @@ pub struct ShimRegistry<'a> {
     trait_impl_shims: Vec<TraitImplShim>,
 
     /// extra module dependencies
-    dependencies: Vec<coq::Path>,
+    dependencies: Vec<coq::module::DirPath>,
 }
 
 impl<'a> ShimRegistry<'a> {
@@ -354,8 +354,7 @@ impl<'a> ShimRegistry<'a> {
                     .as_str()
                     .ok_or_else(|| "Expected string for \"refinedrust_name\" attribute".to_owned())?;
 
-                let module = coq::Module::new_with_path(module, coq::Path::new(path));
-                self.exports.push(coq::Export::new(module));
+                self.exports.push(coq::module::Export::new(vec![module]).from(vec![path]));
 
                 let dependencies = obj
                     .get("module_dependencies")
@@ -368,7 +367,7 @@ impl<'a> ShimRegistry<'a> {
                         "Expected string for element of \"module_dependencies\" array".to_owned()
                     })?;
 
-                    self.dependencies.push(coq::Path::new(path));
+                    self.dependencies.push(coq::module::DirPath::from(vec![path]));
                 }
 
                 obj.get("items")
@@ -473,7 +472,7 @@ impl<'a> ShimRegistry<'a> {
         &self.adt_shims
     }
 
-    pub fn get_extra_exports(&self) -> &[coq::Export] {
+    pub fn get_extra_exports(&self) -> &[coq::module::Export] {
         &self.exports
     }
 
@@ -485,7 +484,7 @@ impl<'a> ShimRegistry<'a> {
         &self.trait_impl_shims
     }
 
-    pub fn get_extra_dependencies(&self) -> &[coq::Path] {
+    pub fn get_extra_dependencies(&self) -> &[coq::module::DirPath] {
         &self.dependencies
     }
 }
@@ -496,7 +495,7 @@ pub fn write_shims<'a>(
     load_path: &str,
     load_module: &str,
     name: &str,
-    module_dependencies: &[coq::Path],
+    module_dependencies: &[coq::module::DirPath],
     adt_shims: Vec<AdtShim<'a>>,
     function_shims: Vec<FunctionShim<'a>>,
     trait_method_shims: Vec<TraitMethodImplShim>,

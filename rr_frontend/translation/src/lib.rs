@@ -86,10 +86,10 @@ pub struct VerificationCtxt<'tcx, 'rcx> {
     fn_arena: &'rcx Arena<radium::FunctionSpec<radium::InnerFunctionSpec<'rcx>>>,
 
     /// the second component determines whether to include it in the code file as well
-    extra_exports: HashSet<(coq::Export, bool)>,
+    extra_exports: HashSet<(coq::module::Export, bool)>,
 
     /// extra Coq module dependencies (for generated dune files)
-    extra_dependencies: HashSet<coq::Path>,
+    extra_dependencies: HashSet<coq::module::DirPath>,
 
     coq_path_prefix: String,
     dune_package: Option<String>,
@@ -399,7 +399,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             }
         }
 
-        let mut module_dependencies: Vec<coq::Path> =
+        let mut module_dependencies: Vec<coq::module::DirPath> =
             self.extra_exports.iter().filter_map(|(export, _)| export.get_path()).collect();
 
         module_dependencies.extend(self.extra_dependencies.iter().cloned());
@@ -425,25 +425,22 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
     /// Write specifications of a verification unit.
     fn write_specifications(&self, spec_path: &Path, code_path: &Path, stem: &str) {
         let common_imports = vec![
-            coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
-            coq::Import::new(coq::Module::new_with_path("notation", coq::Path::new("caesium"))),
-            coq::Import::new(coq::Module::new_with_path("typing", coq::Path::new("refinedrust"))),
-            coq::Import::new(coq::Module::new_with_path("shims", coq::Path::new("refinedrust"))),
+            coq::module::Import::new(vec!["lang", "notation"]).from(vec!["caesium"]),
+            coq::module::Import::new(vec!["typing", "shims"]).from(vec!["refinedrust"]),
         ];
 
         let mut spec_file = io::BufWriter::new(File::create(spec_path).unwrap());
         let mut code_file = io::BufWriter::new(File::create(code_path).unwrap());
 
         {
-            let mut spec_exports = vec![coq::Export::new(coq::Module::new_with_path(
-                &format!("generated_code_{stem}"),
-                coq::Path::new_from_segments(&[&self.coq_path_prefix, &stem]),
-            ))];
-
+            let mut spec_exports = vec![
+                coq::module::Export::new(vec![format!("generated_code_{stem}")])
+                    .from(vec![&self.coq_path_prefix, stem]),
+            ];
             spec_exports.append(&mut self.extra_exports.iter().map(|(export, _)| export.clone()).collect());
 
-            write!(spec_file, "{}", coq::ImportList(&common_imports)).unwrap();
-            write!(spec_file, "{}", coq::ExportList(&spec_exports)).unwrap();
+            write!(spec_file, "{}", coq::module::ImportList(&common_imports)).unwrap();
+            write!(spec_file, "{}", coq::module::ExportList(&spec_exports)).unwrap();
         }
 
         {
@@ -454,8 +451,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 .map(|(export, _)| export.clone())
                 .collect();
 
-            write!(code_file, "{}", coq::ImportList(&common_imports)).unwrap();
-            write!(code_file, "{}", coq::ExportList(&code_exports)).unwrap();
+            write!(code_file, "{}", coq::module::ImportList(&common_imports)).unwrap();
+            write!(code_file, "{}", coq::module::ExportList(&code_exports)).unwrap();
         }
 
         // write structs and enums
@@ -513,7 +510,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             writeln!(spec_file, "Section attrs.").unwrap();
             writeln!(spec_file, "Context `{{RRGS : !refinedrustGS Σ}}.").unwrap();
             for spec in self.trait_impls.values() {
-                writeln!(spec_file, "{}\n", spec.generate_attr_decl()).unwrap();
+                writeln!(spec_file, "{}.\n", spec.generate_attr_decl()).unwrap();
             }
             writeln!(spec_file, "End attrs.\n").unwrap();
         }
@@ -602,10 +599,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         F: Fn(&str) -> PathBuf,
     {
         let common_imports = vec![
-            coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
-            coq::Import::new(coq::Module::new_with_path("notation", coq::Path::new("caesium"))),
-            coq::Import::new(coq::Module::new_with_path("typing", coq::Path::new("refinedrust"))),
-            coq::Import::new(coq::Module::new_with_path("shims", coq::Path::new("refinedrust"))),
+            coq::module::Import::new(vec!["lang", "notation"]).from(vec!["caesium"]),
+            coq::module::Import::new(vec!["typing", "shims"]).from(vec!["refinedrust"]),
         ];
 
         // write templates
@@ -620,20 +615,17 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
                 let mut imports = common_imports.clone();
 
                 imports.append(&mut vec![
-                    coq::Import::new(coq::Module::new_with_path(
+                    coq::module::Import::new(vec![
                         &format!("generated_code_{stem}"),
-                        coq::Path::new_from_segments(&[&self.coq_path_prefix.clone(), &stem]),
-                    )),
-                    coq::Import::new(coq::Module::new_with_path(
                         &format!("generated_specs_{stem}"),
-                        coq::Path::new_from_segments(&[&self.coq_path_prefix.clone(), &stem]),
-                    )),
+                    ])
+                    .from(vec![&self.coq_path_prefix, stem]),
                 ]);
 
                 let exports: Vec<_> = self.extra_exports.iter().map(|(export, _)| export.clone()).collect();
 
-                write!(template_file, "{}", coq::ImportList(&imports)).unwrap();
-                write!(template_file, "{}", coq::ExportList(&exports)).unwrap();
+                write!(template_file, "{}", coq::module::ImportList(&imports)).unwrap();
+                write!(template_file, "{}", coq::module::ExportList(&exports)).unwrap();
                 write!(template_file, "\n").unwrap();
 
                 write!(template_file, "Set Default Proof Using \"Type\".\n\n").unwrap();
@@ -669,10 +661,8 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         F: Fn(&str) -> PathBuf,
     {
         let common_imports = vec![
-            coq::Import::new(coq::Module::new_with_path("lang", coq::Path::new("caesium"))),
-            coq::Import::new(coq::Module::new_with_path("notation", coq::Path::new("caesium"))),
-            coq::Import::new(coq::Module::new_with_path("typing", coq::Path::new("refinedrust"))),
-            coq::Import::new(coq::Module::new_with_path("shims", coq::Path::new("refinedrust"))),
+            coq::module::Import::new(vec!["lang", "notation"]).from(vec!["caesium"]),
+            coq::module::Import::new(vec!["typing", "shims"]).from(vec!["refinedrust"]),
         ];
 
         // write proofs
@@ -696,21 +686,15 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
             let mut imports = common_imports.clone();
 
             imports.append(&mut vec![
-                coq::Import::new(coq::Module::new_with_path(
+                coq::module::Import::new(vec![
                     &format!("generated_code_{stem}"),
-                    coq::Path::new_from_segments(&[&self.coq_path_prefix, &stem, "generated"]),
-                )),
-                coq::Import::new(coq::Module::new_with_path(
                     &format!("generated_specs_{stem}"),
-                    coq::Path::new_from_segments(&[&self.coq_path_prefix, &stem, "generated"]),
-                )),
-                coq::Import::new(coq::Module::new_with_path(
                     &format!("generated_template_{}", fun.name()),
-                    coq::Path::new_from_segments(&[&self.coq_path_prefix, &stem, "generated"]),
-                )),
+                ])
+                .from(vec![&self.coq_path_prefix, stem, "generated"]),
             ]);
 
-            writeln!(proof_file, "{}", coq::ImportList(&imports)).unwrap();
+            writeln!(proof_file, "{}", coq::module::ImportList(&imports)).unwrap();
 
             // Note: we do not export the self.extra_exports explicitly, as we rely on them
             // being re-exported from the template -- we want to be stable under changes of the
@@ -838,7 +822,7 @@ impl<'tcx, 'rcx> VerificationCtxt<'tcx, 'rcx> {
         // write dune meta file
         let mut dune_file = io::BufWriter::new(File::create(generated_dune_path.as_path()).unwrap());
 
-        let mut extra_theories: HashSet<coq::Path> =
+        let mut extra_theories: HashSet<coq::module::DirPath> =
             self.extra_exports.iter().filter_map(|(export, _)| export.get_path()).collect();
 
         extra_theories.extend(self.extra_dependencies.iter().cloned());
@@ -961,7 +945,7 @@ fn register_shims<'tcx>(vcx: &mut VerificationCtxt<'tcx, '_>) -> Result<(), base
             rust_name: None,
             type_term: shim.sem_type.clone(),
             syn_type: radium::SynType::Literal(shim.syn_type.clone()),
-            refinement_type: coq::Type::Literal(shim.refinement_type.clone()),
+            refinement_type: coq::term::Type::Literal(shim.refinement_type.clone()),
         };
 
         if let Err(e) = vcx.type_translator.register_adt_shim(did, &lit) {
@@ -1546,7 +1530,7 @@ where
     let module_attrs = get_module_attributes(env)?;
 
     // process exports
-    let mut exports: HashSet<coq::Export> = HashSet::new();
+    let mut exports: HashSet<coq::module::Export> = HashSet::new();
 
     exports.extend(crate_spec.exports);
 

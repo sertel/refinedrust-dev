@@ -245,9 +245,9 @@ pub struct VerboseFunctionSpecParser<'a, 'def, F, T> {
 #[derive(Default)]
 pub struct FunctionRequirements {
     /// additional late coq parameters
-    pub late_coq_params: Vec<coq::Param>,
+    pub late_coq_params: Vec<coq::binder::Binder>,
     /// additional early coq parameters
-    pub early_coq_params: Vec<coq::Param>,
+    pub early_coq_params: Vec<coq::binder::Binder>,
     /// proof information
     pub proof_info: ProofInfo,
 }
@@ -296,7 +296,7 @@ where
         &mut self,
         lit: &LiteralTypeWithRef,
         ty: &specs::Type<'def>,
-    ) -> (specs::TypeWithRef<'def>, Option<coq::Type>) {
+    ) -> (specs::TypeWithRef<'def>, Option<coq::term::Type>) {
         if let Some(lit_ty) = &lit.ty {
             // literal type given, we use this literal type as the RR semantic type
             // TODO: get CoqType for refinement. maybe have it as an annotation? the Infer is currently a
@@ -305,7 +305,7 @@ where
             let lit_ty = specs::LiteralType {
                 rust_name: None,
                 type_term: lit_ty.to_string(),
-                refinement_type: coq::Type::Infer,
+                refinement_type: coq::term::Type::Infer,
                 syn_type: ty.into(),
             };
             let lit_ref = (self.make_literal)(lit_ty);
@@ -340,13 +340,13 @@ where
         match name {
             "params" => {
                 let params = RRParams::parse(buffer, scope).map_err(str_err)?;
-                for p in params.params {
-                    builder.add_param(p.name, p.ty)?;
+                for param in params.params {
+                    builder.add_param(param.into())?;
                 }
             },
             "param" => {
                 let param = RRParam::parse(buffer, scope).map_err(str_err)?;
-                builder.add_param(param.name, param.ty)?;
+                builder.add_param(param.into())?;
             },
             "args" => {
                 let args = RRArgs::parse(buffer, scope).map_err(str_err)?;
@@ -364,7 +364,7 @@ where
                         // potentially add a typing hint to the refinement
                         if let IdentOrTerm::Ident(i) = arg.rfn {
                             info!("Trying to add a typing hint for {}", i);
-                            builder.add_param_type_annot(&coq::Name::Named(i.clone()), cty)?;
+                            builder.add_param_type_annot(&i, cty)?;
                         }
                     }
                 }
@@ -403,7 +403,7 @@ where
             "exists" => {
                 let params = RRParams::parse(buffer, scope).map_err(str_err)?;
                 for param in params.params {
-                    builder.add_existential(param.name, param.ty)?;
+                    builder.add_existential(param.into())?;
                 }
             },
             "tactics" => {
@@ -413,7 +413,11 @@ where
             },
             "context" => {
                 let context_item = RRCoqContextItem::parse(buffer, scope).map_err(str_err)?;
-                let param = coq::Param::new(coq::Name::Unnamed, coq::Type::Literal(context_item.item), true);
+                let param = coq::binder::Binder::new_generalized(
+                    coq::binder::Kind::MaxImplicit,
+                    None,
+                    coq::term::Type::Literal(context_item.item),
+                );
                 if context_item.at_end {
                     self.fn_requirements.late_coq_params.push(param);
                 } else {
@@ -534,7 +538,7 @@ where
 
         // push everything to the builder
         for x in new_ghost_vars {
-            builder.add_param(coq::Name::Named(x), coq::Type::Gname).unwrap();
+            builder.add_param(coq::binder::Binder::new(Some(x), coq::term::Type::Gname)).unwrap();
         }
 
         // assemble a string for the closure arg
@@ -582,7 +586,9 @@ where
             ty::ClosureKind::FnMut => {
                 // wrap the argument in a mutable reference
                 let post_name = "__γclos";
-                builder.add_param(coq::Name::Named(post_name.to_owned()), coq::Type::Gname).unwrap();
+                builder
+                    .add_param(coq::binder::Binder::new(Some(post_name.to_owned()), coq::term::Type::Gname))
+                    .unwrap();
 
                 let lft = meta.closure_lifetime.unwrap();
                 let ref_ty = specs::Type::MutRef(Box::new(tuple), lft);

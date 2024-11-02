@@ -58,7 +58,7 @@ impl<'b, T: ParamLookup> TraitImplAttrParser for VerboseTraitImplAttrParser<'b, 
                     let parsed_term: parse::LitStr = buffer.parse(self.scope).map_err(str_err)?;
                     let (parsed_term, _) = process_coq_literal(&parsed_term.value(), self.scope);
                     if trait_attrs
-                        .insert(parsed_name.to_string(), radium::coq::GallinaTerm::Literal(parsed_term))
+                        .insert(parsed_name.to_string(), radium::coq::term::Gallina::Literal(parsed_term))
                         .is_some()
                     {
                         return Err(format!(

@@ -1549,7 +1549,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
     /// Get the spec for a built-in enum like `std::option::Option`.
     fn get_builtin_enum_spec(&self, did: DefId) -> Option<radium::EnumSpec> {
         let option_spec = radium::EnumSpec {
-            rfn_type: coq::Type::Literal("_".to_owned()),
+            rfn_type: coq::term::Type::Literal("_".to_owned()),
             variant_patterns: vec![
                 ("None".to_owned(), vec![], "-[]".to_owned()),
                 ("Some".to_owned(), vec!["x".to_owned()], "-[x]".to_owned()),
@@ -1557,7 +1557,7 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         };
 
         let enum_spec = radium::EnumSpec {
-            rfn_type: coq::Type::Literal("_".to_owned()),
+            rfn_type: coq::term::Type::Literal("_".to_owned()),
             variant_patterns: vec![
                 ("inl".to_owned(), vec!["x".to_owned()], "-[x]".to_owned()),
                 ("inr".to_owned(), vec!["x".to_owned()], "-[x]".to_owned()),
@@ -1586,10 +1586,10 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
         &self,
         def: ty::AdtDef<'tcx>,
         inductive_name: String,
-    ) -> (coq::Inductive, radium::EnumSpec) {
+    ) -> (coq::inductive::Inductive, radium::EnumSpec) {
         trace!("Generating Inductive for enum {:?}", def);
 
-        let mut variants: Vec<coq::Variant> = Vec::new();
+        let mut variants: Vec<coq::inductive::Variant> = Vec::new();
         let mut variant_patterns = Vec::new();
 
         for v in def.variants() {
@@ -1602,30 +1602,24 @@ impl<'def, 'tcx: 'def> TypeTranslator<'def, 'tcx> {
             let (variant_args, variant_arg_binders, variant_rfn) = if variant_def.fields.is_empty() {
                 (vec![], vec![], "-[]".to_owned())
             } else {
-                let args =
-                    vec![coq::Param::new(coq::Name::Unnamed, coq::Type::Literal(refinement_type), false)];
-
+                let args = vec![coq::binder::Binder::new(None, coq::term::Type::Literal(refinement_type))];
                 (args, vec!["x".to_owned()], "x".to_owned())
             };
 
-            let variant_def = coq::Variant {
-                name: variant_name.to_string(),
-                params: coq::ParamList::new(variant_args),
-            };
+            variants.push(coq::inductive::Variant::new(variant_name.clone(), variant_args));
 
-            variants.push(variant_def);
             variant_patterns.push((variant_name.to_string(), variant_arg_binders, variant_rfn));
         }
 
         // We assume the generated Inductive def is placed in a context where the generic types are in scope.
-        let inductive = coq::Inductive {
-            name: inductive_name.clone(),
-            parameters: coq::ParamList::new(vec![]),
+        let inductive = coq::inductive::Inductive::new(
+            inductive_name.clone(),
+            coq::binder::BinderList::empty(),
             variants,
-        };
+        );
 
         let enum_spec = radium::EnumSpec {
-            rfn_type: coq::Type::Literal(inductive_name),
+            rfn_type: coq::term::Type::Literal(inductive_name),
             variant_patterns,
         };
 
