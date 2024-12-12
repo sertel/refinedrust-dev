@@ -259,12 +259,12 @@
         pkgs = import nixpkgs {inherit overlays system;};
 
         packages = {
-          stdpp       = pkgs.coqPackages_8_17.stdpp;
-          iris        = pkgs.coqPackages_8_17.iris;
-          lambda-rust = pkgs.coqPackages_8_17.lambda-rust;
+#          stdpp       = pkgs.coqPackages_8_17.stdpp;
+#          iris        = pkgs.coqPackages_8_17.iris;
+#          lambda-rust = pkgs.coqPackages_8_17.lambda-rust;
           theories    = pkgs.coqPackages_8_17.theories;
-          stdlib      = pkgs.coqPackages_8_17.stdlib;
           frontend    = pkgs.coqPackages_8_17.frontend;
+          stdlib      = pkgs.coqPackages_8_17.stdlib;
           def         = pkgs.coqPackages_8_17.def;
 
           default  = self.packages.${system}.def;
