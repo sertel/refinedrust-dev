@@ -24,7 +24,6 @@
         mkDepCoqDerivation = pin :
           { lib,
             mkCoqDerivation,
-            coq,
             pname,
             propagatedBuildInputs ? [],
             owner ? "iris",
@@ -51,14 +50,14 @@
 
         stdpp-fun = { lib, mkCoqDerivation, coq }:
           mkDepCoqDerivation coq.stdpp {
-            inherit lib mkCoqDerivation coq;
+            inherit lib mkCoqDerivation;
 
             pname = "stdpp";
           };
 
         iris-fun = { lib, mkCoqDerivation, coq, stdpp } :
           mkDepCoqDerivation coq.iris {
-            inherit lib mkCoqDerivation coq;
+            inherit lib mkCoqDerivation;
 
             pname = "iris";
 
@@ -67,7 +66,7 @@
 
         lambda-rust-fun = { lib, mkCoqDerivation, coq, iris }:
           mkDepCoqDerivation coq.lambda-rust {
-            inherit lib mkCoqDerivation coq;
+            inherit lib mkCoqDerivation;
 
             pname = "lambda-rust";
             owner = "lgaeher";
@@ -137,17 +136,17 @@
                doCheck = false;
              };
 
-         default-fun = { pkgs, meta, name, coq, rust, fetchCoqDeps, packages }: pkgs.buildEnv {
+         default-fun = { pkgs, meta, name, coq, rust, fetchCoqDeps, frontend, stdlib }: pkgs.buildEnv {
            inherit meta;
 
            name = "cargo-${name}";
-           paths = coq.toolchain ++ [packages.frontend rust.toolchain];
+           paths = coq.toolchain ++ [frontend rust.toolchain];
 
            pathsToLink = ["/bin"];
            nativeBuildInputs = [pkgs.makeWrapper];
            postBuild = with pkgs.lib.strings; ''
                        wrapProgram $out/bin/dune \
-                       --set COQPATH "${makeSearchPath "lib/coq/${coq.version}/user-contrib" (fetchCoqDeps packages.stdlib)}"
+                       --set COQPATH "${makeSearchPath "lib/coq/${coq.version}/user-contrib" (fetchCoqDeps stdlib)}"
                        '';
          };
 
@@ -231,7 +230,7 @@
               theories    = self.callPackage theories-fun    { inherit (config) coq meta version name; };
               stdlib      = self.callPackage stdlib-fun      { inherit (config) meta version rust; };
               frontend    = self.callPackage frontend-fun    { inherit (config) meta version name rust; };
-              # TODO    default   = self.callPackage default {};
+              def         = self.callPackage default-fun     { inherit (config) coq meta name rust fetchCoqDeps; };
             });
         in (nixpkgs.lib.mapAttrs injectPkg {
           inherit (final) coqPackages_8_17;
@@ -260,14 +259,15 @@
         pkgs = import nixpkgs {inherit overlays system;};
 
         packages = {
-          stdpp = pkgs.coqPackages_8_17.stdpp;
+          stdpp       = pkgs.coqPackages_8_17.stdpp;
+          iris        = pkgs.coqPackages_8_17.iris;
+          lambda-rust = pkgs.coqPackages_8_17.lambda-rust;
+          theories    = pkgs.coqPackages_8_17.theories;
+          stdlib      = pkgs.coqPackages_8_17.stdlib;
+          frontend    = pkgs.coqPackages_8_17.frontend;
+          def         = pkgs.coqPackages_8_17.def;
 
-          theories = pkgs.coqPackages_8_17.theories;
-          stdlib   = pkgs.coqPackages_8_17.stdlib;
-          frontend = pkgs.coqPackages_8_17.frontend;
-
-          # TODO How do I integrate the above default build environment?
-          default  = self.packages.${system}.frontend;
+          default  = self.packages.${system}.def;
          };
 
          config = config-fun pkgs;
