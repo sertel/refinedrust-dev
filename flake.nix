@@ -36,14 +36,14 @@
 
             version = pin.version;
             release.${pin.version} = {
-              src = lib.const (lib.cleanSourceWith {
-                src = lib.cleanSource ./.;
-                filter = let inherit (lib) hasSuffix; in path: type:
-                  (! hasSuffix ".gitignore" path)
-                  && (! hasSuffix "flake.nix" path)
-                  && (! hasSuffix "flake.lock" path)
-                  && (! hasSuffix "_build" path);
-              });
+#              src = lib.const (lib.cleanSourceWith {
+#                src = lib.cleanSource ./.;
+#                filter = let inherit (lib) hasSuffix; in path: type:
+#                  (! hasSuffix ".gitignore" path)
+#                  && (! hasSuffix "flake.nix" path)
+#                  && (! hasSuffix "flake.lock" path)
+#                  && (! hasSuffix "_build" path);
+#              });
               sha256 = "${pin.sha256}";
             };
           };
@@ -259,9 +259,9 @@
         pkgs = import nixpkgs {inherit overlays system;};
 
         packages = {
-#          stdpp       = pkgs.coqPackages_8_17.stdpp;
-#          iris        = pkgs.coqPackages_8_17.iris;
-#          lambda-rust = pkgs.coqPackages_8_17.lambda-rust;
+          stdpp       = pkgs.coqPackages_8_17.stdpp;
+          iris        = pkgs.coqPackages_8_17.iris;
+          lambda-rust = pkgs.coqPackages_8_17.lambda-rust;
           theories    = pkgs.coqPackages_8_17.theories;
           frontend    = pkgs.coqPackages_8_17.frontend;
           stdlib      = pkgs.coqPackages_8_17.stdlib;
