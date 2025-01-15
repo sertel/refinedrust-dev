@@ -219,7 +219,7 @@
       # the injected package from its respective coqPackages_VER attribute set!
       overlays.default = final: prev:
         let
-          pkgs = prev;
+          pkgs = final;
           config = config-fun pkgs;
           injectPkg = name: set:
             prev.${name}.overrideScope (self: _: {
@@ -232,7 +232,7 @@
               frontend    = self.callPackage frontend-fun    { inherit (config) meta version name rust; };
               def         = self.callPackage default-fun     { inherit (config) coq meta name rust fetchCoqDeps; };
             });
-        in (nixpkgs.lib.mapAttrs injectPkg {
+        in (pkgs.lib.mapAttrs injectPkg {
           inherit (final) coqPackages_8_17;
         });
     }
